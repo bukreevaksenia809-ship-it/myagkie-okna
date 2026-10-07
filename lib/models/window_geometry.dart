@@ -1,0 +1,808 @@
+import 'dart:math' as math;
+import 'dart:ui' show Offset, Rect;
+
+import 'window_params.dart';
+
+/// Сторона окна, к которой относится элемент.
+enum WindowSide {
+  bottom,
+  right,
+  top,
+  left;
+
+  String get label => switch (this) {
+        WindowSide.bottom => 'низ',
+        WindowSide.right => 'право',
+        WindowSide.top => 'верх',
+        WindowSide.left => 'лево',
+      };
+}
+
+/// Люверс на чертеже.
+class EyeletPlacement {
+  const EyeletPlacement({
+    required this.center,
+    required this.side,
+    required this.angle,
+    required this.isCorner,
+    required this.positionInEdge,
+  });
+
+  /// Центр люверса, мм.
+  final Offset center;
+
+  /// К какой стороне окна относится.
+  final WindowSide side;
+
+  /// Направление кромки, радианы (для ориентации овального люверса).
+  final double angle;
+
+  /// Совпадает с углом полотна.
+  final bool isCorner;
+
+  /// Доля длины стороны от её начала, 0…1.
+  final double positionInEdge;
+}
+
+/// Чертёж мягкого окна: четырёхугольник, у которого нижняя и верхняя кромки
+/// горизонтальны, а высоты слева и справа заданы замерами.
+///
+/// Координаты — в миллиметрах, начало в левом нижнем углу, ось Y вверх.
+class WindowGeometry {
+  WindowGeometry({
+    required this.bottomWidth,
+    required this.topWidth,
+    required this.leftHeight,
+    required this.rightHeight,
+    required this.topOffset,
+    this.pocketDrop = 0,
+  });
+
+  factory WindowGeometry.of(WindowParams params) {
+    final bottom = _positive(params.bottomWidth);
+    final top = _positive(params.topWidth);
+    final offset = switch (params.topAlign) {
+      TopAlign.center => (bottom - top) / 2,
+      TopAlign.left => 0.0,
+      TopAlign.right => bottom - top,
+      TopAlign.custom => params.topOffsetMm.isFinite ? params.topOffsetMm : 0.0,
+    };
+    return WindowGeometry(
+      bottomWidth: bottom,
+      topWidth: top,
+      leftHeight: _positive(params.leftHeight),
+      rightHeight: _positive(params.rightHeight),
+      topOffset: offset,
+      pocketDrop: params.pocket && params.pocketWidth > 0 ? params.pocketWidth : 0,
+    );
+  }
+
+  final double bottomWidth;
+  final double topWidth;
+  final double leftHeight;
+  final double rightHeight;
+
+  /// Смещение левого верхнего угла вправо от левого нижнего угла.
+  final double topOffset;
+
+  /// Насколько карман опускается ниже нижнего тента, мм.
+  final double pocketDrop;
+
+  static double _positive(double value) =>
+      (!value.isFinite || value <= 0) ? 100 : value;
+
+  Offset get bottomLeft => const Offset(0, 0);
+  Offset get bottomRight => Offset(bottomWidth, 0);
+  Offset get topLeft => Offset(topOffset, leftHeight);
+  Offset get topRight => Offset(topOffset + topWidth, rightHeight);
+
+  /// Углы против часовой стрелки (в координатах с осью Y вверх), начиная
+  /// с левого нижнего. Порядок важен для [insetPolygonPerSide].
+  List<Offset> get corners => [bottomLeft, bottomRight, topRight, topLeft];
+
+  /// Длины сторон по обходу углов: низ, право, верх, лево.
+  List<double> get sideLengths {
+    final points = corners;
+    return [
+      for (var i = 0; i < points.length; i++)
+        (points[(i + 1) % points.length] - points[i]).distance,
+    ];
+  }
+
+  double get leftEdgeLength => sideLengths[3];
+
+  double get rightEdgeLength => sideLengths[1];
+
+  /// Длина окантовки по наружному контуру (без запаса на стыки).
+  double get perimeter => sideLengths.reduce((a, b) => a + b);
+
+  double get areaMm2 => polygonArea(corners).abs();
+
+  double get areaM2 => areaMm2 / 1000000;
+
+  double get minX => math.min(0, topOffset);
+  double get maxX => math.max(bottomWidth, topOffset + topWidth);
+  double get minY => -pocketDrop;
+  double get maxY => math.max(leftHeight, rightHeight);
+
+  double get spanX => maxX - minX;
+  double get spanY => maxY - minY;
+
+  /// Габаритная высота изделия.
+  double get overallHeight => maxY;
+
+  /// Насколько верхняя кромка выходит за нижнюю справа (мм).
+  double get rightOverhang => topOffset + topWidth - bottomWidth;
+
+  /// Насколько верхняя кромка выходит за нижнюю слева (мм).
+  double get leftOverhang => -topOffset;
+}
+
+/// Слои окна: окантовка по сторонам, шов (напайка), плёнка и люверсы.
+class WindowLayers {
+  WindowLayers(this.params, this.geometry);
+
+  final WindowParams params;
+  final WindowGeometry geometry;
+
+  /// Наружная граница (внешний контур окна).
+  List<Offset> get outer => geometry.corners;
+
+  /// Рулоны окантовки по сторонам в порядке обхода: низ, право, верх, лево.
+  List<EdgeRoll> get rolls => [for (var i = 0; i < 4; i++) params.rollForEdge(i)];
+
+  /// Готовые (сложенные пополам) ширины окантовки по сторонам.
+  List<double> get finishedWidths =>
+      [for (final roll in rolls) roll.finishedWidth];
+
+  /// Внутренняя граница окантовки: видимая граница плёнки.
+  late final List<Offset> edgeInner = insetPolygonPerSide(outer, finishedWidths);
+
+  /// Граница плёнки в раскрое: плёнка заходит под окантовку на [weldOverlap],
+  /// поэтому её край ближе к наружному контуру, чем внутренняя граница
+  /// окантовки, на величину напайки.
+  late final List<Offset> filmEdge = insetPolygonPerSide(
+    outer,
+    [
+      for (final width in finishedWidths)
+        math.max(width - weldOverlap, 0.0),
+    ],
+  );
+
+  /// Линия центров люверсов — середина окантовки.
+  late final List<Offset> eyeletLine = insetPolygonPerSide(
+    outer,
+    [for (final width in finishedWidths) width / 2],
+  );
+
+  late final _EyeletResult _eyeletResult = _computeEyelets();
+
+  /// Все люверсы по периметру; угловые не дублируются.
+  List<EyeletPlacement> get eyelets => _eyeletResult.placements;
+
+  /// Фактический шаг по каждой стороне.
+  List<double> get eyeletSteps => _eyeletResult.steps;
+
+  int get eyeletCount => eyelets.length;
+
+  /// Габариты видимой плёнки (по внутренней границе окантовки).
+  late final Rect filmVisibleBounds = boundsOf(edgeInner);
+
+  /// Габариты плёнки в раскрое (с напайкой под окантовку).
+  late final Rect filmCutBounds = boundsOf(filmEdge);
+
+  /// Площадь плёнки в раскрое, м².
+  double get filmAreaM2 => polygonArea(filmEdge).abs() / 1000000;
+
+  /// Люверсы, которые закрываются крепежом подвижных сторон:
+  /// у подъёмного и комбинированного окна — низ и бока, сверху саморезы.
+  List<EyeletPlacement> get movableSideEyelets {
+    if (params.windowType == WindowType.fixed) return const [];
+    return eyelets
+        .where((eyelet) => eyelet.side != WindowSide.top)
+        .toList(growable: false);
+  }
+
+  List<EyeletPlacement> get topEyelets =>
+      eyelets.where((eyelet) => eyelet.side == WindowSide.top).toList();
+
+  /// Тип люверса с учётом типа окна: у глухого — только круглые.
+  EyeletType get eyeletType => params.effectiveEyeletType;
+
+  /// Подъёмные ремни: висят сверху вниз, ширина [liftStrapWidth] мм.
+  List<Rect> get liftStraps {
+    final count = params.liftStrapCount;
+    if (count <= 0) return const [];
+    final bounds = filmVisibleBounds;
+    final length = math.min(liftStrapLength, bounds.height * 0.8);
+    // У прямоугольников из boundsOf верхняя по экрану кромка — это bounds.bottom
+    // (координата Y в модели растёт вверх).
+    return [
+      for (var i = 1; i <= count; i++)
+        Rect.fromLTWH(
+          bounds.left + bounds.width * i / (count + 1) - liftStrapWidth / 2,
+          bounds.bottom - length,
+          liftStrapWidth,
+          length,
+        ),
+    ];
+  }
+
+  /// Полоса тента, в которую впаяна молния (молния идёт по её центру).
+  ///
+  /// Прямоугольник в координатах модели; [Rect.top] — меньшая координата Y.
+  Rect? get zipperBand {
+    final line = zipper;
+    if (line == null) return null;
+    final half = math.max(params.zipperBandWidth, 20) / 2;
+    return Rect.fromLTRB(
+      line.start.dx - half,
+      math.min(line.start.dy, line.end.dy),
+      line.start.dx + half,
+      math.max(line.start.dy, line.end.dy),
+    );
+  }
+
+  /// Расход окантовки по типам рулонов: тип → сумма длин сторон, мм.
+  Map<EdgeRoll, double> get edgeConsumption {
+    final result = <EdgeRoll, double>{};
+    final lengths = geometry.sideLengths;
+    for (var i = 0; i < lengths.length; i++) {
+      final roll = rolls[i];
+      result[roll] = (result[roll] ?? 0) + lengths[i];
+    }
+    return result;
+  }
+
+  /// Готовые подписи расхода окантовки: «Тент 100 мм — 654 см».
+  List<String> get edgeConsumptionLabels {
+    final entries = edgeConsumption.entries.toList()
+      ..sort((a, b) => a.key.rawWidth.compareTo(b.key.rawWidth));
+    return [
+      for (final entry in entries)
+        '${entry.key.shortLabel} — ${formatCm(entry.value)} см',
+    ];
+  }
+
+  /// Дренажные отверстия в нижней окантовке.
+  List<Offset> get drainHoles {
+    final count = params.drainCount.round();
+    if (!params.drainHoles || count <= 0) return const [];
+
+    final bottomEyelets = eyelets
+        .where((eyelet) => eyelet.side == WindowSide.bottom)
+        .map((eyelet) => eyelet.center)
+        .toList()
+      ..sort((a, b) => a.dx.compareTo(b.dx));
+
+    if (bottomEyelets.length >= count + 2) {
+      final middles = <Offset>[];
+      for (var i = 0; i < bottomEyelets.length - 1; i++) {
+        middles.add((bottomEyelets[i] + bottomEyelets[i + 1]) / 2);
+      }
+      final result = <Offset>[];
+      for (var k = 1; k <= count; k++) {
+        final index = (k * middles.length / (count + 1))
+            .floor()
+            .clamp(0, middles.length - 1);
+        result.add(middles[index]);
+      }
+      return result;
+    }
+
+    final line = eyeletLine;
+    return [
+      for (var k = 1; k <= count; k++)
+        Offset.lerp(line[0], line[1], k / (count + 1))!,
+    ];
+  }
+
+
+  /// Линия молнии: всегда вертикально, по низу до верха видимой плёнки.
+  ({Offset start, Offset end, double bandWidth})? get zipper {
+    if (!params.hasZipper) return null;
+    final bounds = filmVisibleBounds;
+    final half = math.max(params.zipperBandWidth, 20) / 2;
+    final x = params.zipperCentered
+        ? bounds.center.dx
+        : (bounds.left + params.zipperOffsetMm)
+            .clamp(bounds.left + half, bounds.right - half);
+    return (
+      start: Offset(x, bounds.top),
+      end: Offset(x, bounds.bottom),
+      bandWidth: params.zipperBandWidth,
+    );
+  }
+
+  /// Ширина спайки молнии и расстояния от неё до кромок плёнки.
+  ({double left, double band, double right})? get zipperGaps {
+    final band = zipperBand;
+    if (band == null) return null;
+    final bounds = filmVisibleBounds;
+    return (
+      left: band.left - bounds.left,
+      band: band.width,
+      right: bounds.right - band.right,
+    );
+  }
+
+  /// Карман — продолжение нижнего тента вниз: полоса тента 200 мм,
+  /// сложенная пополам (100 мм), по всей ширине окна.
+  Rect get pocketRect => params.pocket
+      ? Rect.fromLTRB(0, -params.pocketWidth, geometry.bottomWidth, 0)
+      : Rect.zero;
+
+  _EyeletResult _computeEyelets() {
+    const sides = [
+      WindowSide.bottom,
+      WindowSide.right,
+      WindowSide.top,
+      WindowSide.left,
+    ];
+    final polygon = eyeletLine;
+    final placements = <EyeletPlacement>[];
+    final steps = <double>[];
+
+    for (var i = 0; i < polygon.length; i++) {
+      final a = polygon[i];
+      final b = polygon[(i + 1) % polygon.length];
+      final direction = b - a;
+      final length = direction.distance;
+      if (length < 1) continue;
+      final unit = direction / length;
+      final angle = math.atan2(unit.dy, unit.dx);
+      final side = sides[i % sides.length];
+
+      final offset = params.eyeletCornerOffset.clamp(0.0, math.max(length / 2 - 1, 0));
+      final usable = length - offset * 2;
+      final nominal = params.eyeletStep.clamp(50.0, 1000.0);
+      final intervals = math.max(1, (usable / nominal).ceil());
+      final actual = usable / intervals;
+      steps.add(actual);
+
+      for (var k = 0; k <= intervals; k++) {
+        var distance = offset + actual * k;
+
+        // Карман: угловые люверсы внизу не ставим, а боковые поднимаем,
+        // чтобы в полость кармана заводился утяжитель.
+        if (params.pocket) {
+          if (side == WindowSide.bottom && (k == 0 || k == intervals)) {
+            continue;
+          }
+          if (side == WindowSide.right && k == 0) {
+            distance += pocketCornerOffset;
+          }
+          if (side == WindowSide.left && k == intervals) {
+            distance -= pocketCornerOffset;
+          }
+          if (distance < 0 || distance > length) continue;
+        }
+
+        placements.add(EyeletPlacement(
+          center: a + unit * distance,
+          side: side,
+          angle: angle,
+          isCorner: k == 0 || k == intervals,
+          positionInEdge: distance / length,
+        ));
+      }
+    }
+
+    // Угловые люверсы принадлежат сразу двум сторонам — оставляем по одному.
+    final merged = <EyeletPlacement>[];
+    for (final eyelet in placements) {
+      final isDuplicate = merged.any(
+        (existing) => (existing.center - eyelet.center).distance < 1,
+      );
+      if (!isDuplicate) merged.add(eyelet);
+    }
+
+    return _EyeletResult(merged, steps);
+  }
+}
+
+class _EyeletResult {
+  const _EyeletResult(this.placements, this.steps);
+
+  final List<EyeletPlacement> placements;
+  final List<double> steps;
+}
+
+/// Итоговые расчёты для штампа, раскроя и раскладки.
+class WindowSpec {
+  WindowSpec(this.params, this.geometry, this.layers);
+
+  factory WindowSpec.of(WindowParams params) {
+    final geometry = WindowGeometry.of(params);
+    return WindowSpec(params, geometry, WindowLayers(params, geometry));
+  }
+
+  final WindowParams params;
+  final WindowGeometry geometry;
+  final WindowLayers layers;
+
+  double get outerPerimeter => geometry.perimeter;
+
+  double get outerAreaM2 => geometry.areaM2;
+
+  /// Площадь готового изделия по наружному контуру, м².
+  double get productAreaM2 => geometry.areaM2;
+
+  /// Площадь плёнки в раскрое (с напайкой), м².
+  double get filmAreaM2 => layers.filmAreaM2;
+
+  /// Видимый размер плёнки (по внутренней границе окантовки).
+  double get filmVisibleWidth => layers.filmVisibleBounds.width;
+  double get filmVisibleHeight => layers.filmVisibleBounds.height;
+
+  /// Раскрой плёнки: видимый размер плюс напайка [weldOverlap] с двух сторон
+  /// (плёнка заходит под окантовку).
+  double get filmCutWidth => layers.filmCutBounds.width;
+  double get filmCutHeight => layers.filmCutBounds.height;
+
+  /// Раскрой с компенсацией усадки ПВХ.
+  double get filmCutWidthWithShrinkage =>
+      filmCutWidth * (1 + params.shrinkagePercent / 100);
+  double get filmCutHeightWithShrinkage =>
+      filmCutHeight * (1 + params.shrinkagePercent / 100);
+
+  /// Расход окантовки по типам рулонов.
+  Map<EdgeRoll, double> get edgeConsumption => layers.edgeConsumption;
+
+  List<String> get edgeConsumptionLabels => layers.edgeConsumptionLabels;
+
+  int get eyeletCount => layers.eyeletCount;
+
+  double? get eyeletStepMin =>
+      layers.eyeletSteps.isEmpty ? null : layers.eyeletSteps.reduce(math.min);
+  double? get eyeletStepMax =>
+      layers.eyeletSteps.isEmpty ? null : layers.eyeletSteps.reduce(math.max);
+
+  String get eyeletStepLabel {
+    final min = eyeletStepMin;
+    final max = eyeletStepMax;
+    if (min == null || max == null) return '—';
+    if ((max - min).abs() < 1) return '${formatMm(max)} мм';
+    return '${formatMm(min)}…${formatMm(max)} мм';
+  }
+
+  /// Подпись окантовки по сторонам: «низ 100, верх 100, лево 200, право 200».
+  String get edgeBySideSummary {
+    final sides = [
+      ('низ', params.rollBottom),
+      ('право', params.rollRight),
+      ('верх', params.rollTop),
+      ('лево', params.rollLeft),
+    ];
+    final groups = <String, List<String>>{};
+    for (final (name, roll) in sides) {
+      groups.putIfAbsent(roll.shortLabel, () => []).add(name);
+    }
+    return groups.entries
+        .map((entry) => '${entry.key}: ${entry.value.join(', ')}')
+        .join(' · ');
+  }
+
+  String get edgeSummary =>
+      '${params.edgeColor.label.toLowerCase()}, ${params.edgeMaterial.label}';
+
+  String get fastenerSummary {
+    final movable = switch (params.fastenerType) {
+      FastenerType.eyeletsOnly => 'только люверсы',
+      FastenerType.turnBuckles => 'поворотные скобы',
+      FastenerType.frenchLocks => 'французский замок',
+      FastenerType.straps => 'силиконовые ремни',
+    };
+    return switch (params.windowType) {
+      WindowType.fixed => 'Саморезы по окантовке (глухое)',
+      WindowType.lifting => 'Сверху саморезы, низ и бока — $movable',
+    };
+  }
+
+  /// Тип люверса, который реально ставится.
+  EyeletType get eyeletType => params.effectiveEyeletType;
+
+  /// Количество подъёмных ремней.
+  int get strapCount => params.liftStrapCount;
+
+  /// Заготовка полосы тента под молнию: (ширина, длина), мм.
+  (double, double)? get zipperBandPiece {
+    final band = layers.zipperBand;
+    if (band == null) return null;
+    final visible = layers.filmVisibleBounds;
+    // Заготовка спайки: полоса по высоте плёнки.
+    return (band.width, visible.height);
+  }
+
+  String get zipperSummary {
+    if (!params.hasZipper) return '—';
+    final gaps = layers.zipperGaps;
+    final position = params.zipperCentered
+        ? 'по центру'
+        : '${formatMm(params.zipperOffsetMm)} мм от левого края';
+    final around = gaps == null
+        ? ''
+        : ', слева ${formatMm(gaps.left)} / справа ${formatMm(gaps.right)} мм '
+            'до кромок плёнки';
+    return 'вертикальная, $position$around';
+  }
+
+  /// Подпись молнии с полосой тента.
+  String get zipperBandSummary {
+    final piece = zipperBandPiece;
+    if (piece == null) return '—';
+    final bandWidth = piece.$1;
+    final bandLength = piece.$2;
+    return '$zipperSummary; полоса тента ${formatMm(bandWidth)} × '
+        '${formatMm(bandLength)} мм';
+  }
+
+  /// Примечания для штампа.
+  List<String> get notes => [
+        'Окантовка складывается пополам; напайка на плёнку ${formatMm(weldOverlap)} мм '
+            'по всему периметру',
+        'Окантовка по сторонам — ${edgeBySideSummary.lowercaseFirst}',
+        'Расход окантовки: ${edgeConsumptionLabels.join(', ')}',
+        'Плёнка ПВХ 700 мкм в раскрое ${formatMm(filmCutWidth)} × ${formatMm(filmCutHeight)} мм; '
+            'усадка ${formatPercent(params.shrinkagePercent)} учтена',
+        'Люверсы ${eyeletType.label.toLowerCase()}, шаг $eyeletStepLabel '
+            '(номинал ${formatMm(params.eyeletStep)} мм), от угла '
+            '${formatMm(params.eyeletCornerOffset)} мм, всего $eyeletCount шт',
+        'Крепёж: ${fastenerSummary.toLowerCase()}',
+        if (params.isLifting)
+          'Подъёмные ремни: $strapCount шт, '
+              '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} мм '
+              '(2 шт до 2 м ширины, далее +1 на метр)',
+        if (params.hasZipper) 'Молния: $zipperBandSummary',
+        if (params.hasZipper && layers.zipperGaps != null)
+          'Спайка молнии ${formatMm(params.zipperBandWidth)} мм; от спайки до '
+              'кромок плёнки: слева ${formatMm(layers.zipperGaps!.left)} мм, '
+              'справа ${formatMm(layers.zipperGaps!.right)} мм',
+        if (params.drainHoles)
+          'Дренаж: ${params.drainCount.round()} отв. Ø6 мм в нижней окантовке',
+        if (params.pocket)
+          'Карман: тент ${formatMm(pocketRollWidth)} мм сложен пополам → '
+              '${formatMm(params.pocketWidth)} мм; нижний угловой люверс поднят '
+              'на ${formatMm(pocketCornerOffset)} мм',
+        'Полотно: ${params.material.thickness}; доступные рулоны '
+            '${params.material.rollWidthsLabel} см',
+        '${params.edgeMaterial.joining}, морозостойкость до −30 °C',
+      ];
+}
+
+extension on String {
+  String get lowercaseFirst =>
+      isEmpty ? this : '${this[0].toLowerCase()}${substring(1)}';
+}
+
+/// Замечание к введённым параметрам.
+class ParamIssue {
+  const ParamIssue(this.field, this.message, {this.isError = true});
+
+  final ParamField field;
+  final String message;
+  final bool isError;
+}
+
+/// Проверка параметров окна: физически невозможные значения — ошибки,
+/// сомнительные сочетания — предупреждения.
+List<ParamIssue> validateParams(WindowParams params) {
+  final issues = <ParamIssue>[];
+
+  void checkPositive(ParamField field, double value, {double max = 20000}) {
+    if (!value.isFinite || value <= 0) {
+      issues.add(ParamIssue(field, '${field.label}: укажите значение больше нуля'));
+    } else if (value > max) {
+      issues.add(ParamIssue(
+        field,
+        '${field.label}: ${formatMm(value)} — больше ${formatMm(max)}, проверьте замер',
+        isError: false,
+      ));
+    }
+  }
+
+  void checkRange(
+    ParamField field,
+    double value,
+    double min,
+    double max,
+    String hint,
+  ) {
+    if (!value.isFinite) return;
+    if (value < min || value > max) {
+      issues.add(ParamIssue(
+        field,
+        '${field.label}: обычно $hint, у вас ${formatMm(value)}',
+        isError: false,
+      ));
+    }
+  }
+
+  checkPositive(ParamField.bottomWidth, params.bottomWidth);
+  checkPositive(ParamField.topWidth, params.topWidth);
+  checkPositive(ParamField.leftHeight, params.leftHeight);
+  checkPositive(ParamField.rightHeight, params.rightHeight);
+
+  checkRange(ParamField.eyeletStep, params.eyeletStep, 250, 400, '250–400 мм');
+  checkRange(
+    ParamField.eyeletCornerOffset,
+    params.eyeletCornerOffset,
+    0,
+    70,
+    '0 мм (в углу) или до 70 мм',
+  );
+  checkRange(ParamField.shrinkagePercent, params.shrinkagePercent, 1, 2, '1–2 %');
+
+  if (params.topWidth.isFinite &&
+      params.bottomWidth.isFinite &&
+      params.topWidth > params.bottomWidth) {
+    issues.add(const ParamIssue(
+      ParamField.topWidth,
+      'Верх шире низа — проверьте замеры',
+      isError: false,
+    ));
+  }
+
+  final geometry = WindowGeometry.of(params);
+  if (params.topAlign == TopAlign.custom) {
+    if (geometry.rightOverhang > 1) {
+      issues.add(ParamIssue(
+        ParamField.topOffset,
+        'Верх выступает вправо на ${formatMm(geometry.rightOverhang)} мм',
+        isError: false,
+      ));
+    }
+    if (geometry.leftOverhang > 1) {
+      issues.add(ParamIssue(
+        ParamField.topOffset,
+        'Верх выступает влево на ${formatMm(geometry.leftOverhang)} мм',
+        isError: false,
+      ));
+    }
+  }
+
+  final layers = WindowLayers(params, geometry);
+  final maxFinished =
+      layers.finishedWidths.reduce((a, b) => a > b ? a : b);
+  final minSpan = math.min(geometry.spanX, geometry.maxY);
+  if (maxFinished * 2 + weldOverlap * 2 >= minSpan) {
+    issues.add(const ParamIssue(
+      ParamField.bottomWidth,
+      'Окантовка со швом не оставляет места плёнке — выберите рулон уже',
+    ));
+  }
+
+  if (params.drainHoles) {
+    checkRange(ParamField.drainCount, params.drainCount, 1, 8, '1–5 отверстий');
+  }
+  if (params.pocket) {
+    checkRange(ParamField.pocketWidth, params.pocketWidth, 80, 150, '100 мм');
+  }
+  if (params.hasZipper) {
+    checkRange(
+      ParamField.zipperBandWidth,
+      params.zipperBandWidth,
+      40,
+      120,
+      '50 мм (5 см)',
+    );
+  }
+
+  if (params.hasZipper && !params.zipperCentered) {
+    final bounds = layers.filmVisibleBounds;
+    final half = math.max(params.zipperBandWidth, 20) / 2;
+    final limit = bounds.width;
+    if (params.zipperOffsetMm < half || params.zipperOffsetMm > limit - half) {
+      issues.add(ParamIssue(
+        ParamField.zipperOffset,
+        'Молния выходит за пределы плёнки (доступно ${formatMm(limit)} мм)',
+      ));
+    }
+  }
+
+  final heightDiff = (params.leftHeight - params.rightHeight).abs();
+  if (heightDiff.isFinite && heightDiff > 0 && heightDiff <= 500) {
+    issues.add(const ParamIssue(
+      ParamField.rightHeight,
+      'Высоты слева и справа отличаются меньше чем на 500 мм — это нормально, но проверьте, не опечатка ли',
+      isError: false,
+    ));
+  }
+
+  return issues;
+}
+
+/// Есть ли среди замечаний настоящие ошибки.
+bool hasBlockingIssues(List<ParamIssue> issues) =>
+    issues.any((issue) => issue.isError);
+
+/// Знаковая площадь многоугольника (положительная при обходе против часовой).
+double polygonArea(List<Offset> polygon) {
+  var sum = 0.0;
+  for (var i = 0; i < polygon.length; i++) {
+    final a = polygon[i];
+    final b = polygon[(i + 1) % polygon.length];
+    sum += a.dx * b.dy - b.dx * a.dy;
+  }
+  return sum / 2;
+}
+
+/// Габаритный прямоугольник многоугольника.
+Rect boundsOf(List<Offset> polygon) {
+  var minX = double.infinity;
+  var minY = double.infinity;
+  var maxX = -double.infinity;
+  var maxY = -double.infinity;
+  for (final point in polygon) {
+    minX = math.min(minX, point.dx);
+    minY = math.min(minY, point.dy);
+    maxX = math.max(maxX, point.dx);
+    maxY = math.max(maxY, point.dy);
+  }
+  if (minX == double.infinity) return Rect.zero;
+  return Rect.fromLTRB(minX, minY, maxX, maxY);
+}
+
+/// Смещает выпуклый многоугольник внутрь: своя величина для каждой стороны.
+///
+/// [distances] задаются в порядке обхода углов (для окна: низ, право, верх,
+/// лево). Каждая сторона сдвигается по своей нормали, соседние сдвинутые
+/// стороны пересекаются — так получается внутренняя граница окантовки,
+/// граница плёнки и линия центров люверсов.
+List<Offset> insetPolygonPerSide(List<Offset> polygon, List<double> distances) {
+  if (polygon.length < 3) return List.of(polygon);
+  final bounds = boundsOf(polygon);
+  final limit = 0.45 * math.min(bounds.width, bounds.height);
+  final count = polygon.length;
+  final shifted = <(Offset, Offset)>[];
+
+  for (var i = 0; i < count; i++) {
+    final a = polygon[i];
+    final b = polygon[(i + 1) % count];
+    final direction = b - a;
+    final length = direction.distance;
+    if (length < 1e-9) return List.of(polygon);
+    final unit = direction / length;
+    final inward = Offset(-unit.dy, unit.dx);
+    final raw = i < distances.length ? distances[i] : distances.last;
+    final distance = (!raw.isFinite || raw <= 0) ? 0.0 : math.min(raw, limit);
+    shifted.add((a + inward * distance, b + inward * distance));
+  }
+
+  final result = <Offset>[];
+  for (var i = 0; i < count; i++) {
+    final previous = shifted[(i - 1 + count) % count];
+    final current = shifted[i];
+    final point = _lineIntersection(
+      previous.$1,
+      previous.$2,
+      current.$1,
+      current.$2,
+    );
+    result.add(point ?? current.$1);
+  }
+
+  // Защита от вырождения: если контур схлопнулся или вывернулся — уменьшаем
+  // отступ вдвое и пробуем снова.
+  final area = polygonArea(result);
+  if (!area.isFinite || area <= 0 || area >= polygonArea(polygon).abs()) {
+    final maxDistance = distances.isEmpty
+        ? 0.0
+        : distances.reduce((a, b) => a > b ? a : b);
+    if (!maxDistance.isFinite || maxDistance <= 0.05) return List.of(polygon);
+    return insetPolygonPerSide(
+      polygon,
+      [for (final distance in distances) distance / 2],
+    );
+  }
+  return result;
+}
+
+Offset? _lineIntersection(Offset p1, Offset p2, Offset p3, Offset p4) {
+  final d1 = p2 - p1;
+  final d2 = p4 - p3;
+  final denominator = d1.dx * d2.dy - d1.dy * d2.dx;
+  if (denominator.abs() < 1e-9) return null;
+  final t = ((p3.dx - p1.dx) * d2.dy - (p3.dy - p1.dy) * d2.dx) / denominator;
+  return p1 + d1 * t;
+}

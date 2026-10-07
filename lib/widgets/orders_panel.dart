@@ -1,0 +1,163 @@
+import 'package:flutter/material.dart';
+
+import '../services/order_storage.dart';
+
+/// Раздел «Заказы»: сохранение, список сохранённых заказов и их сводки.
+class OrdersPanel extends StatelessWidget {
+  const OrdersPanel({
+    super.key,
+    required this.orders,
+    required this.folderPath,
+    required this.busy,
+    required this.onSave,
+    required this.onRefresh,
+    required this.onOpen,
+    required this.onDelete,
+  });
+
+  final List<SavedOrder> orders;
+  final String folderPath;
+  final bool busy;
+  final VoidCallback onSave;
+  final VoidCallback onRefresh;
+  final ValueChanged<SavedOrder> onOpen;
+  final ValueChanged<SavedOrder> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFD9E0EA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'ЗАКАЗЫ (ОТЧЁТНОСТЬ)',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.9,
+                    color: Color(0xFF66748A),
+                  ),
+                ),
+              ),
+              if (busy)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              FilledButton.icon(
+                onPressed: busy ? null : onSave,
+                icon: const Icon(Icons.save_outlined, size: 18),
+                label: const Text('Сохранить заказ'),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Обновить список',
+                onPressed: busy ? null : onRefresh,
+                icon: const Icon(Icons.refresh, size: 20),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            folderPath,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 10, color: Color(0xFF8A93A0)),
+          ),
+          const SizedBox(height: 10),
+          if (orders.isEmpty)
+            const Text(
+              'Сохранённых заказов пока нет. Кнопка «Сохранить заказ» пишет '
+              'JSON с параметрами и сводкой расхода — он остаётся для отчётности.',
+              style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+            )
+          else
+            for (final order in orders)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7F9FC),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              order.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Открыть заказ',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: busy ? null : () => onOpen(order),
+                            icon: const Icon(Icons.folder_open, size: 18),
+                          ),
+                          IconButton(
+                            tooltip: 'Удалить файл заказа',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: busy ? null : () => onDelete(order),
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        '${_date(order.savedAt)} · окон ${order.windowCount} · '
+                        'плёнка ${order.filmAreaM2.toStringAsFixed(2).replaceAll('.', ',')} м² · '
+                        'люверсов ${order.eyeletTotal}',
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          color: Color(0xFF41506A),
+                        ),
+                      ),
+                      if (order.edgeSummary.isNotEmpty)
+                        Text(
+                          order.edgeSummary,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Color(0xFF66748A),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  String _date(DateTime moment) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${two(moment.day)}.${two(moment.month)}.${moment.year} '
+        '${two(moment.hour)}:${two(moment.minute)}';
+  }
+}

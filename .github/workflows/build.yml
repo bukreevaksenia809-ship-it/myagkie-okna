@@ -1,0 +1,164 @@
+name: Сборка и релиз
+
+# Что делает:
+#   • запускает анализ и тесты;
+#   • собирает приложение под Windows (.exe) и macOS (.app/DMG);
+#   • на тег v* (или при ручном запуске с версией) публикует GitHub Release
+#     с готовыми архивами — их скачивает любой человек, Flutter ему не нужен.
+#
+# Как выпустить версию:
+#   1) поднять версию в pubspec.yaml;
+#   2) git tag v1.0.2 && git push origin v1.0.2   (или запустить вручную
+#      во вкладке Actions и указать версию);
+#   3) через несколько минут архив появится в разделе Releases.
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия релиза без буквы v (например 1.0.2). Пусто — только артефакты.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.35.4'
+
+jobs:
+  test:
+    name: Анализ и тесты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Зависимости
+        run: flutter pub get
+      - name: Анализ
+        run: flutter analyze
+      - name: Тесты
+        run: flutter test
+
+  windows:
+    name: Windows (.exe)
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Зависимости
+        run: flutter pub get
+
+      - name: Сборка
+        run: flutter build windows --release
+
+      - name: Портативный архив
+        shell: pwsh
+        run: |
+          $release = "build/windows/x64/runner/Release"
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item packaging/README-WINDOWS.txt "$release/ЧИТАЙ-МЕНЯ.txt" -Force
+          Compress-Archive -Path "$release/*" `
+            -DestinationPath dist/MyagkieOkna-windows.zip -Force
+          Get-Item dist/MyagkieOkna-windows.zip | Select-Object Name, Length
+
+      - name: Артефакт
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyagkieOkna-windows
+          path: dist/MyagkieOkna-windows.zip
+          if-no-files-found: error
+
+      - name: Релиз
+        if: startsWith(github.ref, 'refs/tags/') || inputs.version != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") { $tag = "${{ github.ref_name }}" }
+          else { $tag = "v${{ inputs.version }}" }
+          Write-Host "Публикую релиз $tag"
+          gh release view $tag --repo ${{ github.repository }} 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --repo ${{ github.repository }} `
+              --title "Мягкие окна $tag" `
+              --notes "Сборка приложения «Мягкие окна»: чертежи, раскрой, раскладка на рулонах и ведомость расхода.`n`n**Windows:** скачайте ``MyagkieOkna-windows.zip``, распакуйте целиком и запустите ``MyagkieOkna.exe``.`n**macOS:** скачайте DMG или zip."
+          }
+          gh release upload $tag dist/MyagkieOkna-windows.zip `
+            --repo ${{ github.repository }} --clobber
+
+  macos:
+    name: macOS (.app, DMG)
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Зависимости
+        run: flutter pub get
+
+      - name: Сборка
+        run: flutter build macos --release
+
+      - name: Архивы
+        run: |
+          set -e
+          APP="build/macos/Build/Products/Release/MyagkieOkna.app"
+          codesign --deep --force --sign - "$APP" || true
+          mkdir -p dist/dmg
+          cp -R "$APP" dist/dmg/
+          ln -s /Applications dist/dmg/Applications
+          hdiutil create -volname "Мягкие окна" -srcfolder dist/dmg -ov \
+            -format UDZO dist/MyagkieOkna-macos.dmg
+          ditto -c -k --sequesterRsrc --keepParent "$APP" \
+            dist/MyagkieOkna-macos.zip
+          ls -lh dist
+
+      - name: Артефакт
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyagkieOkna-macos
+          path: |
+            dist/MyagkieOkna-macos.dmg
+            dist/MyagkieOkna-macos.zip
+          if-no-files-found: error
+
+      - name: Релиз
+        if: startsWith(github.ref, 'refs/tags/') || inputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="v${{ inputs.version }}"
+          fi
+          echo "Публикую релиз $TAG"
+          gh release view "$TAG" --repo ${{ github.repository }} >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo ${{ github.repository }} \
+              --title "Мягкие окна $TAG" \
+              --notes "Сборка приложения «Мягкие окна»: чертежи, раскрой, раскладка на рулонах и ведомость расхода."
+          gh release upload "$TAG" \
+            dist/MyagkieOkna-macos.dmg dist/MyagkieOkna-macos.zip \
+            --repo ${{ github.repository }} --clobber

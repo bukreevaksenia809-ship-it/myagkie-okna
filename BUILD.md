@@ -1,0 +1,146 @@
+# Сборка и выпуск приложения
+
+Приложение называется **«Мягкие окна»** (`MyagkieOkna`), текущая версия 1.0.2.
+Иконка — мягкое окно: коричневая окантовка, плёнка, люверсы и молния.
+
+## macOS
+
+На macOS собирается одной командой (нужен Flutter SDK и Xcode):
+
+```bash
+cd soft_window_drawer
+export PATH="$HOME/Downloads/flutter/bin:$PATH"
+flutter pub get
+flutter build macos --release
+```
+
+Готовый бандл: `build/macos/Build/Products/Release/MyagkieOkna.app`
+(в Finder и Dock он показывается как «Мягкие окна» — так задано в `Info.plist`).
+
+Упаковка в DMG:
+
+```bash
+mkdir -p dist/dmg
+cp -R build/macos/Build/Products/Release/MyagkieOkna.app dist/dmg/
+ln -s /Applications dist/dmg/Applications
+hdiutil create -volname "Мягкие окна" -srcfolder dist/dmg -ov -format UDZO \
+  dist/MyagkieOkna-macos.dmg
+```
+
+Что уже сделано в проекте:
+
+- иконка: `macos/Runner/Assets.xcassets/AppIcon.appiconset/*` (16…1024 px);
+- имя и идентификатор: `macos/Runner/Configs/AppInfo.xcconfig`
+  (`PRODUCT_NAME = MyagkieOkna`, `PRODUCT_BUNDLE_IDENTIFIER = ru.myagkieokna.app`);
+- отображаемое имя «Мягкие окна»: `macos/Runner/Info.plist`
+  (`CFBundleName`, `CFBundleDisplayName`);
+- версия берётся из `pubspec.yaml` (`version: 1.0.0+1`);
+- права: запись в `~/Downloads` и печать (`macos/Runner/*.entitlements`).
+
+### Подпись и Gatekeeper
+
+Сборка не подписана сертификатом Apple Developer, поэтому при первом запуске
+macOS скажет, что разработчик не проверен. Варианты:
+
+1. Пользователь открывает приложение через «Пуск → правый клик → Открыть»
+   (один раз, дальше запускается обычно).
+2. Снять карантин после распаковки: `xattr -dr com.apple.quarantine MyagkieOkna.app`.
+3. Для чистой раздачи нужен сертификат Developer ID и нотаризация:
+   ```bash
+   codesign --deep --force --options runtime --sign "Developer ID Application: ..." MyagkieOkna.app
+   xcrun notarytool submit MyagkieOkna-macos.zip --apple-id ... --team-id ... --password ... --wait
+   xcrun stapler staple MyagkieOkna.app
+   ```
+
+## Windows
+
+**Flutter не умеет кросс-компиляцию**: собрать `.exe` для Windows можно только на
+Windows (или в CI на windows-раннере). Всё для этого в проекте уже подготовлено.
+
+Сборка на машине с Windows:
+
+1. Установить Flutter SDK для Windows: https://docs.flutter.dev/get-started/install/windows
+2. Установить Visual Studio 2022 с рабочей нагрузкой
+   «Разработка классических приложений на C++» (Desktop development with C++).
+3. Скачать папку проекта (или `git clone`) и выполнить:
+
+```powershell
+cd soft_window_drawer
+flutter pub get
+flutter build windows --release
+```
+
+Готовый комплект: `build\windows\x64\runner\Release\`
+(внутри `MyagkieOkna.exe`, `flutter_windows.dll`, `data\`). Эту папку целиком
+нужно упаковать в zip и передавать пользователю — запускать `MyagkieOkna.exe`.
+
+Что уже подготовлено под Windows:
+
+- платформа добавлена: папка `windows/`;
+- иконка приложения: `windows/runner/resources/app_icon.ico`
+  (16, 24, 32, 48, 64, 128, 256 px);
+- имя и заголовок окна: `windows/runner/main.cpp`
+  (`Мягкие окна — чертежи, раскрой, раскладка`);
+- свойства файла: `windows/runner/Runner.rc`
+  (`ProductName`, `OriginalFilename`, `InternalName`);
+- имя бинарника и идентификатор: `windows/CMakeLists.txt`
+  (`BINARY_NAME = MyagkieOkna`, `APPLICATION_ID = ru.myagkieokna.app`).
+
+## Выпуск через GitHub (сборка .exe без Windows-машины)
+
+Windows-сборку делает сам GitHub — на виртуальной машине с Windows. Вам
+не нужен ни Windows, ни Visual Studio, нужен только аккаунт GitHub.
+
+### Как выпустить версию
+
+1. Поднять версию в `pubspec.yaml` (например, `version: 1.0.3+4`) и
+   `kAppVersion` в `lib/main.dart` — она видна в интерфейсе.
+2. Закоммитить и поставить тег:
+
+   ```bash
+   git add -A
+   git commit -m "Версия 1.0.3"
+   git push origin main
+   git tag v1.0.3
+   git push origin v1.0.3
+   ```
+
+3. Открыть на GitHub вкладку **Actions** и дождаться зелёной галочки
+   (5–8 минут). Затем раздел **Releases** — там появятся файлы:
+   - `MyagkieOkna-windows.zip` — портативная сборка для Windows
+     (внутри `MyagkieOkna.exe`, `data/`, `ЧИТАЙ-МЕНЯ.txt`);
+   - `MyagkieOkna-macos.dmg` и `MyagkieOkna-macos.zip` — для macOS.
+
+Ссылку на релиз (`https://github.com/<логин>/<репозиторий>/releases/latest`)
+можно отправлять заказчику: ему не нужен ни Flutter, ни Python — только
+распаковать архив.
+
+### Без тега
+
+Тег не обязателен: во вкладке **Actions** → «Сборка и релиз» →
+**Run workflow** можно указать версию (например `1.0.3`) — релиз создастся
+с тегом `v1.0.3`. Если оставить поле пустым, сборка просто положит архивы
+в Artifacts, без релиза.
+
+### Что именно делает workflow (`.github/workflows/build.yml`)
+
+| Задача | Где | Что делает |
+|---|---|---|
+| Анализ и тесты | `ubuntu-latest` | `flutter analyze`, `flutter test` (57 тестов) |
+| Windows | `windows-latest` | `flutter build windows --release`, упаковка в zip, добавление `ЧИТАЙ-МЕНЯ.txt` |
+| macOS | `macos-latest` | `flutter build macos --release`, ad-hoc подпись, DMG и zip |
+| Релиз | оба | на тег `v*` или при указанной версии — `gh release create/upload` |
+
+Важно: Windows собирается **только на Windows-раннере**. Кросс-компиляции
+из macOS в Windows у Flutter нет, поэтому GitHub здесь — самый простой путь.
+
+### Если репозиторий приватный
+
+Готовые файлы из Releases видны только вам. Для заказчика либо сделайте
+репозиторий публичным, либо скачайте zip и передайте файлом.
+
+## Версия и имя в коде
+
+- `pubspec.yaml` → `version: 1.0.0+1`, `name: soft_window_drawer`
+  (имя Dart-пакета менять не нужно, оно не видно пользователю);
+- заголовок в приложении и в окне: «Мягкие окна».
