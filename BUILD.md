@@ -86,6 +86,22 @@ flutter build windows --release
 - имя бинарника и идентификатор: `windows/CMakeLists.txt`
   (`BINARY_NAME = MyagkieOkna`, `APPLICATION_ID = ru.myagkieokna.app`).
 
+## Готовый релиз (уже выпущен)
+
+- Релиз: https://github.com/kurwaHomik-cyber/myagkie-okna/releases/tag/v1.0.2
+- Прямая ссылка на Windows-сборку:
+  https://github.com/kurwaHomik-cyber/myagkie-okna/releases/download/v1.0.2/MyagkieOkna-windows.zip
+- Репозиторий приватный, поэтому ссылки открываются под вашим аккаунтом:
+  скачайте zip и передайте заказчику файлом (15 МБ).
+- В релизе также лежат `MyagkieOkna-macos.dmg` и `MyagkieOkna-macos.zip`.
+
+Сделать репозиторий публичным (тогда ссылку можно отправлять кому угодно,
+но исходники тоже станут открытыми):
+
+```bash
+gh repo edit kurwaHomik-cyber/myagkie-okna --visibility public --accept-visibility-change-consequences
+```
+
 ## Выпуск через GitHub (сборка .exe без Windows-машины)
 
 Windows-сборку делает сам GitHub — на виртуальной машине с Windows. Вам
