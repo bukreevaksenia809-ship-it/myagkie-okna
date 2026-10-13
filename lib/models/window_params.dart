@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// Тип мягкого окна по способу открывания.
 enum WindowType {
   fixed,
@@ -191,8 +193,6 @@ enum ParamField {
   drainCount,
   pocketWidth,
   shrinkagePercent,
-  zipperOffset,
-  zipperBandWidth,
   rollGap;
 
   String get label => switch (this) {
@@ -206,8 +206,6 @@ enum ParamField {
         ParamField.drainCount => 'Дренажных отверстий',
         ParamField.pocketWidth => 'Ширина кармана',
         ParamField.shrinkagePercent => 'Усадка ПВХ',
-        ParamField.zipperOffset => 'Положение молнии от левого края',
-        ParamField.zipperBandWidth => 'Ширина спайки молнии',
         ParamField.rollGap => 'Зазор при раскладке',
       };
 
@@ -220,6 +218,112 @@ enum ParamField {
 
 /// Припуск на сварку (напайка): плёнка заходит под окантовку на 25 мм всегда.
 const double weldOverlap = 25;
+
+/// Сколько молний и вырезов можно поставить на одно окно.
+const int maxZippers = 2;
+const int maxCutouts = 4;
+
+/// Полоса спайки, которой сваривают два соседних окна между собой, мм.
+const double windowWeldWidth = 25;
+
+/// Молния в полотне: всегда вертикальная, положение — от левого края плёнки.
+class ZipperSpec {
+  const ZipperSpec({
+    this.centered = true,
+    this.offsetMm = 0,
+    this.bandWidth = defaultZipperBandWidth,
+  });
+
+  /// По центру полотна (иначе — по [offsetMm] от левого края).
+  final bool centered;
+
+  /// Положение центра молнии от левого внутреннего края плёнки, мм.
+  final double offsetMm;
+
+  /// Ширина спайки, в которую впаивается молния (молния по её центру).
+  final double bandWidth;
+
+  ZipperSpec copyWith({bool? centered, double? offsetMm, double? bandWidth}) =>
+      ZipperSpec(
+        centered: centered ?? this.centered,
+        offsetMm: offsetMm ?? this.offsetMm,
+        bandWidth: bandWidth ?? this.bandWidth,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'centered': centered,
+        'offsetMm': offsetMm,
+        'bandWidth': bandWidth,
+      };
+}
+
+/// Форма выреза в полотне.
+enum CutoutShape {
+  rect('Прямоугольный'),
+  circle('Круглый');
+
+  const CutoutShape(this.label);
+
+  final String label;
+}
+
+/// Вырез (отверстие) в полотне: под трубу, вентиляцию, стойку.
+class Cutout {
+  const Cutout({
+    this.shape = CutoutShape.rect,
+    this.width = 300,
+    this.height = 300,
+    this.centerXMm = 0,
+    this.centerYMm = 400,
+  });
+
+  final CutoutShape shape;
+
+  /// Ширина, мм (у круга — диаметр).
+  final double width;
+
+  /// Высота, мм (у круга не используется).
+  final double height;
+
+  /// Центр от левого внутреннего края плёнки, мм.
+  final double centerXMm;
+
+  /// Центр от нижней внутренней кромки плёнки, мм.
+  final double centerYMm;
+
+  Cutout copyWith({
+    CutoutShape? shape,
+    double? width,
+    double? height,
+    double? centerXMm,
+    double? centerYMm,
+  }) =>
+      Cutout(
+        shape: shape ?? this.shape,
+        width: width ?? this.width,
+        height: height ?? this.height,
+        centerXMm: centerXMm ?? this.centerXMm,
+        centerYMm: centerYMm ?? this.centerYMm,
+      );
+
+  /// Площадь выреза, мм².
+  double get areaMm2 => shape == CutoutShape.circle
+      ? math.pi * width * width / 4
+      : width * height;
+
+  /// Длина контура выреза, мм — столько окантовки уходит на его обработку.
+  double get perimeterMm => shape == CutoutShape.circle
+      ? math.pi * width
+      : 2 * (width + height);
+
+  Map<String, dynamic> toJson() => {
+        'shape': shape.name,
+        'width': width,
+        'height': height,
+        'centerXMm': centerXMm,
+        'centerYMm': centerYMm,
+      };
+}
 
 /// Подъёмный ремень: ширина и длина заготовки, мм.
 const double liftStrapWidth = 50;
@@ -259,10 +363,10 @@ class WindowParams {
     this.eyeletStep = 300,
     this.eyeletCornerOffset = 0,
     this.fastenerType = FastenerType.turnBuckles,
-    this.zipperEnabled = false,
-    this.zipperCentered = true,
-    this.zipperOffsetMm = 0,
-    this.zipperBandWidth = defaultZipperBandWidth,
+    this.zippers = const [],
+    this.cutouts = const [],
+    this.weldedSides = const [],
+    this.removeEyeletsOnWelded = true,
     this.pocket = false,
     this.pocketWidth = pocketFinishedWidth,
     this.drainHoles = false,
@@ -311,15 +415,20 @@ class WindowParams {
   final FastenerType fastenerType;
 
   // Спецэлементы
-  /// Молния: ставится отдельной кнопкой, всегда вертикально.
-  final bool zipperEnabled;
-  final bool zipperCentered;
+  /// Молнии: каждая ставится отдельной кнопкой, все вертикальные.
+  final List<ZipperSpec> zippers;
 
-  /// Положение центра молнии от левого внутреннего края плёнки, мм.
-  final double zipperOffsetMm;
+  /// Вырезы (отверстия) в полотне.
+  final List<Cutout> cutouts;
 
-  /// Ширина спайки, в которую впаивается молния (молния по её центру).
-  final double zipperBandWidth;
+  /// Стороны, которыми окно спаяно с соседним (окантовка там не ставится).
+  final List<EdgeSide> weldedSides;
+
+  /// Убирать люверсы (крепёж) на спаянных сторонах.
+  ///
+  /// По умолчанию убираем: спайка держит полотно сама, а люверс в шве
+  /// только рвёт тент. Кнопка в панели позволяет оставить крепёж.
+  final bool removeEyeletsOnWelded;
 
   /// Карман из тента по нижней кромке: утяжитель заводится в его полость.
   final bool pocket;
@@ -333,7 +442,21 @@ class WindowParams {
   /// Усадка ПВХ, % — плёнка кроится больше на эту величину.
   final double shrinkagePercent;
 
-  bool get hasZipper => zipperEnabled;
+  bool get hasZipper => zippers.isNotEmpty;
+
+  /// Первая молния — для подписей и совместимости.
+  ZipperSpec? get zipper => zippers.isEmpty ? null : zippers.first;
+
+  bool get zipperEnabled => zippers.isNotEmpty;
+
+  bool get zipperCentered => zipper?.centered ?? true;
+
+  double get zipperOffsetMm => zipper?.offsetMm ?? 0;
+
+  double get zipperBandWidth => zipper?.bandWidth ?? defaultZipperBandWidth;
+
+  /// Сколько миллиметров окантовки экономят спайки с соседними окнами.
+  bool isWelded(EdgeSide side) => weldedSides.contains(side);
 
   /// У глухого окна ставятся только круглые люверсы.
   EyeletType get effectiveEyeletType =>
@@ -389,10 +512,10 @@ class WindowParams {
     double? eyeletStep,
     double? eyeletCornerOffset,
     FastenerType? fastenerType,
-    bool? zipperEnabled,
-    bool? zipperCentered,
-    double? zipperOffsetMm,
-    double? zipperBandWidth,
+    List<ZipperSpec>? zippers,
+    List<Cutout>? cutouts,
+    List<EdgeSide>? weldedSides,
+    bool? removeEyeletsOnWelded,
     bool? pocket,
     double? pocketWidth,
     bool? drainHoles,
@@ -421,16 +544,94 @@ class WindowParams {
       eyeletStep: eyeletStep ?? this.eyeletStep,
       eyeletCornerOffset: eyeletCornerOffset ?? this.eyeletCornerOffset,
       fastenerType: fastenerType ?? this.fastenerType,
-      zipperEnabled: zipperEnabled ?? this.zipperEnabled,
-      zipperCentered: zipperCentered ?? this.zipperCentered,
-      zipperOffsetMm: zipperOffsetMm ?? this.zipperOffsetMm,
-      zipperBandWidth: zipperBandWidth ?? this.zipperBandWidth,
+      zippers: zippers ?? this.zippers,
+      cutouts: cutouts ?? this.cutouts,
+      weldedSides: weldedSides ?? this.weldedSides,
+      removeEyeletsOnWelded:
+          removeEyeletsOnWelded ?? this.removeEyeletsOnWelded,
       pocket: pocket ?? this.pocket,
       pocketWidth: pocketWidth ?? this.pocketWidth,
       drainHoles: drainHoles ?? this.drainHoles,
       drainCount: drainCount ?? this.drainCount,
       shrinkagePercent: shrinkagePercent ?? this.shrinkagePercent,
     );
+  }
+
+  /// Добавить молнию.
+  ///
+  /// Первая — по центру полотна. Вторая — разносим обе по трети ширины,
+  /// чтобы полосы спайки не совпали и между ними осталось полотно.
+  WindowParams addZipper() {
+    if (zippers.length >= maxZippers) return this;
+    if (zippers.isEmpty) {
+      return copyWith(zippers: const [ZipperSpec(centered: true)]);
+    }
+    final third = math.max(bottomWidth / 3, 120.0);
+    final bandWidth = zippers.first.bandWidth;
+    return copyWith(
+      zippers: [
+        ZipperSpec(
+          centered: false,
+          offsetMm: third,
+          bandWidth: bandWidth,
+        ),
+        ZipperSpec(
+          centered: false,
+          offsetMm: third * 2,
+          bandWidth: bandWidth,
+        ),
+      ],
+    );
+  }
+
+  WindowParams removeZipper([int index = 0]) {
+    if (index < 0 || index >= zippers.length) return this;
+    final next = [...zippers]..removeAt(index);
+    return copyWith(zippers: next);
+  }
+
+  WindowParams updateZipper(int index, ZipperSpec zipper) {
+    if (index < 0 || index >= zippers.length) return this;
+    final next = [...zippers];
+    next[index] = zipper;
+    return copyWith(zippers: next);
+  }
+
+  WindowParams clearZippers() => copyWith(zippers: const []);
+
+  WindowParams addCutout([Cutout? cutout]) {
+    if (cutouts.length >= maxCutouts) return this;
+    if (cutout != null) return copyWith(cutouts: [...cutouts, cutout]);
+    // Новые вырезы ставим каскадом от центра, чтобы не накладывались.
+    final index = cutouts.length;
+    return copyWith(
+      cutouts: [
+        ...cutouts,
+        Cutout(
+          centerXMm: bottomWidth / 2,
+          centerYMm: 400 + index * 450.0,
+        ),
+      ],
+    );
+  }
+
+  WindowParams removeCutout(int index) {
+    if (index < 0 || index >= cutouts.length) return this;
+    final next = [...cutouts]..removeAt(index);
+    return copyWith(cutouts: next);
+  }
+
+  WindowParams updateCutout(int index, Cutout cutout) {
+    if (index < 0 || index >= cutouts.length) return this;
+    final next = [...cutouts];
+    next[index] = cutout;
+    return copyWith(cutouts: next);
+  }
+
+  WindowParams toggleWelded(EdgeSide side) {
+    final next = [...weldedSides];
+    if (!next.remove(side)) next.add(side);
+    return copyWith(weldedSides: next);
   }
 
   WindowParams withField(ParamField field, double value) => switch (field) {
@@ -444,8 +645,6 @@ class WindowParams {
         ParamField.drainCount => copyWith(drainCount: value),
         ParamField.pocketWidth => copyWith(pocketWidth: value),
         ParamField.shrinkagePercent => copyWith(shrinkagePercent: value),
-        ParamField.zipperOffset => copyWith(zipperOffsetMm: value),
-        ParamField.zipperBandWidth => copyWith(zipperBandWidth: value),
         // Зазор раскладки живёт в параметрах заказа — здесь только заглушка
         // для единообразия интерфейса.
         ParamField.rollGap => this,
@@ -462,8 +661,6 @@ class WindowParams {
         ParamField.drainCount => drainCount,
         ParamField.pocketWidth => pocketWidth,
         ParamField.shrinkagePercent => shrinkagePercent,
-        ParamField.zipperOffset => zipperOffsetMm,
-        ParamField.zipperBandWidth => zipperBandWidth,
         ParamField.rollGap => 0,
       };
 
@@ -490,6 +687,13 @@ class WindowParams {
         eyeletCornerOffset,
         material.name,
         fastenerType.name,
+        for (final zipper in zippers)
+          '${zipper.centered}:${zipper.offsetMm}:${zipper.bandWidth}',
+        for (final cutout in cutouts)
+          '${cutout.shape.name}:${cutout.width}:${cutout.height}:'
+              '${cutout.centerXMm}:${cutout.centerYMm}',
+        for (final side in weldedSides) side.name,
+        removeEyeletsOnWelded,
         zipperEnabled,
         zipperCentered,
         zipperOffsetMm,

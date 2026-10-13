@@ -29,15 +29,17 @@ class CostsSummary {
         (value) => value + spec.eyeletCount,
         ifAbsent: () => spec.eyeletCount,
       );
-      final zipperPiece = spec.zipperBandPiece;
-      if (zipperPiece != null) {
+      // Молний в окне может быть две — считаем каждую полосу отдельно,
+      // иначе смета на окно с двумя молниями занижается вдвое.
+      final zipperLength = spec.layers.filmVisibleBounds.height;
+      for (var i = 0; i < spec.layers.zipperBands.length; i++) {
         zipperCount += 1;
-        zipperBandLengthMm += zipperPiece.$2;
+        zipperBandLengthMm += zipperLength;
         // Спайка — полоса тента 100 мм, сложенная пополам.
         edgeByRoll.update(
           EdgeRoll.roll100,
-          (value) => value + zipperPiece.$2,
-          ifAbsent: () => zipperPiece.$2,
+          (value) => value + zipperLength,
+          ifAbsent: () => zipperLength,
         );
       }
       if (spec.params.pocket) {
@@ -46,6 +48,10 @@ class CostsSummary {
       }
       strapCount += spec.strapCount;
       pocketWidthMm = spec.params.pocketWidth;
+      cutoutCount += spec.params.cutouts.length;
+      drainTotal += spec.params.drainHoles ? spec.params.drainCount.round() : 0;
+      cutoutPerimeterMm += spec.layers.cutoutPerimeterMm;
+      weldLengthMm += spec.layers.weldLengthMm;
     }
   }
 
@@ -80,6 +86,16 @@ class CostsSummary {
   double pocketWidthMm = 0;
 
   int strapCount = 0;
+
+  /// Вырезы в полотне: сколько и какой суммарный контур.
+  int cutoutCount = 0;
+  double cutoutPerimeterMm = 0;
+
+  /// Спайки с соседними окнами, мм.
+  double weldLengthMm = 0;
+
+  /// Всего дренажных отверстий, шт.
+  int drainTotal = 0;
 
   /// Площадь заготовок на рулонах, м².
   double get rollPiecesArea =>
@@ -122,12 +138,19 @@ class CostsSummary {
 
   /// Заготовки сопутствующих материалов (молния, карман, ремни).
   List<String> get extraLabels => [
+        if (cutoutCount > 0)
+          'Вырезы: $cutoutCount шт, окантовка по контуру '
+              '${formatMm(cutoutPerimeterMm)} мм',
+        if (weldLengthMm > 0)
+          'Спайка с соседними окнами: ${formatMm(weldLengthMm)} мм '
+              '(окантовка на этих сторонах не ставится)',
         if (zipperCount > 0)
           'Спайка молнии: тент ${formatMm(100)} мм × '
               '${formatMm(zipperBandLengthMm)} мм — $zipperCount шт',
         if (pocketCount > 0)
           'Карман: тент ${formatMm(200)} мм × ${formatMm(pocketLengthMm)} мм — '
               '$pocketCount шт',
+        if (drainTotal > 0) 'Дренаж Ø6 мм: $drainTotal шт',
         if (strapCount > 0)
           'Подъёмные ремни: ${formatMm(50)} × ${formatMm(500)} мм — '
               '$strapCount шт',

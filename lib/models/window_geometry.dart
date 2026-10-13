@@ -18,6 +18,44 @@ enum WindowSide {
       };
 }
 
+/// Вырез в полотне в координатах модели.
+class CutoutGeometry {
+  const CutoutGeometry._({
+    required this.spec,
+    required this.center,
+    this.rect,
+    this.radius,
+  });
+
+  factory CutoutGeometry.rect({required Rect rect, required Cutout spec}) =>
+      CutoutGeometry._(spec: spec, center: rect.center, rect: rect);
+
+  factory CutoutGeometry.circle({
+    required Offset center,
+    required double radius,
+    required Cutout spec,
+  }) =>
+      CutoutGeometry._(spec: spec, center: center, radius: radius);
+
+  final Cutout spec;
+  final Offset center;
+
+  /// Прямоугольник выреза (для [CutoutShape.rect]).
+  final Rect? rect;
+
+  /// Радиус выреза (для [CutoutShape.circle]).
+  final double? radius;
+
+  bool get isCircle => spec.shape == CutoutShape.circle;
+
+  double get perimeterMm => spec.perimeterMm;
+
+  double get areaMm2 => spec.areaMm2;
+
+  /// Габарит выреза — по нему считаются подписи.
+  Rect get bounds => rect ?? Rect.fromCircle(center: center, radius: radius!);
+}
+
 /// Люверс на чертеже.
 class EyeletPlacement {
   const EyeletPlacement({
@@ -192,19 +230,30 @@ class WindowLayers {
   late final Rect filmCutBounds = boundsOf(filmEdge);
 
   /// Площадь плёнки в раскрое, м².
-  double get filmAreaM2 => polygonArea(filmEdge).abs() / 1000000;
+  double get filmAreaM2 =>
+      math.max(polygonArea(filmEdge).abs() - cutoutAreaMm2, 0) / 1000000;
 
   /// Люверсы, которые закрываются крепежом подвижных сторон:
   /// у подъёмного и комбинированного окна — низ и бока, сверху саморезы.
+  /// Люверсы подвижных сторон, на которые ставится поворотный крепёж.
+  ///
+  /// Углы исключены: в углу всегда простой круглый люверс, иначе на стыке
+  /// двух сторон (например, верх-право) вместо круглого люверса оказывается
+  /// прямоугольная скоба.
   List<EyeletPlacement> get movableSideEyelets {
     if (params.windowType == WindowType.fixed) return const [];
     return eyelets
-        .where((eyelet) => eyelet.side != WindowSide.top)
+        .where((eyelet) => eyelet.side != WindowSide.top && !eyelet.isCorner)
         .toList(growable: false);
   }
 
   List<EyeletPlacement> get topEyelets =>
       eyelets.where((eyelet) => eyelet.side == WindowSide.top).toList();
+
+  /// Тип люверса в конкретной точке: в углах всегда круглый (угол тянет
+  /// по диагонали, овальный там не держит), у глухого окна — тоже круглые.
+  EyeletType typeFor(EyeletPlacement eyelet) =>
+      eyelet.isCorner ? EyeletType.round10 : params.effectiveEyeletType;
 
   /// Тип люверса с учётом типа окна: у глухого — только круглые.
   EyeletType get eyeletType => params.effectiveEyeletType;
@@ -228,13 +277,11 @@ class WindowLayers {
     ];
   }
 
-  /// Полоса тента, в которую впаяна молния (молния идёт по её центру).
-  ///
-  /// Прямоугольник в координатах модели; [Rect.top] — меньшая координата Y.
-  Rect? get zipperBand {
-    final line = zipper;
-    if (line == null) return null;
-    final half = math.max(params.zipperBandWidth, 20) / 2;
+  /// Полосы тента под все молнии.
+  List<Rect> get zipperBands => [for (final line in zippers) _bandOf(line)];
+
+  Rect _bandOf(({Offset start, Offset end, double bandWidth}) line) {
+    final half = math.max(line.bandWidth, 20) / 2;
     return Rect.fromLTRB(
       line.start.dx - half,
       math.min(line.start.dy, line.end.dy),
@@ -243,15 +290,45 @@ class WindowLayers {
     );
   }
 
-  /// Расход окантовки по типам рулонов: тип → сумма длин сторон, мм.
+  /// Полоса первой молнии — для подписей и совместимости.
+  Rect? get zipperBand => zipperBands.isEmpty ? null : zipperBands.first;
+
+  /// Расход окантовки по типам рулонов: тип → сумма длин, мм.
+  ///
+  /// Спаянные с соседним окном стороны окантовки не требуют — там идёт
+  /// сварка полотен. Вырезы, наоборот, добавляют расход по своему контуру.
   Map<EdgeRoll, double> get edgeConsumption {
     final result = <EdgeRoll, double>{};
     final lengths = geometry.sideLengths;
     for (var i = 0; i < lengths.length; i++) {
+      if (isSideWelded(i)) continue;
       final roll = rolls[i];
       result[roll] = (result[roll] ?? 0) + lengths[i];
     }
+    for (final cutout in cutouts) {
+      final roll = rolls[0];
+      result[roll] = (result[roll] ?? 0) + cutout.perimeterMm;
+    }
     return result;
+  }
+
+  /// Спаяна ли сторона с индексом обхода углов (0 — низ, 1 — право,
+  /// 2 — верх, 3 — лево).
+  bool isSideWelded(int index) => switch (index % 4) {
+        0 => params.isWelded(EdgeSide.bottom),
+        1 => params.isWelded(EdgeSide.right),
+        2 => params.isWelded(EdgeSide.top),
+        _ => params.isWelded(EdgeSide.left),
+      };
+
+  /// Длина спаек с соседними окнами, мм.
+  double get weldLengthMm {
+    var total = 0.0;
+    final lengths = geometry.sideLengths;
+    for (var i = 0; i < lengths.length; i++) {
+      if (isSideWelded(i)) total += lengths[i];
+    }
+    return total;
   }
 
   /// Готовые подписи расхода окантовки: «Тент 100 мм — 654 см».
@@ -298,26 +375,78 @@ class WindowLayers {
   }
 
 
-  /// Линия молнии: всегда вертикально, по низу до верха видимой плёнки.
-  ({Offset start, Offset end, double bandWidth})? get zipper {
-    if (!params.hasZipper) return null;
+  /// Линии всех молний: всегда вертикально, по низу до верха видимой плёнки.
+  List<({Offset start, Offset end, double bandWidth})> get zippers => [
+        for (final spec in params.zippers) _zipperOf(spec),
+      ];
+
+  ({Offset start, Offset end, double bandWidth}) _zipperOf(ZipperSpec spec) {
     final bounds = filmVisibleBounds;
-    final half = math.max(params.zipperBandWidth, 20) / 2;
-    final x = params.zipperCentered
+    final half = math.max(spec.bandWidth, 20) / 2;
+    final x = spec.centered
         ? bounds.center.dx
-        : (bounds.left + params.zipperOffsetMm)
-            .clamp(bounds.left + half, bounds.right - half);
+        : (bounds.left + spec.offsetMm).clamp(
+            bounds.left + half,
+            bounds.right - half,
+          );
     return (
       start: Offset(x, bounds.top),
       end: Offset(x, bounds.bottom),
-      bandWidth: params.zipperBandWidth,
+      bandWidth: spec.bandWidth,
     );
   }
 
-  /// Ширина спайки молнии и расстояния от неё до кромок плёнки.
-  ({double left, double band, double right})? get zipperGaps {
-    final band = zipperBand;
-    if (band == null) return null;
+  /// Первая молния — для подписей и совместимости.
+  ({Offset start, Offset end, double bandWidth})? get zipper =>
+      zippers.isEmpty ? null : zippers.first;
+
+  /// Вырезы в координатах модели: прямоугольник или окружность.
+  List<CutoutGeometry> get cutouts {
+    final bounds = filmVisibleBounds;
+    final result = <CutoutGeometry>[];
+    for (final cutout in params.cutouts) {
+      final center = Offset(
+        (bounds.left + cutout.centerXMm).clamp(bounds.left, bounds.right),
+        (bounds.top + cutout.centerYMm).clamp(bounds.top, bounds.bottom),
+      );
+      if (cutout.shape == CutoutShape.circle) {
+        result.add(
+          CutoutGeometry.circle(
+            center: center,
+            radius: math.max(cutout.width, 1) / 2,
+            spec: cutout,
+          ),
+        );
+      } else {
+        result.add(
+          CutoutGeometry.rect(
+            rect: Rect.fromCenter(
+              center: center,
+              width: math.max(cutout.width, 1),
+              height: math.max(cutout.height, 1),
+            ),
+            spec: cutout,
+          ),
+        );
+      }
+    }
+    return result;
+  }
+
+  /// Суммарная площадь вырезов, мм².
+  double get cutoutAreaMm2 =>
+      cutouts.fold(0, (sum, cutout) => sum + cutout.areaMm2);
+
+  /// Суммарный контур вырезов, мм.
+  double get cutoutPerimeterMm =>
+      cutouts.fold(0, (sum, cutout) => sum + cutout.perimeterMm);
+
+  /// Ширина спайки молнии и расстояния от неё до кромок плёнки — по каждой.
+  List<({double left, double band, double right})> get zipperGapsAll => [
+        for (final band in zipperBands) _gapsOf(band),
+      ];
+
+  ({double left, double band, double right}) _gapsOf(Rect band) {
     final bounds = filmVisibleBounds;
     return (
       left: band.left - bounds.left,
@@ -325,6 +454,10 @@ class WindowLayers {
       right: bounds.right - band.right,
     );
   }
+
+  /// Зазоры первой молнии — для подписей и совместимости.
+  ({double left, double band, double right})? get zipperGaps =>
+      zipperBands.isEmpty ? null : _gapsOf(zipperBands.first);
 
   /// Карман — продолжение нижнего тента вниз: полоса тента 200 мм,
   /// сложенная пополам (100 мм), по всей ширине окна.
@@ -344,6 +477,9 @@ class WindowLayers {
     final steps = <double>[];
 
     for (var i = 0; i < polygon.length; i++) {
+      // Спаянная сторона: там сварка полотен, крепить нечего.
+      if (params.removeEyeletsOnWelded && isSideWelded(i)) continue;
+
       final a = polygon[i];
       final b = polygon[(i + 1) % polygon.length];
       final direction = b - a;
@@ -514,6 +650,52 @@ class WindowSpec {
     return (band.width, visible.height);
   }
 
+  /// Подпись всех молний: «2 шт: 33 % и 66 % ширины».
+  String get zippersSummary {
+    if (params.zippers.isEmpty) return '—';
+    if (params.zippers.length == 1) return zipperSummary;
+    final parts = <String>[];
+    for (final gaps in layers.zipperGapsAll) {
+      final band = gaps.band;
+      parts.add('спайка ${formatMm(band)} мм (слева ${formatMm(gaps.left)}, '
+          'справа ${formatMm(gaps.right)} мм)');
+    }
+    return '${params.zippers.length} шт — ${parts.join('; ')}';
+  }
+
+  /// Вырезы в полотне.
+  String get cutoutsSummary {
+    if (params.cutouts.isEmpty) return '—';
+    final parts = <String>[
+      for (final cutout in layers.cutouts)
+        cutout.isCircle
+            ? 'Ø${formatMm(cutout.spec.width)} мм в точке '
+                '${formatMm(cutout.spec.centerXMm)}×'
+                '${formatMm(cutout.spec.centerYMm)} мм'
+            : '${formatMm(cutout.spec.width)}×${formatMm(cutout.spec.height)} мм '
+                'в точке ${formatMm(cutout.spec.centerXMm)}×'
+                '${formatMm(cutout.spec.centerYMm)} мм',
+    ];
+    return '${params.cutouts.length} шт: ${parts.join('; ')}; '
+        'окантовка по контуру ${formatMm(layers.cutoutPerimeterMm)} мм';
+  }
+
+  /// Спайка с соседними окнами.
+  String get weldSummary {
+    if (params.weldedSides.isEmpty) return '—';
+    final sides = params.weldedSides
+        .map((side) => switch (side) {
+              EdgeSide.left => 'левая',
+              EdgeSide.right => 'правая',
+              EdgeSide.bottom => 'нижняя',
+              EdgeSide.top => 'верхняя',
+            })
+        .join(', ');
+    return '$sides сторона — полотна свариваются внахлёст '
+        '${formatMm(windowWeldWidth)} мм, окантовка не ставится '
+        '(всего ${formatMm(layers.weldLengthMm)} мм)';
+  }
+
   String get zipperSummary {
     if (!params.hasZipper) return '—';
     final gaps = layers.zipperGaps;
@@ -553,11 +735,14 @@ class WindowSpec {
           'Подъёмные ремни: $strapCount шт, '
               '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} мм '
               '(2 шт до 2 м ширины, далее +1 на метр)',
-        if (params.hasZipper) 'Молния: $zipperBandSummary',
-        if (params.hasZipper && layers.zipperGaps != null)
+        if (params.zippers.length == 1) 'Молния: $zipperBandSummary',
+        if (params.zippers.length > 1) 'Молнии: $zippersSummary',
+        if (params.hasZipper && layers.zipperGaps != null && params.zippers.length == 1)
           'Спайка молнии ${formatMm(params.zipperBandWidth)} мм; от спайки до '
               'кромок плёнки: слева ${formatMm(layers.zipperGaps!.left)} мм, '
               'справа ${formatMm(layers.zipperGaps!.right)} мм',
+        if (params.cutouts.isNotEmpty) 'Вырезы: $cutoutsSummary',
+        if (params.weldedSides.isNotEmpty) 'Спайка окон: $weldSummary',
         if (params.drainHoles)
           'Дренаж: ${params.drainCount.round()} отв. Ø6 мм в нижней окантовке',
         if (params.pocket)
@@ -678,25 +863,60 @@ List<ParamIssue> validateParams(WindowParams params) {
   if (params.pocket) {
     checkRange(ParamField.pocketWidth, params.pocketWidth, 80, 150, '100 мм');
   }
-  if (params.hasZipper) {
-    checkRange(
-      ParamField.zipperBandWidth,
-      params.zipperBandWidth,
-      40,
-      120,
-      '50 мм (5 см)',
-    );
+  for (var i = 0; i < params.zippers.length; i++) {
+    final spec = params.zippers[i];
+    if (spec.bandWidth < 40 || spec.bandWidth > 120) {
+      issues.add(const ParamIssue(
+        ParamField.bottomWidth,
+        'Ширина спайки молнии — 40–120 мм (обычно 50 мм)',
+        isError: false,
+      ));
+    }
+    if (!spec.centered) {
+      final bounds = layers.filmVisibleBounds;
+      final half = math.max(spec.bandWidth, 20) / 2;
+      final limit = bounds.width;
+      if (spec.offsetMm < half || spec.offsetMm > limit - half) {
+        issues.add(ParamIssue(
+          ParamField.bottomWidth,
+          'Молния №${i + 1} выходит за пределы плёнки '
+              '(доступно ${formatMm(limit)} мм)',
+        ));
+      }
+    }
   }
 
-  if (params.hasZipper && !params.zipperCentered) {
-    final bounds = layers.filmVisibleBounds;
-    final half = math.max(params.zipperBandWidth, 20) / 2;
-    final limit = bounds.width;
-    if (params.zipperOffsetMm < half || params.zipperOffsetMm > limit - half) {
+  // Вырезы: должны целиком лежать в полотне и не пересекаться.
+  final filmBounds = layers.filmVisibleBounds;
+  for (var i = 0; i < layers.cutouts.length; i++) {
+    final cutout = layers.cutouts[i];
+    final bounds = cutout.bounds;
+    if (bounds.left < filmBounds.left - 0.5 ||
+        bounds.right > filmBounds.right + 0.5 ||
+        bounds.top < filmBounds.top - 0.5 ||
+        bounds.bottom > filmBounds.bottom + 0.5) {
       issues.add(ParamIssue(
-        ParamField.zipperOffset,
-        'Молния выходит за пределы плёнки (доступно ${formatMm(limit)} мм)',
+        ParamField.bottomWidth,
+        'Вырез №${i + 1} выходит за пределы полотна',
       ));
+    }
+    for (var j = i + 1; j < layers.cutouts.length; j++) {
+      if (bounds.overlaps(layers.cutouts[j].bounds)) {
+        issues.add(ParamIssue(
+          ParamField.bottomWidth,
+          'Вырезы №${i + 1} и №${j + 1} пересекаются',
+          isError: false,
+        ));
+      }
+    }
+    for (final band in layers.zipperBands) {
+      if (bounds.overlaps(band)) {
+        issues.add(ParamIssue(
+          ParamField.bottomWidth,
+          'Вырез №${i + 1} попадает на полосу молнии',
+          isError: false,
+        ));
+      }
     }
   }
 

@@ -1,7 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
 import 'package:soft_window_drawer/models/window_geometry.dart';
+import 'package:soft_window_drawer/services/costs_summary.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/widgets/drawing_sheet.dart';
 
@@ -22,6 +25,8 @@ const _rect = WindowParams(
 );
 
 void main() {
+  _eyeletRules();
+  _costsSummaryRules();
   group('Геометрия полотна', () {
     test('прямоугольник: площадь и периметр', () {
       final geometry = WindowGeometry.of(_rect);
@@ -239,7 +244,7 @@ void main() {
       topWidth: 2000,
       leftHeight: 1500,
       rightHeight: 1500,
-      zipperEnabled: true,
+      zippers: [ZipperSpec(centered: true)],
     );
 
     test('молния всегда вертикальная и по центру по умолчанию', () {
@@ -267,8 +272,7 @@ void main() {
 
     test('молнию можно двигать влево-вправо', () {
       final moved = withZipper.copyWith(
-        zipperCentered: false,
-        zipperOffsetMm: 400,
+        zippers: [const ZipperSpec(centered: false, offsetMm: 400)],
       );
       final layers = WindowLayers(moved, WindowGeometry.of(moved));
       final gaps = layers.zipperGaps!;
@@ -280,8 +284,7 @@ void main() {
 
     test('смещение зажимается в границах плёнки', () {
       final tooFar = withZipper.copyWith(
-        zipperCentered: false,
-        zipperOffsetMm: 5000,
+        zippers: [const ZipperSpec(centered: false, offsetMm: 5000)],
       );
       final layers = WindowLayers(tooFar, WindowGeometry.of(tooFar));
       final gaps = layers.zipperGaps!;
@@ -308,6 +311,218 @@ void main() {
       expect(layers.zipper, isNull);
       expect(layers.zipperBand, isNull);
       expect(layers.zipperGaps, isNull);
+    });
+  });
+
+  group('Вторая молния', () {
+    // Две молнии задаются явно: одна по центру, вторая — на 400 мм от левого
+    // края. Так их полосы заведомо разнесены по ширине плёнки.
+    const twoZippers = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 1500,
+      rightHeight: 1500,
+      zippers: [
+        ZipperSpec(centered: true),
+        ZipperSpec(centered: false, offsetMm: 400),
+      ],
+    );
+
+    test('две молнии дают две линии и две непересекающиеся полосы', () {
+      final layers = WindowLayers(twoZippers, WindowGeometry.of(twoZippers));
+
+      expect(layers.zippers.length, 2);
+      expect(layers.zipperBands.length, 2);
+      // Плёнка 1900 × 1400: центр — 1000, вторая молния — 50 + 400 = 450.
+      expect(layers.zippers[0].start.dx, closeTo(1000, 0.02));
+      expect(layers.zippers[1].start.dx, closeTo(450, 0.02));
+      expect(layers.zipperBands[0].overlaps(layers.zipperBands[1]), isFalse);
+      // Зазоры считаются для каждой молнии отдельно.
+      expect(layers.zipperGapsAll.length, 2);
+    });
+
+    test('addZipper() дважды не даёт больше maxZippers', () {
+      final once = _rect.addZipper();
+      expect(once.zippers.length, 1);
+      expect(once.zippers.first.centered, isTrue);
+
+      final twice = once.addZipper();
+      expect(twice.zippers.length, 2);
+      expect(twice.hasZipper, isTrue);
+
+      // Третья молния не добавляется: упор в maxZippers.
+      expect(maxZippers, 2);
+      expect(twice.addZipper().zippers.length, maxZippers);
+    });
+
+    test('removeZipper() убирает нужную молнию', () {
+      final removedFirst = twoZippers.removeZipper(0);
+      expect(removedFirst.zippers.length, 1);
+      expect(removedFirst.zippers.single.centered, isFalse);
+      expect(removedFirst.zippers.single.offsetMm, 400);
+
+      final removedSecond = twoZippers.removeZipper(1);
+      expect(removedSecond.zippers.length, 1);
+      expect(removedSecond.zippers.single.centered, isTrue);
+
+      // Индекс вне списка ничего не меняет.
+      expect(twoZippers.removeZipper(5).zippers.length, 2);
+    });
+  });
+
+  group('Вырезы', () {
+    // Окно 2000 × 1500, плёнка по внутренней кромке окантовки — 1900 × 1400
+    // с левым нижним углом (50, 50). Вырезы ставим в центр плёнки.
+    const rectCutout = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 1500,
+      rightHeight: 1500,
+      cutouts: [
+        Cutout(
+          shape: CutoutShape.rect,
+          width: 300,
+          height: 300,
+          centerXMm: 950,
+          centerYMm: 700,
+        ),
+      ],
+    );
+
+    const circleCutout = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 1500,
+      rightHeight: 1500,
+      cutouts: [
+        Cutout(
+          shape: CutoutShape.circle,
+          width: 200,
+          centerXMm: 950,
+          centerYMm: 700,
+        ),
+      ],
+    );
+
+    test('прямоугольный вырез 300×300 уменьшает плёнку ровно на 0,09 м²', () {
+      final plain = WindowSpec.of(_rect);
+      final withCutout = WindowSpec.of(rectCutout);
+
+      expect(withCutout.layers.cutoutAreaMm2, closeTo(90000, 1e-6));
+      expect(
+        withCutout.filmAreaM2,
+        closeTo(plain.filmAreaM2 - 0.09, 1e-6),
+      );
+    });
+
+    test('круглый вырез Ø200 уменьшает плёнку на π·0,1² м²', () {
+      final plain = WindowSpec.of(_rect);
+      final withCutout = WindowSpec.of(circleCutout);
+      final expected = math.pi * 0.1 * 0.1;
+
+      expect(expected, closeTo(0.0314, 0.0001));
+      expect(
+        withCutout.filmAreaM2,
+        closeTo(plain.filmAreaM2 - expected, 1e-6),
+      );
+    });
+
+    test('расход окантовки растёт на периметр выреза', () {
+      final plain = WindowSpec.of(_rect);
+      final withCutout = WindowSpec.of(rectCutout);
+
+      // Периметр прямоугольника 300×300 — 1200 мм.
+      expect(withCutout.layers.cutoutPerimeterMm, closeTo(1200, 1e-6));
+
+      final before = plain.edgeConsumption[EdgeRoll.roll100]!;
+      final after = withCutout.edgeConsumption[EdgeRoll.roll100]!;
+      expect(after - before, closeTo(1200, 1e-6));
+    });
+
+    test('addCutout() дважды не даёт больше maxCutouts', () {
+      var params = _rect;
+      for (var i = 0; i < maxCutouts; i++) {
+        params = params.addCutout();
+      }
+      expect(params.cutouts.length, maxCutouts);
+
+      expect(params.addCutout().cutouts.length, maxCutouts);
+      expect(params.removeCutout(0).cutouts.length, maxCutouts - 1);
+    });
+
+    test('вырез за пределами полотна даёт замечание', () {
+      // Центр прижат к левой кромке плёнки, поэтому половина выреза 300×300
+      // выходит за полотно.
+      const outside = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 1500,
+        rightHeight: 1500,
+        cutouts: [
+          Cutout(
+            shape: CutoutShape.rect,
+            width: 300,
+            height: 300,
+            centerXMm: 0,
+            centerYMm: 400,
+          ),
+        ],
+      );
+      final issues = validateParams(outside);
+
+      expect(issues, isNotEmpty);
+      expect(
+        issues.any((issue) => issue.message.contains('за пределы полотна')),
+        isTrue,
+      );
+    });
+  });
+
+  group('Спайка окон', () {
+    test('спайка справа убирает окантовку правой стороны', () {
+      const welded = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 1500,
+        rightHeight: 1500,
+        weldedSides: [EdgeSide.right],
+      );
+      final plain = WindowSpec.of(_rect);
+      final withWeld = WindowSpec.of(welded);
+      final rightLength = withWeld.geometry.rightEdgeLength;
+
+      expect(rightLength, closeTo(1500, 1e-9));
+      expect(withWeld.layers.isSideWelded(1), isTrue);
+      expect(withWeld.layers.weldLengthMm, closeTo(rightLength, 1e-6));
+
+      // Разница с окном без спайки — ровно длина правой стороны.
+      final before = plain.edgeConsumption[EdgeRoll.roll100]!;
+      final after = withWeld.edgeConsumption[EdgeRoll.roll100]!;
+      expect(before - after, closeTo(rightLength, 1e-6));
+    });
+
+    test('спайка слева и справа убирает обе длины', () {
+      const welded = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 1500,
+        rightHeight: 1500,
+        weldedSides: [EdgeSide.left, EdgeSide.right],
+      );
+      final plain = WindowSpec.of(_rect);
+      final withWeld = WindowSpec.of(welded);
+      final expected = withWeld.geometry.rightEdgeLength +
+          withWeld.geometry.leftEdgeLength;
+
+      expect(withWeld.layers.isSideWelded(1), isTrue);
+      expect(withWeld.layers.isSideWelded(3), isTrue);
+      expect(withWeld.layers.weldLengthMm, closeTo(expected, 1e-6));
+
+      final before = plain.edgeConsumption[EdgeRoll.roll100]!;
+      final after = withWeld.edgeConsumption[EdgeRoll.roll100]!;
+      expect(before - after, closeTo(expected, 1e-6));
+      // Остались только верх и низ.
+      expect(after, closeTo(4000, 1e-6));
     });
   });
 
@@ -397,22 +612,31 @@ void main() {
 
       final size = DrawingSheet.detailedSheetSize(five, viewport);
       expect(size, isNotNull);
+      // 5 окон в одну колонку — пять рядов по 640.
       expect(size!.height,
           closeTo(DrawingSheet.titleBlockHeight + 40 + 5 * 640, 0.01));
       expect(size.width, greaterThanOrEqualTo(1360));
 
-      // В обычных режимах лист заполняет окно программы.
-      expect(
-        DrawingSheet.detailedSheetSize(five.setGridColumns(2), viewport),
-        isNull,
+      // Теперь подробный режим всегда: и при 2 колонках, и при одном окне
+      // лист получает собственный размер, а не растягивается на окно программы.
+      // 5 окон в 2 колонки — три ряда, лист ниже.
+      final two = DrawingSheet.detailedSheetSize(
+        five.setGridColumns(2),
+        viewport,
       );
-      expect(
-        DrawingSheet.detailedSheetSize(
-          five.setSheetMode(SheetMode.single),
-          viewport,
-        ),
-        isNull,
+      expect(two, isNotNull);
+      expect(two!.height,
+          closeTo(DrawingSheet.titleBlockHeight + 40 + 3 * 640, 0.01));
+      expect(two.height, lessThan(size.height));
+
+      final single = DrawingSheet.detailedSheetSize(
+        const OrderProject(),
+        viewport,
       );
+      expect(single, isNotNull);
+      // Лист одного окна выше окна программы: чертёж крупный, лист листается.
+      expect(single!.height, greaterThan(viewport.height));
+      expect(single.width, lessThan(viewport.width + 200));
     });
 
     test('удаление окна не уходит ниже одного', () {
@@ -450,13 +674,14 @@ void main() {
         const WindowParams(
           bottomWidth: 2000,
           topWidth: 2000,
-          zipperEnabled: true,
-          zipperBandWidth: 200,
+          zippers: [ZipperSpec(bandWidth: 200)],
         ),
       );
 
+      // Отдельного поля ParamField для ширины спайки больше нет — ищем
+      // предупреждение по тексту и проверяем, что оно не блокирующее.
       expect(
-        issues.any((issue) => issue.field == ParamField.zipperBandWidth),
+        issues.any((issue) => issue.message.contains('спайки') && !issue.isError),
         isTrue,
       );
     });
@@ -483,6 +708,127 @@ void main() {
       expect(parseMm('2 500'), 2500);
       expect(parseMm('2,5'), 2.5);
       expect(parseMm('abc'), isNull);
+    });
+  });
+}
+
+// --- Люверсы: углы и спайка -------------------------------------------------
+
+void _eyeletRules() {
+  group('Люверсы: углы и спайка', () {
+    test('в углах люверсы всегда круглые, овальные — только по сторонам', () {
+      const params = WindowParams(
+        windowType: WindowType.lifting,
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2000,
+        rightHeight: 2000,
+        eyeletType: EyeletType.oval42x22,
+      );
+      final layers = WindowLayers(params, WindowGeometry.of(params));
+
+      final corners = layers.eyelets.where((e) => e.isCorner).toList();
+      final sides = layers.eyelets.where((e) => !e.isCorner).toList();
+
+      expect(corners, isNotEmpty);
+      expect(sides, isNotEmpty);
+      for (final corner in corners) {
+        expect(
+          layers.typeFor(corner),
+          EyeletType.round10,
+          reason: 'угол тянет по диагонали — там только круглый люверс',
+        );
+      }
+      for (final side in sides) {
+        expect(layers.typeFor(side), EyeletType.oval42x22);
+      }
+    });
+
+    test('на спаянной стороне люверсы убираются', () {
+      const params = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2000,
+        rightHeight: 2000,
+        weldedSides: [EdgeSide.right],
+      );
+      final layers = WindowLayers(params, WindowGeometry.of(params));
+
+      expect(
+        layers.eyelets.any((e) => e.side == WindowSide.right),
+        isFalse,
+        reason: 'по сварному шву крепёж не ставится',
+      );
+      // Люверсы на остальных сторонах остаются.
+      expect(layers.eyelets.any((e) => e.side == WindowSide.left), isTrue);
+      expect(layers.eyelets.any((e) => e.side == WindowSide.top), isTrue);
+    });
+
+    test('крепёж на спайке можно оставить кнопкой', () {
+      const params = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2000,
+        rightHeight: 2000,
+        weldedSides: [EdgeSide.right],
+        removeEyeletsOnWelded: false,
+      );
+      final layers = WindowLayers(params, WindowGeometry.of(params));
+
+      expect(layers.eyelets.any((e) => e.side == WindowSide.right), isTrue);
+    });
+  });
+}
+
+/// Сводка расхода: несколько молний считаются каждая.
+void _costsSummaryRules() {
+  group('Сводка расхода', () {
+    test('две молнии удваивают длину полос и расход тента', () {
+      const one = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2200,
+        rightHeight: 2200,
+        zippers: [ZipperSpec(centered: true)],
+      );
+      const two = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2200,
+        rightHeight: 2200,
+        zippers: [
+          ZipperSpec(centered: false, offsetMm: 600),
+          ZipperSpec(centered: false, offsetMm: 1400),
+        ],
+      );
+      final oneSummary = CostsSummary(const OrderProject(windows: [one]));
+      final twoSummary = CostsSummary(const OrderProject(windows: [two]));
+
+      expect(oneSummary.zipperCount, 1);
+      expect(twoSummary.zipperCount, 2);
+      expect(
+        twoSummary.zipperBandLengthMm,
+        closeTo(oneSummary.zipperBandLengthMm * 2, 0.01),
+      );
+      // Расход тента на спайку молний тоже удваивается.
+      expect(
+        twoSummary.edgeByRoll[EdgeRoll.roll100]! -
+            oneSummary.edgeByRoll[EdgeRoll.roll100]!,
+        closeTo(oneSummary.zipperBandLengthMm, 0.01),
+      );
+    });
+
+    test('дренаж считается по всему заказу', () {
+      const window = WindowParams(
+        bottomWidth: 1500,
+        topWidth: 1500,
+        leftHeight: 2000,
+        rightHeight: 2000,
+        drainHoles: true,
+        drainCount: 3,
+      );
+      final summary = CostsSummary(const OrderProject(windows: [window, window]));
+      expect(summary.drainTotal, 6);
     });
   });
 }

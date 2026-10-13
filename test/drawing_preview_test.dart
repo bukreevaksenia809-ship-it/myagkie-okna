@@ -27,9 +27,7 @@ const _fixed = WindowParams(
   topWidth: 1500,
   leftHeight: 2520,
   rightHeight: 2520,
-  zipperEnabled: true,
-  zipperCentered: false,
-  zipperOffsetMm: 500,
+  zippers: [ZipperSpec(centered: false, offsetMm: 500)],
   pocket: true,
 );
 
@@ -60,6 +58,35 @@ const _liftingWide = WindowParams(
   leftHeight: 2000,
   rightHeight: 2000,
   fastenerType: FastenerType.turnBuckles,
+  drainHoles: true,
+);
+
+/// Окно с двумя молниями, вырезами под трубу и спайкой с соседним окном.
+const _rich = WindowParams(
+  projectName: 'Мягкое окно веранды',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-018',
+  windowType: WindowType.lifting,
+  bottomWidth: 2200,
+  topWidth: 2200,
+  leftHeight: 2400,
+  rightHeight: 2400,
+  rollBottom: EdgeRoll.roll200,
+  fastenerType: FastenerType.frenchLocks,
+  zippers: [
+    ZipperSpec(centered: false, offsetMm: 600),
+    ZipperSpec(centered: false, offsetMm: 1500),
+  ],
+  cutouts: [
+    Cutout(
+      shape: CutoutShape.circle,
+      width: 200,
+      centerXMm: 1100,
+      centerYMm: 1900,
+    ),
+    Cutout(width: 400, height: 300, centerXMm: 400, centerYMm: 700),
+  ],
+  weldedSides: [EdgeSide.right],
   drainHoles: true,
 );
 
@@ -120,6 +147,14 @@ void main() {
         viewport: const Size(1500, 3400),
         build: (key) => DrawingSheet(
           project: _order.setGridColumns(1),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      'dve-molnii-vyrezy': (
+        viewport: const Size(1720, 1180),
+        build: (key) => DrawingSheet(
+          project: const OrderProject(windows: [_rich]),
           captureKey: key,
           labelFontFamily: testFontFamily,
         ),

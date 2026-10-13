@@ -15,6 +15,8 @@ class ParamsPanel extends StatefulWidget {
     required this.onChanged,
     required this.onReset,
     this.ordersSection,
+    this.pricesSection,
+    this.techSection,
   });
 
   final OrderProject project;
@@ -25,8 +27,26 @@ class ParamsPanel extends StatefulWidget {
   /// Раздел «Заказы» (сохранение и отчётность) — вставляется сверху.
   final Widget? ordersSection;
 
+  /// Раздел «Прайс-лист» — цены для сметы.
+  final Widget? pricesSection;
+
+  /// Раздел «Технолог» — производственные проверки.
+  final Widget? techSection;
+
   @override
   State<ParamsPanel> createState() => _ParamsPanelState();
+}
+
+/// Числовые поля выреза в полотне.
+enum _CutoutField {
+  width('Ширина'),
+  height('Высота'),
+  centerX('Центр от левого края'),
+  centerY('Центр от низа');
+
+  const _CutoutField(this.label);
+
+  final String label;
 }
 
 class _ParamsPanelState extends State<ParamsPanel> {
@@ -41,12 +61,21 @@ class _ParamsPanelState extends State<ParamsPanel> {
     ParamField.drainCount,
     ParamField.pocketWidth,
     ParamField.shrinkagePercent,
-    ParamField.zipperOffset,
-    ParamField.zipperBandWidth,
   ];
 
   final Map<ParamField, TextEditingController> _controllers = {};
   final Map<ParamField, String?> _errors = {};
+
+  /// Поля молний: положение от левого края и ширина спайки (ключ — номер молнии).
+  final Map<int, TextEditingController> _zipperOffsetControllers = {};
+  final Map<int, TextEditingController> _zipperBandControllers = {};
+  final Map<int, String?> _zipperOffsetErrors = {};
+  final Map<int, String?> _zipperBandErrors = {};
+
+  /// Поля вырезов: ширина, высота и центры (ключ — номер выреза и поле).
+  final Map<(int, _CutoutField), TextEditingController> _cutoutControllers = {};
+  final Map<(int, _CutoutField), String?> _cutoutErrors = {};
+
   late final TextEditingController _nameController;
   late final TextEditingController _customerController;
   late final TextEditingController _drawingController;
@@ -57,10 +86,13 @@ class _ParamsPanelState extends State<ParamsPanel> {
   void initState() {
     super.initState();
     for (final field in _windowFields) {
-      _controllers[field] = TextEditingController(text: _textFor(_params.valueOf(field)));
+      _controllers[field] = TextEditingController(
+        text: _textFor(_params.valueOf(field)),
+      );
     }
-    _controllers[ParamField.rollGap] =
-        TextEditingController(text: _textFor(widget.project.rollGap));
+    _controllers[ParamField.rollGap] = TextEditingController(
+      text: _textFor(widget.project.rollGap),
+    );
     _nameController = TextEditingController(text: _params.projectName);
     _customerController = TextEditingController(text: _params.customer);
     _drawingController = TextEditingController(text: _params.drawingNumber);
@@ -73,13 +105,16 @@ class _ParamsPanelState extends State<ParamsPanel> {
     final project = widget.project;
 
     // Сменилось выбранное окно — перечитываем все поля.
-    final windowChanged = oldProject.selectedIndex != project.selectedIndex ||
+    final windowChanged =
+        oldProject.selectedIndex != project.selectedIndex ||
         oldProject.windows.length != project.windows.length;
 
     for (final field in _windowFields) {
       _syncField(field, project.selected.valueOf(field), force: windowChanged);
     }
     _syncField(ParamField.rollGap, project.rollGap, force: windowChanged);
+    _syncZipperFields(project.selected, force: windowChanged);
+    _syncCutoutFields(project.selected, force: windowChanged);
 
     // Текстовые поля обновляем только если пользователь их не редактирует:
     // иначе набранное (и область ввода IME) сбрасывается на каждом символе.
@@ -100,10 +135,23 @@ class _ParamsPanelState extends State<ParamsPanel> {
   void _syncField(ParamField field, double value, {bool force = false}) {
     final controller = _controllers[field];
     if (controller == null) return;
+    _syncController(controller, value, force: force);
+    if (force) _errors[field] = null;
+  }
 
+  /// Общая схема синхронизации для полей молний и вырезов: пока пользователь
+  /// печатает, распарсенное значение совпадает с модельным, поэтому текст
+  /// (а с ним курсор и выделение) не переписывается.
+  void _syncController(
+    TextEditingController controller,
+    double value, {
+    bool force = false,
+  }) {
     if (!force) {
       final parsed = parseMm(controller.text);
-      if (parsed == null) return; // незавершённый или неверный ввод — не трогаем
+      if (parsed == null) {
+        return; // незавершённый или неверный ввод — не трогаем
+      }
       if ((parsed - value).abs() < 1e-9) return; // всё совпадает
     }
 
@@ -113,12 +161,109 @@ class _ParamsPanelState extends State<ParamsPanel> {
       text: text,
       selection: TextSelection.collapsed(offset: text.length),
     );
-    if (force) _errors[field] = null;
   }
+
+  void _syncZipperFields(WindowParams params, {bool force = false}) {
+    for (var index = 0; index < params.zippers.length; index++) {
+      final zipper = params.zippers[index];
+      _syncController(
+        _zipperOffsetControllers.putIfAbsent(
+          index,
+          () => TextEditingController(text: _textFor(zipper.offsetMm)),
+        ),
+        zipper.offsetMm,
+        force: force,
+      );
+      _syncController(
+        _zipperBandControllers.putIfAbsent(
+          index,
+          () => TextEditingController(text: _textFor(zipper.bandWidth)),
+        ),
+        zipper.bandWidth,
+        force: force,
+      );
+      if (force) {
+        _zipperOffsetErrors[index] = null;
+        _zipperBandErrors[index] = null;
+      }
+    }
+    _pruneControllers(_zipperOffsetControllers, params.zippers.length);
+    _pruneControllers(_zipperBandControllers, params.zippers.length);
+    _pruneErrors(_zipperOffsetErrors, params.zippers.length);
+    _pruneErrors(_zipperBandErrors, params.zippers.length);
+  }
+
+  void _syncCutoutFields(WindowParams params, {bool force = false}) {
+    for (var index = 0; index < params.cutouts.length; index++) {
+      final cutout = params.cutouts[index];
+      for (final field in _CutoutField.values) {
+        _syncController(
+          _cutoutControllers.putIfAbsent(
+            (index, field),
+            () => TextEditingController(
+              text: _textFor(_cutoutValue(cutout, field)),
+            ),
+          ),
+          _cutoutValue(cutout, field),
+          force: force,
+        );
+        if (force) _cutoutErrors[(index, field)] = null;
+      }
+    }
+    final stale = _cutoutControllers.keys
+        .where((key) => key.$1 >= params.cutouts.length)
+        .toList(growable: false);
+    for (final key in stale) {
+      _cutoutControllers.remove(key)?.dispose();
+    }
+    final staleErrors = _cutoutErrors.keys
+        .where((key) => key.$1 >= params.cutouts.length)
+        .toList(growable: false);
+    for (final key in staleErrors) {
+      _cutoutErrors.remove(key);
+    }
+  }
+
+  void _pruneControllers(
+    Map<int, TextEditingController> controllers,
+    int keep,
+  ) {
+    final stale = controllers.keys
+        .where((index) => index >= keep)
+        .toList(growable: false);
+    for (final index in stale) {
+      controllers.remove(index)?.dispose();
+    }
+  }
+
+  void _pruneErrors(Map<int, String?> errors, int keep) {
+    final stale = errors.keys
+        .where((index) => index >= keep)
+        .toList(growable: false);
+    for (final index in stale) {
+      errors.remove(index);
+    }
+  }
+
+  double _cutoutValue(Cutout cutout, _CutoutField field) => switch (field) {
+    _CutoutField.width => cutout.width,
+    _CutoutField.height => cutout.height,
+    _CutoutField.centerX => cutout.centerXMm,
+    _CutoutField.centerY => cutout.centerYMm,
+  };
 
   @override
   void dispose() {
     for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _zipperOffsetControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _zipperBandControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _cutoutControllers.values) {
       controller.dispose();
     }
     _nameController.dispose();
@@ -172,8 +317,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
     final project = widget.project;
     final params = project.selected;
     final spec = WindowSpec.of(params);
-    final warnings =
-        widget.issues.where((issue) => !issue.isError).toList(growable: false);
+    final warnings = widget.issues
+        .where((issue) => !issue.isError)
+        .toList(growable: false);
 
     return Material(
       color: const Color(0xFFF7F9FC),
@@ -186,7 +332,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
             'на листе, раскладка плёнки — на отдельном листе рулона.',
           ),
           const SizedBox(height: 18),
-          _sectionHeader('Окна заказа', '${project.windowCount} шт · нумерация на листе'),
+          _sectionHeader(
+            'Окна заказа',
+            '${project.windowCount} шт · нумерация на листе',
+          ),
           const SizedBox(height: 10),
           _windowList(project),
           const SizedBox(height: 10),
@@ -198,6 +347,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 onPressed: () => _updateProject(project.addWindow()),
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('Добавить окно'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () =>
+                    _updateProject(project.duplicateSelected()),
+                icon: const Icon(Icons.copy_all_outlined, size: 18),
+                label: const Text('Дублировать'),
               ),
               TextButton.icon(
                 onPressed: project.windowCount > 1
@@ -212,6 +367,14 @@ class _ParamsPanelState extends State<ParamsPanel> {
             const SizedBox(height: 16),
             widget.ordersSection!,
           ],
+          if (widget.pricesSection != null) ...[
+            const SizedBox(height: 12),
+            widget.pricesSection!,
+          ],
+          if (widget.techSection != null) ...[
+            const SizedBox(height: 12),
+            widget.techSection!,
+          ],
           const SizedBox(height: 20),
           const _SectionTitle('Тип окна'),
           const SizedBox(height: 8),
@@ -219,7 +382,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
             values: WindowType.values,
             selected: params.windowType,
             labelOf: (value) => value.label,
-            onSelected: (value) => _updateWindow(params.copyWith(windowType: value)),
+            onSelected: (value) =>
+                _updateWindow(params.copyWith(windowType: value)),
           ),
           const SizedBox(height: 8),
           Text(
@@ -254,7 +418,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
             values: TopAlign.values,
             selected: params.topAlign,
             labelOf: (value) => value.label,
-            onSelected: (value) => _updateWindow(params.copyWith(topAlign: value)),
+            onSelected: (value) =>
+                _updateWindow(params.copyWith(topAlign: value)),
           ),
           if (params.topAlign == TopAlign.custom) ...[
             const SizedBox(height: 12),
@@ -266,8 +431,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
             subtitle:
                 '${params.material.label} · рулон ${formatMm(project.rollWidthFor(params.material))} мм',
             children: [
-              const Text('Материал',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80))),
+              const Text(
+                'Материал',
+                style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
+              ),
               const SizedBox(height: 6),
               _chips<FilmMaterial>(
                 values: FilmMaterial.values,
@@ -283,8 +450,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
               ),
               const SizedBox(height: 14),
-              const Text('Ширина рулона',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80))),
+              const Text(
+                'Ширина рулона',
+                style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
+              ),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
@@ -292,8 +461,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 children: [
                   for (final width in params.availableRollWidths)
                     ChoiceChip(
-                      label: Text('${formatCm(width)} см',
-                          style: const TextStyle(fontSize: 12)),
+                      label: Text(
+                        '${formatCm(width)} см',
+                        style: const TextStyle(fontSize: 12),
+                      ),
                       selected: project.rollWidthFor(params.material) == width,
                       visualDensity: VisualDensity.compact,
                       onSelected: (_) => _updateProject(
@@ -316,22 +487,48 @@ class _ParamsPanelState extends State<ParamsPanel> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Expanded(child: _rollPicker('Низ', params.rollBottom, (roll) => params.copyWith(rollBottom: roll))),
+                  Expanded(
+                    child: _rollPicker(
+                      'Низ',
+                      params.rollBottom,
+                      (roll) => params.copyWith(rollBottom: roll),
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: _rollPicker('Верх', params.rollTop, (roll) => params.copyWith(rollTop: roll))),
+                  Expanded(
+                    child: _rollPicker(
+                      'Верх',
+                      params.rollTop,
+                      (roll) => params.copyWith(rollTop: roll),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(child: _rollPicker('Лево', params.rollLeft, (roll) => params.copyWith(rollLeft: roll))),
+                  Expanded(
+                    child: _rollPicker(
+                      'Лево',
+                      params.rollLeft,
+                      (roll) => params.copyWith(rollLeft: roll),
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: _rollPicker('Право', params.rollRight, (roll) => params.copyWith(rollRight: roll))),
+                  Expanded(
+                    child: _rollPicker(
+                      'Право',
+                      params.rollRight,
+                      (roll) => params.copyWith(rollRight: roll),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 14),
-              const Text('Материал',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80))),
+              const Text(
+                'Материал',
+                style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
+              ),
               const SizedBox(height: 6),
               _chips<EdgeMaterial>(
                 values: EdgeMaterial.values,
@@ -346,12 +543,70 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
               ),
               const SizedBox(height: 14),
-              const Text('Цвет',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80))),
+              const Text(
+                'Цвет',
+                style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
+              ),
               const SizedBox(height: 6),
               _colorChips(params),
+              const SizedBox(height: 14),
+              const Text(
+                'Спайка с соседним окном',
+                style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final side in const [EdgeSide.left, EdgeSide.right])
+                    FilterChip(
+                      label: Text(
+                        side == EdgeSide.left
+                            ? 'Спаяно слева'
+                            : 'Спаяно справа',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      selected: params.isWelded(side),
+                      visualDensity: VisualDensity.compact,
+                      onSelected: (_) =>
+                          _updateWindow(params.toggleWelded(side)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'На спаянной стороне окантовка не ставится, полотна свариваются; '
+                'расход окантовки уменьшается, добавляется спайка 25 мм.',
+                style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+              ),
+              if (params.weldedSides.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                _panelCard(
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: params.removeEyeletsOnWelded,
+                    title: const Text(
+                      'Убирать люверсы (крепёж) на спаянной стороне',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: const Text(
+                      'Выключите, если по спайке всё равно нужны люверсы — '
+                      'тогда крепёж останется и на сварной стороне.',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                    onChanged: (value) => _updateWindow(
+                      params.copyWith(removeEyeletsOnWelded: value),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
-              _readOnlyField('Напайка плёнки под окантовку', '${formatMm(weldOverlap)} мм'),
+              _readOnlyField(
+                'Напайка плёнки под окантовку',
+                '${formatMm(weldOverlap)} мм',
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -361,8 +616,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 '${spec.eyeletType.label} · шаг ${formatMm(params.eyeletStep)} мм · '
                 '${spec.eyeletCount} шт на окно',
             children: [
-              const Text('Люверс',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80))),
+              const Text(
+                'Люверс',
+                style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
+              ),
               const SizedBox(height: 6),
               _chips<EyeletType>(
                 values: EyeletType.values,
@@ -414,67 +671,34 @@ class _ParamsPanelState extends State<ParamsPanel> {
           const SizedBox(height: 12),
           _expansion(
             title: 'Молния и карман',
-            subtitle: _specElementsSummary(params, spec),
+            subtitle: _specElementsSummary(params),
             children: [
-              SwitchListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Добавить молнию (вертикальная)'),
-                value: params.hasZipper,
-                onChanged: (value) =>
-                    _updateWindow(params.copyWith(zipperEnabled: value)),
-              ),
-              if (params.hasZipper) ...[
+              if (params.zippers.isEmpty)
+                OutlinedButton.icon(
+                  onPressed: () => _updateWindow(params.addZipper()),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Добавить молнию'),
+                )
+              else ...[
+                for (var index = 0; index < params.zippers.length; index++)
+                  _zipperCard(params, spec, index),
+                if (params.zippers.length == 1 && maxZippers > 1)
+                  OutlinedButton.icon(
+                    onPressed: () => _updateWindow(params.addZipper()),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Добавить вторую молнию'),
+                  ),
                 const SizedBox(height: 6),
                 Text(
-                  'Положение молнии: '
-                  '${formatMm(spec.layers.zipperGaps?.left ?? 0)} мм от левого края',
-                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF5B6B80)),
-                ),
-                Slider(
-                  value: _zipperCenter(spec).clamp(
-                    math.max(params.zipperBandWidth / 2, 1),
-                    math.max(spec.filmVisibleWidth - params.zipperBandWidth / 2, 2),
+                  'Молния впаивается в полосу тента: на чертеже показаны полоса '
+                  'спайки и расстояния до кромок плёнки. Всего до $maxZippers молний.',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF66748A),
                   ),
-                  min: math.max(params.zipperBandWidth / 2, 1),
-                  max: math.max(spec.filmVisibleWidth - params.zipperBandWidth / 2, 2),
-                  divisions: math.max(
-                    ((spec.filmVisibleWidth - params.zipperBandWidth) / 10).round(),
-                    1,
-                  ),
-                  label: formatMm(_zipperCenter(spec)),
-                  onChanged: (value) => _updateWindow(
-                    params.copyWith(zipperCentered: false, zipperOffsetMm: value),
-                  ),
-                ),
-                const Text(
-                  'Двигайте молнию влево-вправо этим ползунком — на чертеже она '
-                  'перемещается вместе с размерами спайки.',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(child: _numberField(ParamField.zipperOffset)),
-                    const SizedBox(width: 12),
-                    Expanded(child: _numberField(ParamField.zipperBandWidth)),
-                  ],
-                ),
-                SwitchListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Молния по центру'),
-                  value: params.zipperCentered,
-                  onChanged: (value) =>
-                      _updateWindow(params.copyWith(zipperCentered: value)),
-                ),
-                const Text(
-                  'Спайка шириной 50 мм: молния впаивается в полосу тента '
-                  'и идёт по её середине.',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
                 ),
               ],
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               SwitchListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
@@ -503,6 +727,35 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     _updateWindow(params.copyWith(drainHoles: value)),
               ),
               if (params.drainHoles) _numberField(ParamField.drainCount),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _expansion(
+            title: 'Вырезы в полотне',
+            subtitle: _cutoutsSummary(params),
+            children: [
+              const Text(
+                'Отверстие под трубу, вентиляцию или стойку: контур выреза '
+                'обводится окантовкой, размеры идут на чертёж и в раскрой.',
+                style: TextStyle(fontSize: 11.5, color: Color(0xFF5B6B80)),
+              ),
+              const SizedBox(height: 10),
+              for (var index = 0; index < params.cutouts.length; index++)
+                _cutoutCard(params, index),
+              OutlinedButton.icon(
+                onPressed: params.cutouts.length < maxCutouts
+                    ? () => _updateWindow(params.addCutout())
+                    : null,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Добавить вырез'),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                params.cutouts.length >= maxCutouts
+                    ? 'Больше $maxCutouts вырезов на окно не ставится.'
+                    : 'На окно можно поставить до $maxCutouts вырезов.',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -540,8 +793,11 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Размерные линии'),
                 value: project.options.showDimensions,
-                onChanged: (value) => _updateProject(project.updateOptions(
-                    project.options.copyWith(showDimensions: value))),
+                onChanged: (value) => _updateProject(
+                  project.updateOptions(
+                    project.options.copyWith(showDimensions: value),
+                  ),
+                ),
               ),
               SwitchListTile(
                 dense: true,
@@ -549,23 +805,32 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 title: const Text('Сетка'),
                 value: project.options.showGrid,
                 onChanged: (value) => _updateProject(
-                    project.updateOptions(project.options.copyWith(showGrid: value))),
+                  project.updateOptions(
+                    project.options.copyWith(showGrid: value),
+                  ),
+                ),
               ),
               SwitchListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Длины боковых кромок'),
                 value: project.options.showEdgeLengths,
-                onChanged: (value) => _updateProject(project.updateOptions(
-                    project.options.copyWith(showEdgeLengths: value))),
+                onChanged: (value) => _updateProject(
+                  project.updateOptions(
+                    project.options.copyWith(showEdgeLengths: value),
+                  ),
+                ),
               ),
               SwitchListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Подписи ширины окантовки'),
                 value: project.options.showCallouts,
-                onChanged: (value) => _updateProject(project.updateOptions(
-                    project.options.copyWith(showCallouts: value))),
+                onChanged: (value) => _updateProject(
+                  project.updateOptions(
+                    project.options.copyWith(showCallouts: value),
+                  ),
+                ),
               ),
             ],
           ),
@@ -581,15 +846,20 @@ class _ParamsPanelState extends State<ParamsPanel> {
                   children: [
                     const Padding(
                       padding: EdgeInsets.only(top: 2),
-                      child: Icon(Icons.info_outline,
-                          size: 16, color: Color(0xFFB26A00)),
+                      child: Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: Color(0xFFB26A00),
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         issue.message,
                         style: const TextStyle(
-                            fontSize: 12, color: Color(0xFF8A5200)),
+                          fontSize: 12,
+                          color: Color(0xFF8A5200),
+                        ),
                       ),
                     ),
                   ],
@@ -617,7 +887,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
               border: OutlineInputBorder(),
               isDense: true,
             ),
-            onChanged: (value) => _updateWindow(params.copyWith(customer: value)),
+            onChanged: (value) =>
+                _updateWindow(params.copyWith(customer: value)),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -655,15 +926,21 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 label: const Text('Подъёмное'),
               ),
               OutlinedButton.icon(
-                onPressed: () => _updateWindow(
-                  params.copyWith(zipperEnabled: true, zipperCentered: true),
-                ),
+                onPressed: params.zippers.length < maxZippers
+                    ? () => _updateWindow(params.addZipper())
+                    : null,
                 icon: const Icon(Icons.vertical_split, size: 18),
-                label: const Text('Добавить молнию'),
+                label: const Text('Молния по центру'),
               ),
               OutlinedButton.icon(
-                onPressed: () =>
-                    _updateWindow(params.copyWith(pocket: true)),
+                onPressed: params.cutouts.length < maxCutouts
+                    ? () => _updateWindow(params.addCutout())
+                    : null,
+                icon: const Icon(Icons.crop_free, size: 18),
+                label: const Text('Вырез по центру'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _updateWindow(params.copyWith(pocket: true)),
                 icon: const Icon(Icons.inbox_outlined, size: 18),
                 label: const Text('Добавить карман'),
               ),
@@ -679,19 +956,373 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
-  String _specElementsSummary(WindowParams params, WindowSpec spec) {
+  String _specElementsSummary(WindowParams params) {
+    final zipperPart = switch (params.zippers.length) {
+      0 => null,
+      1 => 'молния ${formatMm(params.zippers.first.bandWidth)} мм',
+      _ => 'молний ${params.zippers.length}',
+    };
     final parts = <String>[
-      if (params.hasZipper) 'молния ${formatMm(params.zipperBandWidth)} мм',
+      ?zipperPart,
+      if (params.cutouts.isNotEmpty) 'вырезов ${params.cutouts.length}',
       if (params.pocket) 'карман ${formatMm(params.pocketWidth)} мм',
       if (params.drainHoles) 'дренаж ${params.drainCount.round()} шт',
     ];
     return parts.isEmpty ? 'не включены' : parts.join(' · ');
   }
 
-  /// Центр молнии от левого края плёнки, мм.
-  double _zipperCenter(WindowSpec spec) => spec.params.zipperCentered
-      ? spec.filmVisibleWidth / 2
-      : spec.params.zipperOffsetMm;
+  /// Подпись раздела вырезов: сколько их и сколько окантовки уходит на контуры.
+  String _cutoutsSummary(WindowParams params) {
+    if (params.cutouts.isEmpty) return 'не заданы';
+    final perimeter = params.cutouts.fold<double>(
+      0,
+      (sum, cutout) => sum + cutout.perimeterMm,
+    );
+    return '${params.cutouts.length} шт · контур ${formatMm(perimeter)} мм';
+  }
+
+  /// Карточка внутри раздела: подложка с рамкой. Прозрачный Material нужен,
+  /// чтобы переключатели рисовали чернильные волны поверх заливки.
+  Widget _panelCard({required Widget child}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F7FC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFD9E0EA)),
+      ),
+      child: Material(type: MaterialType.transparency, child: child),
+    );
+  }
+
+  /// Карточка одной молнии: центр или сдвиг, ширина спайки, удаление.
+  Widget _zipperCard(WindowParams params, WindowSpec spec, int index) {
+    final zipper = params.zippers[index];
+    final filmWidth = spec.filmVisibleWidth;
+    final maxOffset = filmWidth.isFinite && filmWidth > 0 ? filmWidth : 1.0;
+    final offset = zipper.offsetMm.clamp(0.0, maxOffset);
+    return _panelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Молния ${index + 1}',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Удалить молнию',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                icon: const Icon(Icons.delete_outline, size: 18),
+                onPressed: () => _updateWindow(params.removeZipper(index)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('По центру полотна'),
+            value: zipper.centered,
+            onChanged: (value) => _updateWindow(
+              params.updateZipper(index, zipper.copyWith(centered: value)),
+            ),
+          ),
+          if (!zipper.centered) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Положение от левого края плёнки: ${formatMm(offset)} мм',
+              style: const TextStyle(fontSize: 11.5, color: Color(0xFF5B6B80)),
+            ),
+            Slider(
+              value: offset,
+              min: 0,
+              max: maxOffset,
+              divisions: math.max((maxOffset / 10).round(), 1),
+              label: formatMm(offset),
+              onChanged: (value) => _updateWindow(
+                params.updateZipper(
+                  index,
+                  zipper.copyWith(centered: false, offsetMm: value),
+                ),
+              ),
+            ),
+            _zipperOffsetField(index, offset, maxOffset),
+            const SizedBox(height: 8),
+          ],
+          _zipperBandField(index, zipper.bandWidth),
+          const SizedBox(height: 6),
+          Text(
+            'Спайка шириной ${formatMm(zipper.bandWidth)} мм: молния впаивается '
+            'в полосу тента и идёт по её середине.',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _zipperOffsetField(int index, double value, double maxOffset) {
+    return TextField(
+      controller: _zipperOffsetControllers.putIfAbsent(
+        index,
+        () => TextEditingController(text: _textFor(value)),
+      ),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        labelText: 'Положение от левого края',
+        suffixText: 'мм',
+        helperText: '0–${formatMm(maxOffset)} мм, шаг 10',
+        border: const OutlineInputBorder(),
+        isDense: true,
+        errorText: _zipperOffsetErrors[index],
+        errorMaxLines: 2,
+      ),
+      onChanged: (raw) => _onZipperOffsetChanged(index, raw, maxOffset),
+    );
+  }
+
+  Widget _zipperBandField(int index, double value) {
+    return TextField(
+      controller: _zipperBandControllers.putIfAbsent(
+        index,
+        () => TextEditingController(text: _textFor(value)),
+      ),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        labelText: 'Ширина спайки',
+        suffixText: 'мм',
+        helperText: '40–120 мм, по умолчанию 50',
+        border: const OutlineInputBorder(),
+        isDense: true,
+        errorText: _zipperBandErrors[index],
+        errorMaxLines: 2,
+      ),
+      onChanged: (raw) => _onZipperBandChanged(index, raw),
+    );
+  }
+
+  void _onZipperOffsetChanged(int index, String raw, double maxOffset) {
+    final zippers = _params.zippers;
+    if (index < 0 || index >= zippers.length) return;
+    final value = parseMm(raw);
+    if (value == null) {
+      setState(
+        () => _zipperOffsetErrors[index] = 'Введите число, например 500',
+      );
+      return;
+    }
+    if (value < 0 || value > maxOffset) {
+      setState(
+        () => _zipperOffsetErrors[index] =
+            'Положение от 0 до ${formatMm(maxOffset)} мм',
+      );
+      return;
+    }
+    setState(() => _zipperOffsetErrors[index] = null);
+    _updateWindow(
+      _params.updateZipper(
+        index,
+        zippers[index].copyWith(centered: false, offsetMm: value),
+      ),
+    );
+  }
+
+  void _onZipperBandChanged(int index, String raw) {
+    final zippers = _params.zippers;
+    if (index < 0 || index >= zippers.length) return;
+    final value = parseMm(raw);
+    if (value == null) {
+      setState(() => _zipperBandErrors[index] = 'Введите число, например 50');
+      return;
+    }
+    if (value < 40 || value > 120) {
+      setState(() => _zipperBandErrors[index] = 'Ширина спайки 40–120 мм');
+      return;
+    }
+    setState(() => _zipperBandErrors[index] = null);
+    _updateWindow(
+      _params.updateZipper(index, zippers[index].copyWith(bandWidth: value)),
+    );
+  }
+
+  /// Карточка одного выреза: форма, размеры, положение центра, удаление.
+  Widget _cutoutCard(WindowParams params, int index) {
+    final cutout = params.cutouts[index];
+    final isCircle = cutout.shape == CutoutShape.circle;
+    return _panelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Вырез ${index + 1}',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                'контур ${formatMm(cutout.perimeterMm)} мм',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+              ),
+              IconButton(
+                tooltip: 'Удалить вырез',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                icon: const Icon(Icons.delete_outline, size: 18),
+                onPressed: () => _updateWindow(params.removeCutout(index)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          SegmentedButton<CutoutShape>(
+            showSelectedIcon: false,
+            style: const ButtonStyle(visualDensity: VisualDensity.compact),
+            segments: [
+              for (final shape in CutoutShape.values)
+                ButtonSegment<CutoutShape>(
+                  value: shape,
+                  label: Text(
+                    shape.label,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+            ],
+            selected: {cutout.shape},
+            onSelectionChanged: (selection) => _updateWindow(
+              params.updateCutout(
+                index,
+                cutout.copyWith(shape: selection.first),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _cutoutField(
+                  index: index,
+                  field: _CutoutField.width,
+                  value: cutout.width,
+                  label: isCircle ? 'Ширина (диаметр)' : 'Ширина',
+                ),
+              ),
+              if (!isCircle) ...[
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _cutoutField(
+                    index: index,
+                    field: _CutoutField.height,
+                    value: cutout.height,
+                    label: 'Высота',
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (isCircle) ...[
+            const SizedBox(height: 6),
+            const Text(
+              'У круглого выреза высота равна диаметру, поле высоты скрыто.',
+              style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _cutoutField(
+                  index: index,
+                  field: _CutoutField.centerX,
+                  value: cutout.centerXMm,
+                  label: 'Центр от левого края',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _cutoutField(
+                  index: index,
+                  field: _CutoutField.centerY,
+                  value: cutout.centerYMm,
+                  label: 'Центр от низа',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cutoutField({
+    required int index,
+    required _CutoutField field,
+    required double value,
+    required String label,
+  }) {
+    return TextField(
+      controller: _cutoutControllers.putIfAbsent((
+        index,
+        field,
+      ), () => TextEditingController(text: _textFor(value))),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        labelText: label,
+        suffixText: 'мм',
+        border: const OutlineInputBorder(),
+        isDense: true,
+        errorText: _cutoutErrors[(index, field)],
+        errorMaxLines: 2,
+      ),
+      onChanged: (raw) => _onCutoutChanged(index, field, raw),
+    );
+  }
+
+  void _onCutoutChanged(int index, _CutoutField field, String raw) {
+    final cutouts = _params.cutouts;
+    if (index < 0 || index >= cutouts.length) return;
+    final key = (index, field);
+    final value = parseMm(raw);
+    if (value == null) {
+      setState(() => _cutoutErrors[key] = 'Введите число, например 300');
+      return;
+    }
+    final isCenter =
+        field == _CutoutField.centerX || field == _CutoutField.centerY;
+    if (isCenter && value < 0) {
+      setState(
+        () => _cutoutErrors[key] = 'Смещение не может быть отрицательным',
+      );
+      return;
+    }
+    if (!isCenter && value <= 0) {
+      setState(() => _cutoutErrors[key] = 'Размер должен быть больше нуля');
+      return;
+    }
+    setState(() => _cutoutErrors[key] = null);
+    final cutout = cutouts[index];
+    final updated = switch (field) {
+      _CutoutField.width => cutout.copyWith(width: value),
+      _CutoutField.height => cutout.copyWith(height: value),
+      _CutoutField.centerX => cutout.copyWith(centerXMm: value),
+      _CutoutField.centerY => cutout.copyWith(centerYMm: value),
+    };
+    _updateWindow(_params.updateCutout(index, updated));
+  }
 
   /// Подпись раскладки: рулоны по материалам.
   String _rollSummary(OrderProject project) {
@@ -735,12 +1366,19 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
-  Widget _rollPicker(String label, EdgeRoll selected, WindowParams Function(EdgeRoll) apply) {
+  Widget _rollPicker(
+    String label,
+    EdgeRoll selected,
+    WindowParams Function(EdgeRoll) apply,
+  ) {
     return Row(
       children: [
         SizedBox(
           width: 46,
-          child: Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF5B6B80))),
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
+          ),
         ),
         Expanded(
           child: DropdownButton<EdgeRoll>(
@@ -894,24 +1532,21 @@ class _CuttingCard extends StatelessWidget {
       ('Площадь изделия', '${formatMeters(spec.productAreaM2)} м²'),
       (
         'Плёнка видимая',
-        '${formatMm(spec.filmVisibleWidth)} × ${formatMm(spec.filmVisibleHeight)} мм'
+        '${formatMm(spec.filmVisibleWidth)} × ${formatMm(spec.filmVisibleHeight)} мм',
       ),
       (
         'Плёнка в раскрое (напайка ${formatMm(weldOverlap)} мм)',
-        '${formatMm(spec.filmCutWidth)} × ${formatMm(spec.filmCutHeight)} мм'
+        '${formatMm(spec.filmCutWidth)} × ${formatMm(spec.filmCutHeight)} мм',
       ),
       (
         'С усадкой ${formatPercent(params.shrinkagePercent)}',
         '${formatMm(spec.filmCutWidthWithShrinkage)} × '
-            '${formatMm(spec.filmCutHeightWithShrinkage)} мм'
+            '${formatMm(spec.filmCutHeightWithShrinkage)} мм',
       ),
       ('Площадь плёнки в раскрое', '${formatMeters(spec.filmAreaM2)} м²'),
       for (final label in spec.edgeConsumptionLabels)
         ('Окантовка ${label.split(' — ').first}', label.split(' — ').last),
-      (
-        'Люверсов',
-        '${spec.eyeletCount} шт, шаг ${spec.eyeletStepLabel}'
-      ),
+      ('Люверсов', '${spec.eyeletCount} шт, шаг ${spec.eyeletStepLabel}'),
     ];
 
     return Container(
@@ -944,7 +1579,9 @@ class _CuttingCard extends StatelessWidget {
                     child: Text(
                       row.$1,
                       style: const TextStyle(
-                          fontSize: 11.5, color: Color(0xFF41506A)),
+                        fontSize: 11.5,
+                        color: Color(0xFF41506A),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),

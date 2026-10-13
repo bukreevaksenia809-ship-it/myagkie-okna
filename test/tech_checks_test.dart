@@ -1,0 +1,342 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:soft_window_drawer/models/order_project.dart';
+import 'package:soft_window_drawer/models/window_params.dart';
+import 'package:soft_window_drawer/services/tech_checks.dart';
+
+/// Эталонное окно без технологических замечаний: 1500 × 2520 мм, окантовка
+/// 100 мм (готовых 50 мм), шаг люверсов 300 мм, круглые люверсы, усадка 1,5 %.
+const _correct = WindowParams(
+  bottomWidth: 1500,
+  topWidth: 1500,
+  leftHeight: 2520,
+  rightHeight: 2520,
+  eyeletStep: 300,
+);
+
+/// Первая проверка с указанным правилом — или null, если её нет.
+TechCheck? _check(List<TechCheck> checks, String ruleId) {
+  for (final check in checks) {
+    if (check.ruleId == ruleId) return check;
+  }
+  return null;
+}
+
+void main() {
+  group('Люверсы', () {
+    test('шаг 600 мм даёт предупреждение с рекомендацией', () {
+      final checks = techChecksFor(_correct.copyWith(eyeletStep: 600));
+      final check = _check(checks, 'eyelet-step-loose');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
+      expect(check.explanation, isNotEmpty);
+      expect(check.reason, check.explanation);
+      expect(check.recommendation, isNotEmpty);
+      expect(check.field, ParamField.eyeletStep);
+    });
+
+    test('шаг 300 мм и корректные параметры — без ошибок', () {
+      final checks = techChecksFor(_correct);
+
+      expect(checks.where((check) => check.severity == TechSeverity.error),
+          isEmpty);
+      expect(hasBlockingTechChecks(checks), isFalse);
+    });
+
+    test('люверс, поднятый от угла на 20 мм, — предупреждение', () {
+      final checks = techChecksFor(_correct.copyWith(eyeletCornerOffset: 20));
+      final check = _check(checks, 'eyelet-corner-danger');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
+    });
+  });
+
+  group('Молнии', () {
+    test('две молнии ближе 300 мм дают предупреждение', () {
+      final params = _correct.copyWith(zippers: const [
+        ZipperSpec(centered: false, offsetMm: 400),
+        ZipperSpec(centered: false, offsetMm: 600),
+      ]);
+      final checks = techChecksFor(params);
+      final check = _check(checks, 'zipper-spacing-near');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
+      expect(check.title, contains('200'));
+    });
+
+    test('молния ближе 150 мм к кромке плёнки — предупреждение', () {
+      final params = _correct.copyWith(zippers: const [
+        ZipperSpec(centered: false, offsetMm: 100),
+      ]);
+      final check = _check(techChecksFor(params), 'zipper-edge-near');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
+    });
+
+    test('молния в окне с карманом — предупреждение', () {
+      final params = _correct.copyWith(
+        pocket: true,
+        zippers: const [ZipperSpec(centered: true)],
+      );
+      final check = _check(techChecksFor(params), 'zipper-pocket-axis');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
+    });
+  });
+
+  group('Спайка окон', () {
+    test('спайка стороны с крепежом на ней — предупреждение', () {
+      final withFastener = _correct.copyWith(
+        weldedSides: const [EdgeSide.left],
+        removeEyeletsOnWelded: false,
+      );
+      final checks = techChecksFor(withFastener);
+      final check = _check(checks, 'welded-side-fastener');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
+
+      // Без крепежа на спаянной стороне предупреждения быть не должно.
+      final withoutFastener =
+          _correct.copyWith(weldedSides: const [EdgeSide.left]);
+      expect(
+        _check(techChecksFor(withoutFastener), 'welded-side-fastener'),
+        isNull,
+      );
+    });
+
+    test('спайка обеих боковых сторон — предупреждение о зажатом окне', () {
+      final params = _correct.copyWith(
+        weldedSides: const [EdgeSide.left, EdgeSide.right],
+      );
+      final check = _check(techChecksFor(params), 'welded-both-sides');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
+    });
+  });
+
+  group('Вырезы', () {
+    test('круглый вырез 80 мм — справка или предупреждение', () {
+      final params = _correct.copyWith(cutouts: const [
+        Cutout(
+          shape: CutoutShape.circle,
+          width: 80,
+          height: 80,
+          centerXMm: 700,
+          centerYMm: 800,
+        ),
+      ]);
+      final check = _check(techChecksFor(params), 'cutout-circle-small');
+
+      expect(check, isNotNull);
+      expect(
+        [TechSeverity.info, TechSeverity.warning],
+        contains(check!.severity),
+      );
+    });
+
+    test('вырез в 60 мм от окантовки — предупреждение о тонкой перемычке',
+        () {
+      final params = _correct.copyWith(cutouts: const [
+        Cutout(
+          width: 300,
+          height: 300,
+          centerXMm: 700,
+          centerYMm: 210,
+        ),
+      ]);
+      final check = _check(techChecksFor(params), 'cutout-bridge-thin');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
+    });
+  });
+
+  group('Заказ', () {
+    test('два одинаковых окна — справка о совпадении', () {
+      const project = OrderProject(windows: [_correct, _correct]);
+      final check = _check(techChecksForOrder(project), 'order-duplicate-window');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.info);
+      expect(check.title, contains('№1'));
+      expect(check.title, contains('№2'));
+    });
+
+    test('проверки заказа не дублируют проверки окон', () {
+      final project = OrderProject(windows: [
+        _correct,
+        _correct.copyWith(eyeletStep: 600),
+      ]);
+      final orderChecks = techChecksForOrder(project);
+
+      // Проверка конкретного окна живёт в techChecksFor.
+      expect(_check(orderChecks, 'eyelet-step-loose'), isNull);
+      expect(orderChecks.every((check) => check.windowIndex == null), isTrue);
+
+      // Для сводного экрана проверку можно пометить номером окна.
+      final windowCheck = _check(
+        techChecksFor(project.windows[1]),
+        'eyelet-step-loose',
+      )!
+          .forWindow(1);
+      expect(windowCheck.windowIndex, 1);
+      expect(windowCheck.title, contains('Окно №2'));
+    });
+
+    test('много разных материалов и большая площадь — проверки заказа', () {
+      const project = OrderProject(windows: [
+        _correct,
+        WindowParams(
+          material: FilmMaterial.tintedPvc,
+          bottomWidth: 1500,
+          topWidth: 1500,
+          leftHeight: 2520,
+          rightHeight: 2520,
+        ),
+        WindowParams(
+          material: FilmMaterial.mosquitoNet,
+          bottomWidth: 1500,
+          topWidth: 1500,
+          leftHeight: 2520,
+          rightHeight: 2520,
+        ),
+      ]);
+      final checks = techChecksForOrder(project);
+
+      expect(_check(checks, 'order-many-materials')?.severity,
+          TechSeverity.warning);
+
+      // 11 окон по 3,78 м² — больше 40 м².
+      final large = OrderProject(
+        windows: List<WindowParams>.generate(11, (_) => _correct),
+      );
+      final largeChecks = techChecksForOrder(large);
+      expect(_check(largeChecks, 'order-area-large')?.severity,
+          TechSeverity.info);
+    });
+  });
+
+  group('Остальные правила', () {
+    test('подъёмное окно: нагрузка на ремни, высота и крепёж', () {
+      final params = _correct.copyWith(
+        windowType: WindowType.lifting,
+        bottomWidth: 2800,
+        topWidth: 2800,
+        leftHeight: 3200,
+        rightHeight: 3200,
+        fastenerType: FastenerType.eyeletsOnly,
+      );
+      final checks = techChecksFor(params);
+
+      expect(_check(checks, 'lifting-strap-load')?.severity,
+          TechSeverity.warning);
+      expect(_check(checks, 'lifting-height')?.severity, TechSeverity.warning);
+      expect(_check(checks, 'lifting-eyelets-only')?.severity,
+          TechSeverity.warning);
+      expect(params.liftStrapCount, 3);
+    });
+
+    test('карман: угловые люверсы подняты автоматически', () {
+      final params = _correct.copyWith(pocket: true, pocketWidth: 100);
+      final checks = techChecksFor(params);
+
+      expect(_check(checks, 'pocket-corner-lifted'), isNull);
+    });
+
+    test('глухое окно с овальным люверсом — предупреждение', () {
+      final params = _correct.copyWith(eyeletType: EyeletType.oval42x22);
+      final check = _check(techChecksFor(params), 'fixed-window-oval-eyelet');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
+    });
+
+    test('усадка 4 % — предупреждение', () {
+      final params = _correct.copyWith(shrinkagePercent: 4);
+      final check = _check(techChecksFor(params), 'shrinkage-high');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
+    });
+
+    test('высокая трапеция с разницей 600 мм — предупреждение', () {
+      final params = _correct.copyWith(
+        bottomWidth: 3000,
+        topWidth: 2400,
+        leftHeight: 2600,
+        rightHeight: 2600,
+      );
+      final check = _check(techChecksFor(params), 'section-large-diff');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
+    });
+
+    test('слишком узкая плёнка — ошибка', () {
+      final params = _correct.copyWith(
+        bottomWidth: 300,
+        topWidth: 300,
+        leftHeight: 400,
+        rightHeight: 400,
+      );
+      final check = _check(techChecksFor(params), 'film-narrow');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.error);
+    });
+  });
+
+  group('Блокирующие проверки', () {
+    test('hasBlockingTechChecks истинно только при наличии error', () {
+      expect(hasBlockingTechChecks(const []), isFalse);
+      expect(hasBlockingTechChecks(techChecksFor(_correct)), isFalse);
+
+      final tiny = _correct.copyWith(
+        bottomWidth: 300,
+        topWidth: 300,
+        leftHeight: 400,
+        rightHeight: 400,
+      );
+      final checks = techChecksFor(tiny);
+      expect(checks.any((check) => check.severity == TechSeverity.error),
+          isTrue);
+      expect(hasBlockingTechChecks(checks), isTrue);
+
+      const info = TechCheck(
+        ruleId: 'manual-info',
+        severity: TechSeverity.info,
+        title: 'Справка',
+        explanation: 'Причина',
+        recommendation: 'Рекомендация',
+      );
+      const warning = TechCheck(
+        ruleId: 'manual-warning',
+        severity: TechSeverity.warning,
+        title: 'Замечание',
+        explanation: 'Причина',
+        recommendation: 'Рекомендация',
+      );
+      expect(hasBlockingTechChecks(const [info, warning]), isFalse);
+    });
+
+    test('проверки отсортированы: ошибки, замечания, справки', () {
+      final checks = techChecksFor(_correct.copyWith(
+        bottomWidth: 300,
+        topWidth: 300,
+        leftHeight: 400,
+        rightHeight: 400,
+        eyeletStep: 600,
+      ));
+      final ranks = [for (final check in checks) check.severity.rank];
+
+      expect(ranks, orderedEquals(List<int>.of(ranks)..sort()));
+      expect(checks.first.severity, TechSeverity.error);
+    });
+  });
+}

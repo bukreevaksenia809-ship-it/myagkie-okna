@@ -29,21 +29,34 @@ class DrawingSheet extends StatelessWidget {
   /// Высота одной строки в подробном режиме (одно окно в ряду).
   static const double detailedRowHeight = 640;
 
-  /// Размер листа для подробного режима: окон много, каждому нужно место.
+  /// Размер листа: всегда подробный режим, лист растёт под содержимое.
   ///
-  /// Возвращает null, если лист должен просто заполнить окно программы.
+  /// Одно окно — лист по пропорциям окна (чертёж крупный, поля ровные),
+  /// несколько — по строке на окно, чтобы каждому хватило места.
+  /// Возвращает null только если лист должен заполнить окно программы
+  /// (так рисуется раскладка на рулоне, у неё свой размер).
   static Size? detailedSheetSize(OrderProject project, Size viewport) {
-    if (project.sheetMode != SheetMode.grid ||
-        !project.isMultiWindow ||
-        project.gridColumns != 1) {
-      return null;
-    }
     final paperWidth = math.max(viewport.width - 48, 1320.0);
+    if (!project.isMultiWindow) {
+      // Одно окно: высота чертежа подбирается под пропорции окна.
+      final spec = WindowSpec.of(project.selected);
+      final aspect = spec.geometry.spanX / math.max(spec.geometry.spanY, 1);
+      final drawingHeight = math.max(viewport.height * 0.92, 760.0);
+      final drawingWidth = drawingHeight * aspect;
+      final frameWidth = drawingWidth + _detailPadLeft + _detailPadRight;
+      final frameHeight = drawingHeight + _detailPadTop + _detailPadBottom;
+      return Size(
+        math.max(frameWidth + sidePanelWidth + 2, 720) + _outerPadding * 2,
+        titleBlockHeight + _captionHeight + frameHeight + _outerPadding * 2,
+      );
+    }
+    final columns = project.gridColumns == 0
+        ? _columnsFor(project.windowCount)
+        : project.gridColumns;
+    final rows = (project.windowCount / math.max(columns, 1)).ceil();
     return Size(
       paperWidth + _outerPadding * 2,
-      titleBlockHeight +
-          _outerPadding * 2 +
-          project.windowCount * detailedRowHeight,
+      titleBlockHeight + _outerPadding * 2 + rows * detailedRowHeight,
     );
   }
   static const double sidePanelWidth = 236;
@@ -128,14 +141,26 @@ class DrawingSheet extends StatelessWidget {
                           ),
                           SizedBox(
                             width: sidePanelWidth,
-                            child: _SidePanel(project: project),
+                            child: _SidePanel(
+                              project: project,
+                              labelFontFamily: labelFontFamily,
+                              scaleLabel:
+                                  _sheetScaleLabel(sheetWidth, sheetHeight),
+                              scaleDenominator: _sheetScaleDenominator(
+                                sheetWidth,
+                                sheetHeight,
+                              ),
+                            ),
                           ),
                         ],
                       ),
                     ),
                     SizedBox(
                       height: titleBlockHeight,
-                      child: _TitleBlock(project: project),
+                      child: _TitleBlock(
+                        project: project,
+                        scaleLabel: _sheetScaleLabel(sheetWidth, sheetHeight),
+                      ),
                     ),
                   ],
                 ),
@@ -147,16 +172,78 @@ class DrawingSheet extends StatelessWidget {
     );
   }
 
+  /// Поля подробного чертежа — под размеры и выноски.
+  static const double _detailPadLeft = 104;
+  static const double _detailPadRight = 104;
+  static const double _detailPadTop = 86;
+  static const double _detailPadBottom = 96;
+
+  /// Рамка чертежа под пропорции окна: лист не растягивается на всё окно,
+  /// а чертится в аккуратной рамке с равными полями.
+  Size _drawingFrame(Size area, WindowSpec spec) {
+    final availableWidth =
+        math.max(area.width - _detailPadLeft - _detailPadRight, 80.0);
+    final availableHeight =
+        math.max(area.height - _detailPadTop - _detailPadBottom, 80.0);
+    final aspect = spec.geometry.spanX / math.max(spec.geometry.spanY, 1);
+    double width;
+    double height;
+    if (availableWidth / availableHeight > aspect) {
+      height = availableHeight;
+      width = height * aspect;
+    } else {
+      width = availableWidth;
+      height = width / aspect;
+    }
+    return Size(
+      width + _detailPadLeft + _detailPadRight,
+      height + _detailPadTop + _detailPadBottom,
+    );
+  }
+
+  /// Знаменатель масштаба листа (для линейки в панели).
+  double _sheetScaleDenominator(double sheetWidth, double sheetHeight) {
+    if (project.windowCount != 1) return 1;
+    final spec = WindowSpec.of(project.windows.first);
+    final drawingWidth = math.max(sheetWidth - sidePanelWidth - 1, 160.0);
+    final drawingHeight =
+        math.max(sheetHeight - titleBlockHeight - _captionHeight, 120.0);
+    return DrawingLayout(
+      size: Size(drawingWidth, drawingHeight),
+      geometry: spec.geometry,
+    ).scaleDenominator;
+  }
+
+  /// Масштаб листа для штампа: у одного окна — настоящий, у набора — «по окнам».
+  String _sheetScaleLabel(double sheetWidth, double sheetHeight) {
+    if (project.windowCount != 1) return 'по окнам';
+    final spec = WindowSpec.of(project.windows.first);
+    final drawingWidth = math.max(sheetWidth - sidePanelWidth - 1, 160.0);
+    final drawingHeight =
+        math.max(sheetHeight - titleBlockHeight - _captionHeight, 120.0);
+    return DrawingLayout(
+      size: Size(drawingWidth, drawingHeight),
+      geometry: spec.geometry,
+    ).scaleLabel;
+  }
+
   Widget _buildSingle(double sheetWidth, double sheetHeight) {
     final params = project.selected;
     final spec = WindowSpec.of(params);
-    final layout = DrawingLayout(
-      size: Size(
-        math.max(sheetWidth - sidePanelWidth - 1, 160.0),
-        math.max(sheetHeight - titleBlockHeight - _captionHeight, 120.0),
-      ),
-      geometry: spec.geometry,
+    final area = Size(
+      math.max(sheetWidth - sidePanelWidth - 1, 160.0),
+      math.max(sheetHeight - titleBlockHeight - _captionHeight, 120.0),
     );
+    final frame = _drawingFrame(area, spec);
+    final layout = DrawingLayout(
+      size: frame,
+      geometry: spec.geometry,
+      padLeft: _detailPadLeft,
+      padRight: _detailPadRight,
+      padTop: _detailPadTop,
+      padBottom: _detailPadBottom,
+    );
+
     return Column(
       children: [
         SizedBox(
@@ -169,15 +256,29 @@ class DrawingSheet extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: CustomPaint(
-            painter: WindowDrawingPainter(
-              params: params,
-              layout: layout,
-              layers: spec.layers,
-              options: project.options,
-              labelFontFamily: labelFontFamily,
+          child: ClipRect(
+            child: Center(
+              child: SizedBox(
+                width: frame.width,
+                height: frame.height,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFF9FB0C6)),
+                  ),
+                  child: CustomPaint(
+                    painter: WindowDrawingPainter(
+                      params: params,
+                      layout: layout,
+                      layers: spec.layers,
+                      options: project.options,
+                      labelFontFamily: labelFontFamily,
+                      showScaleBar: false,
+                    ),
+                    size: Size.infinite,
+                  ),
+                ),
+              ),
             ),
-            size: Size.infinite,
           ),
         ),
       ],
@@ -219,32 +320,27 @@ class DrawingSheet extends StatelessWidget {
   }
 
   /// Число колонок: до трёх окон — в ряд, четыре — 2×2, далее по три.
-  int _columnsFor(int count) {
+  static int _columnsFor(int count) {
     if (count <= 3) return math.max(count, 1);
     if (count == 4) return 2;
     if (count <= 9) return 3;
     return 4;
   }
 
-  int get _gridColumns => project.gridColumns == 0
-      ? _columnsFor(project.windowCount)
-      : project.gridColumns;
-
   Widget _buildCell(int index, Size cellSize) {
     if (index >= project.windows.length) return const SizedBox.shrink();
     final params = project.windows[index];
     final spec = WindowSpec.of(params);
     final isSelected = index == project.selectedIndex;
-    final detailed = _gridColumns == 1;
     final drawingHeight = math.max(cellSize.height - _captionHeight, 60.0);
     final layout = DrawingLayout(
       size: Size(math.max(cellSize.width, 80), drawingHeight),
       geometry: spec.geometry,
-      // В подробном режиме показываем размеры — оставляем под них место.
-      padLeft: detailed ? 104 : 40,
-      padRight: detailed ? 104 : 40,
-      padTop: detailed ? 70 : 30,
-      padBottom: detailed ? 62 : 34,
+      // Всегда подробный режим: показываем размеры, оставляем под них место.
+      padLeft: _detailPadLeft,
+      padRight: _detailPadRight,
+      padTop: _detailPadTop,
+      padBottom: _detailPadBottom,
     );
 
     return Container(
@@ -261,14 +357,11 @@ class DrawingSheet extends StatelessWidget {
                 params: params,
                 layout: layout,
                 layers: spec.layers,
-                options: project.options.copyWith(
-                  showDimensions: project.options.showDimensions && detailed,
-                  showEdgeLengths: project.options.showEdgeLengths && detailed,
-                  showCallouts: project.options.showCallouts && detailed,
-                ),
+                options: project.options,
                 labelFontFamily: labelFontFamily,
                 showScaleBar: false,
-                labelScale: detailed ? 0.85 : 0.62,
+                // Подробный режим: подписи крупные, в ячейке они чуть мельче.
+                labelScale: 0.9,
               ),
               size: Size.infinite,
             ),
@@ -347,7 +440,10 @@ class _Caption extends StatelessWidget {
 // ------------------------------------------------------------------ штамп
 
 class _TitleBlock extends StatelessWidget {
-  const _TitleBlock({required this.project});
+  const _TitleBlock({required this.project, required this.scaleLabel});
+
+  /// Настоящий масштаб листа — тот же, что на масштабной линейке.
+  final String scaleLabel;
 
   final OrderProject project;
 
@@ -413,7 +509,7 @@ class _TitleBlock extends StatelessWidget {
                   width: 104,
                   child: _cell(
                     'Масштаб',
-                    specs.length == 1 ? _scaleOf(specs.first) : 'по окнам',
+                    scaleLabel,
                   ),
                 ),
               ],
@@ -505,14 +601,6 @@ class _TitleBlock extends StatelessWidget {
     );
   }
 
-  String _scaleOf(WindowSpec spec) {
-    final layout = DrawingLayout(
-      size: const Size(1000, 700),
-      geometry: spec.geometry,
-    );
-    return layout.scaleLabel;
-  }
-
   Widget _cell(String label, String value) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
@@ -555,9 +643,23 @@ class _TitleBlock extends StatelessWidget {
 // --------------------------------------------------- легенда и примечания
 
 class _SidePanel extends StatelessWidget {
-  const _SidePanel({required this.project});
+  const _SidePanel({
+    required this.project,
+    required this.labelFontFamily,
+    required this.scaleLabel,
+    required this.scaleDenominator,
+  });
 
   final OrderProject project;
+
+  /// Семейство шрифта подписей (в тестах подставляется системный).
+  final String? labelFontFamily;
+
+  /// Подпись масштаба листа, например «М 1:15».
+  final String scaleLabel;
+
+  /// Знаменатель масштаба: 15 для «М 1:15».
+  final double scaleDenominator;
 
   @override
   Widget build(BuildContext context) {
@@ -567,6 +669,8 @@ class _SidePanel extends StatelessWidget {
     final anyMovable =
         windows.any((window) => window.windowType != WindowType.fixed);
     final anyZipper = windows.any((window) => window.hasZipper);
+    final anyCutout = windows.any((window) => window.cutouts.isNotEmpty);
+    final anyWeld = windows.any((window) => window.weldedSides.isNotEmpty);
     final anyPocket = windows.any((window) => window.pocket);
     final anyDrain = windows.any((window) => window.drainHoles);
     final materials = <FilmMaterial>{
@@ -596,6 +700,16 @@ class _SidePanel extends StatelessWidget {
         (
           LegendKind.zipperBand,
           'Спайка ${formatMm(params.zipperBandWidth)} мм с молнией по центру'
+        ),
+      if (anyCutout)
+        (
+          LegendKind.cutout,
+          'Вырез в полотне с окантовкой по контуру'
+        ),
+      if (anyWeld)
+        (
+          LegendKind.weld,
+          'Спайка с соседним окном $windowWeldWidth мм'
         ),
       if (anyPocket)
         (
@@ -639,6 +753,54 @@ class _SidePanel extends StatelessWidget {
               ),
             ),
           const SizedBox(height: 10),
+          const _SideTitle('Масштаб листа'),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F9FC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFD9E0EA)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  scaleLabel,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF2B3440),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 34,
+                  child: CustomPaint(
+                    painter: _RulerPainter(
+                      scaleDenominator: scaleDenominator,
+                      labelStyle: TextStyle(
+                        fontSize: 9.5,
+                        fontFamily: labelFontFamily,
+                        color: const Color(0xFF66748A),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Лист построен ровно в этом масштабе: распечатайте без '
+                  'масштабирования, приложите линейку — размеры сойдутся.',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    height: 1.25,
+                    color: Color(0xFF66748A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           const _SideTitle('Примечания'),
           const SizedBox(height: 6),
           Expanded(
@@ -775,8 +937,77 @@ enum LegendKind {
   liftStrap,
   zipper,
   zipperBand,
+  cutout,
+  weld,
   pocket,
   drain,
+}
+
+/// Линейка для боковой панели: показывает длину в масштабе листа.
+class _RulerPainter extends CustomPainter {
+  _RulerPainter({required this.scaleDenominator, required this.labelStyle});
+
+  final double scaleDenominator;
+  final TextStyle labelStyle;
+
+  static const double _pxPerPaperMm = 96 / 25.4;
+  static const List<double> _steps = [100, 200, 250, 500, 1000, 2000, 5000];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const maxWidth = 168.0;
+    var step = _steps.first;
+    for (final candidate in _steps) {
+      if (candidate / scaleDenominator * _pxPerPaperMm <= maxWidth) {
+        step = candidate;
+      }
+    }
+    final barWidth = step / scaleDenominator * _pxPerPaperMm;
+    const divisions = 4;
+    final segment = barWidth / divisions;
+    const top = 8.0;
+    const barHeight = 8.0;
+
+    for (var i = 0; i < divisions; i++) {
+      canvas.drawRect(
+        Rect.fromLTWH(segment * i, top, segment, barHeight),
+        Paint()..color = i.isEven ? const Color(0xFF1B1F27) : Colors.white,
+      );
+    }
+    canvas.drawRect(
+      Rect.fromLTWH(0, top, barWidth, barHeight),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = const Color(0xFF1B1F27),
+    );
+    for (var i = 0; i <= divisions; i++) {
+      final x = segment * i;
+      canvas.drawLine(
+        Offset(x, top - (i.isEven ? 3 : 1.5)),
+        Offset(x, top),
+        Paint()
+          ..strokeWidth = 1
+          ..color = const Color(0xFF1B1F27),
+      );
+    }
+
+    final label = TextPainter(
+      text: TextSpan(
+        text: step >= 1000
+            ? '0 — ${(step / 1000).toStringAsFixed(step % 1000 == 0 ? 0 : 1).replaceAll('.', ',')} м'
+            : '0 — ${formatMm(step)} мм',
+        style: labelStyle,
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    label.paint(canvas, Offset(0, top + barHeight + 2));
+  }
+
+  @override
+  bool shouldRepaint(covariant _RulerPainter oldDelegate) =>
+      oldDelegate.scaleDenominator != scaleDenominator ||
+      oldDelegate.labelStyle != labelStyle;
 }
 
 class _LegendPainter extends CustomPainter {
@@ -791,6 +1022,8 @@ class _LegendPainter extends CustomPainter {
     final metal = const Color(0xFF9AA3AD);
     final metalDark = const Color(0xFF4C545E);
     final accent = const Color(0xFF0B62C4);
+    final ink = const Color(0xFF1B1F27);
+    final filmEdge = const Color(0xFF4C9BE8);
 
     switch (kind) {
       case LegendKind.edge:
@@ -875,6 +1108,53 @@ class _LegendPainter extends CustomPainter {
           center + const Offset(-6, 0),
           2,
           Paint()..color = metalDark,
+        );
+      case LegendKind.cutout:
+        final rect = Rect.fromCenter(
+          center: center,
+          width: 16,
+          height: 12,
+        );
+        canvas.drawRect(
+          rect.inflate(4),
+          Paint()..color = edgeColor.withValues(alpha: 0.85),
+        );
+        canvas.drawRect(
+          rect,
+          Paint()..color = const Color(0xFFF1F5FA),
+        );
+        canvas.drawRect(
+          rect,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4
+            ..color = ink,
+        );
+      case LegendKind.weld:
+        final rect = Rect.fromCenter(center: center, width: 22, height: 12);
+        canvas.drawRect(
+          rect,
+          Paint()..color = filmEdge.withValues(alpha: 0.2),
+        );
+        canvas.save();
+        canvas.clipRect(rect);
+        final hatch = Paint()
+          ..color = filmEdge
+          ..strokeWidth = 1.2;
+        for (var x = rect.left - rect.height; x < rect.right + rect.height; x += 5) {
+          canvas.drawLine(
+            Offset(x, rect.bottom),
+            Offset(x + rect.height, rect.top),
+            hatch,
+          );
+        }
+        canvas.restore();
+        canvas.drawRect(
+          rect,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2
+            ..color = filmEdge,
         );
       case LegendKind.lock:
         final square = Rect.fromCenter(

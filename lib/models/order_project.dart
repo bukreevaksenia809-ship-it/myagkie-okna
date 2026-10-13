@@ -97,6 +97,17 @@ class OrderProject {
   }
 
   /// Добавляет окно — копию текущего (обычно окна в заказе одного размера).
+  /// Дублировать выбранное окно: одинаковых окон в заказе обычно много.
+  OrderProject duplicateSelected() {
+    final source = windows[selectedIndex];
+    final copy = source.copyWith(
+      drawingNumber: '',
+      projectName: source.projectName,
+    );
+    final next = [...windows]..insert(selectedIndex + 1, copy);
+    return copyWith(windows: next, selectedIndex: selectedIndex + 1);
+  }
+
   OrderProject addWindow() => copyWith(
         windows: [...windows, selected.copyWith(drawingNumber: '')],
         selectedIndex: windows.length,

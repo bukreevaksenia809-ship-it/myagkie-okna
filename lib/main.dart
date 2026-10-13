@@ -3,15 +3,20 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'models/order_project.dart';
 import 'models/window_geometry.dart';
+import 'models/price_list.dart';
 import 'models/window_params.dart';
 import 'services/order_storage.dart';
+import 'services/tech_checks.dart';
 import 'services/pdf_export.dart';
 import 'services/roll_plan.dart';
 import 'widgets/costs_sheet.dart';
+import 'widgets/estimate_sheet.dart';
 import 'widgets/drawing_sheet.dart';
 import 'widgets/orders_panel.dart';
+import 'widgets/price_panel.dart';
 import 'widgets/params_panel.dart';
 import 'widgets/roll_sheet.dart';
+import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
 const String kAppVersion = '1.0.2';
@@ -45,7 +50,7 @@ class SoftWindowApp extends StatelessWidget {
 }
 
 /// Что показано на листе.
-enum SheetTab { drawing, roll, costs }
+enum SheetTab { drawing, roll, costs, estimate, techCard }
 
 class BuilderScreen extends StatefulWidget {
   const BuilderScreen({super.key});
@@ -56,6 +61,7 @@ class BuilderScreen extends StatefulWidget {
 
 class _BuilderScreenState extends State<BuilderScreen> {
   OrderProject _project = const OrderProject();
+  PriceList _prices = const PriceList.defaults();
   SheetTab _tab = SheetTab.drawing;
   List<SavedOrder> _orders = const [];
   bool _ordersBusy = false;
@@ -79,6 +85,8 @@ class _BuilderScreenState extends State<BuilderScreen> {
     return switch (requested) {
       'roll' || 'raskladka' => SheetTab.roll,
       'costs' || 'rashody' => SheetTab.costs,
+      'estimate' || 'smeta' => SheetTab.estimate,
+      'tech' || 'tehkarta' || 'techcard' => SheetTab.techCard,
       _ => SheetTab.drawing,
     };
   }
@@ -214,6 +222,8 @@ class _BuilderScreenState extends State<BuilderScreen> {
           DrawingSheet.detailedSheetSize(_project, viewport),
         SheetTab.roll => null,
         SheetTab.costs => CostsSheet.sheetSize(_project, viewport),
+        SheetTab.estimate => EstimateSheet.sheetSize(_project, viewport),
+        SheetTab.techCard => TechCardSheet.sheetSize(_project, viewport),
       };
 
   /// Границы, по которым можно резать PDF, не разрывая окно.
@@ -225,6 +235,8 @@ class _BuilderScreenState extends State<BuilderScreen> {
         SheetTab.drawing => 'Чертёж',
         SheetTab.roll => 'Раскладка',
         SheetTab.costs => 'Расходы',
+        SheetTab.estimate => 'Смета',
+        SheetTab.techCard => 'Техкарта',
       };
 
   Future<void> _exportPdf() async {
@@ -276,6 +288,107 @@ class _BuilderScreenState extends State<BuilderScreen> {
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
+  }
+
+  /// Раздел «Технолог»: производственные проверки, дополняющие валидацию.
+  Widget _techSection() {
+    final windowChecks = techChecksFor(_project.selected);
+    final orderChecks = techChecksForOrder(_project);
+    final checks = [...orderChecks, ...windowChecks];
+    final blocking = hasBlockingTechChecks(checks);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: blocking ? const Color(0xFFE0A0A0) : const Color(0xFFD9E0EA),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'ТЕХНОЛОГ',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.9,
+                    color: blocking
+                        ? const Color(0xFFB03A3A)
+                        : const Color(0xFF66748A),
+                  ),
+                ),
+              ),
+              Text(
+                checks.isEmpty ? 'замечаний нет' : 'замечаний: ${checks.length}',
+                style: const TextStyle(fontSize: 10.5, color: Color(0xFF8A93A0)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (checks.isEmpty)
+            const Text(
+              'Размеры, шаг люверсов, ширина окантовки и спецэлементы '
+              'выглядят по технологии.',
+              style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+            )
+          else
+            for (final check in checks.take(12))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      switch (check.severity) {
+                        TechSeverity.error => Icons.error_outline,
+                        TechSeverity.warning => Icons.warning_amber_outlined,
+                        TechSeverity.info => Icons.info_outline,
+                      },
+                      size: 15,
+                      color: switch (check.severity) {
+                        TechSeverity.error => const Color(0xFFB03A3A),
+                        TechSeverity.warning => const Color(0xFFB07A1E),
+                        TechSeverity.info => const Color(0xFF4A7BA7),
+                      },
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            check.title,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF2B3440),
+                            ),
+                          ),
+                          Text(
+                            check.recommendation.isEmpty
+                                ? check.explanation
+                                : '${check.explanation} ${check.recommendation}',
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              height: 1.25,
+                              color: Color(0xFF66748A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
   }
 
   Size _viewportSize() {
@@ -352,6 +465,11 @@ class _BuilderScreenState extends State<BuilderScreen> {
               issues: issues,
               onChanged: _updateProject,
               onReset: _reset,
+              pricesSection: PricePanel(
+                prices: _prices,
+                onChanged: (prices) => setState(() => _prices = prices),
+              ),
+              techSection: _techSection(),
               ordersSection: OrdersPanel(
                 orders: _orders,
                 folderPath: ordersFolderDescription(),
@@ -417,6 +535,15 @@ class _BuilderScreenState extends State<BuilderScreen> {
                 captureKey: _sheetKey,
               ),
             SheetTab.costs => CostsSheet(
+                project: _project,
+                captureKey: _sheetKey,
+              ),
+            SheetTab.estimate => EstimateSheet(
+                project: _project,
+                prices: _prices,
+                captureKey: _sheetKey,
+              ),
+            SheetTab.techCard => TechCardSheet(
                 project: _project,
                 captureKey: _sheetKey,
               ),

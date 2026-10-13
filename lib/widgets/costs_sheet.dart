@@ -130,8 +130,14 @@ class CostsSheet extends StatelessWidget {
       final window = project.windows[i];
       final spec = summary.specs[i];
       final extras = <String>[
+        if (spec.params.zippers.length > 1)
+          'молний ${spec.params.zippers.length}',
         if (spec.params.hasZipper)
           'молния ${formatMm(spec.zipperBandPiece?.$2 ?? 0)}',
+        if (spec.params.cutouts.isNotEmpty)
+          'вырезов ${spec.params.cutouts.length}',
+        if (spec.layers.weldLengthMm > 0)
+          'спайка ${formatMm(spec.layers.weldLengthMm)}',
         if (spec.params.pocket) 'карман ${formatMm(spec.params.pocketWidth)}',
         if (spec.strapCount > 0) 'ремни ${spec.strapCount}',
         if (spec.params.drainHoles) 'дренаж ${spec.params.drainCount.round()}',

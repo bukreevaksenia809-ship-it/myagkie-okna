@@ -86,6 +86,10 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'eyeletStep': p.eyeletStep,
       'eyeletCornerOffset': p.eyeletCornerOffset,
       'fastenerType': p.fastenerType.name,
+      'zippers': [for (final zipper in p.zippers) zipper.toJson()],
+      'cutouts': [for (final cutout in p.cutouts) cutout.toJson()],
+      'weldedSides': [for (final side in p.weldedSides) side.name],
+      // Старые поля оставлены, чтобы заказы читались старыми версиями.
       'zipperEnabled': p.zipperEnabled,
       'zipperCentered': p.zipperCentered,
       'zipperOffsetMm': p.zipperOffsetMm,
@@ -131,10 +135,9 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
         _double(json['eyeletCornerOffset'], fallback.eyeletCornerOffset),
     fastenerType: _enumByName(
         FastenerType.values, json['fastenerType'], fallback.fastenerType),
-    zipperEnabled: _bool(json['zipperEnabled'], fallback.zipperEnabled),
-    zipperCentered: _bool(json['zipperCentered'], fallback.zipperCentered),
-    zipperOffsetMm: _double(json['zipperOffsetMm'], fallback.zipperOffsetMm),
-    zipperBandWidth: _double(json['zipperBandWidth'], fallback.zipperBandWidth),
+    zippers: _zippersFromJson(json),
+    cutouts: _cutoutsFromJson(json['cutouts']),
+    weldedSides: _weldedFromJson(json['weldedSides']),
     pocket: _bool(json['pocket'], fallback.pocket),
     pocketWidth: _double(json['pocketWidth'], fallback.pocketWidth),
     drainHoles: _bool(json['drainHoles'], fallback.drainHoles),
@@ -162,3 +165,59 @@ bool _bool(Object? value, bool fallback) => value is bool ? value : fallback;
 
 String _string(Object? value, String fallback) =>
     value is String ? value : fallback;
+
+
+/// Молнии из JSON. Понимает и новый список, и старые одиночные поля.
+List<ZipperSpec> _zippersFromJson(Map<String, dynamic> json) {
+  final raw = json['zippers'];
+  if (raw is List && raw.isNotEmpty) {
+    return [
+      for (final item in raw)
+        if (item is Map)
+          ZipperSpec(
+            centered: _bool(item['centered'], true),
+            offsetMm: _double(item['offsetMm'], 0),
+            bandWidth: _double(item['bandWidth'], defaultZipperBandWidth),
+          ),
+    ];
+  }
+  if (_bool(json['zipperEnabled'], false)) {
+    return [
+      ZipperSpec(
+        centered: _bool(json['zipperCentered'], true),
+        offsetMm: _double(json['zipperOffsetMm'], 0),
+        bandWidth: _double(json['zipperBandWidth'], defaultZipperBandWidth),
+      ),
+    ];
+  }
+  return const [];
+}
+
+List<Cutout> _cutoutsFromJson(Object? raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final item in raw)
+      if (item is Map)
+        Cutout(
+          shape: _enumByName(
+            CutoutShape.values,
+            item['shape'],
+            CutoutShape.rect,
+          ),
+          width: _double(item['width'], 300),
+          height: _double(item['height'], 300),
+          centerXMm: _double(item['centerXMm'], 0),
+          centerYMm: _double(item['centerYMm'], 400),
+        ),
+  ];
+}
+
+List<EdgeSide> _weldedFromJson(Object? raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final item in raw)
+      if (item is String)
+        for (final side in EdgeSide.values)
+          if (side.name == item) side,
+  ];
+}
