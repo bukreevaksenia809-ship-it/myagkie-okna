@@ -314,6 +314,8 @@ class EstimateSheet extends StatelessWidget {
               '${field.unit}',
         'Работа: сварка ${formatRubles(prices.laborPerM2)} ₽/м², '
             'раскрой ${formatRubles(prices.cuttingPerM2)} ₽/м²',
+        'Подворот скрина и шов 3 мм — '
+            '${formatRubles(prices.screenHemPerM)} ₽/м',
       ]),
     ];
 
@@ -360,7 +362,8 @@ class EstimateSheet extends StatelessWidget {
   double _priceOf(PriceField field) => switch (field) {
         PriceField.filmClear ||
         PriceField.filmTinted ||
-        PriceField.filmMesh =>
+        PriceField.filmMesh ||
+        PriceField.filmScreen =>
           prices.film(field),
         _ => prices.edge(field),
       };
