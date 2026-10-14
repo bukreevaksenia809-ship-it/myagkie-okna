@@ -19,7 +19,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '1.0.2';
+const String kAppVersion = '1.1.0';
 
 void main() {
   runApp(const SoftWindowApp());
@@ -587,12 +587,22 @@ class _BuilderScreenState extends State<BuilderScreen> {
                 ButtonSegment(
                   value: SheetTab.roll,
                   icon: Icon(Icons.view_week_outlined, size: 18),
-                  label: Text('Раскладка на рулоне'),
+                  label: Text('Раскладка'),
                 ),
                 ButtonSegment(
                   value: SheetTab.costs,
                   icon: Icon(Icons.receipt_long_outlined, size: 18),
                   label: Text('Расходы'),
+                ),
+                ButtonSegment(
+                  value: SheetTab.estimate,
+                  icon: Icon(Icons.request_quote_outlined, size: 18),
+                  label: Text('Смета'),
+                ),
+                ButtonSegment(
+                  value: SheetTab.techCard,
+                  icon: Icon(Icons.assignment_outlined, size: 18),
+                  label: Text('Техкарта'),
                 ),
               ],
               selected: {_tab},
@@ -660,10 +670,10 @@ class _BuilderScreenState extends State<BuilderScreen> {
               onPressed: () => _zoomBy(1.25),
               icon: const Icon(Icons.zoom_in),
             ),
-            TextButton.icon(
+            IconButton(
+              tooltip: 'Показать лист целиком',
               onPressed: _resetZoom,
-              icon: const Icon(Icons.fit_screen, size: 18),
-              label: const Text('По размеру'),
+              icon: const Icon(Icons.fit_screen, size: 20),
             ),
             const SizedBox(width: 8),
             const Tooltip(
