@@ -138,9 +138,16 @@ class CostsSheet extends StatelessWidget {
           'вырезов ${spec.params.cutouts.length}',
         if (spec.layers.weldLengthMm > 0)
           'спайка ${formatMm(spec.layers.weldLengthMm)}',
-        if (spec.params.pocket) 'карман ${formatMm(spec.params.pocketWidth)}',
+        if (spec.params.pocket)
+          'карман снизу ${formatMm(spec.params.pocketWidth)}',
+        if (spec.params.pocketTop)
+          'карман сверху ${formatMm(spec.params.pocketWidth)}',
+        if (spec.params.isScreen)
+          'подворот ${formatMm(spec.params.hemMm)} + шов '
+              '${formatMm(screenSeamMm)}',
         if (spec.strapCount > 0) 'ремни ${spec.strapCount}',
-        if (spec.params.drainHoles) 'дренаж ${spec.params.drainCount.round()}',
+        if (spec.params.drainHoles && !spec.params.isScreen)
+          'дренаж ${spec.params.drainCount.round()}',
       ];
       rows.add([
         '№${i + 1}',
@@ -155,7 +162,9 @@ class CostsSheet extends StatelessWidget {
         formatMeters(spec.productAreaM2),
         formatMeters(spec.filmCutAreaM2),
         '${spec.eyeletCount}',
-        spec.edgeConsumptionLabels.join('; '),
+        spec.params.isScreen
+            ? 'подворот ${formatMm(spec.params.hemMm)}'
+            : spec.edgeConsumptionLabels.join('; '),
         extras.isEmpty ? '—' : extras.join(', '),
       ]);
     }
@@ -165,11 +174,11 @@ class CostsSheet extends StatelessWidget {
       'Тип',
       'Материал полотна',
       'Размеры полотна, мм',
-      'Плёнка в раскрое с усадкой, мм',
+      'Полотно в раскрое с усадкой, мм',
       'Площадь изделия, м²',
       'Площадь заготовки, м²',
       'Люверсы, шт',
-      'Окантовка',
+      'Окантовка / подворот',
       'Спецэлементы',
     ];
     const widths = <int>[1, 3, 3, 4, 4, 2, 2, 2, 5, 4];
@@ -238,6 +247,13 @@ class CostsSheet extends StatelessWidget {
         if (summary.edgeConsumptionLabels.isEmpty) '—',
         ...summary.edgeConsumptionLabels,
       ]),
+      if (summary.screenHemLengthMm > 0)
+        ('Скрин: подворот и шов 3 мм', [
+          'Длина подворота по периметру: '
+              '${formatCm(summary.screenHemLengthMm)} см',
+          'Расход скрина — по площади заготовок в раскрое (готовый размер '
+              'плюс подворот)',
+        ]),
       ('Люверсы', [
         ...summary.eyeletLabels,
         'Всего: ${summary.eyeletTotal} шт',
@@ -312,13 +328,26 @@ class CostsSheet extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        const Text(
-          'Напайка плёнки под окантовку 25 мм по всему периметру. '
-          'Окантовка складывается пополам: рулон 100 → 50 мм, 200 → 100 мм, '
-          '240 → 120 мм. Плёнка ПВХ 700 мкм, морозостойкость до −30 °C. '
-          'Припуск на раскрой увеличивает только заготовку плёнки; размеры '
-          'изделия и площадь изделий считаются по замеру.',
-          style: TextStyle(fontSize: 9.5, height: 1.3, color: Color(0xFF66748A)),
+        Text(
+          summary.screenHemLengthMm > 0
+              ? 'Скрин — технология без тента и окантовки: материал '
+                  'подворачивается по периметру (шов 3 мм), крепёж — только '
+                  'люверсы по подвороту. Заготовка = готовый размер плюс '
+                  '2 × подворот, усадки нет; расход скрина считается по '
+                  'площади заготовки. Припуск на раскрой увеличивает только '
+                  'заготовку, размеры изделия считаются по замеру. Для ПВХ '
+                  'действует запайка плёнки под окантовку (5…60 мм).'
+              : 'Запайка плёнки под окантовку — значение окна (5…60 мм, по '
+                  'умолчанию 25 мм). Окантовка складывается пополам: рулон '
+                  '100 → 50 мм, 200 → 100 мм, 240 → 120 мм. Плёнка ПВХ 700 мкм, '
+                  'морозостойкость до −30 °C. Припуск на раскрой увеличивает '
+                  'только заготовку плёнки; размеры изделия и площадь изделий '
+                  'считаются по замеру.',
+          style: const TextStyle(
+            fontSize: 9.5,
+            height: 1.3,
+            color: Color(0xFF66748A),
+          ),
         ),
       ],
     );

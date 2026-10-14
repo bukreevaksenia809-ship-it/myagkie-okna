@@ -74,6 +74,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
     ParamField.drainCount,
     ParamField.pocketWidth,
     ParamField.shrinkagePercent,
+    // Запайка плёнки под окантовку и подворот скрина: свои поля с ручным
+    // вводом и проверкой диапазона.
+    ParamField.weldOverlap,
+    ParamField.hemWidth,
   ];
 
   final Map<ParamField, TextEditingController> _controllers = {};
@@ -464,6 +468,152 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _updateWindow(_params.copyWith(allowanceWidthMm: 0, allowanceHeightMm: 0));
   }
 
+  /// Ввод запайки плёнки под окантовку: 5…60 мм.
+  ///
+  /// От запайки напрямую зависит заготовка плёнки: каждый миллиметр
+  /// добавляет по миллиметру с каждой стороны.
+  void _onWeldOverlapChanged(String raw) {
+    final value = parseMm(raw);
+    if (value == null) {
+      setState(
+        () => _errors[ParamField.weldOverlap] = 'Введите число, например 25',
+      );
+      return;
+    }
+    if (value < minWeldOverlapMm || value > maxWeldOverlapMm) {
+      setState(
+        () => _errors[ParamField.weldOverlap] =
+            'Запайка от ${formatMm(minWeldOverlapMm)} до '
+            '${formatMm(maxWeldOverlapMm)} мм',
+      );
+      return;
+    }
+    setState(() => _errors[ParamField.weldOverlap] = null);
+    _updateWindow(_params.copyWith(weldOverlapMm: value));
+  }
+
+  /// Ввод подворота скрина: 10…150 мм на сторону.
+  void _onHemChanged(String raw) {
+    final value = parseMm(raw);
+    if (value == null) {
+      setState(
+        () => _errors[ParamField.hemWidth] = 'Введите число, например 40',
+      );
+      return;
+    }
+    if (value < minScreenHemMm || value > maxScreenHemMm) {
+      setState(
+        () => _errors[ParamField.hemWidth] =
+            'Подворот от ${formatMm(minScreenHemMm)} до '
+            '${formatMm(maxScreenHemMm)} мм',
+      );
+      return;
+    }
+    setState(() => _errors[ParamField.hemWidth] = null);
+    _updateWindow(_params.copyWith(hemMm: value));
+  }
+
+  /// Поле «Запайка плёнки под окантовку, мм» с пресетами 10/25/40.
+  Widget _weldOverlapField(WindowParams params) {
+    final value = params.weldOverlapMm;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final preset in const [10.0, 25.0, 40.0])
+              ChoiceChip(
+                label: Text(
+                  '${formatMm(preset)} мм',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                selected: (value - preset).abs() < 1e-9,
+                visualDensity: VisualDensity.compact,
+                onSelected: (_) {
+                  setState(() => _errors[ParamField.weldOverlap] = null);
+                  _updateWindow(params.copyWith(weldOverlapMm: preset));
+                },
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('weld-overlap-field'),
+          controller: _controllers[ParamField.weldOverlap],
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: 'Запайка плёнки под окантовку, мм',
+            suffixText: 'мм',
+            helperText: '${formatMm(minWeldOverlapMm)}…'
+                '${formatMm(maxWeldOverlapMm)} мм; заготовка плёнки = готовый '
+                'размер − 2 × окантовка + 2 × запайка',
+            helperMaxLines: 2,
+            border: const OutlineInputBorder(),
+            isDense: true,
+            errorText: _errorFor(ParamField.weldOverlap),
+            errorMaxLines: 2,
+          ),
+          onChanged: _onWeldOverlapChanged,
+        ),
+      ],
+    );
+  }
+
+  /// Подворот скрина: пресеты 40/50/60 мм и своё значение.
+  Widget _hemField(WindowParams params) {
+    final value = params.hemMm;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Подворот скрина на сторону',
+          style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final preset in screenHemPresets)
+              ChoiceChip(
+                label: Text(
+                  '${formatMm(preset)} мм',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                selected: (value - preset).abs() < 1e-9,
+                visualDensity: VisualDensity.compact,
+                onSelected: (_) {
+                  setState(() => _errors[ParamField.hemWidth] = null);
+                  _updateWindow(params.copyWith(hemMm: preset));
+                },
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('hem-field'),
+          controller: _controllers[ParamField.hemWidth],
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: 'Подворот, мм на сторону',
+            suffixText: 'мм',
+            helperText: 'готовый размер + 2 × подворот: 2000 → '
+                '${formatMm(2000 + 2 * value)} мм; шов сварки '
+                '${formatMm(screenSeamMm)} мм',
+            helperMaxLines: 2,
+            border: const OutlineInputBorder(),
+            isDense: true,
+            errorText: _errorFor(ParamField.hemWidth),
+            errorMaxLines: 2,
+          ),
+          onChanged: _onHemChanged,
+        ),
+      ],
+    );
+  }
+
   /// Блок «Припуски на раскрой»: кнопка-переключатель, два поля и итог.
   Widget _allowanceSection(WindowSpec spec) {
     final params = spec.params;
@@ -616,10 +766,17 @@ class _ParamsPanelState extends State<ParamsPanel> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         children: [
-          const _Hint(
-            'Каждое окно рисуется слоями: окантовка (складывается пополам), '
-            'напайка 25 мм, плёнка, люверсы и крепёж. Номера окон подписываются '
-            'на листе, раскладка плёнки — на отдельном листе рулона.',
+          _Hint(
+            params.isScreen
+                ? 'Скрин — самостоятельная технология: серое полотно '
+                    'подворачивается по периметру на 40/50/60 мм, шов '
+                    '${formatMm(screenSeamMm)} мм, крепёж — только люверсы по '
+                    'линии подворота. Тента и окантовки у скрина нет: '
+                    'заготовка равна готовому размеру плюс два подворота.'
+                : 'Каждое окно рисуется слоями: окантовка (складывается '
+                    'пополам), запайка плёнки под окантовку, плёнка, люверсы и '
+                    'крепёж. Номера окон подписываются на листе, раскладка '
+                    'плёнки — на отдельном листе рулона.',
           ),
           const SizedBox(height: 18),
           _sectionHeader(
@@ -764,13 +921,30 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     ),
                 ],
               ),
+              if (params.isScreen) ...[
+                const SizedBox(height: 14),
+                _hemField(params),
+                const SizedBox(height: 8),
+                Text(
+                  'Заготовка скрина — готовый размер плюс два подворота: '
+                  '${formatMm(spec.filmCutWidthWithAllowance)} × '
+                  '${formatMm(spec.filmCutHeightWithAllowance)} мм. '
+                  'Усадки у скрина нет; нужен запас — добавьте припуск на '
+                  'раскрой в разделе выше.',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF66748A),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
-          _expansion(
-            title: 'Окантовка',
-            subtitle: '${spec.edgeBySideSummary} · ${params.edgeColor.label}',
-            children: [
+          if (!params.isScreen)
+            _expansion(
+              title: 'Окантовка',
+              subtitle: '${spec.edgeBySideSummary} · ${params.edgeColor.label}',
+              children: [
               const Text(
                 'Ширина рулона на каждую сторону, мм — пресеты или своё '
                 'значение (складывается пополам)',
@@ -797,8 +971,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
               const SizedBox(height: 10),
               Text(
                 'Готовая полоса — половина рулона. Своя ширина 40…400 мм; '
-                'если ширина меньше 100 мм, напайке 2 × '
-                '${formatMm(weldOverlap)} мм может не хватить ленты.',
+                'если ширина меньше 100 мм, запайке 2 × '
+                '${formatMm(params.weldOverlapMm)} мм может не хватить ленты.',
                 style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
               ),
               const SizedBox(height: 14),
@@ -913,12 +1087,21 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 ),
               ],
               const SizedBox(height: 12),
-              _readOnlyField(
-                'Напайка плёнки под окантовку',
-                '${formatMm(weldOverlap)} мм',
-              ),
+              _weldOverlapField(params),
             ],
-          ),
+          )
+          else
+            _panelCard(
+              child: Text(
+                'Окантовка скрину не нужна: материал подворачивается сам. '
+                'Подворот 40/50/60 мм и шов ${formatMm(screenSeamMm)} мм — '
+                'в разделе «Полотно (плёнка)».',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  color: Color(0xFF5B6B80),
+                ),
+              ),
+            ),
           const SizedBox(height: 12),
           _expansion(
             title: 'Крепёж',
@@ -957,25 +1140,40 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 ],
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Люверсы ставятся от углов: при 0 мм первый люверс стоит в углу.',
-                style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-              ),
-              const SizedBox(height: 14),
               Text(
-                params.windowType == WindowType.fixed
-                    ? 'Крепление к каркасу'
-                    : 'Крепёж подвижных сторон (низ и бока)',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
+                params.isScreen
+                    ? 'Люверсы ставятся по линии подворота: у скрина других '
+                        'креплений нет.'
+                    : 'Люверсы ставятся от углов: при 0 мм первый люверс стоит в углу.',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
               ),
-              const SizedBox(height: 6),
-              _chips<FastenerType>(
-                values: FastenerType.values,
-                selected: params.fastenerType,
-                labelOf: (value) => value.label,
-                onSelected: (value) =>
-                    _updateWindow(params.copyWith(fastenerType: value)),
-              ),
+              if (!params.isScreen) ...[
+                const SizedBox(height: 14),
+                Text(
+                  params.windowType == WindowType.fixed
+                      ? 'Крепление к каркасу'
+                      : 'Крепёж подвижных сторон (низ и бока)',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF5B6B80),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                _chips<FastenerType>(
+                  values: FastenerType.values,
+                  selected: params.fastenerType,
+                  labelOf: (value) => value.label,
+                  onSelected: (value) =>
+                      _updateWindow(params.copyWith(fastenerType: value)),
+                ),
+              ] else ...[
+                const SizedBox(height: 10),
+                const Text(
+                  'Крепёж скрина — только люверсы: поворотные скобы, '
+                  'французские замки и ремни не применяются.',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -983,60 +1181,90 @@ class _ParamsPanelState extends State<ParamsPanel> {
             title: 'Молния и карман',
             subtitle: _specElementsSummary(params),
             children: [
-              if (params.zippers.isEmpty)
-                OutlinedButton.icon(
-                  onPressed: () => _updateWindow(params.addZipper()),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Добавить молнию'),
-                )
-              else ...[
-                for (var index = 0; index < params.zippers.length; index++)
-                  _zipperCard(params, spec, index),
-                if (params.zippers.length == 1 && maxZippers > 1)
+              if (!params.isScreen) ...[
+                if (params.zippers.isEmpty)
                   OutlinedButton.icon(
                     onPressed: () => _updateWindow(params.addZipper()),
                     icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Добавить вторую молнию'),
+                    label: const Text('Добавить молнию'),
+                  )
+                else ...[
+                  for (var index = 0; index < params.zippers.length; index++)
+                    _zipperCard(params, spec, index),
+                  if (params.zippers.length == 1 && maxZippers > 1)
+                    OutlinedButton.icon(
+                      onPressed: () => _updateWindow(params.addZipper()),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Добавить вторую молнию'),
+                    ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Молния впаивается в полосу тента: на чертеже показаны полоса '
+                    'спайки и расстояния до кромок плёнки. Всего до $maxZippers молний.',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF66748A),
+                    ),
                   ),
+                ],
+                const SizedBox(height: 10),
+              ] else ...[
+                const Text(
+                  'Молния у скрина не ставится: полотно подворачивается и '
+                  'крепится люверсами.',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                ),
+                const SizedBox(height: 10),
+              ],
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Карман снизу (по нижней кромке)'),
+                value: params.pocket,
+                onChanged: (value) =>
+                    _updateWindow(params.copyWith(pocket: value)),
+              ),
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Карман сверху (по верхней кромке)'),
+                value: params.pocketTop,
+                onChanged: (value) =>
+                    _updateWindow(params.copyWith(pocketTop: value)),
+              ),
+              if (params.pocket || params.pocketTop) ...[
+                _numberField(ParamField.pocketWidth),
                 const SizedBox(height: 6),
                 Text(
-                  'Молния впаивается в полосу тента: на чертеже показаны полоса '
-                  'спайки и расстояния до кромок плёнки. Всего до $maxZippers молний.',
+                  params.isScreen
+                      ? 'У скрина карман образуется подворотом материала '
+                          '${formatMm(params.pocketWidth)} мм. Угловые люверсы со '
+                          'стороны кармана не ставятся, крайние боковые смещаются '
+                          'на ${formatMm(pocketCornerOffset)} мм — чтобы в полость '
+                          'кармана заводился утяжитель.'
+                      : 'Карман делается из тента 200 мм, складывается пополам — '
+                          'получается 100 мм. Угловые люверсы со стороны кармана '
+                          'не ставятся: они смещаются на '
+                          '${formatMm(pocketCornerOffset)} мм, чтобы в полость '
+                          'кармана заводился утяжитель.',
                   style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF66748A),
                   ),
                 ),
               ],
-              const SizedBox(height: 10),
-              SwitchListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Карман по нижней кромке'),
-                value: params.pocket,
-                onChanged: (value) =>
-                    _updateWindow(params.copyWith(pocket: value)),
-              ),
-              if (params.pocket) ...[
-                _numberField(ParamField.pocketWidth),
-                const SizedBox(height: 6),
-                const Text(
-                  'Карман делается из тента 200 мм, складывается пополам — '
-                  'получается 100 мм. Нижние угловые люверсы не ставятся: они '
-                  'поднимаются на 50 мм, чтобы в полость кармана заводился утяжитель.',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+              if (!params.isScreen) ...[
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Дренажные отверстия внизу'),
+                  value: params.drainHoles,
+                  onChanged: (value) =>
+                      _updateWindow(params.copyWith(drainHoles: value)),
                 ),
+                if (params.drainHoles) _numberField(ParamField.drainCount),
               ],
-              const SizedBox(height: 8),
-              SwitchListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Дренажные отверстия внизу'),
-                value: params.drainHoles,
-                onChanged: (value) =>
-                    _updateWindow(params.copyWith(drainHoles: value)),
-              ),
-              if (params.drainHoles) _numberField(ParamField.drainCount),
             ],
           ),
           const SizedBox(height: 12),
@@ -1075,8 +1303,17 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 'заготовка ${formatMm(spec.filmCutWidthWithAllowance)} × '
                 '${formatMm(spec.filmCutHeightWithAllowance)} мм',
             children: [
-              _numberField(ParamField.shrinkagePercent),
-              const SizedBox(height: 12),
+              if (params.isScreen) ...[
+                const Text(
+                  'У скрина усадки нет: заготовка равна готовому размеру плюс '
+                  'два подворота. Нужен запас — добавьте припуск на раскрой.',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                ),
+                const SizedBox(height: 12),
+              ] else ...[
+                _numberField(ParamField.shrinkagePercent),
+                const SizedBox(height: 12),
+              ],
               _CuttingCard(spec: spec),
             ],
           ),
@@ -1276,8 +1513,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
     final parts = <String>[
       ?zipperPart,
       if (params.cutouts.isNotEmpty) 'вырезов ${params.cutouts.length}',
-      if (params.pocket) 'карман ${formatMm(params.pocketWidth)} мм',
-      if (params.drainHoles) 'дренаж ${params.drainCount.round()} шт',
+      if (params.pocket) 'карман снизу ${formatMm(params.pocketWidth)} мм',
+      if (params.pocketTop) 'карман сверху ${formatMm(params.pocketWidth)} мм',
+      if (params.drainHoles && !params.isScreen)
+        'дренаж ${params.drainCount.round()} шт',
     ];
     return parts.isEmpty ? 'не включены' : parts.join(' · ');
   }
@@ -1821,22 +2060,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
       onChanged: (value) => _onNumberChanged(field, value),
     );
   }
-
-  Widget _readOnlyField(String label, String value) {
-    return InputDecorator(
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-        isDense: true,
-      ),
-      child: Text(
-        value,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 12.5),
-      ),
-    );
-  }
 }
 
 /// Карточка раскроя: что и сколько закупать.
@@ -1851,21 +2074,33 @@ class _CuttingCard extends StatelessWidget {
     final rows = <(String, String)>[
       ('Площадь изделия', '${formatMeters(spec.productAreaM2)} м²'),
       (
-        'Плёнка видимая',
+        params.isScreen ? 'Полотно скрина видимое' : 'Плёнка видимая',
         '${formatMm(spec.filmVisibleWidth)} × ${formatMm(spec.filmVisibleHeight)} мм',
       ),
       (
-        'Заготовка с напайкой ${formatMm(weldOverlap)} мм'
-            '${params.hasAllowance ? ' и припуском' : ''}',
+        params.isScreen
+            ? 'Заготовка: готовый размер + 2 × подворот '
+                '${formatMm(params.hemMm)} мм'
+                '${params.hasAllowance ? ' и припуск' : ''}'
+            : 'Заготовка с запайкой ${formatMm(params.weldOverlapMm)} мм'
+                '${params.hasAllowance ? ' и припуском' : ''}',
         '${formatMm(spec.filmCutWidthWithAllowance)} × '
             '${formatMm(spec.filmCutHeightWithAllowance)} мм',
       ),
-      (
-        'С усадкой ${formatPercent(params.shrinkagePercent)}',
-        '${formatMm(spec.filmCutWidthWithShrinkage)} × '
-            '${formatMm(spec.filmCutHeightWithShrinkage)} мм',
-      ),
+      if (!params.isScreen)
+        (
+          'С усадкой ${formatPercent(params.effectiveShrinkagePercent)}',
+          '${formatMm(spec.filmCutWidthWithShrinkage)} × '
+              '${formatMm(spec.filmCutHeightWithShrinkage)} мм',
+        )
+      else
+        ('Усадка', 'нет'),
       ('Площадь заготовки в раскрое', '${formatMeters(spec.filmCutAreaM2)} м²'),
+      if (params.isScreen)
+        (
+          'Подворот и шов ${formatMm(screenSeamMm)} мм',
+          '${formatMm(params.hemMm)} мм на сторону'
+        ),
       for (final label in spec.edgeConsumptionLabels)
         ('Окантовка ${label.split(' — ').first}', label.split(' — ').last),
       ('Люверсов', '${spec.eyeletCount} шт, шаг ${spec.eyeletStepLabel}'),

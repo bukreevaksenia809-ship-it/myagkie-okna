@@ -102,6 +102,20 @@ const _mesh = WindowParams(
   rightHeight: 2000,
 );
 
+/// Скрин 2000 × 2000: подворот 40 мм, заготовка 2080 × 2080 мм, тента нет.
+const _screen = WindowParams(
+  projectName: 'Мягкое окно веранды',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-022',
+  material: FilmMaterial.screen,
+  bottomWidth: 2000,
+  topWidth: 2000,
+  leftHeight: 2000,
+  rightHeight: 2000,
+  hemMm: 40,
+  pocketTop: true,
+);
+
 /// Окно со своими (нетиповыми) ширинами окантовки на каждую сторону:
 /// низ 150, право 210, верх 95, лево 240 мм — полосы на чертеже разной
 /// толщины.
@@ -199,6 +213,22 @@ void main() {
         viewport: const Size(1720, 1180),
         build: (key) => DrawingSheet(
           project: const OrderProject(windows: [_rich]),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      'skrin': (
+        viewport: const Size(1720, 1080),
+        build: (key) => DrawingSheet(
+          project: const OrderProject(windows: [_screen]),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      'skrin-rashody': (
+        viewport: const Size(1720, 1080),
+        build: (key) => CostsSheet(
+          project: const OrderProject(windows: [_screen]),
           captureKey: key,
           labelFontFamily: testFontFamily,
         ),

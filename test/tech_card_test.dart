@@ -60,6 +60,20 @@ const _rich = WindowParams(
   drainHoles: true,
 );
 
+/// Скрин 2000 × 2000: подворот 40 мм, заготовка 2080 × 2080, без тента.
+const _screen = WindowParams(
+  projectName: 'Мягкое окно веранды',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-022',
+  material: FilmMaterial.screen,
+  bottomWidth: 2000,
+  topWidth: 2000,
+  leftHeight: 2000,
+  rightHeight: 2000,
+  hemMm: 40,
+  pocketTop: true,
+);
+
 /// Простое глухое окно из москитной сетки.
 const _mesh = WindowParams(
   projectName: 'Мягкое окно веранды',
@@ -127,13 +141,13 @@ void main() {
         cutting.description,
         contains(formatPercent(_window.shrinkagePercent)),
       );
-      expect(cutting.text, contains(formatMm(weldOverlap)));
+      expect(cutting.text, contains(formatMm(defaultWeldOverlapMm)));
     });
 
     test('напайка содержит режим сварки из примечаний приложения', () {
       final welding = _op(card, TechOperationKind.welding);
       expect(welding.text, contains('400–500'));
-      expect(welding.text, contains(formatMm(weldOverlap)));
+      expect(welding.text, contains(formatMm(defaultWeldOverlapMm)));
     });
 
     test('окантовка сходится с edgeConsumption по типам рулонов', () {
@@ -414,6 +428,54 @@ void main() {
     );
   });
 
+  group('карта скрина', () {
+    final card = TechCard.forWindow(_screen);
+
+    test('есть раскрой и подворот, нет напайки и окантовки', () {
+      final kinds = [for (final operation in card.operations) operation.kind];
+      expect(kinds, contains(TechOperationKind.cutting));
+      expect(kinds, contains(TechOperationKind.hem));
+      expect(kinds, contains(TechOperationKind.eyelets));
+      expect(kinds, isNot(contains(TechOperationKind.welding)));
+      expect(kinds, isNot(contains(TechOperationKind.edging)));
+      expect(kinds, isNot(contains(TechOperationKind.straps)));
+      expect(kinds, isNot(contains(TechOperationKind.drain)));
+      // Ни одна операция не упоминает тент или напайку скрина.
+      expect(card.operations.map((op) => op.text).join(' '),
+          isNot(contains('напайка')));
+    });
+
+    test('заготовка 2080 × 2080 и строка про шов 3 мм', () {
+      final cutting = _op(card, TechOperationKind.cutting);
+      expect(cutting.title, 'Раскрой скрина');
+      expect(cutting.text, contains(formatMm(2080)));
+      expect(cutting.text, isNot(contains('усадка 1,5')));
+
+      final hem = _op(card, TechOperationKind.hem);
+      expect(hem.text, contains('Подворот'));
+      expect(hem.text, contains(formatMm(screenSeamMm)));
+      expect(hem.text, contains(formatMm(_screen.hemMm)));
+      // Подворот — только у скрина, шов 3 мм с каждой стороны.
+      expect(hem.materials.first.size,
+          '${formatMm(_screen.hemMm)} мм на сторону');
+    });
+
+    test('люверсы ставятся по подвороту, крепёж только они', () {
+      final eyelets = _op(card, TechOperationKind.eyelets);
+      expect(eyelets.text, contains('по линии подворота'));
+      expect(eyelets.text, contains('только люверсы'));
+      expect(eyelets.text, isNot(contains('французский')));
+    });
+
+    test('верхний карман считается и подписан', () {
+      final pocket = _op(card, TechOperationKind.pocket);
+      expect(pocket.title, contains('сверху'));
+      expect(pocket.text, contains(formatMm(_screen.pocketWidth)));
+      expect(pocket.materials.first.quantity,
+          closeTo(_screen.topWidth, 1e-9));
+    });
+  });
+
   testWidgets('пишет PNG-превью листа техкарты', (tester) async {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -471,4 +533,4 @@ void main() {
 
 /// Заказ для превью: три разных окна, включая богатое подъёмное.
 OrderProject _previewOrder() =>
-    const OrderProject(windows: [_rich, _window, _mesh]);
+    const OrderProject(windows: [_rich, _window, _mesh, _screen]);

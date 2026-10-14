@@ -103,9 +103,13 @@ const double _minEyeletMaterialMarginMm = 5;
 const double _minFinishedEdgeMm = 40;
 const double _maxFinishedEdgeMm = 120;
 
-/// Под напайку нужна лента шириной с саму напайку плюс запас на кромку:
-/// 25 + 15 = 40 мм готовой полосы. Меньше — шов остаётся без тела.
-const double _minEdgeForWeldMm = weldOverlap + 15;
+/// Разумный диапазон запайки плёнки под окантовку, мм.
+const double _minWeldOverlapMm = 5;
+const double _maxWeldOverlapMm = 60;
+
+/// Технологичный подворот скрина, мм на сторону.
+const double _minHemMm = 30;
+const double _maxHemMm = 80;
 
 /// Полотно плёнки уже 300 мм не удержать в окантовке.
 const double _minFilmSideMm = 300;
@@ -156,6 +160,8 @@ List<TechCheck> techChecksFor(WindowParams params) {
 
   _checkEyeletStep(params, checks);
   _checkEyeletClearance(params, spec, checks);
+  _checkWeldOverlap(params, checks);
+  _checkScreenHem(params, checks);
   _checkEdgeRolls(params, checks);
   _checkFilm(params, spec, checks);
   _checkLifting(params, spec, checks);
@@ -271,7 +277,27 @@ void _checkEyeletClearance(
   }
 
   // Кольцо люверса должно помещаться в окантовку: от линии люверсов до обеих
-  // кромок ленты ровно половина готовой ширины окантовки.
+  // кромок ленты ровно половина готовой ширины окантовки. У скрина окантовки
+  // нет — люверсы стоят по подвороту, и запас считаем по [WindowParams.hemMm].
+  if (params.isScreen) {
+    final ringHalf = params.effectiveEyeletType.outerHeight / 2;
+    if (params.hemMm / 2 - ringHalf < _minEyeletMaterialMarginMm) {
+      checks.add(TechCheck(
+        ruleId: 'eyelet-hem-material',
+        severity: TechSeverity.warning,
+        title: 'Люверсу не хватает подворота: запас всего '
+            '${formatMm(math.max(params.hemMm / 2 - ringHalf, 0))} мм',
+        explanation: 'Кольцо ${params.effectiveEyeletType.label.toLowerCase()} '
+            'почти выходит за подворот ${formatMm(params.hemMm)} мм: ткань '
+            'под кольцом продавливается и рвётся.',
+        recommendation: 'Увеличьте подворот до '
+            '${formatMm(math.max(params.hemMm, _minHemMm * 2))} мм или '
+            'поставьте люверс меньшего размера.',
+      ));
+    }
+    return;
+  }
+
   final minFinished = spec.layers.finishedWidths.reduce(math.min);
   final ringHalf = params.effectiveEyeletType.outerHeight / 2;
   final margin = minFinished / 2 - ringHalf;
@@ -292,14 +318,76 @@ void _checkEyeletClearance(
 
 // ——————————————————————— Правила по окантовке ———————————————————————
 
+/// Запайка (напайка) плёнки под окантовку — вводится руками, 5…60 мм.
+///
+/// От запайки напрямую зависит размер заготовки: каждый миллиметр добавляет
+/// по миллиметру с каждой стороны. Слишком мало — шов без тела, слишком много
+/// — перерасход плёнки и толстый валик под лентой.
+void _checkWeldOverlap(WindowParams params, List<TechCheck> checks) {
+  if (params.isScreen) return;
+  final overlap = params.weldOverlapMm;
+  if (!overlap.isFinite ||
+      overlap < _minWeldOverlapMm ||
+      overlap > _maxWeldOverlapMm) {
+    checks.add(TechCheck(
+      ruleId: 'weld-overlap-range',
+      severity: TechSeverity.error,
+      field: ParamField.weldOverlap,
+      title: 'Запайка ${formatMm(overlap)} мм — вне диапазона '
+          '${formatMm(_minWeldOverlapMm)}–${formatMm(_maxWeldOverlapMm)} мм',
+      explanation: 'Плёнка заходит под окантовку на запайку; при значении вне '
+          'диапазона заготовка считается неверно: мало — шов рвётся по кромке, '
+          'много — перерасход плёнки и бугор под лентой.',
+      recommendation: 'Поставьте запайку 10–40 мм (обычно 25 мм) и проверьте '
+          'размер заготовки в раскрое.',
+    ));
+  }
+}
+
+/// Подворот скрина.
+///
+/// Скрин подворачивается сам: подворот 40–60 мм держит люверс и даёт
+/// заготовку 2080–2120 мм на готовое окно 2000 мм. Меньше 30 мм — ткань
+/// вырывается по люверсу, больше 80 мм — перерасход ткани без пользы.
+void _checkScreenHem(WindowParams params, List<TechCheck> checks) {
+  if (!params.isScreen) return;
+  final hem = params.hemMm;
+  if (!hem.isFinite || hem <= 0) {
+    checks.add(const TechCheck(
+      ruleId: 'screen-hem-missing',
+      severity: TechSeverity.error,
+      field: ParamField.hemWidth,
+      title: 'Подворот скрина не задан',
+      explanation: 'Без подворота скрин не за что закрепить: люверсы ставятся '
+          'по линии подворота, а шов держит кромку.',
+      recommendation: 'Поставьте подворот 40, 50 или 60 мм на сторону.',
+    ));
+    return;
+  }
+  if (hem < _minHemMm || hem > _maxHemMm) {
+    checks.add(TechCheck(
+      ruleId: 'screen-hem-range',
+      severity: TechSeverity.warning,
+      field: ParamField.hemWidth,
+      title: 'Подворот скрина ${formatMm(hem)} мм — вне обычного диапазона '
+          '${formatMm(_minHemMm)}–${formatMm(_maxHemMm)} мм',
+      explanation: 'Подворот держит кольцо люверса и шов кромки. Узкий '
+          'подворот вырывается по люверсу, широкий — лишний расход ткани.',
+      recommendation: 'Для типового скрина берите подворот 40, 50 или 60 мм.',
+    ));
+  }
+}
+
 /// Ширина готовой (сложенной) окантовки.
 ///
 /// Лента уже 40 мм после складывания не держит кольцо люверса; шире 120 мм —
 /// неоправданный расход тента и лишний вес по периметру. Отдельно проверяем
-/// напайку: плёнка заходит под окантовку на [weldOverlap] с каждой стороны,
-/// поэтому окантовка уже 2 × [weldOverlap] оставляет шов без тела — плёнке
-/// буквально не за что зацепиться.
+/// запайку: плёнка заходит под окантовку на [WindowParams.weldOverlapMm] с
+/// каждой стороны, поэтому окантовка уже 2 × запайка оставляет шов без тела —
+/// плёнке буквально не за что зацепиться. У скрина окантовки нет — правила
+/// не применяются.
 void _checkEdgeRolls(WindowParams params, List<TechCheck> checks) {
+  if (params.isScreen) return;
   final narrow = <EdgeSide>[];
   final wide = <EdgeSide>[];
   final weakWeld = <EdgeSide>[];
@@ -308,7 +396,7 @@ void _checkEdgeRolls(WindowParams params, List<TechCheck> checks) {
     final finished = WindowParams.finishedEdgeWidth(params.rollForSide(side));
     if (finished < _minFinishedEdgeMm) narrow.add(side);
     if (finished > _maxFinishedEdgeMm) wide.add(side);
-    if (finished < _minEdgeForWeldMm) weakWeld.add(side);
+    if (finished < params.weldOverlapMm + 15) weakWeld.add(side);
   }
 
   if (narrow.isNotEmpty) {
@@ -337,17 +425,18 @@ void _checkEdgeRolls(WindowParams params, List<TechCheck> checks) {
   }
 
   if (weakWeld.isNotEmpty) {
+    final minEdge = params.weldOverlapMm + 15;
     checks.add(TechCheck(
       ruleId: 'edge-weld-insufficient',
       severity: TechSeverity.error,
-      title: 'Окантовка уже ${formatMm(_minEdgeForWeldMm)} мм — плёнке не за '
+      title: 'Окантовка уже ${formatMm(minEdge)} мм — плёнке не за '
           'что зацепиться (${_sidesLabel(weakWeld)})',
-      explanation: 'Плёнка заходит под окантовку на ${formatMm(weldOverlap)} мм с '
-          'каждой стороны; при готовой окантовке меньше '
-          '${formatMm(_minEdgeForWeldMm)} мм напайка съедает всю ленту и шов '
-          'остаётся без тела.',
+      explanation: 'Плёнка заходит под окантовку на '
+          '${formatMm(params.weldOverlapMm)} мм с каждой стороны; при готовой '
+          'окантовке меньше ${formatMm(minEdge)} мм запайка съедает всю ленту '
+          'и шов остаётся без тела.',
       recommendation: 'Возьмите рулон шире: 200 мм (готовых 100 мм) или '
-          '240 мм (готовых 120 мм).',
+          '240 мм (готовых 120 мм), либо уменьшите запайку.',
     ));
   }
 }
@@ -495,12 +584,12 @@ void _checkZippers(
     }
   }
 
-  if (params.pocket) {
+  if (params.pocket || params.pocketTop) {
     checks.add(const TechCheck(
       ruleId: 'zipper-pocket-axis',
       severity: TechSeverity.warning,
       title: 'Молния в окне с карманом',
-      explanation: 'Вертикальная молния доходит до нижней кромки, где идёт карман: '
+      explanation: 'Вертикальная молния доходит до кромки, где идёт карман: '
           'спайка молнии и шов кармана делят одну окантовку, а утяжителю '
           'нужно свободно заводиться в полость кармана.',
       recommendation: 'Сместите молнию от середины кармана, укоротите её до '
@@ -670,6 +759,23 @@ void _checkWeldedSides(
 /// чертёж, об этом надо сказать. Подъёмное окно с крепежом «только люверсы»
 /// поднимать нечем: за люверс не тянут, нужны скобы, замки или ремни.
 void _checkFastener(WindowParams params, List<TechCheck> checks) {
+  // Скрин крепится только люверсами: выбранный крепёж игнорируется.
+  if (params.isScreen) {
+    if (params.fastenerType != FastenerType.eyeletsOnly) {
+      checks.add(const TechCheck(
+        ruleId: 'screen-fastener-ignored',
+        severity: TechSeverity.info,
+        title: 'Крепёж скрина: только люверсы',
+        explanation: 'Скрин крепится по подвороту люверсами; скобы, замки и '
+            'ремни в нём не ставятся, поэтому выбранный тип крепежа не '
+            'учитывается.',
+        recommendation: 'Для скрина оставьте «Только люверсы» — остальное '
+            'приложение проигнорирует.',
+      ));
+    }
+    return;
+  }
+
   if (params.windowType == WindowType.fixed &&
       params.eyeletType != EyeletType.round10) {
     checks.add(const TechCheck(

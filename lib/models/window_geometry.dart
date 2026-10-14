@@ -120,8 +120,8 @@ class WindowGeometry {
       leftHeight: _positive(params.leftHeight),
       rightHeight: _positive(params.rightHeight),
       topOffset: offset,
-      pocketDrop: params.pocket ? pocketWidth : 0,
-      pocketTopRise: params.pocketTop ? pocketWidth : 0,
+      pocketDrop: params.pocket && !params.isScreen ? pocketWidth : 0,
+      pocketTopRise: params.pocketTop && !params.isScreen ? pocketWidth : 0,
     );
   }
 
@@ -525,20 +525,30 @@ class WindowLayers {
   /// Карман — продолжение нижнего тента вниз: полоса тента 200 мм,
   /// сложенная пополам (100 мм), по всей ширине окна.
   ///
-  /// У скрина эта же полоса образуется нижним подворотом.
+  /// У скрина эта же полоса образуется нижним подворотом: она рисуется
+  /// внутри готового контура, потому что отдельного тента нет.
   Rect get pocketRect => params.pocket
-      ? Rect.fromLTRB(0, -params.pocketWidth, geometry.bottomWidth, 0)
+      ? (params.isScreen
+          ? Rect.fromLTRB(0, 0, geometry.bottomWidth, params.pocketWidth)
+          : Rect.fromLTRB(0, -params.pocketWidth, geometry.bottomWidth, 0))
       : Rect.zero;
 
-  /// Верхний карман — зеркало нижнего: полоса тента/подворота вверх от
-  /// верхней кромки.
+  /// Верхний карман — зеркало нижнего: полоса тента/подворота у верхней
+  /// кромки (у скрина — внутри контура, по верхнему подвороту).
   Rect get pocketTopRect => params.pocketTop
-      ? Rect.fromLTRB(
-          geometry.topOffset,
-          geometry.maxY,
-          geometry.topOffset + geometry.topWidth,
-          geometry.maxY + params.pocketWidth,
-        )
+      ? (params.isScreen
+          ? Rect.fromLTRB(
+              geometry.topOffset,
+              geometry.maxY - params.pocketWidth,
+              geometry.topOffset + geometry.topWidth,
+              geometry.maxY,
+            )
+          : Rect.fromLTRB(
+              geometry.topOffset,
+              geometry.maxY,
+              geometry.topOffset + geometry.topWidth,
+              geometry.maxY + params.pocketWidth,
+            ))
       : Rect.zero;
 
   _EyeletResult _computeEyelets() {
@@ -893,7 +903,8 @@ class WindowSpec {
               '${formatMm(filmCutHeightWithShrinkage)} мм'}',
       if (params.hasAllowance)
         'Припуск на раскрой: ширина ${params.allowanceWidthLabel} мм, '
-            'высота ${params.allowanceHeightLabel} мм — полотно кроится '
+            'высота ${params.allowanceHeightLabel} мм — '
+            '${params.isScreen ? 'скрин кроится' : 'плёнка кроится'} '
             '${formatMm(filmCutWidthWithAllowance)} × '
             '${formatMm(filmCutHeightWithAllowance)} мм',
       'Люверсы ${eyeletType.label.toLowerCase()}, шаг $eyeletStepLabel '

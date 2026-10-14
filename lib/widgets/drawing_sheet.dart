@@ -553,8 +553,12 @@ class _TitleBlock extends StatelessWidget {
                 Expanded(
                   flex: 3,
                   child: _cell(
-                    'Окантовка по сторонам',
-                    windows.length == 1 ? specs.first.edgeBySideSummary : 'см. подписи и расход',
+                    first.isScreen
+                        ? 'Скрин: подворот по периметру'
+                        : 'Окантовка по сторонам',
+                    windows.length == 1
+                        ? specs.first.edgeBySideSummary
+                        : 'см. подписи и расход',
                   ),
                 ),
                 Expanded(
@@ -577,7 +581,11 @@ class _TitleBlock extends StatelessWidget {
                 Expanded(
                   flex: 3,
                   child: _cell(
-                    'Плёнка: раскрой с напайкой $weldOverlap мм',
+                    first.isScreen
+                        ? 'Скрин: заготовка с подворотом '
+                            '${formatMm(first.hemMm)} мм'
+                        : 'Полотно: раскрой с запайкой '
+                            '${formatMm(first.weldOverlapMm)} мм',
                     windows.length == 1
                         ? '${formatMm(specs.first.filmCutWidthWithAllowance)} × '
                             '${formatMm(specs.first.filmCutHeightWithAllowance)}'
@@ -587,10 +595,15 @@ class _TitleBlock extends StatelessWidget {
                 Expanded(
                   flex: 2,
                   child: _cell(
-                    'С усадкой ${formatPercent(first.shrinkagePercent)}',
+                    first.isScreen
+                        ? 'Усадка'
+                        : 'С усадкой '
+                            '${formatPercent(first.effectiveShrinkagePercent)}',
                     windows.length == 1
-                        ? '${formatMm(specs.first.filmCutWidthWithShrinkage)} × '
-                            '${formatMm(specs.first.filmCutHeightWithShrinkage)}'
+                        ? (first.isScreen
+                            ? 'нет'
+                            : '${formatMm(specs.first.filmCutWidthWithShrinkage)} × '
+                                '${formatMm(specs.first.filmCutHeightWithShrinkage)}')
                         : '${formatMeters(totalFilmAreaWithShrinkage)} м²',
                   ),
                 ),
@@ -697,17 +710,30 @@ class _SidePanel extends StatelessWidget {
     };
 
     final entries = <(LegendKind, String)>[
-      (
-        LegendKind.edge,
-        'Окантовка по сторонам: ${_widthList(windows)} мм'
-      ),
-      (LegendKind.seam, 'Напайка $weldOverlap мм'),
+      if (params.isScreen)
+        (
+          LegendKind.seam,
+          'Подворот ${formatMm(params.hemMm)} мм, шов '
+              '${formatMm(screenSeamMm)} мм'
+        )
+      else ...[
+        (
+          LegendKind.edge,
+          'Окантовка по сторонам: ${_widthList(windows)} мм'
+        ),
+        (LegendKind.seam, 'Запайка ${formatMm(params.weldOverlapMm)} мм'),
+      ],
       (
         LegendKind.film,
         'Полотно: ${materials.map((material) => material.label.toLowerCase()).join(', ')}'
       ),
-      (LegendKind.eyelet, 'Люверс ${params.eyeletType.label.toLowerCase()}'),
-      if (anyMovable)
+      (
+        LegendKind.eyelet,
+        params.isScreen
+            ? 'Люверс ${params.eyeletType.label.toLowerCase()} по подвороту'
+            : 'Люверс ${params.eyeletType.label.toLowerCase()}'
+      ),
+      if (anyMovable && !params.isScreen)
         switch (params.fastenerType) {
           FastenerType.turnBuckles => (LegendKind.buckle, 'Поворотная скоба'),
           FastenerType.frenchLocks => (LegendKind.lock, 'Французский замок'),
@@ -733,7 +759,9 @@ class _SidePanel extends StatelessWidget {
       if (anyPocket)
         (
           LegendKind.pocket,
-          'Карман ${formatMm(params.pocketWidth)} мм (тент 200 мм ×2)'
+          params.isScreen
+              ? 'Карман ${formatMm(params.pocketWidth)} мм (подворот)'
+              : 'Карман ${formatMm(params.pocketWidth)} мм (тент 200 мм ×2)'
         ),
       if (anyDrain) (LegendKind.drain, 'Дренаж Ø6 мм'),
     ];
@@ -756,7 +784,11 @@ class _SidePanel extends StatelessWidget {
                     child: CustomPaint(
                       painter: _LegendPainter(
                         kind: entry.$1,
-                        edgeColor: Color(params.edgeColor.value),
+                        // У скрина тента нет — знаки рисуем серым, а не цветом
+                        // тента.
+                        edgeColor: Color(
+                          params.isScreen ? 0xFF8C9298 : params.edgeColor.value,
+                        ),
                       ),
                     ),
                   ),
@@ -908,19 +940,29 @@ class _SidePanel extends StatelessWidget {
 
     return [
       'Окон в заказе: ${project.windows.length}; номера окон указаны под каждым чертежом',
-      'Окантовка складывается пополам, напайка на плёнку $weldOverlap мм '
-          'по всему периметру',
-      'Расход окантовки: '
-          '${labels.map((entry) => '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см').join(', ')}',
+      if (first.isScreen)
+        'Скрин: подворот ${formatMm(first.hemMm)} мм на сторону, шов '
+            '${formatMm(screenSeamMm)} мм; тента и окантовки нет'
+      else
+        'Окантовка складывается пополам, запайка плёнки под окантовку '
+            '${formatMm(first.weldOverlapMm)} мм по всему периметру',
+      if (!first.isScreen)
+        'Расход окантовки: '
+            '${labels.map((entry) => '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см').join(', ')}',
       'Люверсы: всего $totalEyelets шт, шаг ${specs.first.eyeletStepLabel}',
       'Крепёж: ${specs.first.fastenerSummary.toLowerCase()}',
-      'Плёнка: усадка ${formatPercent(first.shrinkagePercent)} учтена в раскрое',
-      'Раскладка плёнки на рулоне ($rollSummary) — на отдельном листе',
+      'Полотно: усадка '
+          '${formatPercent(first.effectiveShrinkagePercent)} учтена в раскрое',
+      'Раскладка полотна на рулоне ($rollSummary) — на отдельном листе',
       'Полотно: ${materials.map((material) => '${material.label} (${material.thickness})').join('; ')}',
       'Доступные рулоны: '
           '${materials.map((material) => '${material.label.toLowerCase()} — '
               '${material.rollWidthsLabel} см').join('; ')}',
-      '${first.edgeMaterial.joining}, морозостойкость до −30 °C',
+      if (first.isScreen)
+        'Скрин сваривается горячим воздухом 400–500 °C, морозостойкость '
+            'до −30 °C'
+      else
+        '${first.edgeMaterial.joining}, морозостойкость до −30 °C',
     ];
   }
 }

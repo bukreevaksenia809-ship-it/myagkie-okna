@@ -38,6 +38,7 @@ class _PanelHostState extends State<_PanelHost> {
 }
 
 void main() {
+  _screenAndWeldRules();
   testWidgets('панель 420: спайка добавляет окно, припуски идут в модель', (
     WidgetTester tester,
   ) async {
@@ -129,6 +130,96 @@ void main() {
     expect(reset.allowanceHeightMm, 0);
     expect(reset.hasAllowance, isFalse);
     expect(find.byKey(const Key('allowance-reset')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+}
+
+/// Панель: выбор скрина прячет окантовку и крепёж, запайка и карманы
+/// вводятся руками.
+void _screenAndWeldRules() {
+  testWidgets('панель: скрин, подворот, запайка и карманы', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 9000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final hostKey = GlobalKey<_PanelHostState>();
+    await tester.pumpWidget(_PanelHost(key: hostKey));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    // --- Скрин: чип рядом с ПВХ ---
+    final screenChip = find.text('Скрин');
+    await tester.ensureVisible(screenChip);
+    await tester.tap(screenChip);
+    await tester.pumpAndSettle();
+
+    var params = hostKey.currentState!.project.selected;
+    expect(params.material, FilmMaterial.screen);
+    expect(params.isScreen, isTrue);
+    expect(params.tech, WindowTech.screen);
+    // Окантовка и крепёж кроме люверсов спрятаны.
+    expect(find.text('Окантовка'), findsNothing);
+    expect(find.text('Поворотные скобы'), findsNothing);
+    expect(find.byKey(const Key('hem-field')), findsOneWidget);
+    // Подворот 60 мм: заготовка = готовый размер + 2 × 60 на каждую сторону.
+    await tester.enterText(find.byKey(const Key('hem-field')), '60');
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.hemMm, 60);
+    final screenSpec = WindowSpec.of(params);
+    expect(
+      screenSpec.filmCutWidthWithAllowance,
+      closeTo(params.bottomWidth + 2 * 60, 1e-9),
+    );
+    expect(
+      screenSpec.filmCutHeightWithAllowance,
+      closeTo(params.leftHeight + 2 * 60, 1e-9),
+    );
+    // Готовое окно панели 1500 × 2520 → заготовка 1620 × 2640 мм.
+    expect(screenSpec.filmCutWidthWithAllowance, closeTo(1620, 1e-9));
+    expect(screenSpec.filmCutHeightWithAllowance, closeTo(2640, 1e-9));
+    expect(tester.takeException(), isNull);
+
+    // --- Карман сверху и снизу ---
+    final topPocket = find.text('Карман сверху (по верхней кромке)');
+    await tester.ensureVisible(topPocket);
+    await tester.tap(topPocket);
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.pocketTop, isTrue);
+    expect(params.pocket, isFalse);
+
+    final bottomPocket = find.text('Карман снизу (по нижней кромке)');
+    await tester.ensureVisible(bottomPocket);
+    await tester.tap(bottomPocket);
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.pocket, isTrue);
+    expect(params.pocketTop, isTrue);
+    expect(tester.takeException(), isNull);
+
+    // --- Запайка под окантовку: возвращаемся на ПВХ и вводим 10 мм ---
+    final pvcChip = find.text('Обычный ПВХ');
+    await tester.ensureVisible(pvcChip);
+    await tester.tap(pvcChip);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('weld-overlap-field')), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('weld-overlap-field')), '10');
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.weldOverlapMm, 10);
+    expect(params.material, FilmMaterial.clearPvc);
+    // Заготовка ПВХ: готовый размер − 2 × окантовка + 2 × запайка.
+    const defaultRoll = 100.0;
+    final pvcSpec = WindowSpec.of(params);
+    expect(
+      pvcSpec.filmCutWidth,
+      closeTo(params.bottomWidth - defaultRoll + 2 * 10, 1e-9),
+    );
     expect(tester.takeException(), isNull);
   });
 }

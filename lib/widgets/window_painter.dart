@@ -147,6 +147,7 @@ class WindowDrawingPainter extends CustomPainter {
     if (options.showGrid) _paintGrid(canvas, size);
     _paintFilm(canvas);
     _paintEdgeBand(canvas);
+    if (params.isScreen) _paintScreenHem(canvas);
     _paintSeamBand(canvas);
     _paintCutouts(canvas);
     _paintVisibleFilmEdge(canvas);
@@ -226,6 +227,7 @@ class WindowDrawingPainter extends CustomPainter {
         FilmMaterial.clearPvc => _filmEdge,
         FilmMaterial.tintedPvc => const Color(0xFF3D4A5C),
         FilmMaterial.mosquitoNet => const Color(0xFF6B7480),
+        FilmMaterial.screen => const Color(0xFF8C9298),
       };
 
   /// Плёнка в раскрое: она заходит под окантовку, поэтому рисуется первой,
@@ -241,41 +243,47 @@ class WindowDrawingPainter extends CustomPainter {
       ..isAntiAlias = true;
     canvas.drawPath(film, base);
 
-    // Косой блик — стеклянный отблеск плёнки.
-    canvas.save();
-    canvas.clipPath(film);
-    final glare = Path()
-      ..moveTo(bounds.left, bounds.bottom)
-      ..lineTo(bounds.left + bounds.width * 0.45, bounds.top)
-      ..lineTo(bounds.left + bounds.width * 0.68, bounds.top)
-      ..lineTo(bounds.left + bounds.width * 0.23, bounds.bottom)
-      ..close();
-    canvas.drawPath(glare, Paint()..color = Colors.white.withValues(alpha: 0.22));
-    final glare2 = Path()
-      ..moveTo(bounds.left + bounds.width * 0.72, bounds.bottom)
-      ..lineTo(bounds.left + bounds.width * 0.95, bounds.top)
-      ..lineTo(bounds.left + bounds.width * 1.05, bounds.top)
-      ..lineTo(bounds.left + bounds.width * 0.82, bounds.bottom)
-      ..close();
-    canvas.drawPath(
-      glare2,
-      Paint()..color = Colors.white.withValues(alpha: 0.12),
-    );
+    // Косой блик — стеклянный отблеск плёнки. У скрина заливка простая
+    // серая, без блика и без клетки: это ткань, а не прозрачный ПВХ.
+    if (!params.isScreen) {
+      canvas.save();
+      canvas.clipPath(film);
+      final glare = Path()
+        ..moveTo(bounds.left, bounds.bottom)
+        ..lineTo(bounds.left + bounds.width * 0.45, bounds.top)
+        ..lineTo(bounds.left + bounds.width * 0.68, bounds.top)
+        ..lineTo(bounds.left + bounds.width * 0.23, bounds.bottom)
+        ..close();
+      canvas.drawPath(
+        glare,
+        Paint()..color = Colors.white.withValues(alpha: 0.22),
+      );
+      final glare2 = Path()
+        ..moveTo(bounds.left + bounds.width * 0.72, bounds.bottom)
+        ..lineTo(bounds.left + bounds.width * 0.95, bounds.top)
+        ..lineTo(bounds.left + bounds.width * 1.05, bounds.top)
+        ..lineTo(bounds.left + bounds.width * 0.82, bounds.bottom)
+        ..close();
+      canvas.drawPath(
+        glare2,
+        Paint()..color = Colors.white.withValues(alpha: 0.12),
+      );
 
-    // Москитная сетка — мелкая клетка по всей площади плёнки.
-    if (params.material == FilmMaterial.mosquitoNet) {
-      final mesh = Paint()
-        ..color = const Color(0x33606A76)
-        ..strokeWidth = 0.8;
-      const step = 3.2;
-      for (var x = bounds.left; x < bounds.right; x += step) {
-        canvas.drawLine(Offset(x, bounds.top), Offset(x, bounds.bottom), mesh);
+      // Москитная сетка — мелкая клетка по всей площади плёнки.
+      if (params.material == FilmMaterial.mosquitoNet) {
+        final mesh = Paint()
+          ..color = const Color(0x33606A76)
+          ..strokeWidth = 0.8;
+        const step = 3.2;
+        for (var x = bounds.left; x < bounds.right; x += step) {
+          canvas.drawLine(Offset(x, bounds.top), Offset(x, bounds.bottom), mesh);
+        }
+        for (var y = bounds.top; y < bounds.bottom; y += step) {
+          canvas.drawLine(Offset(bounds.left, y), Offset(bounds.right, y), mesh);
+        }
       }
-      for (var y = bounds.top; y < bounds.bottom; y += step) {
-        canvas.drawLine(Offset(bounds.left, y), Offset(bounds.right, y), mesh);
-      }
+      canvas.restore();
     }
-    canvas.restore();
   }
 
   /// Путь плёнки: наружный контур в раскрое минус отверстия вырезов.
@@ -314,6 +322,9 @@ class WindowDrawingPainter extends CustomPainter {
         (const Color(0x6639424F), const Color(0x5A22282F)),
       FilmMaterial.mosquitoNet =>
         (const Color(0x33858E99), const Color(0x22858E99)),
+      // Скрин — простая серая полупрозрачная заливка.
+      FilmMaterial.screen =>
+        (const Color(0x66B9BEC4), const Color(0x4AB9BEC4)),
     };
     return LinearGradient(
       begin: Alignment.topLeft,
@@ -333,17 +344,22 @@ class WindowDrawingPainter extends CustomPainter {
 
   /// Окантовка — коричневый тент: по стороне с градиентом, тканевой фактурой
   /// и строчкой по сгибу. Спаянные стороны вместо окантовки получают спайку.
+  ///
+  /// У скрина окантовки нет: рисуется только наружный контур, а подворот и
+  /// шов добавляет [_paintScreenHem].
   void _paintEdgeBand(Canvas canvas) {
     final outer = layers.outer;
     final inner = _drawInner;
     final widths = _drawWidths;
 
-    for (var i = 0; i < outer.length; i++) {
-      if (layers.isSideWelded(i)) {
-        _paintWeldSeam(canvas, i, widths);
-        continue;
+    if (!params.isScreen) {
+      for (var i = 0; i < outer.length; i++) {
+        if (layers.isSideWelded(i)) {
+          _paintWeldSeam(canvas, i, widths);
+          continue;
+        }
+        _paintTentBand(canvas, i, outer, inner, widths);
       }
-      _paintTentBand(canvas, i, outer, inner, widths);
     }
 
     canvas.drawPath(
@@ -353,6 +369,51 @@ class WindowDrawingPainter extends CustomPainter {
         ..strokeWidth = 2.4
         ..strokeJoin = StrokeJoin.miter
         ..color = _ink,
+    );
+  }
+
+  /// Скрин: линия подворота по периметру и тонкий шов [screenSeamMm] внутри
+  /// неё. Коричневого тента нет — материал подворачивается сам.
+  void _paintScreenHem(Canvas canvas) {
+    final hem = layers.screenHemLine;
+    final seam = layers.screenSeamLine;
+    if (hem.length < 3 || seam.length < 3) return;
+
+    // Линия подворота — сплошная, чуть жирнее шва.
+    canvas.drawPath(
+      _polygonPath(hem),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6
+        ..color = const Color(0xFF5B6B80),
+    );
+
+    // Шов 3 мм — две параллельные линии: широкий серый штрих и светлая
+    // середина между ним, то есть видно обе кромки шва.
+    final seamWidth = math.max(layout.px(screenSeamMm), 1.6);
+    canvas.drawPath(
+      _polygonPath(seam),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = seamWidth
+        ..color = const Color(0xFF8C9298),
+    );
+    canvas.drawPath(
+      _polygonPath(seam),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(seamWidth * 0.35, 0.6)
+        ..color = Colors.white.withValues(alpha: 0.85),
+    );
+
+    // Подпись шва — на верхней стороне, у середины.
+    final middle = Offset.lerp(seam[2], seam[3], 0.5)!;
+    _label(
+      canvas,
+      'шов ${formatMm(screenSeamMm)} мм',
+      layout.toPxPoint(middle) + const Offset(0, -8),
+      small: true,
+      color: const Color(0xFF5B6B80),
     );
   }
 
@@ -584,6 +645,8 @@ class WindowDrawingPainter extends CustomPainter {
   /// Штриховка — поперечные штрихи между контурами: без обрезки по пути,
   /// чтобы одинаково работать и в вебе.
   void _paintSeamBand(Canvas canvas) {
+    // У скрина запайки под окантовку нет — есть подворот со швом.
+    if (params.isScreen) return;
     final outerPoints = layers.filmEdge;
     final innerPoints = _drawInner;
     if (outerPoints.length < 3 || innerPoints.length != outerPoints.length) {
@@ -627,10 +690,32 @@ class WindowDrawingPainter extends CustomPainter {
   }
 
   /// Вырезы: отверстие, окантовка по контуру и зона напайки вокруг.
+  /// У скрина окантовки нет — рисуется только контур отверстия.
   void _paintCutouts(Canvas canvas) {
+    if (params.isScreen) {
+      for (final cutout in layers.cutouts) {
+        canvas.drawPath(
+          _cutoutPath(cutout, 0),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.8
+            ..color = _ink,
+        );
+        _label(
+          canvas,
+          _cutoutLabel(cutout),
+          layout.toPxPoint(cutout.center),
+          small: true,
+        );
+      }
+      return;
+    }
     for (final cutout in layers.cutouts) {
       final width = _drawWidths[0];
-      final seamWidth = math.max(width - weldOverlap, width * 0.35);
+      final seamWidth = math.max(
+        width - params.weldOverlapMm,
+        width * 0.35,
+      );
       final outerBounds = _cutoutBounds(cutout, width);
 
       final band = Path()..fillType = PathFillType.evenOdd;
@@ -799,8 +884,9 @@ class WindowDrawingPainter extends CustomPainter {
   }
 
   /// Молнии впаяны в полосы тента: полоса, по её краям зоны напайки,
-  /// по центру — застёжка из зубцов с бегунком.
+  /// по центру — застёжка из зубцов с бегунком. У скрина тента нет.
   void _paintZipper(Canvas canvas) {
+    if (params.isScreen) return;
     for (var i = 0; i < layers.zippers.length; i++) {
       _paintOneZipper(canvas, layers.zippers[i], layers.zipperBands[i], i);
     }
@@ -819,7 +905,7 @@ class WindowDrawingPainter extends CustomPainter {
     final angle = math.atan2(end.dy - start.dy, end.dx - start.dx);
     final bandWidth = math.max(layout.px(bandRect.width), 7.0);
     final half = bandWidth / 2;
-    final weld = math.max(layout.px(weldOverlap), 2.5);
+    final weld = math.max(layout.px(params.weldOverlapMm), 2.5);
 
     canvas.save();
     canvas.translate(start.dx, start.dy);
@@ -986,6 +1072,7 @@ class WindowDrawingPainter extends CustomPainter {
   ///
   /// У каждой следующей молнии цепочка идёт ниже, чтобы подписи не налезали.
   void _paintZipperDimensions(Canvas canvas) {
+    if (params.isScreen) return;
     final all = layers.zipperGapsAll;
     if (all.isEmpty) return;
     final bounds = layers.filmVisibleBounds;
@@ -1050,10 +1137,14 @@ class WindowDrawingPainter extends CustomPainter {
   }
 
 
-  /// Карман — продолжение нижнего тента вниз: полупрозрачная накладка
-  /// ниже нижней кромки с подписью «карман».
+  /// Карман — продолжение полосы тента (у скрина — подворота) за кромкой:
+  /// полупрозрачная накладка с подписью «карман снизу» / «карман сверху».
   void _paintPocket(Canvas canvas) {
-    final rect = layers.pocketRect;
+    _paintPocketBand(canvas, layers.pocketRect, 'карман снизу');
+    _paintPocketBand(canvas, layers.pocketTopRect, 'карман сверху');
+  }
+
+  void _paintPocketBand(Canvas canvas, Rect rect, String label) {
     if (rect.isEmpty) return;
     final screenRect = Rect.fromPoints(
       layout.toPxPoint(Offset(rect.left, rect.bottom)),
@@ -1062,19 +1153,27 @@ class WindowDrawingPainter extends CustomPainter {
 
     canvas.drawRect(
       screenRect,
-      Paint()..color = _edgeColor.withValues(alpha: 0.32),
+      Paint()
+        ..color = params.isScreen
+            ? const Color(0xFFB9BEC4).withValues(alpha: 0.45)
+            : _edgeColor.withValues(alpha: 0.32),
     );
     canvas.drawRect(
       screenRect,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.2
-        ..color = _edgeDark.withValues(alpha: 0.8),
+        ..color = params.isScreen
+            ? const Color(0xFF5B6B80).withValues(alpha: 0.8)
+            : _edgeDark.withValues(alpha: 0.8),
     );
 
+    final hint = params.isScreen
+        ? 'подворот ${formatMm(params.pocketWidth)}'
+        : 'тент ${formatMm(pocketRollWidth)} ×2';
     _label(
       canvas,
-      'карман ${formatMm(params.pocketWidth)} (тент ${formatMm(pocketRollWidth)} ×2)',
+      '$label ${formatMm(params.pocketWidth)} ($hint)',
       screenRect.center,
       small: true,
     );
@@ -1194,6 +1293,8 @@ class WindowDrawingPainter extends CustomPainter {
   }
 
   void _paintFasteners(Canvas canvas) {
+    // Скрин крепится только люверсами: скобы, замки и ремни не рисуем.
+    if (params.isScreen) return;
     final eyelets = layers.movableSideEyelets;
     if (eyelets.isEmpty) return;
     if (params.fastenerType == FastenerType.eyeletsOnly) return;
@@ -1673,14 +1774,16 @@ class WindowDrawingPainter extends CustomPainter {
       );
     }
 
-    // Напайка — на верхней стороне.
+    // Запайка (у скрина — подворот) на верхней стороне.
     final seamOuter = (edgeInner[3] + edgeInner[2]) / 2;
     final seamInner = (filmEdge[3] + filmEdge[2]) / 2;
     _callout(
       canvas,
       layout.toPxPoint((seamOuter + seamInner) / 2),
       layout.toPxPoint(seamOuter) + const Offset(10, -24),
-      'напайка ${formatMm(weldOverlap)}',
+      params.isScreen
+          ? 'подворот ${formatMm(params.hemMm)}'
+          : 'запайка ${formatMm(params.weldOverlapMm)}',
     );
   }
 

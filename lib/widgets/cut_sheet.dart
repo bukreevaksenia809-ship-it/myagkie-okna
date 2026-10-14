@@ -468,6 +468,11 @@ class CutPalette {
             edge: Color(0xFF7C8798),
             mesh: true,
           ),
+        // Скрин — простая серая заливка, без клетки.
+        FilmMaterial.screen => const CutPalette(
+            fill: Color(0x33B9BEC4),
+            edge: Color(0xFF8C9298),
+          ),
       };
 }
 

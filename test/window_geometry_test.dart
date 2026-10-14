@@ -31,6 +31,9 @@ void main() {
   _costsSummaryRules();
   _weldedWindowRules();
   _allowanceRules();
+  _weldOverlapRules();
+  _screenRules();
+  _pocketRules();
   group('Геометрия полотна', () {
     test('прямоугольник: площадь и периметр', () {
       final geometry = WindowGeometry.of(_rect);
@@ -1350,6 +1353,306 @@ void _allowanceRules() {
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
+    });
+  });
+}
+
+// --- Запайка плёнки под окантовку, мм (вводится руками) ---------------------
+
+void _weldOverlapRules() {
+  group('Запайка плёнки под окантовку', () {
+    // Пример заказчика: готовое окно 2000 × 2000, окантовка 100 мм (готовая 50)
+    // по бокам и низу, сверху 80 мм (готовая 40), запайка 10 мм.
+    // Ширина заготовки: 2000 − 50 − 50 + 2 × 10 = 1920 мм.
+    // Высота заготовки: 2000 − 50 (низ) − 40 (верх) + 2 × 10 = 1930 мм.
+    const customer = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      rollBottom: 100,
+      rollLeft: 100,
+      rollRight: 100,
+      rollTop: 80,
+      weldOverlapMm: 10,
+      shrinkagePercent: 0,
+    );
+
+    test('по умолчанию запайка 25 мм, у окна своё поле', () {
+      expect(const WindowParams().weldOverlapMm, defaultWeldOverlapMm);
+      expect(defaultWeldOverlapMm, 25);
+      expect(minWeldOverlapMm, 5);
+      expect(maxWeldOverlapMm, 60);
+    });
+
+    test('пример заказчика: запайка 10 мм даёт заготовку 1920 × 1930', () {
+      final spec = WindowSpec.of(customer);
+
+      expect(spec.filmVisibleWidth, closeTo(1900, 1e-9));
+      expect(spec.filmVisibleHeight, closeTo(1910, 1e-9));
+      expect(spec.filmCutWidth, closeTo(1920, 1e-9));
+      expect(spec.filmCutHeight, closeTo(1930, 1e-9));
+      // Формула: готовый размер − 2 × окантовка + 2 × запайка.
+      expect(spec.filmCutWidth, closeTo(2000 - 100 + 20, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2000 - 90 + 20, 1e-9));
+    });
+
+    test('запайка влияет только на заготовку, изделие не меняется', () {
+      final thin = WindowSpec.of(customer.copyWith(weldOverlapMm: 5));
+      final thick = WindowSpec.of(customer.copyWith(weldOverlapMm: 40));
+
+      expect(thin.productAreaM2, closeTo(thick.productAreaM2, 1e-9));
+      // Заготовка = готовый размер − 2 × окантовка + 2 × запайка:
+      // 1900 + 2 × 5 = 1910 и 1900 + 2 × 40 = 1980.
+      expect(thin.filmCutWidth, closeTo(1910, 1e-9));
+      expect(thick.filmCutWidth, closeTo(1980, 1e-9));
+      expect(thick.filmCutWidth - thin.filmCutWidth, closeTo(2 * 35, 1e-9));
+      expect(thick.filmCutHeight - thin.filmCutHeight,
+          closeTo(2 * 35, 1e-9));
+    });
+
+    test('валидация: запайка вне 5…60 мм — замечание', () {
+      final issues = validateParams(customer.copyWith(weldOverlapMm: 80));
+      expect(
+        issues.any((issue) => issue.field == ParamField.weldOverlap),
+        isTrue,
+      );
+      final ok = validateParams(customer);
+      expect(
+        ok.any((issue) => issue.field == ParamField.weldOverlap),
+        isFalse,
+      );
+    });
+  });
+}
+
+// --- Скрин: самостоятельная технология без тента -----------------------------
+
+void _screenRules() {
+  group('Скрин', () {
+    WindowParams screenWith(double hem, {bool pocket = false, bool top = false}) =>
+        WindowParams(
+          material: FilmMaterial.screen,
+          bottomWidth: 2000,
+          topWidth: 2000,
+          leftHeight: 2000,
+          rightHeight: 2000,
+          hemMm: hem,
+          pocket: pocket,
+          pocketTop: top,
+        );
+
+    test('технология выводится из материала, а не из отдельного поля', () {
+      expect(const WindowParams().isScreen, isFalse);
+      expect(const WindowParams().tech, WindowTech.pvcTent);
+      final screen = screenWith(40);
+      expect(screen.isScreen, isTrue);
+      expect(screen.tech, WindowTech.screen);
+      // Смена материала переключает технологию.
+      expect(screen.copyWith(material: FilmMaterial.clearPvc).tech,
+          WindowTech.pvcTent);
+    });
+
+    test('заготовка = готовый размер + 2 × подворот: 2080 / 2100 / 2120', () {
+      for (final (hem, blank) in [(40.0, 2080.0), (50.0, 2100.0), (60.0, 2120.0)]) {
+        final spec = WindowSpec.of(screenWith(hem));
+        expect(spec.filmCutWidth, closeTo(blank, 1e-9),
+            reason: 'подворот $hem мм');
+        expect(spec.filmCutHeight, closeTo(blank, 1e-9));
+        // Готовое изделие остаётся 2000 × 2000.
+        expect(spec.productAreaM2, closeTo(4.0, 1e-9));
+        expect(spec.filmVisibleWidth, closeTo(2000, 1e-9));
+      }
+      expect(screenHemPresets, [40, 50, 60]);
+      expect(screenSeamMm, 3);
+    });
+
+    test('у скрина нет усадки: 2080 × 2080 без усадки', () {
+      final spec = WindowSpec.of(screenWith(40));
+      expect(spec.params.shrinkagePercent, isNot(0));
+      expect(spec.params.effectiveShrinkagePercent, 0);
+      expect(spec.filmCutWidthWithShrinkage, closeTo(2080, 1e-9));
+      expect(spec.filmCutHeightWithShrinkage, closeTo(2080, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(4.3264, 1e-9));
+    });
+
+    test('окантовки нет: расход нулевой, готовая полоса нулевая', () {
+      final spec = WindowSpec.of(screenWith(40));
+      expect(spec.edgeConsumption, isEmpty);
+      expect(spec.edgeConsumptionLabels, isEmpty);
+      expect(spec.layers.finishedWidths, [0, 0, 0, 0]);
+      expect(spec.layers.rolls, [0, 0, 0, 0]);
+      expect(spec.edgeBySideSummary, contains('подворот'));
+    });
+
+    test('линия подворота и шов 3 мм внутри неё', () {
+      final spec = WindowSpec.of(screenWith(40));
+      final hem = spec.layers.screenHemLine;
+      final seam = spec.layers.screenSeamLine;
+
+      expect(hem, hasLength(4));
+      expect(seam, hasLength(4));
+      // Линия подворота совпадает с готовым контуром 2000 × 2000.
+      expect(hem[0].dx, closeTo(0, 1e-6));
+      expect(hem[0].dy, closeTo(0, 1e-6));
+      expect(hem[1].dx, closeTo(2000, 1e-6));
+      expect(hem[2].dy, closeTo(2000, 1e-6));
+      // Шов — на 3 мм внутри линии подворота.
+      expect(seam[0].dx, closeTo(screenSeamMm, 1e-6));
+      expect(seam[0].dy, closeTo(screenSeamMm, 1e-6));
+      expect(seam[1].dx, closeTo(2000 - screenSeamMm, 1e-6));
+    });
+
+    test('люверсы ставятся по линии подворота, крепёж — только они', () {
+      final params = screenWith(40).copyWith(
+        windowType: WindowType.lifting,
+        fastenerType: FastenerType.frenchLocks,
+        drainHoles: true,
+      );
+      final spec = WindowSpec.of(params);
+
+      expect(spec.layers.movableSideEyelets, isEmpty);
+      expect(spec.layers.drainHoles, isEmpty);
+      expect(spec.strapCount, 0);
+      expect(spec.fastenerSummary, contains('Только люверсы'));
+      expect(spec.eyeletCount, greaterThan(0));
+      // Все люверсы лежат на линии подворота — на наружном контуре 2000 × 2000.
+      for (final eyelet in spec.layers.eyelets) {
+        final onOuter = eyelet.center.dx.abs() < 1e-6 ||
+            (eyelet.center.dx - 2000).abs() < 1e-6 ||
+            eyelet.center.dy.abs() < 1e-6 ||
+            (eyelet.center.dy - 2000).abs() < 1e-6;
+        expect(onOuter, isTrue, reason: 'люверс ${eyelet.center} не на подвороте');
+      }
+    });
+
+    test('JSON хранит подворот и запайку, читает их обратно', () {
+      final json = windowToJson(screenWith(60).copyWith(weldOverlapMm: 15));
+      final restored = windowFromJson(json);
+
+      expect(restored.material, FilmMaterial.screen);
+      expect(restored.hemMm, 60);
+      expect(restored.weldOverlapMm, 15);
+      expect(restored.isScreen, isTrue);
+    });
+
+    test('валидация: подворот вне обычного диапазона — замечание', () {
+      final issues = validateParams(screenWith(200));
+      expect(
+        issues.any((issue) =>
+            issue.field == ParamField.hemWidth && !issue.isError),
+        isTrue,
+      );
+      // Окантовка скрину не проверяется вовсе.
+      expect(
+        issues.any((issue) => issue.message.contains('Окантовка,')),
+        isFalse,
+      );
+    });
+  });
+}
+
+// --- Карман снизу и сверху ---------------------------------------------------
+
+void _pocketRules() {
+  group('Карманы снизу и сверху', () {
+    const base = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 1500,
+      rightHeight: 1500,
+    );
+
+    test('карман только снизу: подняты нижние угловые люверсы', () {
+      final params = base.copyWith(pocket: true, pocketWidth: 100);
+      final layers = WindowLayers(params, WindowGeometry.of(params));
+
+      expect(layers.pocketRect.isEmpty, isFalse);
+      expect(layers.pocketTopRect.isEmpty, isTrue);
+      final bottom = layers.eyelets
+          .where((eyelet) => eyelet.side == WindowSide.bottom)
+          .toList();
+      expect(bottom.length, 6);
+      final rightLowest = layers.eyelets
+          .where((eyelet) => eyelet.side == WindowSide.right)
+          .reduce((a, b) => a.center.dy < b.center.dy ? a : b);
+      expect(rightLowest.center.dy, closeTo(75, 0.02));
+    });
+
+    test('карман только сверху: опущены верхние угловые люверсы', () {
+      final params = base.copyWith(pocketTop: true, pocketWidth: 100);
+      final geometry = WindowGeometry.of(params);
+      final layers = WindowLayers(params, geometry);
+
+      expect(layers.pocketRect.isEmpty, isTrue);
+      expect(layers.pocketTopRect.isEmpty, isFalse);
+      // Полоса идёт от верхней кромки изделия вверх: 1500 → 1600 мм.
+      expect(layers.pocketTopRect.top, closeTo(1500, 0.01));
+      expect(layers.pocketTopRect.bottom, closeTo(1600, 0.01));
+      // Верхний карман расширяет лист, но не габарит изделия.
+      expect(geometry.pocketTopRise, 100);
+      expect(geometry.spanY, closeTo(1600, 0.01));
+      expect(geometry.overallHeight, closeTo(1500, 0.01));
+
+      final top = layers.eyelets
+          .where((eyelet) => eyelet.side == WindowSide.top)
+          .toList();
+      expect(top.length, 6);
+      final rightHighest = layers.eyelets
+          .where((eyelet) => eyelet.side == WindowSide.right)
+          .reduce((a, b) => a.center.dy > b.center.dy ? a : b);
+      expect(rightHighest.center.dy, closeTo(1500 - 75, 0.02));
+    });
+
+    test('оба кармана: симметрично убраны углы снизу и сверху', () {
+      final params = base.copyWith(
+        pocket: true,
+        pocketTop: true,
+        pocketWidth: 100,
+      );
+      final geometry = WindowGeometry.of(params);
+      final layers = WindowLayers(params, geometry);
+
+      expect(layers.pocketRect.isEmpty, isFalse);
+      expect(layers.pocketTopRect.isEmpty, isFalse);
+      expect(geometry.minY, closeTo(-100, 0.01));
+      expect(geometry.spanY, closeTo(1700, 0.01));
+
+      final right = layers.eyelets
+          .where((eyelet) => eyelet.side == WindowSide.right)
+          .toList();
+      final lowest =
+          right.reduce((a, b) => a.center.dy < b.center.dy ? a : b);
+      final highest =
+          right.reduce((a, b) => a.center.dy > b.center.dy ? a : b);
+      expect(lowest.center.dy, closeTo(75, 0.02));
+      expect(highest.center.dy, closeTo(1500 - 75, 0.02));
+    });
+
+    test('расход и подписи: карманы считаются оба', () {
+      const project = OrderProject(windows: [
+        WindowParams(
+          bottomWidth: 2000,
+          topWidth: 2000,
+          leftHeight: 1500,
+          rightHeight: 1500,
+          pocket: true,
+          pocketTop: true,
+          pocketWidth: 100,
+        ),
+      ]);
+      final summary = CostsSummary(project);
+
+      expect(summary.pocketCount, 2);
+      expect(summary.pocketLengthMm, closeTo(4000, 1e-9));
+      expect(
+        summary.extraLabels.any((label) => label.contains('Карман')),
+        isTrue,
+      );
+      final notes = WindowSpec.of(project.windows.first).notes.join('\n');
+      expect(notes, contains('снизу и сверху'));
+      // Верхний карман тоже попадает в расход материала.
+      expect(summary.filmAreaM2, greaterThan(0));
     });
   });
 }
