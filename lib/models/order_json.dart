@@ -86,6 +86,10 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'rollRight': p.rollRight,
       'edgeMaterial': p.edgeMaterial.name,
       'edgeColor': p.edgeColor.name,
+      // Запайка плёнки под окантовку (5…60 мм) — вводится руками.
+      'weldOverlapMm': p.weldOverlapMm,
+      // Подворот скрина на сторону (10…150 мм).
+      'hemMm': p.hemMm,
       'eyeletType': p.eyeletType.name,
       'eyeletStep': p.eyeletStep,
       'eyeletCornerOffset': p.eyeletCornerOffset,
@@ -99,6 +103,7 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'zipperOffsetMm': p.zipperOffsetMm,
       'zipperBandWidth': p.zipperBandWidth,
       'pocket': p.pocket,
+      'pocketTop': p.pocketTop,
       'pocketWidth': p.pocketWidth,
       'drainHoles': p.drainHoles,
       'drainCount': p.drainCount,
@@ -134,6 +139,9 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
         EdgeMaterial.values, json['edgeMaterial'], fallback.edgeMaterial),
     edgeColor:
         _enumByName(EdgeColor.values, json['edgeColor'], fallback.edgeColor),
+    weldOverlapMm:
+        _double(json['weldOverlapMm'], fallback.weldOverlapMm),
+    hemMm: _double(json['hemMm'], fallback.hemMm),
     eyeletType:
         _enumByName(EyeletType.values, json['eyeletType'], fallback.eyeletType),
     eyeletStep: _double(json['eyeletStep'], fallback.eyeletStep),
@@ -145,6 +153,7 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     cutouts: _cutoutsFromJson(json['cutouts']),
     weldedSides: _weldedFromJson(json['weldedSides']),
     pocket: _bool(json['pocket'], fallback.pocket),
+    pocketTop: _bool(json['pocketTop'], fallback.pocketTop),
     pocketWidth: _double(json['pocketWidth'], fallback.pocketWidth),
     drainHoles: _bool(json['drainHoles'], fallback.drainHoles),
     drainCount: _double(json['drainCount'], fallback.drainCount),

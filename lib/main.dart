@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -16,6 +18,7 @@ import 'widgets/drawing_sheet.dart';
 import 'widgets/orders_panel.dart';
 import 'widgets/price_panel.dart';
 import 'widgets/params_panel.dart';
+import 'widgets/print_dialog.dart';
 import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
@@ -52,6 +55,15 @@ class SoftWindowApp extends StatelessWidget {
 
 /// Что показано на листе.
 enum SheetTab { drawing, cut, roll, costs, estimate, techCard }
+
+/// «1 лист», «2 листа», «5 листов» — для имени задания печати.
+String _sheetsWord(int count) {
+  final mod10 = count % 10;
+  final mod100 = count % 100;
+  if (mod10 == 1 && mod100 != 11) return 'лист';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'листа';
+  return 'листов';
+}
 
 class BuilderScreen extends StatefulWidget {
   const BuilderScreen({super.key});
@@ -230,9 +242,14 @@ class _BuilderScreenState extends State<BuilderScreen> {
       };
 
   /// Границы, по которым можно резать PDF, не разрывая окно.
-  List<double>? _safeBreakFractions(Size viewport) => _tab == SheetTab.drawing
-      ? DrawingSheet.safeBreakFractions(_project, viewport)
-      : null;
+  List<double>? _safeBreakFractions(Size viewport) =>
+      _safeBreakFractionsFor(_tab, viewport);
+
+  /// То же, но для конкретного листа: при печати пачки вкладки переключаются.
+  List<double>? _safeBreakFractionsFor(SheetTab tab, Size viewport) =>
+      tab == SheetTab.drawing
+          ? DrawingSheet.safeBreakFractions(_project, viewport)
+          : null;
 
   String get _sheetPrefix => switch (_tab) {
         SheetTab.drawing => 'Чертёж',
@@ -270,17 +287,82 @@ class _BuilderScreenState extends State<BuilderScreen> {
     }
   }
 
+  /// Печать: сначала спрашиваем, какие листы печатать, затем печатаем
+  /// выбранные одним заданием.
   Future<void> _printSheet() async {
+    final selected = await showPrintSheetDialog(
+      context,
+      current: _tab,
+      isMultiWindow: _project.isMultiWindow,
+    );
+    // Отмена диалога или пустой выбор — просто ничего не делаем.
+    if (!mounted || selected == null || selected.isEmpty) return;
+    await _printSelected(selected);
+  }
+
+  /// Печатает выбранные листы одним заданием.
+  ///
+  /// Лист снимается прямо с экрана, поэтому вкладки переключаются по очереди:
+  /// после каждого переключения ждём кадр и только потом снимаем лист.
+  /// В конце возвращаем исходную вкладку и масштаб, чтобы приложение
+  /// осталось там, где было.
+  Future<void> _printSelected(List<SheetTab> tabs) async {
     final messenger = ScaffoldMessenger.of(context);
     final params = _project.selected;
     final viewport = _viewportSize();
+    final previousTab = _tab;
+    final previousZoom = _zoom.value.clone();
+    final previousZoomLevel = _zoomLevel;
+
     setState(() => _exporting = true);
     try {
-      final printed = await printSheet(
-        captureKey: _sheetKey,
-        params: params,
-        jobName: '$_sheetPrefix ${params.drawingNumber}',
-        safeBreakFractions: _safeBreakFractions(viewport),
+      // Один текущий лист печатаем как раньше: без переключения вкладок.
+      if (tabs.length == 1 && tabs.single == previousTab) {
+        final printed = await printSheet(
+          captureKey: _sheetKey,
+          params: params,
+          jobName: '$_sheetPrefix ${params.drawingNumber}',
+          safeBreakFractions: _safeBreakFractions(viewport),
+        );
+        if (!printed) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Печать отменена')),
+          );
+        }
+        return;
+      }
+
+      final pages = <Uint8List>[];
+      for (final tab in tabs) {
+        if (!mounted) break;
+        setState(() => _tab = tab);
+        // Лист показываем как обычно: снимок не зависит от масштаба,
+        // но так лист строится в своих штатных размерах.
+        _resetZoom();
+        await WidgetsBinding.instance.endOfFrame;
+        // Запас на дорисовку: длинный лист строится не за один кадр.
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        if (!mounted) break;
+        pages.addAll(
+          await renderSheetPages(
+            captureKey: _sheetKey,
+            safeBreakFractions: _safeBreakFractionsFor(tab, viewport),
+          ),
+        );
+      }
+
+      if (pages.isEmpty) {
+        if (mounted) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Нечего печатать: листы не построены')),
+          );
+        }
+        return;
+      }
+
+      final printed = await printSheetPages(
+        pageImages: pages,
+        jobName: 'Мягкие окна — ${tabs.length} ${_sheetsWord(tabs.length)}',
       );
       if (!printed) {
         messenger.showSnackBar(const SnackBar(content: Text('Печать отменена')));
@@ -290,7 +372,15 @@ class _BuilderScreenState extends State<BuilderScreen> {
         SnackBar(content: Text('Не удалось напечатать: $error')),
       );
     } finally {
-      if (mounted) setState(() => _exporting = false);
+      // Что бы ни случилось, возвращаем исходную вкладку и масштаб.
+      if (mounted) {
+        _zoom.value = previousZoom;
+        setState(() {
+          _tab = previousTab;
+          _zoomLevel = previousZoomLevel;
+          _exporting = false;
+        });
+      }
     }
   }
 

@@ -11,11 +11,21 @@ import '../models/window_params.dart';
 import 'file_saver.dart';
 import 'image_slice.dart';
 
-/// Снимает лист чертежа и собирает PDF: A3 по ширине, длинный лист режется
-/// на страницы A3 последовательно, без «половинок» посередине.
-Future<Uint8List> buildSheetPdf({
+/// Ширина страницы PDF: A3 по ширине.
+const double _pageWidthMm = 420.0;
+
+/// Высота страницы A3 — запасной вариант, если пропорции снимка неизвестны.
+const double _pageHeightMm = 297.0;
+
+const double _mmToPoints = 72 / 25.4;
+
+/// Снимает лист с экрана и нарезает снимок на страницы-картинки (PNG).
+///
+/// Одна картинка — одна страница PDF: длинный лист режется последовательно,
+/// по возможности по безопасным границам ([safeBreakFractions]), чтобы
+/// не разорвать окно пополам. Пустых страниц не бывает.
+Future<List<Uint8List>> renderSheetPages({
   required GlobalKey captureKey,
-  required WindowParams params,
   double pixelRatio = 3,
   List<double>? safeBreakFractions,
 }) async {
@@ -39,22 +49,11 @@ Future<Uint8List> buildSheetPdf({
   final imageWidth = image.width.toDouble();
   final imageHeight = image.height.toDouble();
 
-  const pageWidthMm = 420.0; // A3 по ширине
-  const pageHeightMm = 297.0; // A3 по высоте
-  const mmToPoints = 72 / 25.4;
-
-  final document = pw.Document(
-    title: 'Чертёж ${params.drawingNumber}',
-    author: 'Мягкие окна',
-    creator: 'soft_window_drawer',
-  );
-
-  final naturalHeightMm = pageWidthMm * imageHeight / imageWidth;
+  final naturalHeightMm = _pageWidthMm * imageHeight / imageWidth;
   // Небольшой запас: почти-A3 лист не режем на две страницы из-за пары мм.
-  final singlePage = naturalHeightMm <= pageHeightMm * 1.06;
-  final pointsPerImagePixel =
-      (pageWidthMm * mmToPoints) / imageWidth;
-  final pageHeightPixels = (pageHeightMm * mmToPoints) / pointsPerImagePixel;
+  final singlePage = naturalHeightMm <= _pageHeightMm * 1.06;
+  final pointsPerImagePixel = (_pageWidthMm * _mmToPoints) / imageWidth;
+  final pageHeightPixels = (_pageHeightMm * _mmToPoints) / pointsPerImagePixel;
 
   // Границы страниц: режем только там, где это безопасно (между окнами),
   // иначе — по высоте листа A3.
@@ -86,33 +85,81 @@ Future<Uint8List> buildSheetPdf({
     }
   }
 
-  // Каждой странице — свой вырезанный кусок листа: пустых страниц не бывает.
+  // Каждой странице — свой вырезанный кусок листа.
+  final pages = <Uint8List>[];
   for (var page = 0; page * 2 + 1 < breaks.length; page++) {
     final start = breaks[page * 2];
     final end = breaks[page * 2 + 1];
-    final slicePng = await cropImageToPng(
-      image,
-      Rect.fromLTRB(0, start, imageWidth, end),
+    pages.add(
+      await cropImageToPng(image, Rect.fromLTRB(0, start, imageWidth, end)),
     );
-    final sliceHeightPoints = (end - start) * pointsPerImagePixel;
+  }
+
+  image.dispose();
+  return pages;
+}
+
+/// Собирает один PDF из готовых страниц-картинок.
+///
+/// Ширина страницы — A3, высота — по пропорциям картинки, поэтому лист
+/// не растягивается. Печатать несколько листов одним заданием можно так:
+/// снять каждый лист через [renderSheetPages] и сложить страницы сюда.
+Future<Uint8List> buildMultiSheetPdf(
+  List<Uint8List> pageImages, {
+  String title = 'Мягкие окна',
+  String author = 'Мягкие окна',
+  String creator = 'soft_window_drawer',
+}) async {
+  if (pageImages.isEmpty) {
+    throw ArgumentError.value(pageImages, 'pageImages', 'Нет страниц для PDF');
+  }
+
+  final document = pw.Document(title: title, author: author, creator: creator);
+  const pageWidthPoints = _pageWidthMm * _mmToPoints;
+
+  for (final png in pageImages) {
+    final image = pw.MemoryImage(png);
+    final imageWidth = image.width;
+    final imageHeight = image.height;
+    // Пропорции неизвестны — берём стандартную страницу A3.
+    final pageHeightPoints =
+        imageWidth == null || imageWidth <= 0 ||
+                imageHeight == null || imageHeight <= 0
+            ? _pageHeightMm * _mmToPoints
+            : pageWidthPoints * imageHeight / imageWidth;
     document.addPage(
       pw.Page(
         pageFormat: PdfPageFormat(
-          pageWidthMm * mmToPoints,
-          sliceHeightPoints,
+          pageWidthPoints,
+          pageHeightPoints,
           marginAll: 0,
         ),
         build: (context) => pw.Image(
-          pw.MemoryImage(slicePng),
-          width: pageWidthMm * mmToPoints,
-          height: sliceHeightPoints,
+          image,
+          width: pageWidthPoints,
+          height: pageHeightPoints,
         ),
       ),
     );
   }
 
-  image.dispose();
   return document.save();
+}
+
+/// Снимает лист чертежа и собирает PDF: A3 по ширине, длинный лист режется
+/// на страницы A3 последовательно, без «половинок» посередине.
+Future<Uint8List> buildSheetPdf({
+  required GlobalKey captureKey,
+  required WindowParams params,
+  double pixelRatio = 3,
+  List<double>? safeBreakFractions,
+}) async {
+  final pages = await renderSheetPages(
+    captureKey: captureKey,
+    pixelRatio: pixelRatio,
+    safeBreakFractions: safeBreakFractions,
+  );
+  return buildMultiSheetPdf(pages, title: 'Чертёж ${params.drawingNumber}');
 }
 
 /// Сохраняет лист чертежа в PDF: на десктопе — файлом, в браузере — скачиванием.
@@ -149,6 +196,20 @@ Future<bool> printSheet({
     params: params,
     safeBreakFractions: safeBreakFractions,
   );
+  return Printing.layoutPdf(
+    name: jobName,
+    onLayout: (format) async => bytes,
+  );
+}
+
+/// Печатает несколько листов одним заданием: страницы идут подряд,
+/// на десктопе открывается системный диалог печати.
+Future<bool> printSheetPages({
+  required List<Uint8List> pageImages,
+  required String jobName,
+  String? title,
+}) async {
+  final bytes = await buildMultiSheetPdf(pageImages, title: title ?? jobName);
   return Printing.layoutPdf(
     name: jobName,
     onLayout: (format) async => bytes,

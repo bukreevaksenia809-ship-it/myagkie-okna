@@ -47,6 +47,15 @@ class CostsSummary {
         pocketCount += 1;
         pocketLengthMm += spec.geometry.bottomWidth;
       }
+      // Верхний карман — вторая полоса, считается отдельно.
+      if (spec.params.pocketTop) {
+        pocketCount += 1;
+        pocketLengthMm += spec.geometry.topWidth;
+      }
+      // Скрин подворачивается по всему периметру: длина подворота — периметр.
+      if (spec.params.isScreen) {
+        screenHemLengthMm += spec.geometry.perimeter;
+      }
       strapCount += spec.strapCount;
       pocketWidthMm = spec.params.pocketWidth;
       cutoutCount += spec.params.cutouts.length;
@@ -85,6 +94,9 @@ class CostsSummary {
   int pocketCount = 0;
   double pocketLengthMm = 0;
   double pocketWidthMm = 0;
+
+  /// Длина подворота скрина по периметру, мм (скрин — без окантовки).
+  double screenHemLengthMm = 0;
 
   int strapCount = 0;
 
@@ -153,8 +165,12 @@ class CostsSummary {
           'Спайка молнии: тент ${formatMm(100)} мм × '
               '${formatMm(zipperBandLengthMm)} мм — $zipperCount шт',
         if (pocketCount > 0)
-          'Карман: тент ${formatMm(200)} мм × ${formatMm(pocketLengthMm)} мм — '
-              '$pocketCount шт',
+          'Карман (низ/верх): тент ${formatMm(200)} мм × '
+              '${formatMm(pocketLengthMm)} мм — $pocketCount шт',
+        if (screenHemLengthMm > 0)
+          'Подворот скрина и шов ${formatMm(screenSeamMm)} мм: '
+              '${formatMm(screenHemLengthMm)} мм периметра — расход скрина '
+              'считается по площади заготовки',
         if (drainTotal > 0) 'Дренаж Ø6 мм: $drainTotal шт',
         if (strapCount > 0)
           'Подъёмные ремни: ${formatMm(50)} × ${formatMm(500)} мм — '

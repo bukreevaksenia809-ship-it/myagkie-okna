@@ -112,7 +112,9 @@ class Estimate {
       if (!(entry.value > 0)) continue;
       lines.add(EstimateLine(
         title: 'Полотно: ${entry.key.label}',
-        note: entry.key.thickness,
+        note: entry.key == FilmMaterial.screen
+            ? 'скрин: расход по площади заготовки (готовый размер + подворот)'
+            : entry.key.thickness,
         quantity: entry.value,
         unit: 'м²',
         unitPrice: prices.filmPerM2(entry.key),
@@ -167,7 +169,7 @@ class Estimate {
     if (summary.pocketCount > 0 && summary.pocketLengthMm > 0) {
       lines.add(EstimateLine(
         title: 'Карман под утяжитель',
-        note: 'тент 200 мм сложен пополам, ${summary.pocketCount} шт',
+        note: 'нижний/верхний карман, ${summary.pocketCount} шт',
         quantity: summary.pocketLengthMm / 1000,
         unit: 'м',
         unitPrice: prices.pocketPerM,
@@ -237,6 +239,18 @@ class Estimate {
         quantity: summary.weldLengthMm / 1000,
         unit: 'м',
         unitPrice: prices.weldPerM,
+        group: EstimateGroup.work,
+      ));
+    }
+    // Скрин: вместо окантовки — подворот по периметру и шов 3 мм.
+    if (summary.screenHemLengthMm > 0) {
+      lines.add(EstimateLine(
+        title: 'Подворот скрина и шов ${formatMm(screenSeamMm)} мм',
+        note: 'расход скрина — по площади заготовки (готовый размер плюс '
+            'подворот)',
+        quantity: summary.screenHemLengthMm / 1000,
+        unit: 'м',
+        unitPrice: prices.screenHemPerM,
         group: EstimateGroup.work,
       ));
     }

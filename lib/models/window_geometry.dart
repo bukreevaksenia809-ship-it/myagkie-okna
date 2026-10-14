@@ -94,6 +94,7 @@ class WindowGeometry {
     required this.rightHeight,
     required this.topOffset,
     this.pocketDrop = 0,
+    this.pocketTopRise = 0,
   });
 
   factory WindowGeometry.of(WindowParams params) {
@@ -109,13 +110,18 @@ class WindowGeometry {
       TopAlign.right => bottom - top,
       TopAlign.custom => params.topOffsetMm.isFinite ? params.topOffsetMm : 0.0,
     };
+    final pocketWidth =
+        params.pocketWidth.isFinite && params.pocketWidth > 0
+            ? params.pocketWidth
+            : 0.0;
     return WindowGeometry(
       bottomWidth: bottom,
       topWidth: top,
       leftHeight: _positive(params.leftHeight),
       rightHeight: _positive(params.rightHeight),
       topOffset: offset,
-      pocketDrop: params.pocket && params.pocketWidth > 0 ? params.pocketWidth : 0,
+      pocketDrop: params.pocket ? pocketWidth : 0,
+      pocketTopRise: params.pocketTop ? pocketWidth : 0,
     );
   }
 
@@ -129,6 +135,9 @@ class WindowGeometry {
 
   /// Насколько карман опускается ниже нижнего тента, мм.
   final double pocketDrop;
+
+  /// Насколько верхний карман поднимается выше верхней кромки, мм.
+  final double pocketTopRise;
 
   static double _positive(double value) =>
       (!value.isFinite || value <= 0) ? 100 : value;
@@ -167,8 +176,14 @@ class WindowGeometry {
   double get minY => -pocketDrop;
   double get maxY => math.max(leftHeight, rightHeight);
 
+  /// Верхняя граница листа: изделие плюс верхний карман (если он есть).
+  ///
+  /// [maxY] и [overallHeight] остаются габаритом ИЗДЕЛИЯ — по ним считаются
+  /// площадь и подписи, а карман лишь расширяет лист чертежа ([spanY]).
+  double get topBound => maxY + pocketTopRise;
+
   double get spanX => maxX - minX;
-  double get spanY => maxY - minY;
+  double get spanY => topBound - minY;
 
   /// Габаритная высота изделия.
   double get overallHeight => maxY;
@@ -187,36 +202,74 @@ class WindowLayers {
   final WindowParams params;
   final WindowGeometry geometry;
 
+  /// Скрин — технология без окантовки (см. [WindowParams.isScreen]).
+  bool get isScreen => params.isScreen;
+
   /// Наружная граница (внешний контур окна).
   List<Offset> get outer => geometry.corners;
 
   /// Ширины рулонов окантовки по сторонам в порядке обхода:
-  /// низ, право, верх, лево (мм).
-  List<double> get rolls => [for (var i = 0; i < 4; i++) params.rollForEdge(i)];
+  /// низ, право, верх, лево (мм). У скрина окантовки нет — нули.
+  List<double> get rolls =>
+      isScreen ? const [0, 0, 0, 0] : [for (var i = 0; i < 4; i++) params.rollForEdge(i)];
 
   /// Готовые (сложенные пополам) ширины окантовки по сторонам.
-  List<double> get finishedWidths =>
-      [for (final width in rolls) WindowParams.finishedEdgeWidth(width)];
+  List<double> get finishedWidths => isScreen
+      ? const [0, 0, 0, 0]
+      : [for (final width in rolls) WindowParams.finishedEdgeWidth(width)];
+
+  /// Подворот скрина по сторонам, мм (у ПВХ — нули).
+  List<double> get hemWidths =>
+      isScreen ? [for (var i = 0; i < 4; i++) params.hemMm] : const [0, 0, 0, 0];
 
   /// Внутренняя граница окантовки: видимая граница плёнки.
-  late final List<Offset> edgeInner = insetPolygonPerSide(outer, finishedWidths);
+  ///
+  /// У скрина видимый размер — это готовый контур изделия: подворот
+  /// загибается на изнанку, наружу ничего не выходит.
+  late final List<Offset> edgeInner =
+      isScreen ? List.of(outer) : insetPolygonPerSide(outer, finishedWidths);
 
-  /// Граница плёнки в раскрое: плёнка заходит под окантовку на [weldOverlap],
-  /// поэтому её край ближе к наружному контуру, чем внутренняя граница
-  /// окантовки, на величину напайки.
-  late final List<Offset> filmEdge = insetPolygonPerSide(
-    outer,
-    [
-      for (final width in finishedWidths)
-        math.max(width - weldOverlap, 0.0),
-    ],
-  );
+  /// Граница полотна в раскрое.
+  ///
+  /// ПВХ заходит под окантовку на [WindowParams.weldOverlapMm], поэтому его
+  /// край ближе к наружному контуру, чем внутренняя граница окантовки.
+  /// Скрин, наоборот, кроится БОЛЬШЕ готового размера на подворот
+  /// [WindowParams.hemMm] с каждой стороны: 2000 × 2000 при подвороте 40 мм
+  /// даёт заготовку 2080 × 2080 мм.
+  late final List<Offset> filmEdge = isScreen
+      ? outsetPolygonPerSide(outer, hemWidths)
+      : insetPolygonPerSide(
+          outer,
+          [
+            for (final width in finishedWidths)
+              math.max(width - params.weldOverlapMm, 0.0),
+          ],
+        );
 
-  /// Линия центров люверсов — середина окантовки.
-  late final List<Offset> eyeletLine = insetPolygonPerSide(
-    outer,
-    [for (final width in finishedWidths) width / 2],
-  );
+  /// Линия центров люверсов.
+  ///
+  /// У ПВХ это середина окантовки, у скрина — линия подворота (готовый
+  /// контур): люверсы ставятся по подвороту.
+  late final List<Offset> eyeletLine = isScreen
+      ? List.of(outer)
+      : insetPolygonPerSide(
+          outer,
+          [for (final width in finishedWidths) width / 2],
+        );
+
+  /// Линия подворота скрина: на [WindowParams.hemMm] внутрь от края заготовки.
+  late final List<Offset> screenHemLine =
+      isScreen ? insetPolygonPerSide(filmEdge, hemWidths) : const [];
+
+  /// Линия шва [screenSeamMm] внутри подворота скрина.
+  late final List<Offset> screenSeamLine = isScreen
+      ? insetPolygonPerSide(screenHemLine, const [
+          screenSeamMm,
+          screenSeamMm,
+          screenSeamMm,
+          screenSeamMm,
+        ])
+      : const [];
 
   late final _EyeletResult _eyeletResult = _computeEyelets();
 
@@ -246,7 +299,8 @@ class WindowLayers {
   /// двух сторон (например, верх-право) вместо круглого люверса оказывается
   /// прямоугольная скоба.
   List<EyeletPlacement> get movableSideEyelets {
-    if (params.windowType == WindowType.fixed) return const [];
+    // Скрин крепится только люверсами: скоб, замков и ремней у него нет.
+    if (params.windowType == WindowType.fixed || isScreen) return const [];
     return eyelets
         .where((eyelet) => eyelet.side != WindowSide.top && !eyelet.isCorner)
         .toList(growable: false);
@@ -305,6 +359,8 @@ class WindowLayers {
   /// (по ширине нижней стороны).
   Map<double, double> get edgeConsumption {
     final result = <double, double>{};
+    // Скрин не окантовывается: расход тента нулевой.
+    if (isScreen) return result;
     final lengths = geometry.sideLengths;
     for (var i = 0; i < lengths.length; i++) {
       if (isSideWelded(i)) continue;
@@ -350,7 +406,8 @@ class WindowLayers {
   /// Дренажные отверстия в нижней окантовке.
   List<Offset> get drainHoles {
     final count = params.drainCount.round();
-    if (!params.drainHoles || count <= 0) return const [];
+    // У скрина нет нижней окантовки — пробивать дренаж не во что.
+    if (!params.drainHoles || count <= 0 || isScreen) return const [];
 
     final bottomEyelets = eyelets
         .where((eyelet) => eyelet.side == WindowSide.bottom)
@@ -467,8 +524,21 @@ class WindowLayers {
 
   /// Карман — продолжение нижнего тента вниз: полоса тента 200 мм,
   /// сложенная пополам (100 мм), по всей ширине окна.
+  ///
+  /// У скрина эта же полоса образуется нижним подворотом.
   Rect get pocketRect => params.pocket
       ? Rect.fromLTRB(0, -params.pocketWidth, geometry.bottomWidth, 0)
+      : Rect.zero;
+
+  /// Верхний карман — зеркало нижнего: полоса тента/подворота вверх от
+  /// верхней кромки.
+  Rect get pocketTopRect => params.pocketTop
+      ? Rect.fromLTRB(
+          geometry.topOffset,
+          geometry.maxY,
+          geometry.topOffset + geometry.topWidth,
+          geometry.maxY + params.pocketWidth,
+        )
       : Rect.zero;
 
   _EyeletResult _computeEyelets() {
@@ -505,8 +575,9 @@ class WindowLayers {
       for (var k = 0; k <= intervals; k++) {
         var distance = offset + actual * k;
 
-        // Карман: угловые люверсы внизу не ставим, а боковые поднимаем,
-        // чтобы в полость кармана заводился утяжитель.
+        // Карман снизу: угловые люверсы внизу не ставим, а боковые поднимаем,
+        // чтобы в полость кармана заводился утяжитель. Карман сверху —
+        // зеркально: углы сверху убираем, боковые опускаем.
         if (params.pocket) {
           if (side == WindowSide.bottom && (k == 0 || k == intervals)) {
             continue;
@@ -517,7 +588,21 @@ class WindowLayers {
           if (side == WindowSide.left && k == intervals) {
             distance -= pocketCornerOffset;
           }
-          if (distance < 0 || distance > length) continue;
+        }
+        if (params.pocketTop) {
+          if (side == WindowSide.top && (k == 0 || k == intervals)) {
+            continue;
+          }
+          if (side == WindowSide.right && k == intervals) {
+            distance -= pocketCornerOffset;
+          }
+          if (side == WindowSide.left && k == 0) {
+            distance += pocketCornerOffset;
+          }
+        }
+        if ((params.pocket || params.pocketTop) &&
+            (distance < 0 || distance > length)) {
+          continue;
         }
 
         placements.add(EyeletPlacement(
@@ -582,25 +667,34 @@ class WindowSpec {
   double get filmVisibleWidth => layers.filmVisibleBounds.width;
   double get filmVisibleHeight => layers.filmVisibleBounds.height;
 
-  /// Раскрой плёнки: видимый размер плюс напайка [weldOverlap] с двух сторон
-  /// (плёнка заходит под окантовку). Припуск на раскрой здесь ещё не учтён.
+  /// Раскрой полотна.
+  ///
+  /// Для ПВХ: видимый размер плюс запайка [WindowParams.weldOverlapMm] с двух
+  /// сторон — плёнка заходит под окантовку. Для скрина: готовый размер плюс
+  /// подворот [WindowParams.hemMm] с каждой стороны (2000 × 2000 при
+  /// подвороте 40 мм → 2080 × 2080 мм). Припуск на раскрой здесь ещё не учтён.
   double get filmCutWidth => layers.filmCutBounds.width;
   double get filmCutHeight => layers.filmCutBounds.height;
 
   /// Заготовка плёнки к раскрою с припуском, без усадки, мм.
   ///
-  /// Припуск на раскрой добавляется ТОЛЬКО к плёнке в раскрое: изделие,
-  /// чертёж, окантовка и люверсы считаются по основным размерам.
+  /// Припуск на раскрой добавляется ТОЛЬКО к заготовке: изделие, чертёж,
+  /// окантовка и люверсы считаются по основным размерам.
   double get filmCutWidthWithAllowance =>
       filmCutWidth + params.allowanceWidthMm;
   double get filmCutHeightWithAllowance =>
       filmCutHeight + params.allowanceHeightMm;
 
-  /// Заготовка плёнки с припуском на раскрой и компенсацией усадки ПВХ, мм.
+  /// Заготовка полотна с припуском на раскрой и компенсацией усадки, мм.
+  ///
+  /// Усадка берётся из [WindowParams.effectiveShrinkagePercent]: у скрина её
+  /// нет (0 %), у ПВХ — поле окна.
   double get filmCutWidthWithShrinkage =>
-      filmCutWidthWithAllowance * (1 + params.shrinkagePercent / 100);
+      filmCutWidthWithAllowance *
+      (1 + params.effectiveShrinkagePercent / 100);
   double get filmCutHeightWithShrinkage =>
-      filmCutHeightWithAllowance * (1 + params.shrinkagePercent / 100);
+      filmCutHeightWithAllowance *
+      (1 + params.effectiveShrinkagePercent / 100);
 
   /// Площадь заготовки плёнки к раскрою (с припуском, минус вырезы), м².
   ///
@@ -613,7 +707,7 @@ class WindowSpec {
 
   /// Площадь заготовки к раскрою с учётом усадки, м².
   double get filmCutAreaWithShrinkageM2 =>
-      filmCutAreaM2 * (1 + params.shrinkagePercent / 100);
+      filmCutAreaM2 * (1 + params.effectiveShrinkagePercent / 100);
 
   /// Расход окантовки по ширинам рулонов.
   Map<double, double> get edgeConsumption => layers.edgeConsumption;
@@ -636,7 +730,13 @@ class WindowSpec {
   }
 
   /// Подпись окантовки по сторонам: «низ 100, верх 100, лево 200, право 200».
+  ///
+  /// У скрина окантовки нет — вместо неё подворот по периметру.
   String get edgeBySideSummary {
+    if (params.isScreen) {
+      return 'подворот ${formatMm(params.hemMm)} мм по периметру, '
+          'шов ${formatMm(screenSeamMm)} мм';
+    }
     final sides = [
       ('низ', params.rollBottom),
       ('право', params.rollRight),
@@ -652,10 +752,16 @@ class WindowSpec {
         .join(' · ');
   }
 
-  String get edgeSummary =>
-      '${params.edgeColor.label.toLowerCase()}, ${params.edgeMaterial.label}';
+  String get edgeSummary => params.isScreen
+      ? 'без окантовки: подворот ${formatMm(params.hemMm)} мм, '
+          'шов ${formatMm(screenSeamMm)} мм'
+      : '${params.edgeColor.label.toLowerCase()}, ${params.edgeMaterial.label}';
 
   String get fastenerSummary {
+    // Скрин крепится только люверсами: тип крепежа игнорируется.
+    if (params.isScreen) {
+      return 'Только люверсы по подвороту (скрин)';
+    }
     final movable = switch (params.fastenerType) {
       FastenerType.eyeletsOnly => 'только люверсы',
       FastenerType.turnBuckles => 'поворотные скобы',
@@ -710,7 +816,8 @@ class WindowSpec {
                 '${formatMm(cutout.spec.centerYMm)} мм',
     ];
     return '${params.cutouts.length} шт: ${parts.join('; ')}; '
-        'окантовка по контуру ${formatMm(layers.cutoutPerimeterMm)} мм';
+        '${params.isScreen ? 'подворот по контуру' : 'окантовка по контуру'} '
+        '${formatMm(layers.cutoutPerimeterMm)} мм';
   }
 
   /// Спайка с соседними окнами.
@@ -753,48 +860,89 @@ class WindowSpec {
   }
 
   /// Примечания для штампа.
-  List<String> get notes => [
-        'Окантовка складывается пополам; напайка на плёнку ${formatMm(weldOverlap)} мм '
-            'по всему периметру',
+  ///
+  /// У скрина своя технология: в примечаниях нет ни тента, ни напайки —
+  /// вместо них подворот, шов [screenSeamMm] мм и расход по площади
+  /// заготовки скрина.
+  List<String> get notes {
+    return [
+      if (params.isScreen) ...[
+        'Скрин: технология без тента и окантовки — материал подворачивается '
+            'сам, крепёж только люверсы',
+        'Подворот материала ${formatMm(params.hemMm)} мм на сторону, '
+            'шов сварки подворота ${formatMm(screenSeamMm)} мм с каждой стороны',
+        'Заготовка скрина — готовый размер плюс 2 × подворот: '
+            '${formatMm(filmCutWidthWithAllowance)} × '
+            '${formatMm(filmCutHeightWithAllowance)} мм '
+            '(${formatMm(filmCutWidth)} × ${formatMm(filmCutHeight)} мм '
+            'до припуска); усадки нет',
+        'Расход скрина — площадь заготовки '
+            '${formatMeters(filmCutAreaM2)} м²',
+      ] else ...[
+        'Окантовка складывается пополам; запайка плёнки под окантовку '
+            '${formatMm(params.weldOverlapMm)} мм по всему периметру',
         'Окантовка по сторонам — ${edgeBySideSummary.lowercaseFirst}',
         'Расход окантовки: ${edgeConsumptionLabels.join(', ')}',
-        'Плёнка ПВХ 700 мкм в раскрое: заготовка '
+      ],
+      'Полотно ${params.isScreen ? 'скрина' : 'ПВХ 700 мкм'} в раскрое: '
+          'заготовка ${formatMm(filmCutWidthWithAllowance)} × '
+          '${formatMm(filmCutHeightWithAllowance)} мм'
+          '${params.isScreen ? '' : '; с усадкой '
+              '${formatPercent(params.effectiveShrinkagePercent)} — '
+              '${formatMm(filmCutWidthWithShrinkage)} × '
+              '${formatMm(filmCutHeightWithShrinkage)} мм'}',
+      if (params.hasAllowance)
+        'Припуск на раскрой: ширина ${params.allowanceWidthLabel} мм, '
+            'высота ${params.allowanceHeightLabel} мм — полотно кроится '
             '${formatMm(filmCutWidthWithAllowance)} × '
-            '${formatMm(filmCutHeightWithAllowance)} мм; с усадкой '
-            '${formatPercent(params.shrinkagePercent)} — '
-            '${formatMm(filmCutWidthWithShrinkage)} × '
-            '${formatMm(filmCutHeightWithShrinkage)} мм',
-        if (params.hasAllowance)
-          'Припуск на раскрой: ширина ${params.allowanceWidthLabel} мм, '
-              'высота ${params.allowanceHeightLabel} мм — плёнка кроится '
-              '${formatMm(filmCutWidthWithAllowance)} × '
-              '${formatMm(filmCutHeightWithAllowance)} мм',
-        'Люверсы ${eyeletType.label.toLowerCase()}, шаг $eyeletStepLabel '
-            '(номинал ${formatMm(params.eyeletStep)} мм), от угла '
-            '${formatMm(params.eyeletCornerOffset)} мм, всего $eyeletCount шт',
-        'Крепёж: ${fastenerSummary.toLowerCase()}',
-        if (params.isLifting)
-          'Подъёмные ремни: $strapCount шт, '
-              '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} мм '
-              '(2 шт до 2 м ширины, далее +1 на метр)',
-        if (params.zippers.length == 1) 'Молния: $zipperBandSummary',
-        if (params.zippers.length > 1) 'Молнии: $zippersSummary',
-        if (params.hasZipper && layers.zipperGaps != null && params.zippers.length == 1)
-          'Спайка молнии ${formatMm(params.zipperBandWidth)} мм; от спайки до '
-              'кромок плёнки: слева ${formatMm(layers.zipperGaps!.left)} мм, '
-              'справа ${formatMm(layers.zipperGaps!.right)} мм',
-        if (params.cutouts.isNotEmpty) 'Вырезы: $cutoutsSummary',
-        if (params.weldedSides.isNotEmpty) 'Спайка окон: $weldSummary',
-        if (params.drainHoles)
-          'Дренаж: ${params.drainCount.round()} отв. Ø6 мм в нижней окантовке',
-        if (params.pocket)
-          'Карман: тент ${formatMm(pocketRollWidth)} мм сложен пополам → '
-              '${formatMm(params.pocketWidth)} мм; нижний угловой люверс поднят '
-              'на ${formatMm(pocketCornerOffset)} мм',
-        'Полотно: ${params.material.thickness}; доступные рулоны '
-            '${params.material.rollWidthsLabel} см',
+            '${formatMm(filmCutHeightWithAllowance)} мм',
+      'Люверсы ${eyeletType.label.toLowerCase()}, шаг $eyeletStepLabel '
+          '(номинал ${formatMm(params.eyeletStep)} мм), от угла '
+          '${formatMm(params.eyeletCornerOffset)} мм, всего $eyeletCount шт',
+      'Крепёж: ${fastenerSummary.toLowerCase()}',
+      if (params.isLifting && !params.isScreen)
+        'Подъёмные ремни: $strapCount шт, '
+            '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} мм '
+            '(2 шт до 2 м ширины, далее +1 на метр)',
+      if (params.zippers.length == 1) 'Молния: $zipperBandSummary',
+      if (params.zippers.length > 1) 'Молнии: $zippersSummary',
+      if (params.hasZipper && layers.zipperGaps != null && params.zippers.length == 1)
+        'Спайка молнии ${formatMm(params.zipperBandWidth)} мм; от спайки до '
+            'кромок плёнки: слева ${formatMm(layers.zipperGaps!.left)} мм, '
+            'справа ${formatMm(layers.zipperGaps!.right)} мм',
+      if (params.cutouts.isNotEmpty) 'Вырезы: $cutoutsSummary',
+      if (params.weldedSides.isNotEmpty) 'Спайка окон: $weldSummary',
+      if (params.drainHoles && !params.isScreen)
+        'Дренаж: ${params.drainCount.round()} отв. Ø6 мм в нижней окантовке',
+      if (params.pocket || params.pocketTop)
+        _pocketNote(),
+      'Полотно: ${params.material.thickness}; доступные рулоны '
+          '${params.material.rollWidthsLabel} см',
+      if (params.isScreen)
+        'Скрин сваривается горячим воздухом 400–500 °C, морозостойкость '
+            'до −30 °C'
+      else
         '${params.edgeMaterial.joining}, морозостойкость до −30 °C',
-      ];
+    ];
+  }
+
+  /// Примечание о карманах: снизу, сверху или оба; у скрина — подворотом.
+  String _pocketNote() {
+    final where = switch ((params.pocket, params.pocketTop)) {
+      (true, true) => 'снизу и сверху',
+      (true, false) => 'снизу',
+      (false, true) => 'сверху',
+      (false, false) => '',
+    };
+    if (params.isScreen) {
+      return 'Карман $where: подворот ${formatMm(params.pocketWidth)} мм, '
+          'угловой люверс со стороны кармана смещён на '
+          '${formatMm(pocketCornerOffset)} мм';
+    }
+    return 'Карман $where: тент ${formatMm(pocketRollWidth)} мм сложен '
+        'пополам → ${formatMm(params.pocketWidth)} мм; угловой люверс со '
+        'стороны кармана смещён на ${formatMm(pocketCornerOffset)} мм';
+  }
 }
 
 extension on String {
@@ -858,7 +1006,16 @@ List<ParamIssue> validateParams(WindowParams params) {
     70,
     '0 мм (в углу) или до 70 мм',
   );
-  checkRange(ParamField.shrinkagePercent, params.shrinkagePercent, 1, 2, '1–2 %');
+  // У скрина усадки нет — поле не проверяем.
+  if (!params.isScreen) {
+    checkRange(
+      ParamField.shrinkagePercent,
+      params.shrinkagePercent,
+      1,
+      2,
+      '1–2 %',
+    );
+  }
 
   // Припуск на раскрой: 0…500 мм. Отрицательный припуск — не ошибка ввода,
   // но изделие получится меньше замера, поэтому предупреждаем.
@@ -922,51 +1079,91 @@ List<ParamIssue> validateParams(WindowParams params) {
   }
 
   final layers = WindowLayers(params, geometry);
-  final maxFinished =
-      layers.finishedWidths.reduce((a, b) => a > b ? a : b);
-  final minSpan = math.min(geometry.spanX, geometry.maxY);
-  if (maxFinished * 2 + weldOverlap * 2 >= minSpan) {
-    issues.add(const ParamIssue(
-      ParamField.bottomWidth,
-      'Окантовка со швом не оставляет места плёнке — выберите рулон уже',
+
+  // Запайка плёнки под окантовку: 5…60 мм. От неё напрямую зависит размер
+  // заготовки, поэтому значение вводится руками и проверяется.
+  if (!params.weldOverlapMm.isFinite ||
+      params.weldOverlapMm < minWeldOverlapMm ||
+      params.weldOverlapMm > maxWeldOverlapMm) {
+    issues.add(ParamIssue(
+      ParamField.weldOverlap,
+      'Запайка под окантовку: ${formatMm(params.weldOverlapMm)} мм — вне '
+      'диапазона ${formatMm(minWeldOverlapMm)}–${formatMm(maxWeldOverlapMm)} мм',
+      isError: !params.weldOverlapMm.isFinite,
     ));
+  } else if (!params.isScreen) {
+    checkRange(
+      ParamField.weldOverlap,
+      params.weldOverlapMm,
+      10,
+      40,
+      '10–40 мм',
+    );
   }
 
-  // Окантовка: ширина рулона вводится вручную на каждую сторону. Разумный
-  // диапазон — 40…400 мм; своя ширина (не из пресетов) это нормально и
-  // отдельного замечания не требует. А вот если готовой полосы (рулон / 2)
-  // не хватает на напайку с двух сторон (2 × weldOverlap), ленте не за что
-  // зацепиться — об этом предупреждаем.
-  for (final side in EdgeSide.values) {
-    final raw = params.rollForSide(side);
-    final name = side.label.toLowerCase();
-    if (!raw.isFinite || raw < minEdgeRollWidth || raw > maxEdgeRollWidth) {
-      issues.add(ParamIssue(
-        ParamField.bottomWidth,
-        'Окантовка, $name: ${formatMm(raw)} мм — вне диапазона '
-        '${formatMm(minEdgeRollWidth)}–${formatMm(maxEdgeRollWidth)} мм',
-        isError: false,
-      ));
-      continue;
-    }
-    final finished = WindowParams.finishedEdgeWidth(raw);
-    // Полоса складывается пополам: на напайку 25 мм нужна такая же полоса
-    // плюс запас на кромку, поэтому минимум — 25 + 15 = 40 мм готовой.
-    const minFinishedForWeld = weldOverlap + 15;
-    if (finished < minFinishedForWeld) {
-      issues.add(ParamIssue(
-        ParamField.bottomWidth,
-        'Окантовка, $name: готовая полоса ${formatMm(finished)} мм — уже '
-        '${formatMm(minFinishedForWeld)} мм, напайке 25 мм не хватает ленты',
+  // Подворот скрина: 10…150 мм на сторону. Готовый размер плюс два подворота
+  // даёт заготовку (2000 × 2000 при подвороте 40 мм → 2080 × 2080 мм).
+  if (params.isScreen && params.hemMm.isFinite) {
+    checkRange(ParamField.hemWidth, params.hemMm, 30, 80, '40–60 мм');
+  }
+
+  if (params.isScreen) {
+    // У скрина нет окантовки: проверять её ширины и запайку нечего.
+    if (params.drainHoles) {
+      issues.add(const ParamIssue(
+        ParamField.drainCount,
+        'Дренаж делается в нижней окантовке — у скрина её нет',
         isError: false,
       ));
     }
+  } else {
+    final maxFinished =
+        layers.finishedWidths.reduce((a, b) => a > b ? a : b);
+    final minSpan = math.min(geometry.spanX, geometry.maxY);
+    if (maxFinished * 2 + params.weldOverlapMm * 2 >= minSpan) {
+      issues.add(const ParamIssue(
+        ParamField.bottomWidth,
+        'Окантовка со швом не оставляет места полотну — выберите рулон уже',
+      ));
+    }
+
+    // Окантовка: ширина рулона вводится вручную на каждую сторону. Разумный
+    // диапазон — 40…400 мм; своя ширина (не из пресетов) это нормально и
+    // отдельного замечания не требует. А вот если готовой полосы (рулон / 2)
+    // не хватает на запайку с двух сторон (2 × weldOverlapMm), ленте не за
+    // что зацепиться — об этом предупреждаем.
+    for (final side in EdgeSide.values) {
+      final raw = params.rollForSide(side);
+      final name = side.label.toLowerCase();
+      if (!raw.isFinite || raw < minEdgeRollWidth || raw > maxEdgeRollWidth) {
+        issues.add(ParamIssue(
+          ParamField.bottomWidth,
+          'Окантовка, $name: ${formatMm(raw)} мм — вне диапазона '
+          '${formatMm(minEdgeRollWidth)}–${formatMm(maxEdgeRollWidth)} мм',
+          isError: false,
+        ));
+        continue;
+      }
+      final finished = WindowParams.finishedEdgeWidth(raw);
+      // Полоса складывается пополам: на запайку нужна такая же полоса плюс
+      // запас на кромку, поэтому минимум — запайка + 15 мм готовой.
+      final minFinishedForWeld = params.weldOverlapMm + 15;
+      if (finished < minFinishedForWeld) {
+        issues.add(ParamIssue(
+          ParamField.bottomWidth,
+          'Окантовка, $name: готовая полоса ${formatMm(finished)} мм — уже '
+          '${formatMm(minFinishedForWeld)} мм, запайке '
+          '${formatMm(params.weldOverlapMm)} мм не хватает ленты',
+          isError: false,
+        ));
+      }
+    }
   }
 
-  if (params.drainHoles) {
+  if (params.drainHoles && !params.isScreen) {
     checkRange(ParamField.drainCount, params.drainCount, 1, 8, '1–5 отверстий');
   }
-  if (params.pocket) {
+  if (params.pocket || params.pocketTop) {
     checkRange(ParamField.pocketWidth, params.pocketWidth, 80, 150, '100 мм');
   }
   for (var i = 0; i < params.zippers.length; i++) {
@@ -1120,6 +1317,48 @@ List<Offset> insetPolygonPerSide(List<Offset> polygon, List<double> distances) {
       polygon,
       [for (final distance in distances) distance / 2],
     );
+  }
+  return result;
+}
+
+/// Смещает выпуклый многоугольник наружу: своя величина для каждой стороны.
+///
+/// Нужно скрину: заготовка кроится больше готового размера на подворот, и
+/// её контур — это наружный контур изделия, расширенный на [distances].
+List<Offset> outsetPolygonPerSide(
+  List<Offset> polygon,
+  List<double> distances,
+) {
+  if (polygon.length < 3) return List.of(polygon);
+  final count = polygon.length;
+  final shifted = <(Offset, Offset)>[];
+
+  for (var i = 0; i < count; i++) {
+    final a = polygon[i];
+    final b = polygon[(i + 1) % count];
+    final direction = b - a;
+    final length = direction.distance;
+    if (length < 1e-9) return List.of(polygon);
+    final unit = direction / length;
+    // При обходе против часовой стрелки внутренняя нормаль — (−dy, dx),
+    // значит наружная — (dy, −dx).
+    final outward = Offset(unit.dy, -unit.dx);
+    final raw = i < distances.length ? distances[i] : distances.last;
+    final distance = (!raw.isFinite || raw <= 0) ? 0.0 : raw;
+    shifted.add((a + outward * distance, b + outward * distance));
+  }
+
+  final result = <Offset>[];
+  for (var i = 0; i < count; i++) {
+    final previous = shifted[(i - 1 + count) % count];
+    final current = shifted[i];
+    final point = _lineIntersection(
+      previous.$1,
+      previous.$2,
+      current.$1,
+      current.$2,
+    );
+    result.add(point ?? current.$1);
   }
   return result;
 }

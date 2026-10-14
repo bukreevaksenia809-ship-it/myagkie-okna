@@ -18,7 +18,28 @@ enum WindowType {
       };
 }
 
-/// Материал полотна: от него зависит вид на чертеже и доступные ширины рулонов.
+/// Технология изделия. Отдельного поля у окна нет: технология выводится из
+/// материала полотна, чтобы не было двух противоречащих источников истины
+/// (см. [WindowParams.tech] и [WindowParams.isScreen]). Пользователь выбирает
+/// материал, а технология, крепёж и документы подстраиваются сами.
+enum WindowTech {
+  /// ПВХ: окантовка из тента складывается пополам, плёнка напаивается под неё.
+  pvcTent('ПВХ с тентом'),
+
+  /// Скрин: подворот материала по периметру и шов [screenSeamMm], тента нет.
+  screen('Скрин без тента');
+
+  const WindowTech(this.label);
+
+  final String label;
+}
+
+/// Материал полотна: от него зависит вид на чертеже, доступные ширины рулонов
+/// и сама технология изделия.
+///
+/// [FilmMaterial.screen] — это отдельная технология: скрин подворачивается сам,
+/// без коричневого тента-окантовки, а крепится только люверсами по подвороту
+/// (см. [WindowParams.isScreen], [WindowParams.hemMm], [screenSeamMm]).
 enum FilmMaterial {
   clearPvc(
     'Обычный ПВХ',
@@ -34,6 +55,11 @@ enum FilmMaterial {
     'Москитная сетка',
     'сетка ПВХ',
     [1400, 1800, 2000, 2400, 2600, 3000],
+  ),
+  screen(
+    'Скрин',
+    'скрин-ткань ПВХ',
+    [1400, 1800, 2000, 2400, 2600],
   );
 
   const FilmMaterial(this.label, this.thickness, this.rollWidths);
@@ -100,23 +126,18 @@ String edgeBandLabel(double rawWidth, {bool short = false}) {
   return short ? width : 'Тент $width';
 }
 
-/// Материал окантовки.
+/// Материал окантовки: только ПВХ-тент. Ткани Oxford в проекте больше нет —
+/// заказчик работает на ПВХ-тенте, поэтому и шов всегда сварной.
 enum EdgeMaterial {
-  pvcTent630,
-  oxford600,
-  oxford1680;
+  pvcTent630;
 
   String get label => switch (this) {
         EdgeMaterial.pvcTent630 => 'ПВХ-тент 630–650 г/м²',
-        EdgeMaterial.oxford600 => 'Oxford 600D',
-        EdgeMaterial.oxford1680 => 'Oxford 1680D',
       };
 
-  /// Способ соединения: ПВХ сваривают, Oxford шьют.
+  /// Способ соединения: ПВХ-тент сваривают горячим воздухом.
   String get joining => switch (this) {
         EdgeMaterial.pvcTent630 => 'Сварка горячим воздухом 400–500 °C',
-        EdgeMaterial.oxford600 => 'Шитьё',
-        EdgeMaterial.oxford1680 => 'Шитьё',
       };
 
   bool get isWelded => this == EdgeMaterial.pvcTent630;
@@ -228,7 +249,9 @@ enum ParamField {
   shrinkagePercent,
   rollGap,
   allowanceWidth,
-  allowanceHeight;
+  allowanceHeight,
+  weldOverlap,
+  hemWidth;
 
   String get label => switch (this) {
         ParamField.bottomWidth => 'Ширина низ',
@@ -244,6 +267,8 @@ enum ParamField {
         ParamField.rollGap => 'Зазор при раскладке',
         ParamField.allowanceWidth => 'Припуск на раскрой по ширине',
         ParamField.allowanceHeight => 'Припуск на раскрой по высоте',
+        ParamField.weldOverlap => 'Запайка плёнки под окантовку',
+        ParamField.hemWidth => 'Подворот скрина на сторону',
       };
 
   String get unit => switch (this) {
@@ -253,8 +278,23 @@ enum ParamField {
       };
 }
 
-/// Припуск на сварку (напайка): плёнка заходит под окантовку на 25 мм всегда.
-const double weldOverlap = 25;
+/// Припуск на сварку (напайка, запайка): на сколько плёнка ПВХ заходит под
+/// окантовку. Значение по умолчанию; у каждого окна своё поле
+/// [WindowParams.weldOverlapMm] (5…60 мм), введённое руками.
+const double defaultWeldOverlapMm = 25;
+const double minWeldOverlapMm = 5;
+const double maxWeldOverlapMm = 60;
+
+/// Шов сварки подворота скрина, мм — с каждой стороны подворота.
+const double screenSeamMm = 3;
+
+/// Подворот скрина: сколько материала подворачивается на каждую сторону.
+/// Пресеты панели — [screenHemPresets], значение по умолчанию
+/// [defaultScreenHemMm]; у окна своё поле [WindowParams.hemMm].
+const double defaultScreenHemMm = 40;
+const double minScreenHemMm = 10;
+const double maxScreenHemMm = 150;
+const List<double> screenHemPresets = [40, 50, 60];
 
 /// Разумный предел припуска на раскрой, мм: больше — почти наверняка опечатка.
 const double maxAllowanceMm = 500;
@@ -400,8 +440,10 @@ class WindowParams {
     this.rollRight = 100,
     this.edgeMaterial = EdgeMaterial.pvcTent630,
     this.edgeColor = EdgeColor.brown,
+    this.weldOverlapMm = defaultWeldOverlapMm,
     this.eyeletType = EyeletType.round10,
     this.material = FilmMaterial.clearPvc,
+    this.hemMm = defaultScreenHemMm,
     this.eyeletStep = 300,
     this.eyeletCornerOffset = 0,
     this.fastenerType = FastenerType.turnBuckles,
@@ -410,6 +452,7 @@ class WindowParams {
     this.weldedSides = const [],
     this.removeEyeletsOnWelded = true,
     this.pocket = false,
+    this.pocketTop = false,
     this.pocketWidth = pocketFinishedWidth,
     this.drainHoles = false,
     this.drainCount = 3,
@@ -466,8 +509,16 @@ class WindowParams {
   final EdgeMaterial edgeMaterial;
   final EdgeColor edgeColor;
 
-  /// Материал полотна: обычный ПВХ, тонированный или москитная сетка.
+  /// Запайка (напайка) плёнки под окантовку, мм — вводится руками, 5…60 мм.
+  /// От неё зависит размер заготовки плёнки: каждый миллиметр запайки
+  /// добавляет по миллиметру с каждой стороны.
+  final double weldOverlapMm;
+
+  /// Материал полотна: ПВХ обычный/тонированный, москитная сетка, скрин.
   final FilmMaterial material;
+
+  /// Подворот скрина на сторону, мм (только для [FilmMaterial.screen]).
+  final double hemMm;
 
   // Крепёж
   final EyeletType eyeletType;
@@ -496,7 +547,11 @@ class WindowParams {
   final bool removeEyeletsOnWelded;
 
   /// Карман из тента по нижней кромке: утяжитель заводится в его полость.
+  /// У скрина карман образуется верхним/нижним подворотом.
   final bool pocket;
+
+  /// Карман по верхней кромке — зеркально нижнему.
+  final bool pocketTop;
 
   /// Готовая ширина кармана, мм (рулон 200 мм складывается пополам).
   final double pocketWidth;
@@ -552,9 +607,24 @@ class WindowParams {
   /// Доступные ширины рулонов для выбранного материала, мм.
   List<double> get availableRollWidths => material.rollWidths;
 
+  /// Скрин — самостоятельная технология: у него нет коричневого тента и нет
+  /// окантовки, материал подворачивается сам. Источник истины один —
+  /// материал: пользователь выбирает [FilmMaterial.screen], а всё остальное
+  /// (расчёт, чертёж, документы) выводится из этого признака.
+  bool get isScreen => material == FilmMaterial.screen;
+
+  /// Технология изделия, выведенная из материала (см. [WindowTech]).
+  WindowTech get tech => isScreen ? WindowTech.screen : WindowTech.pvcTent;
+
+  /// Усадка, которая реально применяется к раскрою: у скрина усадки нет
+  /// (ткань не тянется, как плёнка ПВХ), у ПВХ — поле [shrinkagePercent].
+  /// Нужен запас — его добавляют припуском на раскрой.
+  double get effectiveShrinkagePercent => isScreen ? 0 : shrinkagePercent;
+
   /// Количество подъёмных ремней: 2 при ширине до 2 м, далее +1 на каждый метр.
   int get liftStrapCount {
-    if (!isLifting) return 0;
+    // Скрин крепится только люверсами: ремней у него нет.
+    if (!isLifting || isScreen) return 0;
     final width = bottomWidth.isFinite && bottomWidth > 0 ? bottomWidth : 0.0;
     if (width <= 2000) return 2;
     return 2 + ((width - 2000) / 1000).ceil();
@@ -601,7 +671,9 @@ class WindowParams {
     double? rollRight,
     EdgeMaterial? edgeMaterial,
     EdgeColor? edgeColor,
+    double? weldOverlapMm,
     FilmMaterial? material,
+    double? hemMm,
     EyeletType? eyeletType,
     double? eyeletStep,
     double? eyeletCornerOffset,
@@ -611,6 +683,7 @@ class WindowParams {
     List<EdgeSide>? weldedSides,
     bool? removeEyeletsOnWelded,
     bool? pocket,
+    bool? pocketTop,
     double? pocketWidth,
     bool? drainHoles,
     double? drainCount,
@@ -635,7 +708,9 @@ class WindowParams {
       rollRight: rollRight ?? this.rollRight,
       edgeMaterial: edgeMaterial ?? this.edgeMaterial,
       edgeColor: edgeColor ?? this.edgeColor,
+      weldOverlapMm: weldOverlapMm ?? this.weldOverlapMm,
       material: material ?? this.material,
+      hemMm: hemMm ?? this.hemMm,
       eyeletType: eyeletType ?? this.eyeletType,
       eyeletStep: eyeletStep ?? this.eyeletStep,
       eyeletCornerOffset: eyeletCornerOffset ?? this.eyeletCornerOffset,
@@ -646,6 +721,7 @@ class WindowParams {
       removeEyeletsOnWelded:
           removeEyeletsOnWelded ?? this.removeEyeletsOnWelded,
       pocket: pocket ?? this.pocket,
+      pocketTop: pocketTop ?? this.pocketTop,
       pocketWidth: pocketWidth ?? this.pocketWidth,
       drainHoles: drainHoles ?? this.drainHoles,
       drainCount: drainCount ?? this.drainCount,
@@ -743,6 +819,8 @@ class WindowParams {
         ParamField.shrinkagePercent => copyWith(shrinkagePercent: value),
         ParamField.allowanceWidth => copyWith(allowanceWidthMm: value),
         ParamField.allowanceHeight => copyWith(allowanceHeightMm: value),
+        ParamField.weldOverlap => copyWith(weldOverlapMm: value),
+        ParamField.hemWidth => copyWith(hemMm: value),
         // Зазор раскладки живёт в параметрах заказа — здесь только заглушка
         // для единообразия интерфейса.
         ParamField.rollGap => this,
@@ -761,6 +839,8 @@ class WindowParams {
         ParamField.shrinkagePercent => shrinkagePercent,
         ParamField.allowanceWidth => allowanceWidthMm,
         ParamField.allowanceHeight => allowanceHeightMm,
+        ParamField.weldOverlap => weldOverlapMm,
+        ParamField.hemWidth => hemMm,
         ParamField.rollGap => 0,
       };
 
@@ -784,10 +864,12 @@ class WindowParams {
         rollRight,
         edgeMaterial.name,
         edgeColor.name,
+        weldOverlapMm,
         eyeletType.name,
         eyeletStep,
         eyeletCornerOffset,
         material.name,
+        hemMm,
         fastenerType.name,
         for (final zipper in zippers)
           '${zipper.centered}:${zipper.offsetMm}:${zipper.bandWidth}',
@@ -801,6 +883,7 @@ class WindowParams {
         zipperOffsetMm,
         zipperBandWidth,
         pocket,
+        pocketTop,
         pocketWidth,
         drainHoles,
         drainCount,

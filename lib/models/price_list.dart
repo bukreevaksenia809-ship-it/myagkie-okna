@@ -14,6 +14,7 @@ enum PriceField {
   filmClear,
   filmTinted,
   filmMesh,
+  filmScreen,
   edge100,
   edge200,
   edge240;
@@ -23,6 +24,7 @@ enum PriceField {
         PriceField.filmClear => 'Плёнка ПВХ прозрачная',
         PriceField.filmTinted => 'Плёнка ПВХ тонированная',
         PriceField.filmMesh => 'Москитная сетка',
+        PriceField.filmScreen => 'Скрин (ткань)',
         PriceField.edge100 => 'Окантовка, рулон 100 мм (готово 50)',
         PriceField.edge200 => 'Окантовка, рулон 200 мм (готово 100)',
         PriceField.edge240 => 'Окантовка, рулон 240 мм (готово 120)',
@@ -33,6 +35,7 @@ enum PriceField {
         PriceField.filmClear => 'ПВХ прозрачный',
         PriceField.filmTinted => 'ПВХ тонированный',
         PriceField.filmMesh => 'Сетка',
+        PriceField.filmScreen => 'Скрин',
         PriceField.edge100 => 'Тент 100',
         PriceField.edge200 => 'Тент 200',
         PriceField.edge240 => 'Тент 240',
@@ -42,7 +45,8 @@ enum PriceField {
   String get unit => switch (this) {
         PriceField.filmClear ||
         PriceField.filmTinted ||
-        PriceField.filmMesh =>
+        PriceField.filmMesh ||
+        PriceField.filmScreen =>
           '₽/м²',
         _ => '₽/м',
       };
@@ -59,6 +63,12 @@ const double defaultFilmTintedPerM2 = 1150;
 
 /// Цена москитной сетки ПВХ, ₽/м² (сетка дешевле плёнки: 300–500 ₽).
 const double defaultFilmMeshPerM2 = 420;
+
+/// Цена скрина (ткань ПВХ под подворот), ₽/м². Ориентир 450–600 ₽/м².
+const double defaultFilmScreenPerM2 = 520;
+
+/// Подворот скрина и шов 3 мм — работа, ₽/м по периметру.
+const double defaultScreenHemPerM = 180;
 
 /// Окантовка из рулона 100 мм (готовая полоса 50 мм), ₽/м.
 ///
@@ -136,6 +146,8 @@ class PriceList {
     this.filmClearPerM2 = defaultFilmClearPerM2,
     this.filmTintedPerM2 = defaultFilmTintedPerM2,
     this.filmMeshPerM2 = defaultFilmMeshPerM2,
+    this.filmScreenPerM2 = defaultFilmScreenPerM2,
+    this.screenHemPerM = defaultScreenHemPerM,
     this.edge100PerM = defaultEdge100PerM,
     this.edge200PerM = defaultEdge200PerM,
     this.edge240PerM = defaultEdge240PerM,
@@ -163,6 +175,12 @@ class PriceList {
   final double filmClearPerM2;
   final double filmTintedPerM2;
   final double filmMeshPerM2;
+
+  /// Скрин (ткань ПВХ), ₽/м².
+  final double filmScreenPerM2;
+
+  /// Подворот скрина и шов, ₽/м периметра.
+  final double screenHemPerM;
 
   final double edge100PerM;
   final double edge200PerM;
@@ -207,6 +225,7 @@ class PriceList {
         FilmMaterial.clearPvc => filmClearPerM2,
         FilmMaterial.tintedPvc => filmTintedPerM2,
         FilmMaterial.mosquitoNet => filmMeshPerM2,
+        FilmMaterial.screen => filmScreenPerM2,
       };
 
   /// Цена окантовки по типу рулона, ₽/м.
@@ -277,6 +296,7 @@ class PriceList {
         PriceField.filmClear => filmClearPerM2,
         PriceField.filmTinted => filmTintedPerM2,
         PriceField.filmMesh => filmMeshPerM2,
+        PriceField.filmScreen => filmScreenPerM2,
         _ => 0,
       };
 
@@ -295,6 +315,8 @@ class PriceList {
     double? filmClearPerM2,
     double? filmTintedPerM2,
     double? filmMeshPerM2,
+    double? filmScreenPerM2,
+    double? screenHemPerM,
     double? edge100PerM,
     double? edge200PerM,
     double? edge240PerM,
@@ -319,6 +341,8 @@ class PriceList {
       filmClearPerM2: filmClearPerM2 ?? this.filmClearPerM2,
       filmTintedPerM2: filmTintedPerM2 ?? this.filmTintedPerM2,
       filmMeshPerM2: filmMeshPerM2 ?? this.filmMeshPerM2,
+      filmScreenPerM2: filmScreenPerM2 ?? this.filmScreenPerM2,
+      screenHemPerM: screenHemPerM ?? this.screenHemPerM,
       edge100PerM: edge100PerM ?? this.edge100PerM,
       edge200PerM: edge200PerM ?? this.edge200PerM,
       edge240PerM: edge240PerM ?? this.edge240PerM,
@@ -344,6 +368,8 @@ class PriceList {
         'filmClearPerM2': filmClearPerM2,
         'filmTintedPerM2': filmTintedPerM2,
         'filmMeshPerM2': filmMeshPerM2,
+        'filmScreenPerM2': filmScreenPerM2,
+        'screenHemPerM': screenHemPerM,
         'edge100PerM': edge100PerM,
         'edge200PerM': edge200PerM,
         'edge240PerM': edge240PerM,
@@ -373,6 +399,9 @@ class PriceList {
       filmTintedPerM2:
           _price(json['filmTintedPerM2'], fallback.filmTintedPerM2),
       filmMeshPerM2: _price(json['filmMeshPerM2'], fallback.filmMeshPerM2),
+      filmScreenPerM2:
+          _price(json['filmScreenPerM2'], fallback.filmScreenPerM2),
+      screenHemPerM: _price(json['screenHemPerM'], fallback.screenHemPerM),
       edge100PerM: _price(json['edge100PerM'], fallback.edge100PerM),
       edge200PerM: _price(json['edge200PerM'], fallback.edge200PerM),
       edge240PerM: _price(json['edge240PerM'], fallback.edge240PerM),
