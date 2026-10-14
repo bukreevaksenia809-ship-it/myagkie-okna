@@ -97,7 +97,8 @@ class Estimate {
   /// Суммарная площадь готовых изделий, м².
   final double productAreaM2;
 
-  /// Суммарная площадь плёнки в раскрое, м².
+  /// Суммарная площадь заготовок (габарит) в раскрое С усадкой, м² — по ней
+  /// считаются позиции плёнки и работы раскроя.
   final double filmAreaM2;
 
   /// Смета всего заказа.
@@ -106,18 +107,27 @@ class Estimate {
     final lines = <EstimateLine>[];
 
     // --- Материалы: полотно по материалам --------------------------------
-    final filmEntries = summary.filmAreaByMaterial.entries.toList()
+    // Берём площадь заготовки (габарит) С усадкой: плёнка кроится по
+    // усадочным габаритам, поэтому без усадки цена была бы занижена.
+    final filmEntries = summary.filmAreaByMaterialWithShrinkage.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     for (final entry in filmEntries) {
       if (!(entry.value > 0)) continue;
+      final pricePerM2 = prices.filmPerM2(entry.key);
       lines.add(EstimateLine(
         title: 'Полотно: ${entry.key.label}',
+        // У скрина полотно считается по площади заготовки: готовый размер
+        // плюс подворот на каждую сторону. Подпись показывает это человеку
+        // прямо в смете.
         note: entry.key == FilmMaterial.screen
-            ? 'скрин: расход по площади заготовки (готовый размер + подворот)'
-            : entry.key.thickness,
+            ? 'скрин: заготовка (габарит) ${formatMeters(entry.value)} м² × '
+                '${_unitPriceLabel(pricePerM2)} ₽/м² — готовый размер плюс '
+                'подворот по сторонам'
+            : '${entry.key.thickness}; заготовка (габарит) с компенсацией '
+                'усадки',
         quantity: entry.value,
         unit: 'м²',
-        unitPrice: prices.filmPerM2(entry.key),
+        unitPrice: pricePerM2,
         group: EstimateGroup.materials,
       ));
     }
@@ -222,11 +232,11 @@ class Estimate {
         group: EstimateGroup.work,
       ));
     }
-    if (summary.filmAreaM2 > 0) {
+    if (summary.filmAreaWithShrinkageM2 > 0) {
       lines.add(EstimateLine(
         title: 'Раскрой плёнки и разметка',
-        note: 'по площади плёнки в раскрое',
-        quantity: summary.filmAreaM2,
+        note: 'по площади заготовки (габарит) с усадкой',
+        quantity: summary.filmAreaWithShrinkageM2,
         unit: 'м²',
         unitPrice: prices.cuttingPerM2,
         group: EstimateGroup.work,
@@ -242,13 +252,17 @@ class Estimate {
         group: EstimateGroup.work,
       ));
     }
-    // Скрин: вместо окантовки — подворот по периметру и шов 3 мм.
+    // Скрин: вместо окантовки — подворот по сторонам и шов 3 мм. Работа
+    // считается по длине подворота: периметр готового изделия.
     if (summary.screenHemLengthMm > 0) {
+      final hemMeters = summary.screenHemLengthMm / 1000;
       lines.add(EstimateLine(
         title: 'Подворот скрина и шов ${formatMm(screenSeamMm)} мм',
-        note: 'расход скрина — по площади заготовки (готовый размер плюс '
-            'подворот)',
-        quantity: summary.screenHemLengthMm / 1000,
+        note: 'подворот по сторонам (низ, право, верх, лево): '
+            '${formatMeters(hemMeters)} м × '
+            '${_unitPriceLabel(prices.screenHemPerM)} ₽/м — длина по периметру '
+            'готового изделия',
+        quantity: hemMeters,
         unit: 'м',
         unitPrice: prices.screenHemPerM,
         group: EstimateGroup.work,
@@ -260,7 +274,7 @@ class Estimate {
       lines: lines,
       windowCount: project.windowCount,
       productAreaM2: summary.productAreaM2,
-      filmAreaM2: summary.filmAreaM2,
+      filmAreaM2: summary.filmAreaWithShrinkageM2,
     );
   }
 
@@ -350,6 +364,18 @@ String formatQuantity(double value, String unit) {
 /// Округление денег до копейки. Нечисловые значения приводим к нулю.
 double roundMoney(double value) =>
     value.isFinite ? (value * 100).roundToDouble() / 100 : 0;
+
+/// Цена за единицу без символа валюты: «520» или «520,50».
+///
+/// Нужна для подписей вида «4,33 м² × 520 ₽/м²» — цена стоит рядом с единицей
+/// измерения, поэтому символ валюты в подписи не дублируется.
+String _unitPriceLabel(double value) {
+  if (!value.isFinite) return '—';
+  if (value == value.roundToDouble()) {
+    return groupThousands(value.toStringAsFixed(0));
+  }
+  return value.toStringAsFixed(2).replaceAll('.', ',');
+}
 
 /// Десятичное число с запятой и пробелами между разрядами: «1 234,50».
 String _formatDecimal(double value, int decimals) {

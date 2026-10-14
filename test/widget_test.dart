@@ -9,7 +9,9 @@ void main() {
   testWidgets('экран конструктора: панель, лист и переключение вкладок',
       (WidgetTester tester) async {
     // Высокое окно, чтобы вся панель параметров была построена без прокрутки.
-    tester.view.physicalSize = const Size(1700, 6000);
+    // Панель выросла (подворот по сторонам и площади заготовки), поэтому
+    // берём запас по высоте.
+    tester.view.physicalSize = const Size(1700, 7000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);

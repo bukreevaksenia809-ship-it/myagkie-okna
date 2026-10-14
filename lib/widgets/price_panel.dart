@@ -99,6 +99,13 @@ class _PricePanelState extends State<PricePanel> {
                   filmMeshPerM2: value,
                 )),
               ),
+              _row(
+                'Скрин, ₽/м²',
+                prices.film(PriceField.filmScreen),
+                (value) => _set(prices.copyWith(
+                  filmScreenPerM2: value,
+                )),
+              ),
             ]),
             _group('Окантовка, ₽/м', [
               _row(
@@ -159,6 +166,11 @@ class _PricePanelState extends State<PricePanel> {
                 'Сборка, ₽/м² изделия',
                 prices.laborPerM2,
                 (value) => _set(prices.copyWith(laborPerM2: value)),
+              ),
+              _row(
+                'Подворот скрина, ₽/м',
+                prices.screenHemPerM,
+                (value) => _set(prices.copyWith(screenHemPerM: value)),
               ),
               _row(
                 'Наценка, %',

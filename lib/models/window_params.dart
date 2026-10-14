@@ -39,7 +39,7 @@ enum WindowTech {
 ///
 /// [FilmMaterial.screen] — это отдельная технология: скрин подворачивается сам,
 /// без коричневого тента-окантовки, а крепится только люверсами по подвороту
-/// (см. [WindowParams.isScreen], [WindowParams.hemMm], [screenSeamMm]).
+/// (см. [WindowParams.isScreen], [WindowParams.hemWidths], [screenSeamMm]).
 enum FilmMaterial {
   clearPvc(
     'Обычный ПВХ',
@@ -126,7 +126,7 @@ String edgeBandLabel(double rawWidth, {bool short = false}) {
   return short ? width : 'Тент $width';
 }
 
-/// Материал окантовки: только ПВХ-тент. Ткани Oxford в проекте больше нет —
+/// Материал окантовки: только ПВХ-тент. Других тканей в проекте нет —
 /// заказчик работает на ПВХ-тенте, поэтому и шов всегда сварной.
 enum EdgeMaterial {
   pvcTent630;
@@ -251,7 +251,10 @@ enum ParamField {
   allowanceWidth,
   allowanceHeight,
   weldOverlap,
-  hemWidth;
+  hemBottom,
+  hemRight,
+  hemTop,
+  hemLeft;
 
   String get label => switch (this) {
         ParamField.bottomWidth => 'Ширина низ',
@@ -268,7 +271,10 @@ enum ParamField {
         ParamField.allowanceWidth => 'Припуск на раскрой по ширине',
         ParamField.allowanceHeight => 'Припуск на раскрой по высоте',
         ParamField.weldOverlap => 'Запайка плёнки под окантовку',
-        ParamField.hemWidth => 'Подворот скрина на сторону',
+        ParamField.hemBottom => 'Подворот скрина снизу',
+        ParamField.hemRight => 'Подворот скрина справа',
+        ParamField.hemTop => 'Подворот скрина сверху',
+        ParamField.hemLeft => 'Подворот скрина слева',
       };
 
   String get unit => switch (this) {
@@ -277,6 +283,15 @@ enum ParamField {
         _ => 'мм',
       };
 }
+
+/// Поле подворота скрина для стороны окна — чтобы замечания и подписи
+/// адресовались конкретной стороне, а не «подвороту вообще».
+ParamField hemFieldForSide(EdgeSide side) => switch (side) {
+      EdgeSide.bottom => ParamField.hemBottom,
+      EdgeSide.right => ParamField.hemRight,
+      EdgeSide.top => ParamField.hemTop,
+      EdgeSide.left => ParamField.hemLeft,
+    };
 
 /// Припуск на сварку (напайка, запайка): на сколько плёнка ПВХ заходит под
 /// окантовку. Значение по умолчанию; у каждого окна своё поле
@@ -289,8 +304,11 @@ const double maxWeldOverlapMm = 60;
 const double screenSeamMm = 3;
 
 /// Подворот скрина: сколько материала подворачивается на каждую сторону.
-/// Пресеты панели — [screenHemPresets], значение по умолчанию
-/// [defaultScreenHemMm]; у окна своё поле [WindowParams.hemMm].
+///
+/// Подворот задаётся отдельно на каждую сторону ([WindowParams.hemBottomMm]
+/// и соседние), потому что на трапеции и на окне со спайкой стороны бывают
+/// разными. Пресеты панели — [screenHemPresets], значение по умолчанию
+/// [defaultScreenHemMm].
 const double defaultScreenHemMm = 40;
 const double minScreenHemMm = 10;
 const double maxScreenHemMm = 150;
@@ -443,7 +461,10 @@ class WindowParams {
     this.weldOverlapMm = defaultWeldOverlapMm,
     this.eyeletType = EyeletType.round10,
     this.material = FilmMaterial.clearPvc,
-    this.hemMm = defaultScreenHemMm,
+    this.hemBottomMm = defaultScreenHemMm,
+    this.hemRightMm = defaultScreenHemMm,
+    this.hemTopMm = defaultScreenHemMm,
+    this.hemLeftMm = defaultScreenHemMm,
     this.eyeletStep = 300,
     this.eyeletCornerOffset = 0,
     this.fastenerType = FastenerType.turnBuckles,
@@ -517,8 +538,17 @@ class WindowParams {
   /// Материал полотна: ПВХ обычный/тонированный, москитная сетка, скрин.
   final FilmMaterial material;
 
-  /// Подворот скрина на сторону, мм (только для [FilmMaterial.screen]).
-  final double hemMm;
+  /// Подворот скрина снизу, мм (только для [FilmMaterial.screen]).
+  final double hemBottomMm;
+
+  /// Подворот скрина справа, мм.
+  final double hemRightMm;
+
+  /// Подворот скрина сверху, мм.
+  final double hemTopMm;
+
+  /// Подворот скрина слева, мм.
+  final double hemLeftMm;
 
   // Крепёж
   final EyeletType eyeletType;
@@ -652,6 +682,59 @@ class WindowParams {
         EdgeSide.left => rollLeft,
       };
 
+  /// Подвороты скрина по сторонам в порядке обхода углов:
+  /// низ, право, верх, лево (мм).
+  ///
+  /// Именно этот список идёт в геометрию: заготовка скрина — готовый контур,
+  /// расширенный на своё значение с каждой стороны.
+  List<double> get hemWidths => [
+        hemBottomMm,
+        hemRightMm,
+        hemTopMm,
+        hemLeftMm,
+      ];
+
+  /// Подворот скрина для стороны с индексом обхода углов
+  /// (0 — низ, 1 — право, 2 — верх, 3 — лево).
+  double hemForEdge(int index) => switch (index % 4) {
+        0 => hemBottomMm,
+        1 => hemRightMm,
+        2 => hemTopMm,
+        _ => hemLeftMm,
+      };
+
+  /// Подворот скрина для стороны окна.
+  double hemForSide(EdgeSide side) => switch (side) {
+        EdgeSide.bottom => hemBottomMm,
+        EdgeSide.right => hemRightMm,
+        EdgeSide.top => hemTopMm,
+        EdgeSide.left => hemLeftMm,
+      };
+
+  /// Сумма подворотов по четырём сторонам, мм.
+  ///
+  /// Ведомость и смета считают работу подворота по периметру готового
+  /// изделия; эта сумма нужна для подписей «на сколько вырастет заготовка».
+  double get hemTotalMm => hemBottomMm + hemRightMm + hemTopMm + hemLeftMm;
+
+  /// Все четыре подворота одинаковы — тогда старые версии приложения
+  /// поймут заказ по одиночному полю `hemMm` в JSON.
+  bool get hasUniformHem =>
+      hemBottomMm == hemRightMm &&
+      hemRightMm == hemTopMm &&
+      hemTopMm == hemLeftMm;
+
+  /// Подпись подворотов по сторонам: «низ 40, право 50, верх 60, лево 40 мм».
+  String get hemBySideLabel => 'низ ${formatMm(hemBottomMm)}, '
+      'право ${formatMm(hemRightMm)}, верх ${formatMm(hemTopMm)}, '
+      'лево ${formatMm(hemLeftMm)} мм';
+
+  /// Короткая подпись подворотов по сторонам: «40/50/60/40 мм»
+  /// (низ/право/верх/лево).
+  String get hemBySideShortLabel =>
+      '${formatMm(hemBottomMm)}/${formatMm(hemRightMm)}/'
+      '${formatMm(hemTopMm)}/${formatMm(hemLeftMm)} мм';
+
   WindowParams copyWith({
     String? projectName,
     String? customer,
@@ -673,7 +756,10 @@ class WindowParams {
     EdgeColor? edgeColor,
     double? weldOverlapMm,
     FilmMaterial? material,
-    double? hemMm,
+    double? hemBottomMm,
+    double? hemRightMm,
+    double? hemTopMm,
+    double? hemLeftMm,
     EyeletType? eyeletType,
     double? eyeletStep,
     double? eyeletCornerOffset,
@@ -710,7 +796,10 @@ class WindowParams {
       edgeColor: edgeColor ?? this.edgeColor,
       weldOverlapMm: weldOverlapMm ?? this.weldOverlapMm,
       material: material ?? this.material,
-      hemMm: hemMm ?? this.hemMm,
+      hemBottomMm: hemBottomMm ?? this.hemBottomMm,
+      hemRightMm: hemRightMm ?? this.hemRightMm,
+      hemTopMm: hemTopMm ?? this.hemTopMm,
+      hemLeftMm: hemLeftMm ?? this.hemLeftMm,
       eyeletType: eyeletType ?? this.eyeletType,
       eyeletStep: eyeletStep ?? this.eyeletStep,
       eyeletCornerOffset: eyeletCornerOffset ?? this.eyeletCornerOffset,
@@ -820,7 +909,10 @@ class WindowParams {
         ParamField.allowanceWidth => copyWith(allowanceWidthMm: value),
         ParamField.allowanceHeight => copyWith(allowanceHeightMm: value),
         ParamField.weldOverlap => copyWith(weldOverlapMm: value),
-        ParamField.hemWidth => copyWith(hemMm: value),
+        ParamField.hemBottom => copyWith(hemBottomMm: value),
+        ParamField.hemRight => copyWith(hemRightMm: value),
+        ParamField.hemTop => copyWith(hemTopMm: value),
+        ParamField.hemLeft => copyWith(hemLeftMm: value),
         // Зазор раскладки живёт в параметрах заказа — здесь только заглушка
         // для единообразия интерфейса.
         ParamField.rollGap => this,
@@ -840,7 +932,10 @@ class WindowParams {
         ParamField.allowanceWidth => allowanceWidthMm,
         ParamField.allowanceHeight => allowanceHeightMm,
         ParamField.weldOverlap => weldOverlapMm,
-        ParamField.hemWidth => hemMm,
+        ParamField.hemBottom => hemBottomMm,
+        ParamField.hemRight => hemRightMm,
+        ParamField.hemTop => hemTopMm,
+        ParamField.hemLeft => hemLeftMm,
         ParamField.rollGap => 0,
       };
 
@@ -869,7 +964,10 @@ class WindowParams {
         eyeletStep,
         eyeletCornerOffset,
         material.name,
-        hemMm,
+        hemBottomMm,
+        hemRightMm,
+        hemTopMm,
+        hemLeftMm,
         fastenerType.name,
         for (final zipper in zippers)
           '${zipper.centered}:${zipper.offsetMm}:${zipper.bandWidth}',

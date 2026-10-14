@@ -4,9 +4,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
+import 'package:soft_window_drawer/models/price_list.dart';
 import 'package:soft_window_drawer/models/window_geometry.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/widgets/params_panel.dart';
+import 'package:soft_window_drawer/widgets/price_panel.dart';
 
 /// Панель шириной 420 px с живым состоянием: правки уходят в проект.
 class _PanelHost extends StatefulWidget {
@@ -163,24 +165,51 @@ void _screenAndWeldRules() {
     // Окантовка и крепёж кроме люверсов спрятаны.
     expect(find.text('Окантовка'), findsNothing);
     expect(find.text('Поворотные скобы'), findsNothing);
-    expect(find.byKey(const Key('hem-field')), findsOneWidget);
-    // Подворот 60 мм: заготовка = готовый размер + 2 × 60 на каждую сторону.
-    await tester.enterText(find.byKey(const Key('hem-field')), '60');
-    await tester.pumpAndSettle();
+    // Подворот задаётся на каждую сторону: четыре поля и подпись заготовки.
+    expect(find.byKey(const Key('hem-bottom-field')), findsOneWidget);
+    expect(find.byKey(const Key('hem-right-field')), findsOneWidget);
+    expect(find.byKey(const Key('hem-top-field')), findsOneWidget);
+    expect(find.byKey(const Key('hem-left-field')), findsOneWidget);
+    expect(find.byKey(const Key('hem-blank-label')), findsOneWidget);
+    // Подворот 60 мм на все стороны: заготовка = готовый размер + 2 × 60.
+    for (final key in const [
+      'hem-bottom-field',
+      'hem-right-field',
+      'hem-top-field',
+      'hem-left-field',
+    ]) {
+      await tester.enterText(find.byKey(Key(key)), '60');
+      await tester.pumpAndSettle();
+    }
     params = hostKey.currentState!.project.selected;
-    expect(params.hemMm, 60);
+    expect(params.hemBottomMm, 60);
+    expect(params.hemRightMm, 60);
+    expect(params.hemTopMm, 60);
+    expect(params.hemLeftMm, 60);
     final screenSpec = WindowSpec.of(params);
     expect(
       screenSpec.filmCutWidthWithAllowance,
-      closeTo(params.bottomWidth + 2 * 60, 1e-9),
+      closeTo(params.bottomWidth + 60 + 60, 1e-9),
     );
     expect(
       screenSpec.filmCutHeightWithAllowance,
-      closeTo(params.leftHeight + 2 * 60, 1e-9),
+      closeTo(params.leftHeight + 60 + 60, 1e-9),
     );
     // Готовое окно панели 1500 × 2520 → заготовка 1620 × 2640 мм.
     expect(screenSpec.filmCutWidthWithAllowance, closeTo(1620, 1e-9));
     expect(screenSpec.filmCutHeightWithAllowance, closeTo(2640, 1e-9));
+    // Разные подвороты по сторонам дают разный прирост по осям.
+    await tester.enterText(find.byKey(const Key('hem-bottom-field')), '40');
+    await tester.enterText(find.byKey(const Key('hem-top-field')), '60');
+    await tester.enterText(find.byKey(const Key('hem-right-field')), '50');
+    await tester.enterText(find.byKey(const Key('hem-left-field')), '40');
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    final mixedSpec = WindowSpec.of(params);
+    expect(mixedSpec.filmCutWidthWithAllowance,
+        closeTo(params.bottomWidth + 40 + 50, 1e-9));
+    expect(mixedSpec.filmCutHeightWithAllowance,
+        closeTo(params.leftHeight + 40 + 60, 1e-9));
     expect(tester.takeException(), isNull);
 
     // --- Карман сверху и снизу ---
@@ -220,6 +249,76 @@ void _screenAndWeldRules() {
       pvcSpec.filmCutWidth,
       closeTo(params.bottomWidth - defaultRoll + 2 * 10, 1e-9),
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  _pricePanelRules();
+}
+
+/// Панель «Прайс-лист»: цены скрина видны и уходят в модель.
+class _PriceHost extends StatefulWidget {
+  const _PriceHost({super.key});
+
+  @override
+  State<_PriceHost> createState() => _PriceHostState();
+}
+
+class _PriceHostState extends State<_PriceHost> {
+  PriceList prices = PriceList.defaults();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 420,
+          child: PricePanel(
+            prices: prices,
+            onChanged: (value) => setState(() => prices = value),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+void _pricePanelRules() {
+  testWidgets('панель прайса: цены скрина показываются и правятся', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final hostKey = GlobalKey<_PriceHostState>();
+    await tester.pumpWidget(_PriceHost(key: hostKey));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    // Раздел раскрыт: цены скрина — и полотно, и подворот.
+    await tester.tap(find.text('ПРАЙС-ЛИСТ'));
+    await tester.pumpAndSettle();
+    expect(find.text('Скрин, ₽/м²'), findsOneWidget);
+    expect(find.text('Подворот скрина, ₽/м'), findsOneWidget);
+    expect(hostKey.currentState!.prices.filmScreenPerM2, 520);
+    expect(hostKey.currentState!.prices.screenHemPerM, 180);
+
+    Future<void> setRow(String label, String value) async {
+      final row = find
+          .ancestor(of: find.text(label), matching: find.byType(Row))
+          .first;
+      await tester.enterText(
+        find.descendant(of: row, matching: find.byType(TextField)),
+        value,
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await setRow('Скрин, ₽/м²', '640');
+    await setRow('Подворот скрина, ₽/м', '210');
+    expect(hostKey.currentState!.prices.filmScreenPerM2, 640);
+    expect(hostKey.currentState!.prices.screenHemPerM, 210);
     expect(tester.takeException(), isNull);
   });
 }

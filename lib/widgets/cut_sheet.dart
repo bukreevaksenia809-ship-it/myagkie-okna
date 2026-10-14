@@ -769,14 +769,15 @@ class CutSheetPainter extends CustomPainter {
 class _CutTotals {
   _CutTotals(this.specs) {
     for (final spec in specs) {
-      // Плёнка в раскрое — заготовка: припуск на раскрой уже внутри.
+      // Плёнка в раскрое — заготовка (габарит): припуск уже внутри, усадка
+      // компенсируется в габаритах, поэтому в расход идёт площадь с усадкой.
       filmAreaM2 += spec.filmCutAreaM2;
       filmAreaWithShrinkageM2 += spec.filmCutAreaWithShrinkageM2;
       productAreaM2 += spec.productAreaM2;
       areaByMaterial.update(
         spec.params.material,
-        (value) => value + spec.filmCutAreaM2,
-        ifAbsent: () => spec.filmCutAreaM2,
+        (value) => value + spec.filmCutAreaWithShrinkageM2,
+        ifAbsent: () => spec.filmCutAreaWithShrinkageM2,
       );
     }
   }
@@ -849,15 +850,15 @@ class _CutTotalsBlock extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: _statTile(
-                  'Площадь заготовок',
-                  '${formatMeters(totals.filmAreaM2)} м²',
+                  'Заготовки (габарит) с усадкой',
+                  '${formatMeters(totals.filmAreaWithShrinkageM2)} м²',
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _statTile(
-                  'С учётом усадки',
-                  '${formatMeters(totals.filmAreaWithShrinkageM2)} м²',
+                  'Без усадки (габарит)',
+                  '${formatMeters(totals.filmAreaM2)} м²',
                 ),
               ),
             ],
@@ -958,8 +959,8 @@ class _CutTitleBlock extends StatelessWidget {
           ),
           Expanded(
             flex: 3,
-            child: _cell('Площадь заготовок',
-                '${formatMeters(totals.filmAreaM2)} м²'),
+            child: _cell('Заготовки (габарит) с усадкой',
+                '${formatMeters(totals.filmAreaWithShrinkageM2)} м²'),
           ),
         ],
       ),

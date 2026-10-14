@@ -170,8 +170,8 @@ class TechCard {
 
   /// Подпись под заголовком: окантовка, люверсы, крепёж.
   String get subtitle => params.isScreen
-      ? 'Скрин без тента: подворот ${formatMm(params.hemMm)} мм на сторону, '
-          'шов ${formatMm(screenSeamMm)} мм · заготовка '
+      ? 'Скрин без тента: подворот ${params.hemBySideShortLabel} '
+          '(низ/право/верх/лево), шов ${formatMm(screenSeamMm)} мм · заготовка '
           '${formatMm(spec.filmCutWidthWithAllowance)} × '
           '${formatMm(spec.filmCutHeightWithAllowance)} мм · '
           'люверсы: ${spec.eyeletCount} шт, шаг ${spec.eyeletStepLabel} · '
@@ -274,7 +274,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       description:
           'Отрезать полотно скрина по заготовке: готовый размер '
           '${formatMm(geometry.spanX)} × ${formatMm(geometry.overallHeight)} мм '
-          'плюс подворот ${formatMm(params.hemMm)} мм с каждой стороны → '
+          'плюс подворот по сторонам — ${params.hemBySideLabel} '
+          '(низ/право/верх/лево) → '
           '${formatMm(spec.filmCutWidthWithAllowance)} × '
           '${formatMm(spec.filmCutHeightWithAllowance)} мм'
           '${params.hasAllowance ? ', плюс припуск на раскрой '
@@ -290,12 +291,12 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
               '${formatMm(spec.filmCutHeightWithAllowance)} мм',
           note:
               'готовый размер ${formatMm(geometry.spanX)} × '
-              '${formatMm(geometry.overallHeight)} мм плюс подворот '
-              '${formatMm(params.hemMm)} мм на сторону',
+              '${formatMm(geometry.overallHeight)} мм плюс подворот по сторонам '
+              '${params.hemBySideShortLabel} (низ/право/верх/лево)',
         ),
         TechMaterial(
-          name: 'Площадь заготовки в раскрое',
-          size: '${formatMeters(spec.filmCutAreaM2)} м²',
+          name: 'Площадь заготовки (габарит) в раскрое',
+          size: '${formatMeters(spec.filmCutAreaWithShrinkageM2)} м²',
           note: 'расход скрина считается по площади заготовки, без вырезов',
         ),
       ],
@@ -306,7 +307,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           'кромка ровная без задиров и волн',
       source:
           'WindowSpec.filmCutWidthWithAllowance / filmCutHeightWithAllowance '
-          '(готовый размер + 2 × WindowParams.hemMm)',
+          '(готовый размер + подворот по сторонам: WindowParams.hemBottomMm / '
+          'hemRightMm / hemTopMm / hemLeftMm)',
     );
   } else {
     add(
@@ -334,9 +336,9 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
               '${params.hasAllowance ? ' (с припуском на раскрой)' : ''}',
         ),
         TechMaterial(
-          name: 'Площадь заготовки в раскрое',
-          size: '${formatMeters(spec.filmCutAreaM2)} м²',
-          note: 'с припуском на раскрой, без площади вырезов',
+          name: 'Площадь заготовки (габарит) с усадкой',
+          size: '${formatMeters(spec.filmCutAreaWithShrinkageM2)} м²',
+          note: 'с припуском на раскрой и усадкой, без площади вырезов',
         ),
       ],
       tool: 'Раскроечный стол, дисковый нож, рулетка, угольник, маркер',
@@ -354,31 +356,50 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
   final isWeldedEdge = params.edgeMaterial.isWelded;
   if (isScreen) {
     // Скрин подворачивается сам: вместо напайки под окантовку — подворот
-    // по периметру и шов 3 мм.
+    // по периметру и шов 3 мм. Подворот перечисляется по каждой стороне:
+    // на трапеции и на окне со спайкой стороны бывают разными.
+    final hemBySide = <String>[
+      for (final side in EdgeSide.values)
+        '${side.label.toLowerCase()} ${formatMm(params.hemForSide(side))} мм',
+    ].join(', ');
+    final hemControl = <String>[
+      for (final side in EdgeSide.values)
+        '${side.label.toLowerCase()} ${formatMm(params.hemForSide(side))} ± 2 мм',
+    ].join(', ');
     add(
       kind: TechOperationKind.hem,
       title: 'Подворот и шов ${formatMm(screenSeamMm)} мм',
       description:
-          'Завернуть материал по периметру на подворот '
-          '${formatMm(params.hemMm)} мм на каждую сторону '
-          '(${formatMm(geometry.perimeter)} мм) и сварить горячим воздухом '
+          'Завернуть материал по периметру на подворот по сторонам — '
+          '$hemBySide (низ/право/верх/лево), всего по периметру '
+          '${formatMm(geometry.perimeter)} мм, и сварить горячим воздухом '
           'швом ${formatMm(screenSeamMm)} мм с каждой стороны. '
           'Скорость сварки $techWeldSpeedHint, режим уточнить пробным швом '
           'на обрезке. Тента и окантовки у скрина нет.',
       materials: [
+        for (final side in EdgeSide.values)
+          TechMaterial(
+            name: 'Подворот скрина',
+            size: '${formatMm(params.hemForSide(side))} мм',
+            quantity: params.hemForSide(side),
+            side: side.label,
+            note: 'шов ${formatMm(screenSeamMm)} мм',
+          ),
         TechMaterial(
-          name: 'Подворот скрина',
-          size: '${formatMm(params.hemMm)} мм на сторону',
-          note: 'периметр окна ${formatMm(geometry.perimeter)} мм, '
-              'шов ${formatMm(screenSeamMm)} мм',
+          name: 'Длина подворота по периметру',
+          size: '${formatMm(geometry.perimeter)} мм',
+          quantity: geometry.perimeter,
+          note: 'периметр готового изделия; расход скрина считается по площади '
+              'заготовки',
         ),
       ],
       tool: 'Фен-сварочник (горячий воздух), прижимной ролик, термометр',
       control:
-          'Подворот ${formatMm(params.hemMm)} ± 2 мм, шов '
+          'Подворот по сторонам: $hemControl; шов '
           '${formatMm(screenSeamMm)} ± 0,5 мм; без прожогов, отслоений и '
           'пропусков; полотно не стянуто',
-      source: 'WindowParams.hemMm; screenSeamMm = 3 мм',
+      source: 'WindowParams.hemBottomMm / hemRightMm / hemTopMm / hemLeftMm; '
+          'screenSeamMm = 3 мм',
     );
   } else {
     add(

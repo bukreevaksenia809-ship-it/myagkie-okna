@@ -278,21 +278,23 @@ void _checkEyeletClearance(
 
   // Кольцо люверса должно помещаться в окантовку: от линии люверсов до обеих
   // кромок ленты ровно половина готовой ширины окантовки. У скрина окантовки
-  // нет — люверсы стоят по подвороту, и запас считаем по [WindowParams.hemMm].
+  // нет — люверсы стоят по подвороту, и запас считаем по самому узкому
+  // подвороту ([WindowParams.hemWidths]).
   if (params.isScreen) {
     final ringHalf = params.effectiveEyeletType.outerHeight / 2;
-    if (params.hemMm / 2 - ringHalf < _minEyeletMaterialMarginMm) {
+    final minHem = params.hemWidths.reduce(math.min);
+    if (minHem / 2 - ringHalf < _minEyeletMaterialMarginMm) {
       checks.add(TechCheck(
         ruleId: 'eyelet-hem-material',
         severity: TechSeverity.warning,
         title: 'Люверсу не хватает подворота: запас всего '
-            '${formatMm(math.max(params.hemMm / 2 - ringHalf, 0))} мм',
+            '${formatMm(math.max(minHem / 2 - ringHalf, 0))} мм',
         explanation: 'Кольцо ${params.effectiveEyeletType.label.toLowerCase()} '
-            'почти выходит за подворот ${formatMm(params.hemMm)} мм: ткань '
-            'под кольцом продавливается и рвётся.',
+            'почти выходит за самый узкий подворот ${formatMm(minHem)} мм: '
+            'ткань под кольцом продавливается и рвётся.',
         recommendation: 'Увеличьте подворот до '
-            '${formatMm(math.max(params.hemMm, _minHemMm * 2))} мм или '
-            'поставьте люверс меньшего размера.',
+            '${formatMm(math.max(minHem, _minHemMm * 2))} мм на каждой стороне '
+            'или поставьте люверс меньшего размера.',
       ));
     }
     return;
@@ -344,37 +346,43 @@ void _checkWeldOverlap(WindowParams params, List<TechCheck> checks) {
   }
 }
 
-/// Подворот скрина.
+/// Подворот скрина — проверяется по каждой стороне.
 ///
 /// Скрин подворачивается сам: подворот 40–60 мм держит люверс и даёт
-/// заготовку 2080–2120 мм на готовое окно 2000 мм. Меньше 30 мм — ткань
-/// вырывается по люверсу, больше 80 мм — перерасход ткани без пользы.
+/// заготовку 2080–2120 мм на готовое окно 2000 мм (по сторонам значения
+/// складываются). Меньше 30 мм — ткань вырывается по люверсу, больше 80 мм —
+/// перерасход ткани без пользы.
 void _checkScreenHem(WindowParams params, List<TechCheck> checks) {
   if (!params.isScreen) return;
-  final hem = params.hemMm;
-  if (!hem.isFinite || hem <= 0) {
-    checks.add(const TechCheck(
-      ruleId: 'screen-hem-missing',
-      severity: TechSeverity.error,
-      field: ParamField.hemWidth,
-      title: 'Подворот скрина не задан',
-      explanation: 'Без подворота скрин не за что закрепить: люверсы ставятся '
-          'по линии подворота, а шов держит кромку.',
-      recommendation: 'Поставьте подворот 40, 50 или 60 мм на сторону.',
-    ));
-    return;
-  }
-  if (hem < _minHemMm || hem > _maxHemMm) {
-    checks.add(TechCheck(
-      ruleId: 'screen-hem-range',
-      severity: TechSeverity.warning,
-      field: ParamField.hemWidth,
-      title: 'Подворот скрина ${formatMm(hem)} мм — вне обычного диапазона '
-          '${formatMm(_minHemMm)}–${formatMm(_maxHemMm)} мм',
-      explanation: 'Подворот держит кольцо люверса и шов кромки. Узкий '
-          'подворот вырывается по люверсу, широкий — лишний расход ткани.',
-      recommendation: 'Для типового скрина берите подворот 40, 50 или 60 мм.',
-    ));
+  for (final side in EdgeSide.values) {
+    final hem = params.hemForSide(side);
+    final field = hemFieldForSide(side);
+    final name = side.label.toLowerCase();
+    if (!hem.isFinite || hem <= 0) {
+      checks.add(TechCheck(
+        ruleId: 'screen-hem-missing',
+        severity: TechSeverity.error,
+        field: field,
+        title: 'Подворот скрина не задан: $name',
+        explanation: 'Без подворота скрин не за что закрепить: люверсы ставятся '
+            'по линии подворота, а шов держит кромку. Сторона «$name» осталась '
+            'без подворота.',
+        recommendation: 'Поставьте подворот 40, 50 или 60 мм на каждую сторону.',
+      ));
+      continue;
+    }
+    if (hem < _minHemMm || hem > _maxHemMm) {
+      checks.add(TechCheck(
+        ruleId: 'screen-hem-range',
+        severity: TechSeverity.warning,
+        field: field,
+        title: 'Подворот скрина, $name: ${formatMm(hem)} мм — вне обычного '
+            'диапазона ${formatMm(_minHemMm)}–${formatMm(_maxHemMm)} мм',
+        explanation: 'Подворот держит кольцо люверса и шов кромки. Узкий '
+            'подворот вырывается по люверсу, широкий — лишний расход ткани.',
+        recommendation: 'Для типового скрина берите подворот 40, 50 или 60 мм.',
+      ));
+    }
   }
 }
 

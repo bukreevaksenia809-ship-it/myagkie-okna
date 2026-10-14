@@ -463,7 +463,8 @@ class _TitleBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final windows = project.windows;
     final specs = [for (final params in windows) WindowSpec.of(params)];
-    // Плёнка на листе — заготовка к раскрою: с припуском и без усадки.
+    // Плёнка на листе — заготовка (габарит) к раскрою: с припуском, а
+    // усадка показана отдельным числом (и учтена в totalFilmAreaWithShrinkage).
     final totalFilmArea =
         specs.fold<double>(0, (sum, spec) => sum + spec.filmCutAreaM2);
     final totalFilmAreaWithShrinkage = specs.fold<double>(
@@ -554,7 +555,7 @@ class _TitleBlock extends StatelessWidget {
                   flex: 3,
                   child: _cell(
                     first.isScreen
-                        ? 'Скрин: подворот по периметру'
+                        ? 'Скрин: подворот по сторонам'
                         : 'Окантовка по сторонам',
                     windows.length == 1
                         ? specs.first.edgeBySideSummary
@@ -583,7 +584,7 @@ class _TitleBlock extends StatelessWidget {
                   child: _cell(
                     first.isScreen
                         ? 'Скрин: заготовка с подворотом '
-                            '${formatMm(first.hemMm)} мм'
+                            '${first.hemBySideShortLabel} (низ/право/верх/лево)'
                         : 'Полотно: раскрой с запайкой '
                             '${formatMm(first.weldOverlapMm)} мм',
                     windows.length == 1
@@ -617,8 +618,8 @@ class _TitleBlock extends StatelessWidget {
                 Expanded(
                   flex: 2,
                   child: _cell(
-                    'Площадь заготовок',
-                    '${formatMeters(totalFilmArea)} м²',
+                    'Заготовки (габарит) с усадкой',
+                    '${formatMeters(totalFilmAreaWithShrinkage)} м²',
                   ),
                 ),
               ],
@@ -713,7 +714,7 @@ class _SidePanel extends StatelessWidget {
       if (params.isScreen)
         (
           LegendKind.seam,
-          'Подворот ${formatMm(params.hemMm)} мм, шов '
+          'Подворот ${params.hemBySideShortLabel} (низ/право/верх/лево), шов '
               '${formatMm(screenSeamMm)} мм'
         )
       else ...[
@@ -941,7 +942,8 @@ class _SidePanel extends StatelessWidget {
     return [
       'Окон в заказе: ${project.windows.length}; номера окон указаны под каждым чертежом',
       if (first.isScreen)
-        'Скрин: подворот ${formatMm(first.hemMm)} мм на сторону, шов '
+        'Скрин: подворот по сторонам ${first.hemBySideLabel} '
+            '(низ/право/верх/лево), шов '
             '${formatMm(screenSeamMm)} мм; тента и окантовки нет'
       else
         'Окантовка складывается пополам, запайка плёнки под окантовку '

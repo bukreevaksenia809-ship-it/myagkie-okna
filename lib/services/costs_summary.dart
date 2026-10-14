@@ -12,13 +12,22 @@ class CostsSummary {
         rollPlans = buildRollPlans(project) {
     for (final spec in specs) {
       productAreaM2 += spec.productAreaM2;
-      // Плёнка закупается и кроится по заготовке: с припуском на раскрой.
+      // Плёнка закупается и кроится по заготовке. Заготовка бывает двух
+      // чисел: габарит без компенсации усадки (filmAreaM2) и фактический
+      // раскрой с усадкой (filmAreaWithShrinkageM2) — именно он идёт в
+      // расход и деньги, потому что плёнка режется по усадочным размерам.
       filmAreaM2 += spec.filmCutAreaM2;
       filmAreaWithShrinkageM2 += spec.filmCutAreaWithShrinkageM2;
+      filmNetAreaM2 += spec.filmAreaM2;
       filmAreaByMaterial.update(
         spec.params.material,
         (value) => value + spec.filmCutAreaM2,
         ifAbsent: () => spec.filmCutAreaM2,
+      );
+      filmAreaByMaterialWithShrinkage.update(
+        spec.params.material,
+        (value) => value + spec.filmCutAreaWithShrinkageM2,
+        ifAbsent: () => spec.filmCutAreaWithShrinkageM2,
       );
       spec.edgeConsumption.forEach((roll, length) {
         edgeByRoll.update(roll, (value) => value + length,
@@ -77,13 +86,31 @@ class CostsSummary {
   /// Суммарная площадь готовых изделий по наружному контуру, м².
   double productAreaM2 = 0;
 
-  /// Площадь заготовок плёнки к раскрою (с припуском, минус вырезы), м².
+  /// Площадь заготовок (габарит) к раскрою: припуск, минус вырезы,
+  /// БЕЗ компенсации усадки, м².
+  ///
+  /// Справочная площадь габаритного прямоугольника. Для расхода и денег
+  /// берётся [filmAreaWithShrinkageM2] — фактический раскрой с усадкой.
   double filmAreaM2 = 0;
 
-  /// Площадь заготовок плёнки с учётом усадки, м².
+  /// Фактическая площадь заготовок к раскрою С учётом усадки, м².
+  ///
+  /// Усадка масштабирует обе стороны заготовки, поэтому это не
+  /// `filmAreaM2 × (1 + s/100)`, а площадь по усадочным габаритам. Идёт в
+  /// смету, ведомость и работы по раскрою.
   double filmAreaWithShrinkageM2 = 0;
 
+  /// Площадь самого полотна изделий (без припуска) по всем окнам, м².
+  ///
+  /// Для трапеции это меньше габарита заготовки: справочное число для
+  /// подписей «площадь полотна», в деньги не идёт.
+  double filmNetAreaM2 = 0;
+
+  /// Площадь заготовок (габарит) без усадки по материалам, м².
   final Map<FilmMaterial, double> filmAreaByMaterial = {};
+
+  /// Площадь заготовок (габарит) с усадкой по материалам, м² — для сметы.
+  final Map<FilmMaterial, double> filmAreaByMaterialWithShrinkage = {};
 
   /// Расход окантовки по ширинам рулонов (мм → мм).
   final Map<double, double> edgeByRoll = {};
@@ -139,8 +166,20 @@ class CostsSummary {
     ];
   }
 
-  /// Подписи по материалам: «Обычный ПВХ — 8,57 м²».
+  /// Подписи по материалам с усадкой (расход к раскрою):
+  /// «Обычный ПВХ — 8,57 м²».
   List<String> get filmByMaterialLabels {
+    final entries = filmAreaByMaterialWithShrinkage.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return [
+      for (final entry in entries)
+        '${entry.key.label} — ${formatMeters(entry.value)} м²',
+    ];
+  }
+
+  /// Подписи габарита заготовок без усадки по материалам:
+  /// «Обычный ПВХ — 8,32 м²» (справочно, для сверки с чертежом).
+  List<String> get filmByMaterialNoShrinkageLabels {
     final entries = filmAreaByMaterial.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     return [

@@ -143,7 +143,7 @@ class CostsSheet extends StatelessWidget {
         if (spec.params.pocketTop)
           'карман сверху ${formatMm(spec.params.pocketWidth)}',
         if (spec.params.isScreen)
-          'подворот ${formatMm(spec.params.hemMm)} + шов '
+          'подворот ${spec.params.hemBySideShortLabel} + шов '
               '${formatMm(screenSeamMm)}',
         if (spec.strapCount > 0) 'ремни ${spec.strapCount}',
         if (spec.params.drainHoles && !spec.params.isScreen)
@@ -160,10 +160,11 @@ class CostsSheet extends StatelessWidget {
         '${formatMm(spec.filmCutWidthWithShrinkage)} × '
             '${formatMm(spec.filmCutHeightWithShrinkage)}',
         formatMeters(spec.productAreaM2),
-        formatMeters(spec.filmCutAreaM2),
+        // Заготовка (габарит) к раскрою — фактическая, с усадкой.
+        formatMeters(spec.filmCutAreaWithShrinkageM2),
         '${spec.eyeletCount}',
         spec.params.isScreen
-            ? 'подворот ${formatMm(spec.params.hemMm)}'
+            ? 'подворот ${spec.params.hemBySideShortLabel}'
             : spec.edgeConsumptionLabels.join('; '),
         extras.isEmpty ? '—' : extras.join(', '),
       ]);
@@ -176,7 +177,7 @@ class CostsSheet extends StatelessWidget {
       'Размеры полотна, мм',
       'Полотно в раскрое с усадкой, мм',
       'Площадь изделия, м²',
-      'Площадь заготовки, м²',
+      'Площадь заготовки (габарит), м²',
       'Люверсы, шт',
       'Окантовка / подворот',
       'Спецэлементы',
@@ -231,6 +232,14 @@ class CostsSheet extends StatelessWidget {
     );
   }
 
+  /// Подписи подворотов по окнам: «Окно №1: низ 40, право 50, верх 60,
+  /// лево 40 мм» — по одной строке на каждое окно из скрина.
+  List<String> _screenHemLabels() => [
+        for (var i = 0; i < project.windows.length; i++)
+          if (project.windows[i].isScreen)
+            'Окно №${i + 1}: ${project.windows[i].hemBySideLabel}',
+      ];
+
   Widget _totals(CostsSummary summary) {
     final blocks = <(String, List<String>)>[
       ('Площадь изделий', [
@@ -240,11 +249,16 @@ class CostsSheet extends StatelessWidget {
       ]),
       ('Полотно (плёнка)', [
         ...summary.filmByMaterialLabels,
-        'Итого площадь заготовок в раскрое: ${formatMeters(summary.filmAreaM2)} м²',
+        'Итого заготовки (габарит) с усадкой: '
+            '${formatMeters(summary.filmAreaWithShrinkageM2)} м²',
+        'Заготовки (габарит) без усадки: '
+            '${formatMeters(summary.filmAreaM2)} м²',
+        'Площадь полотна изделий (без припуска): '
+            '${formatMeters(summary.filmNetAreaM2)} м²',
         if (summary.project.windows.first.isScreen)
           'Усадки нет: у скрина она равна 0 %'
         else
-          'С учётом усадки: ${formatMeters(summary.filmAreaWithShrinkageM2)} м²',
+          'В расход и деньги идёт заготовка с усадкой',
       ]),
       ('Окантовка (по типам рулонов)', [
         if (summary.edgeConsumptionLabels.isEmpty) '—',
@@ -252,10 +266,11 @@ class CostsSheet extends StatelessWidget {
       ]),
       if (summary.screenHemLengthMm > 0)
         ('Скрин: подворот и шов 3 мм', [
+          ..._screenHemLabels(),
           'Длина подворота по периметру: '
               '${formatCm(summary.screenHemLengthMm)} см',
           'Расход скрина — по площади заготовок в раскрое (готовый размер '
-              'плюс подворот)',
+              'плюс подворот по сторонам)',
         ]),
       ('Люверсы', [
         ...summary.eyeletLabels,
@@ -335,9 +350,10 @@ class CostsSheet extends StatelessWidget {
           summary.screenHemLengthMm > 0
               ? 'Скрин — технология без тента и окантовки: материал '
                   'подворачивается по периметру (шов 3 мм), крепёж — только '
-                  'люверсы по подвороту. Заготовка = готовый размер плюс '
-                  '2 × подворот, усадки нет; расход скрина считается по '
-                  'площади заготовки. Припуск на раскрой увеличивает только '
+                  'люверсы по подвороту. Подворот задаётся на каждую сторону '
+                  '(низ, право, верх, лево), заготовка = готовый размер плюс '
+                  'подворот по сторонам, усадки нет; расход скрина считается '
+                  'по площади заготовки. Припуск на раскрой увеличивает только '
                   'заготовку, размеры изделия считаются по замеру. Для ПВХ '
                   'действует запайка плёнки под окантовку (5…60 мм).'
               : 'Запайка плёнки под окантовку — значение окна (5…60 мм, по '
@@ -391,8 +407,8 @@ class _CostsTitleBlock extends StatelessWidget {
           ),
           Expanded(
             flex: 3,
-            child: _cell('Плёнка в раскрое',
-                '${formatMeters(summary.filmAreaM2)} м²'),
+            child: _cell('Заготовки (габарит) с усадкой',
+                '${formatMeters(summary.filmAreaWithShrinkageM2)} м²'),
           ),
           Expanded(flex: 4, child: _cell('Рулоны (ширина × длина)', rolls)),
           Expanded(

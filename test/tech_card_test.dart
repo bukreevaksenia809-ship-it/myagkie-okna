@@ -60,7 +60,8 @@ const _rich = WindowParams(
   drainHoles: true,
 );
 
-/// Скрин 2000 × 2000: подворот 40 мм, заготовка 2080 × 2080, без тента.
+/// Скрин 2000 × 2000: подворот по сторонам (низ 40, право 50, верх 60,
+/// лево 40 мм), заготовка 2090 × 2100, без тента.
 const _screen = WindowParams(
   projectName: 'Мягкое окно веранды',
   customer: 'Иванов И. И.',
@@ -70,7 +71,10 @@ const _screen = WindowParams(
   topWidth: 2000,
   leftHeight: 2000,
   rightHeight: 2000,
-  hemMm: 40,
+  hemBottomMm: 40,
+  hemRightMm: 50,
+  hemTopMm: 60,
+  hemLeftMm: 40,
   pocketTop: true,
 );
 
@@ -327,7 +331,7 @@ void main() {
       );
       expect(
         cutting.text,
-        contains('${formatMeters(spec.filmCutAreaM2)} м²'),
+        contains('${formatMeters(spec.filmCutAreaWithShrinkageM2)} м²'),
       );
 
       // Окантовка и люверсы в припуске не нуждаются — числа те же.
@@ -445,19 +449,31 @@ void main() {
           isNot(contains('напайка')));
     });
 
-    test('заготовка 2080 × 2080 и строка про шов 3 мм', () {
+    test('заготовка 2090 × 2100 и подворот по сторонам', () {
       final cutting = _op(card, TechOperationKind.cutting);
       expect(cutting.title, 'Раскрой скрина');
-      expect(cutting.text, contains(formatMm(2080)));
+      // Низ 40, лево 40 → ширина 2090; низ 40, верх 60 → высота 2100.
+      expect(cutting.text, contains(formatMm(2090)));
+      expect(cutting.text, contains(formatMm(2100)));
       expect(cutting.text, isNot(contains('усадка 1,5')));
 
       final hem = _op(card, TechOperationKind.hem);
       expect(hem.text, contains('Подворот'));
       expect(hem.text, contains(formatMm(screenSeamMm)));
-      expect(hem.text, contains(formatMm(_screen.hemMm)));
-      // Подворот — только у скрина, шов 3 мм с каждой стороны.
-      expect(hem.materials.first.size,
-          '${formatMm(_screen.hemMm)} мм на сторону');
+      expect(hem.text, contains('низ ${formatMm(_screen.hemBottomMm)}'));
+      expect(hem.text, contains('право ${formatMm(_screen.hemRightMm)}'));
+      expect(hem.text, contains('верх ${formatMm(_screen.hemTopMm)}'));
+      expect(hem.text, contains('лево ${formatMm(_screen.hemLeftMm)}'));
+      // Материалы операции — по одной строке на каждую сторону.
+      final sides = hem.materials.where((m) => m.side != null).toList();
+      expect(sides, hasLength(4));
+      expect(hem.materials.first.side, 'Низ');
+      expect(hem.materials.first.size, '${formatMm(_screen.hemBottomMm)} мм');
+      expect(
+        hem.materials.any((m) => m.name.contains('периметру')),
+        isTrue,
+      );
+      expect(hem.source, contains('hemBottomMm'));
     });
 
     test('люверсы ставятся по подвороту, крепёж только они', () {

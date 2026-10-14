@@ -75,9 +75,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
     ParamField.pocketWidth,
     ParamField.shrinkagePercent,
     // Запайка плёнки под окантовку и подворот скрина: свои поля с ручным
-    // вводом и проверкой диапазона.
+    // вводом и проверкой диапазона. Подворот задаётся на каждую сторону.
     ParamField.weldOverlap,
-    ParamField.hemWidth,
+    ParamField.hemBottom,
+    ParamField.hemRight,
+    ParamField.hemTop,
+    ParamField.hemLeft,
   ];
 
   final Map<ParamField, TextEditingController> _controllers = {};
@@ -492,25 +495,31 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _updateWindow(_params.copyWith(weldOverlapMm: value));
   }
 
-  /// Ввод подворота скрина: 10…150 мм на сторону.
-  void _onHemChanged(String raw) {
+  /// Быстрый пресет подворота скрина для стороны.
+  void _applyHem(ParamField field, double value) {
+    setState(() => _errors[field] = null);
+    _updateWindow(_params.withField(field, value));
+  }
+
+  /// Ввод подворота скрина: 10…150 мм на каждую сторону.
+  ///
+  /// Сторона приходит полем [ParamField], поэтому ошибка адресуется ровно
+  /// той строке блока «Подворот, мм», где её ввели.
+  void _onHemChanged(ParamField field, String raw) {
     final value = parseMm(raw);
     if (value == null) {
-      setState(
-        () => _errors[ParamField.hemWidth] = 'Введите число, например 40',
-      );
+      setState(() => _errors[field] = 'Введите число');
       return;
     }
     if (value < minScreenHemMm || value > maxScreenHemMm) {
       setState(
-        () => _errors[ParamField.hemWidth] =
-            'Подворот от ${formatMm(minScreenHemMm)} до '
-            '${formatMm(maxScreenHemMm)} мм',
+        () => _errors[field] =
+            '${formatMm(minScreenHemMm)}…${formatMm(maxScreenHemMm)} мм',
       );
       return;
     }
-    setState(() => _errors[ParamField.hemWidth] = null);
-    _updateWindow(_params.copyWith(hemMm: value));
+    setState(() => _errors[field] = null);
+    _updateWindow(_params.withField(field, value));
   }
 
   /// Поле «Запайка плёнки под окантовку, мм» с пресетами 10/25/40.
@@ -561,54 +570,93 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
-  /// Подворот скрина: пресеты 40/50/60 мм и своё значение.
-  Widget _hemField(WindowParams params) {
-    final value = params.hemMm;
+  /// Блок «Подворот, мм»: четыре строки — низ, право, верх, лево.
+  ///
+  /// У каждой стороны свои пресеты 40/50/60 и числовое поле (10…150 мм);
+  /// панель узкая (420 px), поэтому строка собрана из подписи, компактных
+  /// чипов и поля. Внизу — итог: какой получится заготовка.
+  Widget _hemSection(WindowSpec spec) {
+    final params = spec.params;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Подворот скрина на сторону',
+          'Подворот, мм — на каждую сторону',
           style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
         ),
         const SizedBox(height: 6),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final preset in screenHemPresets)
-              ChoiceChip(
-                label: Text(
-                  '${formatMm(preset)} мм',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                selected: (value - preset).abs() < 1e-9,
-                visualDensity: VisualDensity.compact,
-                onSelected: (_) {
-                  setState(() => _errors[ParamField.hemWidth] = null);
-                  _updateWindow(params.copyWith(hemMm: preset));
-                },
-              ),
-          ],
-        ),
+        for (final side in EdgeSide.values) ...[
+          _hemRow(params, side),
+          if (side != EdgeSide.left) const SizedBox(height: 8),
+        ],
         const SizedBox(height: 8),
-        TextField(
-          key: const Key('hem-field'),
-          controller: _controllers[ParamField.hemWidth],
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-            labelText: 'Подворот, мм на сторону',
-            suffixText: 'мм',
-            helperText: 'готовый размер + 2 × подворот: 2000 → '
-                '${formatMm(2000 + 2 * value)} мм; шов сварки '
-                '${formatMm(screenSeamMm)} мм',
-            helperMaxLines: 2,
-            border: const OutlineInputBorder(),
-            isDense: true,
-            errorText: _errorFor(ParamField.hemWidth),
-            errorMaxLines: 2,
+        Text(
+          'Заготовка будет '
+          '${formatMm(spec.filmCutWidthWithAllowance)} × '
+          '${formatMm(spec.filmCutHeightWithAllowance)} мм: готовый размер '
+          'плюс подворот по сторонам. Шов сварки '
+          '${formatMm(screenSeamMm)} мм.',
+          key: const Key('hem-blank-label'),
+          style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+        ),
+      ],
+    );
+  }
+
+  /// Одна строка подворота: сторона, пресеты 40/50/60 и своё число.
+  Widget _hemRow(WindowParams params, EdgeSide side) {
+    final field = hemFieldForSide(side);
+    final value = params.hemForSide(side);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 40,
+          child: Text(
+            side.label,
+            style: const TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
           ),
-          onChanged: _onHemChanged,
+        ),
+        Expanded(
+          child: Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              for (final preset in screenHemPresets)
+                ChoiceChip(
+                  label: Text(
+                    formatMm(preset),
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  selected: (value - preset).abs() < 1e-9,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+                  onSelected: (_) => _applyHem(field, preset),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 84,
+          child: TextField(
+            key: Key('hem-${side.name}-field'),
+            controller: _controllers[field],
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              suffixText: 'мм',
+              suffixStyle: const TextStyle(fontSize: 11),
+              border: const OutlineInputBorder(),
+              isDense: true,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              errorText: _errorFor(field),
+              errorMaxLines: 2,
+            ),
+            style: const TextStyle(fontSize: 12.5),
+            onChanged: (raw) => _onHemChanged(field, raw),
+          ),
         ),
       ],
     );
@@ -769,10 +817,11 @@ class _ParamsPanelState extends State<ParamsPanel> {
           _Hint(
             params.isScreen
                 ? 'Скрин — самостоятельная технология: серое полотно '
-                    'подворачивается по периметру на 40/50/60 мм, шов '
+                    'подворачивается по периметру, подворот задаётся на каждую '
+                    'сторону (низ, право, верх, лево — обычно 40/50/60 мм), шов '
                     '${formatMm(screenSeamMm)} мм, крепёж — только люверсы по '
                     'линии подворота. Тента и окантовки у скрина нет: '
-                    'заготовка равна готовому размеру плюс два подворота.'
+                    'заготовка равна готовому размеру плюс подворот по сторонам.'
                 : 'Каждое окно рисуется слоями: окантовка (складывается '
                     'пополам), запайка плёнки под окантовку, плёнка, люверсы и '
                     'крепёж. Номера окон подписываются на листе, раскладка '
@@ -923,14 +972,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
               ),
               if (params.isScreen) ...[
                 const SizedBox(height: 14),
-                _hemField(params),
+                _hemSection(spec),
                 const SizedBox(height: 8),
                 Text(
-                  'Заготовка скрина — готовый размер плюс два подворота: '
-                  '${formatMm(spec.filmCutWidthWithAllowance)} × '
-                  '${formatMm(spec.filmCutHeightWithAllowance)} мм. '
                   'Усадки у скрина нет; нужен запас — добавьте припуск на '
-                  'раскрой в разделе выше.',
+                  'раскрой в разделе выше. Подворот каждой стороны входит '
+                  'в заготовку своей стороны.',
                   style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF66748A),
@@ -1094,8 +1141,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
             _panelCard(
               child: Text(
                 'Окантовка скрину не нужна: материал подворачивается сам. '
-                'Подворот 40/50/60 мм и шов ${formatMm(screenSeamMm)} мм — '
-                'в разделе «Полотно (плёнка)».',
+                'Подворот по сторонам (низ, право, верх, лево) и шов '
+                '${formatMm(screenSeamMm)} мм — в разделе «Полотно (плёнка)».',
                 style: const TextStyle(
                   fontSize: 11.5,
                   color: Color(0xFF5B6B80),
@@ -1306,7 +1353,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
               if (params.isScreen) ...[
                 const Text(
                   'У скрина усадки нет: заготовка равна готовому размеру плюс '
-                  'два подворота. Нужен запас — добавьте припуск на раскрой.',
+                  'подворот по сторонам. Нужен запас — добавьте припуск на '
+                  'раскрой.',
                   style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
                 ),
                 const SizedBox(height: 12),
@@ -2079,8 +2127,8 @@ class _CuttingCard extends StatelessWidget {
       ),
       (
         params.isScreen
-            ? 'Заготовка: готовый размер + 2 × подворот '
-                '${formatMm(params.hemMm)} мм'
+            ? 'Заготовка: готовый размер + подворот по сторонам '
+                '${params.hemBySideShortLabel}'
                 '${params.hasAllowance ? ' и припуск' : ''}'
             : 'Заготовка с запайкой ${formatMm(params.weldOverlapMm)} мм'
                 '${params.hasAllowance ? ' и припуском' : ''}',
@@ -2095,11 +2143,25 @@ class _CuttingCard extends StatelessWidget {
         )
       else
         ('Усадка', 'нет'),
-      ('Площадь заготовки в раскрое', '${formatMeters(spec.filmCutAreaM2)} м²'),
+      // Габарит заготовки и площадь полотна — разные числа: у трапеции
+      // заготовка кроится прямоугольником и больше полотна.
+      (
+        'Площадь заготовки (габарит) без усадки',
+        '${formatMeters(spec.filmCutAreaM2)} м²'
+      ),
+      (
+        'Площадь заготовки (габарит) с усадкой',
+        '${formatMeters(spec.filmCutAreaWithShrinkageM2)} м²'
+      ),
+      (
+        'Площадь полотна изделия (без припуска)',
+        '${formatMeters(spec.filmAreaM2)} м²'
+      ),
       if (params.isScreen)
         (
-          'Подворот и шов ${formatMm(screenSeamMm)} мм',
-          '${formatMm(params.hemMm)} мм на сторону'
+          'Подворот и шов ${formatMm(screenSeamMm)} мм по сторонам '
+              '(низ/право/верх/лево)',
+          params.hemBySideShortLabel
         ),
       for (final label in spec.edgeConsumptionLabels)
         ('Окантовка ${label.split(' — ').first}', label.split(' — ').last),

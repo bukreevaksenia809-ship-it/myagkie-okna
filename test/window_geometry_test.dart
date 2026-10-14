@@ -1142,6 +1142,19 @@ void _allowanceRules() {
       // Площадь заготовки к раскрою — с припуском, без вырезов.
       expect(spec.filmCutAreaM2, closeTo(2050 * 2050 / 1e6, 1e-9));
       expect(spec.filmAreaM2, lessThan(spec.filmCutAreaM2));
+      // Площадь с усадкой считается из линейных размеров: усадка растёт по
+      // обеим сторонам, поэтому множитель применяется дважды.
+      expect(
+        spec.filmCutAreaWithShrinkageM2,
+        closeTo((2050 * factor) * (2050 * factor) / 1e6, 1e-9),
+      );
+      expect(
+        spec.filmCutAreaWithShrinkageM2,
+        greaterThan(spec.filmCutAreaM2 * factor),
+      );
+      // Площадь полотна и заготовка — разные числа: в подписях это
+      // «площадь полотна» против «заготовки (габарит)».
+      expect(spec.filmAreaM2, lessThan(spec.filmCutAreaWithShrinkageM2));
     });
 
     test('окантовка, люверсы, периметр и спайки не зависят от припуска', () {
@@ -1437,9 +1450,31 @@ void _screenRules() {
           topWidth: 2000,
           leftHeight: 2000,
           rightHeight: 2000,
-          hemMm: hem,
+          hemBottomMm: hem,
+          hemRightMm: hem,
+          hemTopMm: hem,
+          hemLeftMm: hem,
           pocket: pocket,
           pocketTop: top,
+        );
+
+    /// Скрин с разными подворотами по сторонам: низ, право, верх, лево.
+    WindowParams screenWithSides(
+      double bottom,
+      double right,
+      double top,
+      double left,
+    ) =>
+        WindowParams(
+          material: FilmMaterial.screen,
+          bottomWidth: 2000,
+          topWidth: 2000,
+          leftHeight: 2000,
+          rightHeight: 2000,
+          hemBottomMm: bottom,
+          hemRightMm: right,
+          hemTopMm: top,
+          hemLeftMm: left,
         );
 
     test('технология выводится из материала, а не из отдельного поля', () {
@@ -1453,7 +1488,8 @@ void _screenRules() {
           WindowTech.pvcTent);
     });
 
-    test('заготовка = готовый размер + 2 × подворот: 2080 / 2100 / 2120', () {
+    test('подворот по сторонам 40/50/60/25: заготовка 2080 / 2100 / 2120', () {
+      // Одинаковый подворот на все стороны: заготовка = 2000 + 2 × подворот.
       for (final (hem, blank) in [(40.0, 2080.0), (50.0, 2100.0), (60.0, 2120.0)]) {
         final spec = WindowSpec.of(screenWith(hem));
         expect(spec.filmCutWidth, closeTo(blank, 1e-9),
@@ -1465,6 +1501,52 @@ void _screenRules() {
       }
       expect(screenHemPresets, [40, 50, 60]);
       expect(screenSeamMm, 3);
+    });
+
+    test('Подворот 25 мм на все стороны — заготовка 2050 × 2050', () {
+      final params = screenWithSides(25, 25, 25, 25);
+      final spec = WindowSpec.of(params);
+      expect(params.hemWidths, [25, 25, 25, 25]);
+      expect(params.hemTotalMm, closeTo(100, 1e-9));
+      expect(params.hasUniformHem, isTrue);
+      expect(spec.filmCutWidth, closeTo(2050, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2050, 1e-9));
+    });
+
+    test('смешанные подвороты: ширина — низ/лево, высота — низ/верх', () {
+      // Низ 40, право 50, верх 60, лево 40 мм.
+      final params = screenWithSides(40, 50, 60, 40);
+      final spec = WindowSpec.of(params);
+
+      // Ширина заготовки = bottomWidth + лево + право.
+      expect(spec.filmCutWidth, closeTo(2000 + 40 + 50, 1e-9));
+      // Высота заготовки = leftHeight + низ + верх.
+      expect(spec.filmCutHeight, closeTo(2000 + 40 + 60, 1e-9));
+      expect(params.hemForSide(EdgeSide.bottom), 40);
+      expect(params.hemForSide(EdgeSide.right), 50);
+      expect(params.hemForSide(EdgeSide.top), 60);
+      expect(params.hemForSide(EdgeSide.left), 40);
+      expect(params.hemForEdge(0), 40);
+      expect(params.hemForEdge(1), 50);
+      expect(params.hemForEdge(2), 60);
+      expect(params.hemForEdge(3), 40);
+      expect(params.hemTotalMm, closeTo(190, 1e-9));
+      expect(params.hasUniformHem, isFalse);
+      // Готовое изделие не изменилось: подворот уходит на изнанку.
+      expect(spec.productAreaM2, closeTo(4.0, 1e-9));
+    });
+
+    test('подворот по сторонам читается во всех подписях', () {
+      final params = screenWithSides(40, 50, 60, 40);
+      final spec = WindowSpec.of(params);
+      expect(spec.edgeBySideSummary,
+          contains(params.hemBySideLabel));
+      expect(spec.edgeBySideSummary, contains('низ 40'));
+      expect(spec.edgeBySideSummary, contains('право 50'));
+      expect(spec.edgeBySideSummary, contains('верх 60'));
+      expect(spec.edgeBySideSummary, contains('лево 40'));
+      expect(spec.edgeSummary, contains(params.hemBySideShortLabel));
+      expect(params.hemBySideShortLabel, '40/50/60/40 мм');
     });
 
     test('у скрина нет усадки: 2080 × 2080 без усадки', () {
@@ -1526,23 +1608,70 @@ void _screenRules() {
       }
     });
 
-    test('JSON хранит подворот и запайку, читает их обратно', () {
-      final json = windowToJson(screenWith(60).copyWith(weldOverlapMm: 15));
+    test('JSON хранит подвороты по сторонам и читает их обратно', () {
+      final json = windowToJson(
+        screenWithSides(40, 50, 60, 25).copyWith(weldOverlapMm: 15),
+      );
       final restored = windowFromJson(json);
 
       expect(restored.material, FilmMaterial.screen);
-      expect(restored.hemMm, 60);
+      expect(restored.hemBottomMm, 40);
+      expect(restored.hemRightMm, 50);
+      expect(restored.hemTopMm, 60);
+      expect(restored.hemLeftMm, 25);
+      expect(restored.hemWidths, [40, 50, 60, 25]);
       expect(restored.weldOverlapMm, 15);
       expect(restored.isScreen, isTrue);
+      // Разные подвороты — старое одиночное поле не пишем.
+      expect(json.containsKey('hemMm'), isFalse);
+    });
+
+    test('JSON: одинаковый подворот пишется и старым полем hemMm', () {
+      final json = windowToJson(screenWith(50));
+      expect(json['hemMm'], 50);
+      expect(json['hemBottomMm'], 50);
+      expect(json['hemRightMm'], 50);
+      expect(json['hemTopMm'], 50);
+      expect(json['hemLeftMm'], 50);
+    });
+
+    test('JSON: старый заказ с одиночным hemMm читается на все стороны', () {
+      final legacy = {
+        'material': 'screen',
+        'bottomWidth': 2000,
+        'topWidth': 2000,
+        'leftHeight': 2000,
+        'rightHeight': 2000,
+        'hemMm': 60,
+      };
+      final restored = windowFromJson(legacy);
+      expect(restored.hemBottomMm, 60);
+      expect(restored.hemRightMm, 60);
+      expect(restored.hemTopMm, 60);
+      expect(restored.hemLeftMm, 60);
+      expect(restored.hasUniformHem, isTrue);
+      // Новые поля имеют приоритет над старым.
+      final partial = Map<String, dynamic>.from(legacy)
+        ..['hemTopMm'] = 25;
+      expect(windowFromJson(partial).hemTopMm, 25);
+      expect(windowFromJson(partial).hemBottomMm, 60);
     });
 
     test('валидация: подворот вне обычного диапазона — замечание', () {
       final issues = validateParams(screenWith(200));
       expect(
         issues.any((issue) =>
-            issue.field == ParamField.hemWidth && !issue.isError),
+            issue.field == ParamField.hemBottom && !issue.isError),
         isTrue,
       );
+      // Замечание адресуется каждой стороне отдельно.
+      for (final side in EdgeSide.values) {
+        expect(
+          issues.any((issue) => issue.field == hemFieldForSide(side)),
+          isTrue,
+          reason: 'нет замечания по стороне ${side.label}',
+        );
+      }
       // Окантовка скрину не проверяется вовсе.
       expect(
         issues.any((issue) => issue.message.contains('Окантовка,')),

@@ -293,9 +293,9 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('ЗАГОТОВОК'), findsOneWidget);
-      // «Площадь заготовок» есть и в итогах, и в штампе.
-      expect(find.text('ПЛОЩАДЬ ЗАГОТОВОК'), findsWidgets);
-      expect(find.text('С УЧЁТОМ УСАДКИ'), findsOneWidget);
+      // «Заготовки (габарит) с усадкой» есть и в итогах, и в штампе.
+      expect(find.text('ЗАГОТОВКИ (ГАБАРИТ) С УСАДКОЙ'), findsWidgets);
+      expect(find.text('БЕЗ УСАДКИ (ГАБАРИТ)'), findsOneWidget);
     });
 
     testWidgets('не падает на пустом заказе', (tester) async {

@@ -220,7 +220,7 @@ class WindowLayers {
 
   /// Подворот скрина по сторонам, мм (у ПВХ — нули).
   List<double> get hemWidths =>
-      isScreen ? [for (var i = 0; i < 4; i++) params.hemMm] : const [0, 0, 0, 0];
+      isScreen ? List.of(params.hemWidths) : const [0, 0, 0, 0];
 
   /// Внутренняя граница окантовки: видимая граница плёнки.
   ///
@@ -234,8 +234,9 @@ class WindowLayers {
   /// ПВХ заходит под окантовку на [WindowParams.weldOverlapMm], поэтому его
   /// край ближе к наружному контуру, чем внутренняя граница окантовки.
   /// Скрин, наоборот, кроится БОЛЬШЕ готового размера на подворот
-  /// [WindowParams.hemMm] с каждой стороны: 2000 × 2000 при подвороте 40 мм
-  /// даёт заготовку 2080 × 2080 мм.
+  /// [WindowParams.hemWidths] с каждой стороны: 2000 × 2000 при подвороте
+  /// 40 мм на все стороны даёт заготовку 2080 × 2080 мм; при разных сторонах
+  /// каждая сторона расширяется на своё значение.
   late final List<Offset> filmEdge = isScreen
       ? outsetPolygonPerSide(outer, hemWidths)
       : insetPolygonPerSide(
@@ -257,7 +258,7 @@ class WindowLayers {
           [for (final width in finishedWidths) width / 2],
         );
 
-  /// Линия подворота скрина: на [WindowParams.hemMm] внутрь от края заготовки.
+  /// Линия подворота скрина: на свой подворот внутрь от края заготовки.
   late final List<Offset> screenHemLine =
       isScreen ? insetPolygonPerSide(filmEdge, hemWidths) : const [];
 
@@ -368,6 +369,11 @@ class WindowLayers {
       result[roll] = (result[roll] ?? 0) + lengths[i];
     }
     for (final cutout in cutouts) {
+      // Осознанное упрощение: контуры вырезов всегда относятся к нижнему
+      // рулону (rolls[0]), даже если низ спаян с соседним окном. Вырез
+      // обрабатывается той же лентой, что лежит по низу окна; отдельного
+      // рулона «под вырезы» в заказе не бывает, а дробить ленту по сторонам
+      // из-за вырезов — лишняя путаница в раскрое.
       final roll = rolls[0];
       result[roll] = (result[roll] ?? 0) + cutout.perimeterMm;
     }
@@ -667,10 +673,12 @@ class WindowSpec {
   /// Припуск на раскрой сюда не входит: изделие остаётся размером замера.
   double get productAreaM2 => geometry.areaM2;
 
-  /// Площадь полотна изделия в раскрое (с напайкой, без припуска), м².
+  /// Площадь ПОЛОТНА изделия (с напайкой/подворотом, без припуска), м².
   ///
-  /// Это справочная площадь самого полотна; для закупки и денег берётся
-  /// [filmCutAreaM2] — заготовка с припуском на раскрой.
+  /// Это площадь самого полотна по контуру [WindowLayers.filmEdge], а не
+  /// габарит заготовки: для непрямоугольного (трапеции) полотно меньше
+  /// габаритного прямоугольника. Для расходных документов и денег берётся
+  /// заготовка ([filmCutAreaWithShrinkageM2]); эта площадь — справочная.
   double get filmAreaM2 => layers.filmAreaM2;
 
   /// Видимый размер плёнки (по внутренней границе окантовки).
@@ -681,8 +689,9 @@ class WindowSpec {
   ///
   /// Для ПВХ: видимый размер плюс запайка [WindowParams.weldOverlapMm] с двух
   /// сторон — плёнка заходит под окантовку. Для скрина: готовый размер плюс
-  /// подворот [WindowParams.hemMm] с каждой стороны (2000 × 2000 при
-  /// подвороте 40 мм → 2080 × 2080 мм). Припуск на раскрой здесь ещё не учтён.
+  /// подворот [WindowParams.hemWidths] с каждой стороны (2000 × 2000 при
+  /// подвороте 40 мм на все стороны → 2080 × 2080 мм). Припуск на раскрой
+  /// здесь ещё не учтён.
   double get filmCutWidth => layers.filmCutBounds.width;
   double get filmCutHeight => layers.filmCutBounds.height;
 
@@ -706,18 +715,29 @@ class WindowSpec {
       filmCutHeightWithAllowance *
       (1 + params.effectiveShrinkagePercent / 100);
 
-  /// Площадь заготовки плёнки к раскрою (с припуском, минус вырезы), м².
+  /// Площадь ЗАГОТОВКИ (габарит) к раскрою: припуск, без усадки, минус
+  /// вырезы, м².
   ///
-  /// Именно эта площадь идёт в расход материала, смету и ведомость, потому
-  /// что плёнка закупается и кроится по заготовке.
+  /// Это габаритный прямоугольник заготовки, поэтому для трапеции он больше
+  /// площади полотна [filmAreaM2] — расход считается «с запасом», по верхней
+  /// оценке. Усадка здесь ещё не учтена: фактический расход и деньги идут по
+  /// [filmCutAreaWithShrinkageM2].
   double get filmCutAreaM2 {
     final blank = filmCutWidthWithAllowance * filmCutHeightWithAllowance;
     return math.max(blank - layers.cutoutAreaMm2, 0) / 1000000;
   }
 
-  /// Площадь заготовки к раскрою с учётом усадки, м².
-  double get filmCutAreaWithShrinkageM2 =>
-      filmCutAreaM2 * (1 + params.effectiveShrinkagePercent / 100);
+  /// Площадь заготовки (габарит) к раскрою С учётом усадки, м².
+  ///
+  /// Усадка компенсируется по ОБЕИМ сторонам заготовки, поэтому площадь
+  /// считается из уже усадочных линейных размеров, а не умножением площади
+  /// на (1 + s/100): при заготовке 2020 × 2030 мм и усадке 1,5 % плёнка
+  /// кроится 2050,3 × 2060,45 мм = 4,224541 м². Именно эта площадь идёт в
+  /// расход, смету и ведомость.
+  double get filmCutAreaWithShrinkageM2 {
+    final blank = filmCutWidthWithShrinkage * filmCutHeightWithShrinkage;
+    return math.max(blank - layers.cutoutAreaMm2, 0) / 1000000;
+  }
 
   /// Расход окантовки по ширинам рулонов.
   Map<double, double> get edgeConsumption => layers.edgeConsumption;
@@ -741,10 +761,10 @@ class WindowSpec {
 
   /// Подпись окантовки по сторонам: «низ 100, верх 100, лево 200, право 200».
   ///
-  /// У скрина окантовки нет — вместо неё подворот по периметру.
+  /// У скрина окантовки нет — вместо неё подворот по сторонам.
   String get edgeBySideSummary {
     if (params.isScreen) {
-      return 'подворот ${formatMm(params.hemMm)} мм по периметру, '
+      return 'подворот ${params.hemBySideLabel}, '
           'шов ${formatMm(screenSeamMm)} мм';
     }
     final sides = [
@@ -763,8 +783,8 @@ class WindowSpec {
   }
 
   String get edgeSummary => params.isScreen
-      ? 'без окантовки: подворот ${formatMm(params.hemMm)} мм, '
-          'шов ${formatMm(screenSeamMm)} мм'
+      ? 'без окантовки: подворот ${params.hemBySideShortLabel} '
+          '(низ/право/верх/лево), шов ${formatMm(screenSeamMm)} мм'
       : '${params.edgeColor.label.toLowerCase()}, ${params.edgeMaterial.label}';
 
   String get fastenerSummary {
@@ -879,15 +899,16 @@ class WindowSpec {
       if (params.isScreen) ...[
         'Скрин: технология без тента и окантовки — материал подворачивается '
             'сам, крепёж только люверсы',
-        'Подворот материала ${formatMm(params.hemMm)} мм на сторону, '
-            'шов сварки подворота ${formatMm(screenSeamMm)} мм с каждой стороны',
-        'Заготовка скрина — готовый размер плюс 2 × подворот: '
+        'Подворот материала по сторонам — ${params.hemBySideLabel} '
+            '(низ/право/верх/лево); шов сварки подворота '
+            '${formatMm(screenSeamMm)} мм с каждой стороны',
+        'Заготовка скрина — готовый размер плюс подворот по сторонам: '
             '${formatMm(filmCutWidthWithAllowance)} × '
             '${formatMm(filmCutHeightWithAllowance)} мм '
             '(${formatMm(filmCutWidth)} × ${formatMm(filmCutHeight)} мм '
             'до припуска); усадки нет',
-        'Расход скрина — площадь заготовки '
-            '${formatMeters(filmCutAreaM2)} м²',
+        'Расход скрина — площадь заготовки (габарит) '
+            '${formatMeters(filmCutAreaWithShrinkageM2)} м²',
       ] else ...[
         'Окантовка складывается пополам; запайка плёнки под окантовку '
             '${formatMm(params.weldOverlapMm)} мм по всему периметру',
@@ -1112,10 +1133,32 @@ List<ParamIssue> validateParams(WindowParams params) {
     );
   }
 
-  // Подворот скрина: 10…150 мм на сторону. Готовый размер плюс два подворота
-  // даёт заготовку (2000 × 2000 при подвороте 40 мм → 2080 × 2080 мм).
-  if (params.isScreen && params.hemMm.isFinite) {
-    checkRange(ParamField.hemWidth, params.hemMm, 30, 80, '40–60 мм');
+  // Подворот скрина: 10…150 мм на каждую сторону, обычный диапазон 40–60 мм.
+  // Готовый размер плюс подвороты по сторонам даёт заготовку (2000 × 2000 при
+  // подвороте 40 мм на все стороны → 2080 × 2080 мм).
+  if (params.isScreen) {
+    for (final side in EdgeSide.values) {
+      final hem = params.hemForSide(side);
+      final field = hemFieldForSide(side);
+      final name = side.label.toLowerCase();
+      if (!hem.isFinite || hem <= 0) {
+        issues.add(ParamIssue(
+          field,
+          'Подворот, $name: укажите значение больше нуля',
+        ));
+        continue;
+      }
+      if (hem < minScreenHemMm || hem > maxScreenHemMm) {
+        issues.add(ParamIssue(
+          field,
+          'Подворот, $name: ${formatMm(hem)} мм — вне диапазона '
+          '${formatMm(minScreenHemMm)}–${formatMm(maxScreenHemMm)} мм',
+          isError: false,
+        ));
+        continue;
+      }
+      checkRange(field, hem, 30, 80, '40–60 мм');
+    }
   }
 
   if (params.isScreen) {

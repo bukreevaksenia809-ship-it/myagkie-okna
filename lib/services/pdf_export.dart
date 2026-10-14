@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:pdf/pdf.dart';
@@ -19,14 +21,60 @@ const double _pageHeightMm = 297.0;
 
 const double _mmToPoints = 72 / 25.4;
 
-/// Снимает лист с экрана и нарезает снимок на страницы-картинки (PNG).
+/// Предел разрешения снимка листа по большей стороне в браузере.
+///
+/// В вебе растр стоит заметно дороже, чем на десктопе: кадр снимается и
+/// кодируется в главном потоке, отдельного изолята для сборки PDF нет.
+/// Поэтому и снимок, и страницы держим меньше — иначе вкладка «зависает».
+const double kWebSheetImageMaxSide = 3000;
+
+/// Предел разрешения снимка листа по большей стороне на десктопе.
+const double kDesktopSheetImageMaxSide = 4200;
+
+/// Предел разрешения снимка листа по большей стороне для текущей платформы.
+double sheetImageMaxSide() =>
+    kIsWeb ? kWebSheetImageMaxSide : kDesktopSheetImageMaxSide;
+
+/// Разумный `pixelRatio` снимка по умолчанию.
+///
+/// В браузере 2, на десктопе 3: в вебе каждый лишний пиксель — это и память,
+/// и время блокировки главного потока при кодировании PNG и сборке PDF.
+double defaultSheetPixelRatio() => kIsWeb ? 2 : 3;
+
+/// Итоговое разрешение снимка листа.
+///
+/// Не больше запрошенного [pixelRatio] и не больше [maxSide] пикселей по
+/// большей стороне листа. Ниже 0.5 не опускаемся, иначе мелкий текст
+/// на длинном листе станет нечитаемым.
+double effectiveSheetPixelRatio(
+  Size boundarySize, {
+  required double pixelRatio,
+  double? maxSide,
+}) {
+  final largest = math.max(boundarySize.width, boundarySize.height);
+  if (largest <= 0 || pixelRatio <= 0) return pixelRatio;
+  final cap = maxSide ?? sheetImageMaxSide();
+  final floor = math.min(0.5, pixelRatio);
+  return math.min(pixelRatio, cap / largest).clamp(floor, pixelRatio);
+}
+
+/// Снимает лист с экрана и отдаёт его страницы-картинки по одной.
 ///
 /// Одна картинка — одна страница PDF: длинный лист режется последовательно,
 /// по возможности по безопасным границам ([safeBreakFractions]), чтобы
 /// не разорвать окно пополам. Пустых страниц не бывает.
-Future<List<Uint8List>> renderSheetPages({
+///
+/// Главное отличие от [renderSheetPages]: список страниц нигде не копится.
+/// Каждая готовая страница сразу уходит в [onPage], поэтому одновременно в
+/// памяти живут только снимок листа (самая крупная картинка) и одна
+/// страница. Снимок листа освобождается в `finally` — в том числе при ошибке.
+///
+/// [onPage] можно использовать, чтобы отдать управление интерфейсу: она
+/// ожидается перед съёмкой следующей страницы. Возвращает число страниц.
+Future<int> renderSheetPagesEach({
   required GlobalKey captureKey,
-  double pixelRatio = 3,
+  required FutureOr<void> Function(Uint8List png, int pageIndex) onPage,
+  double? pixelRatio,
   List<double>? safeBreakFractions,
 }) async {
   final context = captureKey.currentContext;
@@ -39,89 +87,149 @@ Future<List<Uint8List>> renderSheetPages({
   }
 
   // Ограничиваем разрешение: длинный подробный лист иначе даёт гигантский растр.
+  final ratio = pixelRatio ?? defaultSheetPixelRatio();
   final boundarySize = renderObject.size;
-  final maxSide = math.max(boundarySize.width, boundarySize.height);
-  final effectiveRatio = maxSide > 0
-      ? math.min(pixelRatio, 4200 / maxSide).clamp(0.5, pixelRatio)
-      : pixelRatio;
+  final effectiveRatio =
+      effectiveSheetPixelRatio(boundarySize, pixelRatio: ratio);
 
+  // Единственная большая картинка в памяти: снимок всего листа.
   final image = await renderObject.toImage(pixelRatio: effectiveRatio);
-  final imageWidth = image.width.toDouble();
-  final imageHeight = image.height.toDouble();
+  try {
+    final imageWidth = image.width.toDouble();
+    final imageHeight = image.height.toDouble();
 
-  final naturalHeightMm = _pageWidthMm * imageHeight / imageWidth;
-  // Небольшой запас: почти-A3 лист не режем на две страницы из-за пары мм.
-  final singlePage = naturalHeightMm <= _pageHeightMm * 1.06;
-  final pointsPerImagePixel = (_pageWidthMm * _mmToPoints) / imageWidth;
-  final pageHeightPixels = (_pageHeightMm * _mmToPoints) / pointsPerImagePixel;
+    final naturalHeightMm = _pageWidthMm * imageHeight / imageWidth;
+    // Небольшой запас: почти-A3 лист не режем на две страницы из-за пары мм.
+    final singlePage = naturalHeightMm <= _pageHeightMm * 1.06;
+    final pointsPerImagePixel = (_pageWidthMm * _mmToPoints) / imageWidth;
+    final pageHeightPixels =
+        (_pageHeightMm * _mmToPoints) / pointsPerImagePixel;
 
-  // Границы страниц: режем только там, где это безопасно (между окнами),
-  // иначе — по высоте листа A3.
-  final breaks = <double>[];
-  if (singlePage) {
-    breaks
-      ..add(0)
-      ..add(imageHeight);
-  } else {
-    final safeBreaks = <double>[
-      for (final fraction in safeBreakFractions ?? const <double>[])
-        if (fraction > 0 && fraction < 1) fraction * imageHeight,
-    ]..sort();
-    var start = 0.0;
-    while (start < imageHeight - 1) {
-      var end = start + pageHeightPixels;
-      if (end >= imageHeight) {
-        end = imageHeight;
-      } else {
-        final candidates = safeBreaks
-            .where((position) => position > start + 1 && position <= end + 1)
-            .toList();
-        if (candidates.isNotEmpty) end = candidates.last;
-      }
+    // Границы страниц: режем только там, где это безопасно (между окнами),
+    // иначе — по высоте листа A3.
+    final breaks = <double>[];
+    if (singlePage) {
       breaks
-        ..add(start)
-        ..add(end);
-      start = end;
+        ..add(0)
+        ..add(imageHeight);
+    } else {
+      final safeBreaks = <double>[
+        for (final fraction in safeBreakFractions ?? const <double>[])
+          if (fraction > 0 && fraction < 1) fraction * imageHeight,
+      ]..sort();
+      var start = 0.0;
+      while (start < imageHeight - 1) {
+        var end = start + pageHeightPixels;
+        if (end >= imageHeight) {
+          end = imageHeight;
+        } else {
+          final candidates = safeBreaks
+              .where((position) => position > start + 1 && position <= end + 1)
+              .toList();
+          if (candidates.isNotEmpty) end = candidates.last;
+        }
+        breaks
+          ..add(start)
+          ..add(end);
+        start = end;
+      }
     }
-  }
 
-  // Каждой странице — свой вырезанный кусок листа.
+    // Каждой странице — свой вырезанный кусок листа; он живёт до конца
+    // итерации и отдаётся наружу сразу.
+    var pages = 0;
+    for (var page = 0; page * 2 + 1 < breaks.length; page++) {
+      final start = breaks[page * 2];
+      final end = breaks[page * 2 + 1];
+      final png = await cropImageToPng(
+        image,
+        Rect.fromLTRB(0, start, imageWidth, end),
+      );
+      pages++;
+      await onPage(png, page);
+    }
+    return pages;
+  } finally {
+    // Снимок листа больше не нужен — отпускаем его при любом исходе.
+    image.dispose();
+  }
+}
+
+/// Снимает лист с экрана и нарезает снимок на страницы-картинки (PNG).
+///
+/// Собирает все страницы в список, поэтому подходит только для небольших
+/// листов. Для печати в браузере и для длинных листов используйте
+/// [renderSheetPagesEach] или [SheetPdfBuilder]: там страницы не копятся.
+Future<List<Uint8List>> renderSheetPages({
+  required GlobalKey captureKey,
+  double? pixelRatio,
+  List<double>? safeBreakFractions,
+}) async {
   final pages = <Uint8List>[];
-  for (var page = 0; page * 2 + 1 < breaks.length; page++) {
-    final start = breaks[page * 2];
-    final end = breaks[page * 2 + 1];
-    pages.add(
-      await cropImageToPng(image, Rect.fromLTRB(0, start, imageWidth, end)),
-    );
-  }
-
-  image.dispose();
+  await renderSheetPagesEach(
+    captureKey: captureKey,
+    pixelRatio: pixelRatio,
+    safeBreakFractions: safeBreakFractions,
+    onPage: (png, index) => pages.add(png),
+  );
   return pages;
 }
 
-/// Собирает один PDF из готовых страниц-картинок.
+/// Собирает PDF по одной странице: документ создаётся один раз, и каждая
+/// снятая страница сразу уходит в него.
 ///
-/// Ширина страницы — A3, высота — по пропорциям картинки, поэтому лист
-/// не растягивается. Печатать несколько листов одним заданием можно так:
-/// снять каждый лист через [renderSheetPages] и сложить страницы сюда.
-Future<Uint8List> buildMultiSheetPdf(
-  List<Uint8List> pageImages, {
-  String title = 'Мягкие окна',
-  String author = 'Мягкие окна',
-  String creator = 'soft_window_drawer',
-}) async {
-  if (pageImages.isEmpty) {
-    throw ArgumentError.value(pageImages, 'pageImages', 'Нет страниц для PDF');
+/// Так вместо «списка всех картинок + второй копии при сборке» в памяти
+/// живёт один документ. [addPageImage] страницу не копирует, поэтому после
+/// возврата из него собственную ссылку на PNG можно отпускать.
+///
+/// В браузере сборка идёт в главном потоке (изолятов в вебе нет), поэтому
+/// [save] и [print] внутри `pw.Document.save()` периодически отдают
+/// управление событийному циклу — вкладка не замирает на всё время сборки.
+class SheetPdfBuilder {
+  SheetPdfBuilder({
+    String title = 'Мягкие окна',
+    String author = 'Мягкие окна',
+    String creator = 'soft_window_drawer',
+  }) : _document =
+            pw.Document(title: title, author: author, creator: creator);
+
+  pw.Document? _document;
+
+  int _pageCount = 0;
+
+  /// Сколько страниц уже в документе.
+  int get pageCount => _pageCount;
+
+  /// Ни одной страницы — печатать нечего.
+  bool get isEmpty => _pageCount == 0;
+
+  /// Документ уже собран: добавлять страницы поздно.
+  bool get isClosed => _document == null;
+
+  pw.Document get _open {
+    final document = _document;
+    if (document == null) {
+      throw StateError('PDF уже собран: документ закрыт, страницы не добавить');
+    }
+    return document;
   }
 
-  final document = pw.Document(title: title, author: author, creator: creator);
-  const pageWidthPoints = _pageWidthMm * _mmToPoints;
+  void _ensureOpen() {
+    if (_document == null) {
+      throw StateError('PDF уже собран: документ закрыт, страницы не добавить');
+    }
+  }
 
-  for (final png in pageImages) {
+  /// Добавляет в PDF готовую страницу-картинку.
+  ///
+  /// Пропорции берутся из картинки, ширина страницы — A3, поэтому лист не
+  /// растягивается. Если размеры неизвестны, берётся стандартная A3.
+  void addPageImage(Uint8List png) {
+    final document = _open;
     final image = pw.MemoryImage(png);
     final imageWidth = image.width;
     final imageHeight = image.height;
-    // Пропорции неизвестны — берём стандартную страницу A3.
+    const pageWidthPoints = _pageWidthMm * _mmToPoints;
     final pageHeightPoints =
         imageWidth == null || imageWidth <= 0 ||
                 imageHeight == null || imageHeight <= 0
@@ -141,9 +249,101 @@ Future<Uint8List> buildMultiSheetPdf(
         ),
       ),
     );
+    _pageCount++;
   }
 
-  return document.save();
+  /// Снимает лист [captureKey] и добавляет его страницы в PDF по одной.
+  ///
+  /// Возвращает число добавленных страниц. [onPageAdded] вызывается после
+  /// каждой страницы и может отдать управление интерфейсу, чтобы окно
+  /// прогресса успело перерисоваться.
+  Future<int> addSheet({
+    required GlobalKey captureKey,
+    double? pixelRatio,
+    List<double>? safeBreakFractions,
+    FutureOr<void> Function(int pagesInSheet)? onPageAdded,
+  }) async {
+    _ensureOpen();
+    final before = _pageCount;
+    await renderSheetPagesEach(
+      captureKey: captureKey,
+      pixelRatio: pixelRatio,
+      safeBreakFractions: safeBreakFractions,
+      onPage: (png, pageIndex) async {
+        // Страница уходит в документ и здесь же отпускается: список
+        // готовых картинок снаружи не ведём.
+        addPageImage(png);
+        if (onPageAdded != null) await onPageAdded(_pageCount - before);
+      },
+    );
+    return _pageCount - before;
+  }
+
+  /// Собирает документ в байты и закрывает его.
+  ///
+  /// [balanceEventLoop] — отдавать ли управление во время сборки. По
+  /// умолчанию включено в браузере: там `save()` целиком идёт в главном
+  /// потоке (декодирование PNG и сжатие страниц), и без этого вкладка
+  /// замирает. После сборки документ и все картинки в нём отпускаются,
+  /// остаются только готовые байты.
+  Future<Uint8List> save({bool? balanceEventLoop}) async {
+    final document = _open;
+    _document = null;
+    return document.save(
+      enableEventLoopBalancing: balanceEventLoop ?? kIsWeb,
+    );
+  }
+
+  /// Собирает PDF и открывает системный диалог печати.
+  ///
+  /// В браузере [Printing.layoutPdf] открывает диалог печати самой страницы:
+  /// если сборка PDF перед этим замораживает вкладку, ожидание особенно
+  /// заметно, поэтому и снимки, и сборка идут с отдачей управления.
+  Future<bool> print({
+    required String jobName,
+    bool? balanceEventLoop,
+  }) async {
+    final bytes = await save(balanceEventLoop: balanceEventLoop);
+    return printPdfBytes(bytes: bytes, jobName: jobName);
+  }
+}
+
+/// Собирает один PDF из готовых страниц-картинок.
+///
+/// Оставлено для небольших заданий и для кода, которому нужен именно список.
+/// Печатать так несколько длинных листов в браузере не стоит: список держит
+/// в памяти все страницы сразу. Для инкрементальной сборки — [SheetPdfBuilder].
+Future<Uint8List> buildMultiSheetPdf(
+  List<Uint8List> pageImages, {
+  String title = 'Мягкие окна',
+  String author = 'Мягкие окна',
+  String creator = 'soft_window_drawer',
+}) async {
+  if (pageImages.isEmpty) {
+    throw ArgumentError.value(pageImages, 'pageImages', 'Нет страниц для PDF');
+  }
+
+  final builder = SheetPdfBuilder(
+    title: title,
+    author: author,
+    creator: creator,
+  );
+  for (final png in pageImages) {
+    builder.addPageImage(png);
+  }
+  return builder.save();
+}
+
+/// Отдаёт управление браузеру между страницами одного листа.
+///
+/// В вебе кодирование PNG и сборка PDF идут в главном потоке: короткая пауза
+/// даёт браузеру перерисовать окно. На десктопе ждать нечего — сборка уходит
+/// в отдельный изолят, а лишние кадры только замедляют экспорт, поэтому
+/// функция сразу возвращает управление (и не ждёт кадр в тестах).
+Future<void> _yieldToBrowser() async {
+  if (!kIsWeb) return;
+  await WidgetsBinding.instance.endOfFrame;
+  await Future<void>.delayed(const Duration(milliseconds: 4));
 }
 
 /// Снимает лист чертежа и собирает PDF: A3 по ширине, длинный лист режется
@@ -151,22 +351,25 @@ Future<Uint8List> buildMultiSheetPdf(
 Future<Uint8List> buildSheetPdf({
   required GlobalKey captureKey,
   required WindowParams params,
-  double pixelRatio = 3,
+  double? pixelRatio,
   List<double>? safeBreakFractions,
 }) async {
-  final pages = await renderSheetPages(
+  final builder = SheetPdfBuilder(title: 'Чертёж ${params.drawingNumber}');
+  await builder.addSheet(
     captureKey: captureKey,
     pixelRatio: pixelRatio,
     safeBreakFractions: safeBreakFractions,
+    // Страницы добавляются по одной, между ними отдаём управление.
+    onPageAdded: (pagesInSheet) => _yieldToBrowser(),
   );
-  return buildMultiSheetPdf(pages, title: 'Чертёж ${params.drawingNumber}');
+  return builder.save();
 }
 
 /// Сохраняет лист чертежа в PDF: на десктопе — файлом, в браузере — скачиванием.
 Future<SavedFile> exportSheetToPdf({
   required GlobalKey captureKey,
   required WindowParams params,
-  double pixelRatio = 3,
+  double? pixelRatio,
   String namePrefix = 'Чертёж',
   List<double>? safeBreakFractions,
   String? directoryPath,
@@ -184,22 +387,35 @@ Future<SavedFile> exportSheetToPdf({
   );
 }
 
+/// Открывает системный диалог печати с готовым PDF.
+///
+/// В браузере это диалог печати самой страницы: вкладка на это время занята,
+/// поэтому PDF собирается заранее, а не внутри диалога.
+Future<bool> printPdfBytes({
+  required Uint8List bytes,
+  required String jobName,
+}) {
+  return Printing.layoutPdf(
+    name: jobName,
+    onLayout: (format) async => bytes,
+  );
+}
+
 /// Открывает системный диалог печати с текущим листом.
 Future<bool> printSheet({
   required GlobalKey captureKey,
   required WindowParams params,
   required String jobName,
+  double? pixelRatio,
   List<double>? safeBreakFractions,
 }) async {
-  final bytes = await buildSheetPdf(
+  final builder = SheetPdfBuilder(title: 'Чертёж ${params.drawingNumber}');
+  await builder.addSheet(
     captureKey: captureKey,
-    params: params,
+    pixelRatio: pixelRatio,
     safeBreakFractions: safeBreakFractions,
   );
-  return Printing.layoutPdf(
-    name: jobName,
-    onLayout: (format) async => bytes,
-  );
+  return builder.print(jobName: jobName);
 }
 
 /// Печатает несколько листов одним заданием: страницы идут подряд,
@@ -210,10 +426,7 @@ Future<bool> printSheetPages({
   String? title,
 }) async {
   final bytes = await buildMultiSheetPdf(pageImages, title: title ?? jobName);
-  return Printing.layoutPdf(
-    name: jobName,
-    onLayout: (format) async => bytes,
-  );
+  return printPdfBytes(bytes: bytes, jobName: jobName);
 }
 
 /// Имя файла: «Чертёж-МО-014-20260930-2115.pdf».

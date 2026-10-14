@@ -102,7 +102,8 @@ const _mesh = WindowParams(
   rightHeight: 2000,
 );
 
-/// Скрин 2000 × 2000: подворот 40 мм, заготовка 2080 × 2080 мм, тента нет.
+/// Скрин 2000 × 2000 с подворотом на каждую сторону: низ 40, право 50,
+/// верх 60, лево 40 мм. Заготовка 2090 × 2100 мм, тента нет.
 const _screen = WindowParams(
   projectName: 'Мягкое окно веранды',
   customer: 'Иванов И. И.',
@@ -112,7 +113,10 @@ const _screen = WindowParams(
   topWidth: 2000,
   leftHeight: 2000,
   rightHeight: 2000,
-  hemMm: 40,
+  hemBottomMm: 40,
+  hemRightMm: 50,
+  hemTopMm: 60,
+  hemLeftMm: 40,
   pocketTop: true,
 );
 

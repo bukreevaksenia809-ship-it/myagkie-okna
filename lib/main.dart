@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -83,6 +81,9 @@ class _BuilderScreenState extends State<BuilderScreen> {
   final TransformationController _zoom = TransformationController();
   double _zoomLevel = 1;
   bool _exporting = false;
+
+  /// Прогресс подготовки печати: пока не null, поверх экрана видна завеса.
+  PrintProgress? _printProgress;
 
   @override
   void initState() {
@@ -261,6 +262,8 @@ class _BuilderScreenState extends State<BuilderScreen> {
       };
 
   Future<void> _exportPdf() async {
+    // Пока идёт другой экспорт, второй раз не запускаем.
+    if (_exporting) return;
     final messenger = ScaffoldMessenger.of(context);
     final params = _project.selected;
     final viewport = _viewportSize();
@@ -290,6 +293,8 @@ class _BuilderScreenState extends State<BuilderScreen> {
   /// Печать: сначала спрашиваем, какие листы печатать, затем печатаем
   /// выбранные одним заданием.
   Future<void> _printSheet() async {
+    // Пока идёт предыдущая печать, повторный запуск не принимаем.
+    if (_exporting) return;
     final selected = await showPrintSheetDialog(
       context,
       current: _tab,
@@ -304,8 +309,18 @@ class _BuilderScreenState extends State<BuilderScreen> {
   ///
   /// Лист снимается прямо с экрана, поэтому вкладки переключаются по очереди:
   /// после каждого переключения ждём кадр и только потом снимаем лист.
-  /// В конце возвращаем исходную вкладку и масштаб, чтобы приложение
-  /// осталось там, где было.
+  ///
+  /// PDF собирается ИНКРЕМЕНТАЛЬНО: [SheetPdfBuilder] создаёт документ один
+  /// раз, и каждый лист добавляет в него свои страницы сразу после съёмки.
+  /// Список готовых картинок при этом нигде не копится: одновременно живут
+  /// только снимок текущего листа и одна его страница.
+  ///
+  /// Управление регулярно отдаётся браузеру ([_yieldToBrowser] между листами
+  /// и страницами, плюс `enableEventLoopBalancing` внутри `save()`): в вебе
+  /// сборка PDF идёт в главном потоке, и без этого вкладка «зависает».
+  /// Пока идёт съёмка, поверх экрана видно, какой лист готовится сейчас.
+  ///
+  /// В конце возвращаем исходную вкладку и масштаб, что бы ни случилось.
   Future<void> _printSelected(List<SheetTab> tabs) async {
     final messenger = ScaffoldMessenger.of(context);
     final params = _project.selected;
@@ -313,57 +328,83 @@ class _BuilderScreenState extends State<BuilderScreen> {
     final previousTab = _tab;
     final previousZoom = _zoom.value.clone();
     final previousZoomLevel = _zoomLevel;
+    final total = tabs.length;
+    // Один текущий лист печатаем как раньше: без переключения вкладок
+    // и без сброса масштаба — экран не дёргается.
+    final singleCurrent = tabs.length == 1 && tabs.single == previousTab;
+    final jobName = singleCurrent
+        ? '$_sheetPrefix ${params.drawingNumber}'
+        : 'Мягкие окна — $total ${_sheetsWord(total)}';
 
     setState(() => _exporting = true);
     try {
-      // Один текущий лист печатаем как раньше: без переключения вкладок.
-      if (tabs.length == 1 && tabs.single == previousTab) {
-        final printed = await printSheet(
-          captureKey: _sheetKey,
-          params: params,
-          jobName: '$_sheetPrefix ${params.drawingNumber}',
-          safeBreakFractions: _safeBreakFractions(viewport),
-        );
-        if (!printed) {
-          messenger.showSnackBar(
-            const SnackBar(content: Text('Печать отменена')),
-          );
-        }
-        return;
-      }
+      final builder = SheetPdfBuilder(title: jobName);
 
-      final pages = <Uint8List>[];
+      var index = 0;
       for (final tab in tabs) {
-        if (!mounted) break;
-        setState(() => _tab = tab);
-        // Лист показываем как обычно: снимок не зависит от масштаба,
-        // но так лист строится в своих штатных размерах.
-        _resetZoom();
-        await WidgetsBinding.instance.endOfFrame;
-        // Запас на дорисовку: длинный лист строится не за один кадр.
-        await Future<void>.delayed(const Duration(milliseconds: 120));
-        if (!mounted) break;
-        pages.addAll(
-          await renderSheetPages(
-            captureKey: _sheetKey,
-            safeBreakFractions: _safeBreakFractionsFor(tab, viewport),
+        if (!mounted) return;
+        index++;
+        _setPrintProgress(
+          PrintProgress(
+            current: index,
+            total: total,
+            title: sheetTabTitle(tab),
+            pagesReady: builder.pageCount,
           ),
         );
+        if (!singleCurrent) {
+          setState(() => _tab = tab);
+          // Лист показываем как обычно: снимок не зависит от масштаба,
+          // но так лист строится в своих штатных размерах.
+          _resetZoom();
+          await WidgetsBinding.instance.endOfFrame;
+          // Запас на дорисовку: длинный лист строится не за один кадр.
+          await Future<void>.delayed(const Duration(milliseconds: 120));
+          if (!mounted) return;
+        }
+        await builder.addSheet(
+          captureKey: _sheetKey,
+          safeBreakFractions: _safeBreakFractionsFor(tab, viewport),
+          onPageAdded: (pagesInSheet) async {
+            // После каждой страницы обновляем счётчик и отдаём управление,
+            // чтобы браузер успел перерисовать окно прогресса.
+            _setPrintProgress(
+              PrintProgress(
+                current: index,
+                total: total,
+                title: sheetTabTitle(tab),
+                pagesReady: builder.pageCount,
+              ),
+            );
+            await _yieldToBrowser();
+          },
+        );
+        await _yieldToBrowser();
       }
 
-      if (pages.isEmpty) {
-        if (mounted) {
-          messenger.showSnackBar(
-            const SnackBar(content: Text('Нечего печатать: листы не построены')),
-          );
-        }
+      if (!mounted) return;
+      if (builder.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Нечего печатать: листы не построены')),
+        );
         return;
       }
 
-      final printed = await printSheetPages(
-        pageImages: pages,
-        jobName: 'Мягкие окна — ${tabs.length} ${_sheetsWord(tabs.length)}',
+      // Самая тяжёлая часть — сборка PDF. Управление отдаётся и здесь:
+      // в браузере `save()` идёт в главном потоке целиком.
+      _setPrintProgress(
+        PrintProgress(
+          current: total,
+          total: total,
+          title: sheetTabTitle(tabs.last),
+          pagesReady: builder.pageCount,
+          assembling: true,
+        ),
       );
+      await _yieldToBrowser();
+      final bytes = await builder.save();
+      // Документ отпущен: в памяти остались только готовые байты PDF.
+      final printed = await printPdfBytes(bytes: bytes, jobName: jobName);
       if (!printed) {
         messenger.showSnackBar(const SnackBar(content: Text('Печать отменена')));
       }
@@ -372,16 +413,30 @@ class _BuilderScreenState extends State<BuilderScreen> {
         SnackBar(content: Text('Не удалось напечатать: $error')),
       );
     } finally {
-      // Что бы ни случилось, возвращаем исходную вкладку и масштаб.
+      // Что бы ни случилось, убираем завесу и возвращаем исходную вкладку
+      // и масштаб.
       if (mounted) {
-        _zoom.value = previousZoom;
         setState(() {
+          _printProgress = null;
           _tab = previousTab;
           _zoomLevel = previousZoomLevel;
           _exporting = false;
         });
+        _zoom.value = previousZoom;
       }
     }
+  }
+
+  void _setPrintProgress(PrintProgress value) {
+    if (!mounted) return;
+    setState(() => _printProgress = value);
+  }
+
+  /// Отдаёт управление браузеру: он успевает перерисовать страницу, и
+  /// вкладка не выглядит зависшей. На десктопе это просто короткая пауза.
+  Future<void> _yieldToBrowser() async {
+    await WidgetsBinding.instance.endOfFrame;
+    await Future<void>.delayed(const Duration(milliseconds: 16));
   }
 
   /// Раздел «Технолог»: производственные проверки, дополняющие валидацию.
@@ -550,60 +605,69 @@ class _BuilderScreenState extends State<BuilderScreen> {
           const SizedBox(width: 12),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final panel = SizedBox(
-            width: narrow ? null : 420,
-            child: ParamsPanel(
-              project: _project,
-              issues: issues,
-              onChanged: _updateProject,
-              onReset: _reset,
-              pricesSection: PricePanel(
-                prices: _prices,
-                onChanged: (prices) => setState(() => _prices = prices),
-              ),
-              techSection: _techSection(),
-              ordersSection: OrdersPanel(
-                orders: _orders,
-                folderPath: ordersFolderDescription(),
-                busy: _ordersBusy,
-                onSave: _saveOrder,
-                onRefresh: _refreshOrders,
-                onOpen: _openOrder,
-                onDelete: _deleteOrder,
-              ),
-            ),
-          );
-          final sheetArea = Column(
-            children: [
-              _toolbar(),
-              const Divider(height: 1, thickness: 1),
-              Expanded(child: _sheetViewport()),
-            ],
-          );
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final panel = SizedBox(
+                width: narrow ? null : 420,
+                child: ParamsPanel(
+                  project: _project,
+                  issues: issues,
+                  onChanged: _updateProject,
+                  onReset: _reset,
+                  pricesSection: PricePanel(
+                    prices: _prices,
+                    onChanged: (prices) => setState(() => _prices = prices),
+                  ),
+                  techSection: _techSection(),
+                  ordersSection: OrdersPanel(
+                    orders: _orders,
+                    folderPath: ordersFolderDescription(),
+                    busy: _ordersBusy,
+                    onSave: _saveOrder,
+                    onRefresh: _refreshOrders,
+                    onOpen: _openOrder,
+                    onDelete: _deleteOrder,
+                  ),
+                ),
+              );
+              final sheetArea = Column(
+                children: [
+                  _toolbar(),
+                  const Divider(height: 1, thickness: 1),
+                  Expanded(child: _sheetViewport()),
+                ],
+              );
 
-          if (!narrow) {
-            return Row(
-              children: [
-                panel,
-                const VerticalDivider(width: 1, thickness: 1),
-                Expanded(child: sheetArea),
-              ],
-            );
-          }
-          // Узкий экран (планшет, телефон, окно браузера): панель сверху.
-          return Column(
-            children: [
-              SizedBox(
-                height: constraints.maxHeight * 0.42,
-                child: panel,
-              ),
-              const Divider(height: 1, thickness: 1),
-              Expanded(child: sheetArea),
-            ],
-          );
-        },
+              if (!narrow) {
+                return Row(
+                  children: [
+                    panel,
+                    const VerticalDivider(width: 1, thickness: 1),
+                    Expanded(child: sheetArea),
+                  ],
+                );
+              }
+              // Узкий экран (планшет, телефон, окно браузера): панель сверху.
+              return Column(
+                children: [
+                  SizedBox(
+                    height: constraints.maxHeight * 0.42,
+                    child: panel,
+                  ),
+                  const Divider(height: 1, thickness: 1),
+                  Expanded(child: sheetArea),
+                ],
+              );
+            },
+          ),
+          // Пока готовятся листы, поверх экрана видно прогресс: в браузере
+          // съёмка и сборка PDF идут в главном потоке и занимают секунды.
+          if (_printProgress != null)
+            PrintProgressOverlay(progress: _printProgress!),
+        ],
       ),
       bottomNavigationBar: _StatusBar(
         project: _project,

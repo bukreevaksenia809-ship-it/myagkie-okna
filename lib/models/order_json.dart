@@ -88,8 +88,14 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'edgeColor': p.edgeColor.name,
       // Запайка плёнки под окантовку (5…60 мм) — вводится руками.
       'weldOverlapMm': p.weldOverlapMm,
-      // Подворот скрина на сторону (10…150 мм).
-      'hemMm': p.hemMm,
+      // Подворот скрина по сторонам (10…150 мм на каждую сторону).
+      'hemBottomMm': p.hemBottomMm,
+      'hemRightMm': p.hemRightMm,
+      'hemTopMm': p.hemTopMm,
+      'hemLeftMm': p.hemLeftMm,
+      // Старое одиночное поле пишем, только когда все подвороты равны: так
+      // заказ по-прежнему читается старыми версиями приложения.
+      if (p.hasUniformHem) 'hemMm': p.hemBottomMm,
       'eyeletType': p.eyeletType.name,
       'eyeletStep': p.eyeletStep,
       'eyeletCornerOffset': p.eyeletCornerOffset,
@@ -113,6 +119,9 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
 /// Окно ← JSON.
 WindowParams windowFromJson(Map<String, dynamic> json) {
   const fallback = WindowParams();
+  // Старые заказы хранят один подворот на все стороны: читаем его как общий,
+  // а новые четыре поля имеют приоритет над ним.
+  final legacyHem = _double(json['hemMm'], fallback.hemBottomMm);
   return WindowParams(
     projectName: _string(json['projectName'], fallback.projectName),
     customer: _string(json['customer'], fallback.customer),
@@ -141,7 +150,10 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
         _enumByName(EdgeColor.values, json['edgeColor'], fallback.edgeColor),
     weldOverlapMm:
         _double(json['weldOverlapMm'], fallback.weldOverlapMm),
-    hemMm: _double(json['hemMm'], fallback.hemMm),
+    hemBottomMm: _double(json['hemBottomMm'], legacyHem),
+    hemRightMm: _double(json['hemRightMm'], legacyHem),
+    hemTopMm: _double(json['hemTopMm'], legacyHem),
+    hemLeftMm: _double(json['hemLeftMm'], legacyHem),
     eyeletType:
         _enumByName(EyeletType.values, json['eyeletType'], fallback.eyeletType),
     eyeletStep: _double(json['eyeletStep'], fallback.eyeletStep),

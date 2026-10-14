@@ -1745,6 +1745,27 @@ class WindowDrawingPainter extends CustomPainter {
     final filmEdge = layers.filmEdge;
     final widths = layers.finishedWidths;
 
+    // Скрин: подворот подписан по каждой стороне — низ, право, верх, лево.
+    // Полоса подворота лежит между готовым контуром (outer) и краем заготовки
+    // (filmEdge), поэтому подпись ставим в середине этой полосы.
+    if (params.isScreen) {
+      for (var i = 0; i < outer.length; i++) {
+        final a = outer[i];
+        final b = outer[(i + 1) % outer.length];
+        final cutA = filmEdge[i];
+        final cutB = filmEdge[(i + 1) % filmEdge.length];
+        final middle =
+            (Offset.lerp(a, b, 0.5)! + Offset.lerp(cutA, cutB, 0.5)!) / 2;
+        _label(
+          canvas,
+          'подворот ${formatMm(params.hemForEdge(i))}',
+          layout.toPxPoint(middle),
+          small: true,
+          color: const Color(0xFF5B6B80),
+        );
+      }
+    }
+
     // Ширина окантовки — по каждой стороне, у середины стороны.
     for (var i = 0; i < outer.length; i++) {
       final a = outer[i];
@@ -1774,7 +1795,7 @@ class WindowDrawingPainter extends CustomPainter {
       );
     }
 
-    // Запайка (у скрина — подворот) на верхней стороне.
+    // Запайка (у скрина — шов подворота) на верхней стороне.
     final seamOuter = (edgeInner[3] + edgeInner[2]) / 2;
     final seamInner = (filmEdge[3] + filmEdge[2]) / 2;
     _callout(
@@ -1782,7 +1803,7 @@ class WindowDrawingPainter extends CustomPainter {
       layout.toPxPoint((seamOuter + seamInner) / 2),
       layout.toPxPoint(seamOuter) + const Offset(10, -24),
       params.isScreen
-          ? 'подворот ${formatMm(params.hemMm)}'
+          ? 'шов ${formatMm(screenSeamMm)} мм'
           : 'запайка ${formatMm(params.weldOverlapMm)}',
     );
   }
