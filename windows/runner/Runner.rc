@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "MyagkieOkna — soft window drawings" "\0"
+            VALUE "FileDescription", "MyagkieOknaExcl — soft windows: drawings, cutting, layout" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "MyagkieOkna" "\0"
+            VALUE "InternalName", "MyagkieOknaExcl" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "MyagkieOkna.exe" "\0"
-            VALUE "ProductName", "MyagkieOkna" "\0"
+            VALUE "OriginalFilename", "MyagkieOknaExcl.exe" "\0"
+            VALUE "ProductName", "MyagkieOknaExcl" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

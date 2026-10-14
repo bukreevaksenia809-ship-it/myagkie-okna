@@ -74,14 +74,14 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item packaging/README-WINDOWS.txt "$release/ЧИТАЙ-МЕНЯ.txt" -Force
           Compress-Archive -Path "$release/*" `
-            -DestinationPath dist/MyagkieOkna-windows.zip -Force
-          Get-Item dist/MyagkieOkna-windows.zip | Select-Object Name, Length
+            -DestinationPath dist/MyagkieOknaExcl-windows.zip -Force
+          Get-Item dist/MyagkieOknaExcl-windows.zip | Select-Object Name, Length
 
       - name: Артефакт
         uses: actions/upload-artifact@v4
         with:
-          name: MyagkieOkna-windows
-          path: dist/MyagkieOkna-windows.zip
+          name: MyagkieOknaExcl-windows
+          path: dist/MyagkieOknaExcl-windows.zip
           if-no-files-found: error
 
       - name: Релиз
@@ -96,10 +96,10 @@ jobs:
           gh release view $tag --repo ${{ github.repository }} 2>$null
           if ($LASTEXITCODE -ne 0) {
             gh release create $tag --repo ${{ github.repository }} `
-              --title "Мягкие окна $tag" `
-              --notes "Сборка приложения «Мягкие окна»: чертежи, раскрой, раскладка на рулонах и ведомость расхода.`n`n**Windows:** скачайте ``MyagkieOkna-windows.zip``, распакуйте целиком и запустите ``MyagkieOkna.exe``.`n**macOS:** скачайте DMG или zip."
+              --title "Мягкие окна Excl $tag" `
+              --notes "Сборка приложения «Мягкие окна Excl»: чертежи, раскрой, раскладка на рулонах и ведомость расхода.`n`n**Windows:** скачайте ``MyagkieOknaExcl-windows.zip``, распакуйте целиком и запустите ``MyagkieOknaExcl.exe``.`n**macOS:** скачайте DMG или zip."
           }
-          gh release upload $tag dist/MyagkieOkna-windows.zip `
+          gh release upload $tag dist/MyagkieOknaExcl-windows.zip `
             --repo ${{ github.repository }} --clobber
 
   macos:
@@ -124,24 +124,24 @@ jobs:
       - name: Архивы
         run: |
           set -e
-          APP="build/macos/Build/Products/Release/MyagkieOkna.app"
+          APP="build/macos/Build/Products/Release/MyagkieOknaExcl.app"
           codesign --deep --force --sign - "$APP" || true
           mkdir -p dist/dmg
           cp -R "$APP" dist/dmg/
           ln -s /Applications dist/dmg/Applications
-          hdiutil create -volname "Мягкие окна" -srcfolder dist/dmg -ov \
-            -format UDZO dist/MyagkieOkna-macos.dmg
+          hdiutil create -volname "Мягкие окна Excl" -srcfolder dist/dmg -ov \
+            -format UDZO dist/MyagkieOknaExcl-macos.dmg
           ditto -c -k --sequesterRsrc --keepParent "$APP" \
-            dist/MyagkieOkna-macos.zip
+            dist/MyagkieOknaExcl-macos.zip
           ls -lh dist
 
       - name: Артефакт
         uses: actions/upload-artifact@v4
         with:
-          name: MyagkieOkna-macos
+          name: MyagkieOknaExcl-macos
           path: |
-            dist/MyagkieOkna-macos.dmg
-            dist/MyagkieOkna-macos.zip
+            dist/MyagkieOknaExcl-macos.dmg
+            dist/MyagkieOknaExcl-macos.zip
           if-no-files-found: error
 
       - name: Релиз
@@ -158,8 +158,8 @@ jobs:
           echo "Публикую релиз $TAG"
           gh release view "$TAG" --repo ${{ github.repository }} >/dev/null 2>&1 || \
             gh release create "$TAG" --repo ${{ github.repository }} \
-              --title "Мягкие окна $TAG" \
-              --notes "Сборка приложения «Мягкие окна»: чертежи, раскрой, раскладка на рулонах и ведомость расхода."
+              --title "Мягкие окна Excl $TAG" \
+              --notes "Сборка приложения «Мягкие окна Excl»: чертежи, раскрой, раскладка на рулонах и ведомость расхода."
           gh release upload "$TAG" \
-            dist/MyagkieOkna-macos.dmg dist/MyagkieOkna-macos.zip \
+            dist/MyagkieOknaExcl-macos.dmg dist/MyagkieOknaExcl-macos.zip \
             --repo ${{ github.repository }} --clobber

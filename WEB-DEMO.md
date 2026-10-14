@@ -1,37 +1,138 @@
-# Веб-версия для демонстрации заказчику
+# Веб-версия: демонстрационные ссылки
 
-## Временная ссылка (уже опубликована)
+Проект Firebase: **okna-7dbf8**. В нём два сайта (Hosting sites) — по одному на
+каждую зафиксированную версию приложения. Сборки не мешают друг другу: у
+каждой версии свой сайт и свой канал `demo`.
 
-```
-https://okna-7dbf8--demo-yuif0q4a.web.app
-```
+| Версия | Демо-ссылка (preview-канал) | Сайт | Живёт до |
+|---|---|---|---|
+| **Мягкие окна Excl** (текущая) | https://myagkie-okna-excl--demo-ysodwqfm.web.app | `myagkie-okna-excl` | **13 ноября 2026, 23:00** |
+| **Мягкие окна 1** (зафиксирована) | https://okna-7dbf8--demo-yuif0q4a.web.app | `okna-7dbf8` | 13 ноября 2026, 15:10 |
 
-Это **preview-канал** Firebase Hosting: он живёт до **14 октября 2026, 16:36**
-и потом исчезает сам. Боевой адрес проекта (`https://okna-7dbf8.web.app`) пуст —
-чтобы демо не осталось в публичном доступе навсегда.
+Что за ссылки:
 
-Продлить срок или удалить канал:
+- **Excl** — текущая разработка (git-ветка `main`, версия 2.0.0). Пересобирается
+  и переопубликовывается сколько угодно раз: адрес канала при этом не меняется.
+- **Мягкие окна 1** — зафиксированная первая версия (git-тег `myagkie-okna-1`,
+  архивы в `versions/Мягкие окна 1/`). Эта ссылка **не перезаписывается**
+  сборками Excl и остаётся как демонстрация первой версии.
+
+Оба адреса — временные preview-каналы (`demo`), они сами исчезают в указанную
+дату. Боевые (постоянные) адреса сайтов сейчас пусты и отдают 404 «Site Not
+Found»: `https://myagkie-okna-excl.web.app` и `https://okna-7dbf8.web.app`.
+Это сделано намеренно, чтобы демо не осталось в публичном доступе навсегда.
+
+## Прямые ссылки на вкладки (Excl)
+
+- чертёж — https://myagkie-okna-excl--demo-ysodwqfm.web.app/
+- раскладка на рулоне — `?tab=roll`
+- расходы — `?tab=costs`
+
+## Как пересобрать и переопубликовать ссылку Excl
 
 ```bash
+cd soft_window_drawer
+export PATH="$HOME/Downloads/flutter/bin:$PATH"
 FB=/Users/davidovjr7/.dsh/firebase-tools/node_modules/.bin/firebase
-"$FB" hosting:channels:list okna-7dbf8
-# продлить: переопубликовать канал с новым сроком
-"$FB" hosting:channel:deploy demo --expires 30d --project okna-7dbf8
-# удалить сразу
-"$FB" hosting:channels:delete okna-7dbf8 demo
+
+flutter pub get
+flutter build web --release --pwa-strategy=none      # папка build/web
+
+# канал demo на сайте Excl; --only принимает ИМЯ ЦЕЛИ (excl / v1),
+# БЕЗ префикса hosting: — команда добавляет его сама
+"$FB" hosting:channel:deploy demo --expires 30d --only excl --project okna-7dbf8
 ```
 
-Опубликовать постоянный адрес (если демо должно жить долго):
+Команда печатает адрес канала (`https://myagkie-okna-excl--demo-<хэш>.web.app`)
+и дату окончания. Хэш в адресе не меняется при повторных публикациях.
+
+Важно: `--only hosting:excl` для `hosting:channel:deploy` **не работает** —
+CLI сам подставляет префикс `hosting:` и получается `hosting:hosting:excl`
+(ошибка «Hosting site or target ... not detected in firebase.json»). Для
+`firebase deploy` (боевая публикация), наоборот, нужен полный вид
+`--only hosting:excl`.
+
+### Продлить срок
+
+Повторная публикация канала с новым `--expires` обновляет срок:
 
 ```bash
-./deploy-web.sh okna-7dbf8
+"$FB" hosting:channel:deploy demo --expires 30d --only excl --project okna-7dbf8
 ```
 
-Веб-сборка приложения собирается из того же кода: `flutter build web --release`
-(папка `build/web`). В вебе работают чертежи, подробный режим, раскладка на
-рулонах, ведомость расхода, сохранение заказов, скачивание PDF и печать.
+Максимум — 30 дней (`30d`), также принимаются `12h`, `7d`.
 
-Отличия от десктопной версии:
+### Посмотреть каналы
+
+```bash
+"$FB" hosting:channel:list --site myagkie-okna-excl --project okna-7dbf8
+"$FB" hosting:channel:list --site okna-7dbf8 --project okna-7dbf8
+```
+
+### Удалить канал досрочно
+
+```bash
+"$FB" hosting:channel:delete demo --site myagkie-okna-excl --project okna-7dbf8
+```
+
+## Боевая (постоянная) публикация
+
+Публикует сборку из `build/web` на постоянный адрес **своего** сайта:
+
+```bash
+./deploy-web.sh excl     # → https://myagkie-okna-excl.web.app (Мягкие окна Excl)
+./deploy-web.sh v1       # → https://okna-7dbf8.web.app        (Мягкие окна 1)
+```
+
+Скрипт берёт цель хостинга из `firebase.json`, а соответствие «цель → сайт» —
+из `.firebaserc`:
+
+| Цель (target) | Сайт (site) | Что там |
+|---|---|---|
+| `v1` | `okna-7dbf8` | «Мягкие окна 1» |
+| `excl` | `myagkie-okna-excl` | «Мягкие окна Excl» |
+
+Обратите внимание: `firebase deploy --only hosting` без цели публикует
+**оба** сайта одной и той же сборкой. Чтобы не перезаписать демо версии 1,
+всегда указывайте цель (`hosting:v1` или `hosting:excl`).
+
+## Что уже проверено (curl, 14 октября 2026)
+
+```
+$ curl -s -o /dev/null -w "%{http_code}" https://myagkie-okna-excl--demo-ysodwqfm.web.app/
+200
+$ curl -s https://myagkie-okna-excl--demo-ysodwqfm.web.app/ | grep -o "<title>.*</title>"
+<title>Мягкие окна Excl</title>
+$ curl -s https://myagkie-okna-excl--demo-ysodwqfm.web.app/main.dart.js | shasum -a 256
+f327e85f00357000bfffead2223d786fe95380bbd2ea9a33b761453fea5e1789  (3 922 229 байт — совпадает с локальной сборкой)
+```
+
+Старая ссылка версии 1 тоже проверена: `https://okna-7dbf8--demo-yuif0q4a.web.app/`
+отдаёт 200 и заголовок `<title>Мягкие окна</title>` — её мы не трогали.
+
+## Вариант без интернета: локальная сеть
+
+```bash
+cd soft_window_drawer
+./serve-demo.sh          # соберёт при необходимости и напечатает ссылку
+```
+
+Сервер отдаёт файлы со сжатием gzip — бандл едет ~1 МБ вместо 3,9 МБ.
+Минус: работает, только пока включён этот компьютер и запущен сервер.
+
+### Почему не получилось через бесплатные туннели
+
+Пробовали два сервиса без аккаунта, оба не прошли через этого провайдера:
+
+- Cloudflare quick tunnel (`cloudflared tunnel --url`) — соединение
+  регистрируется, но публичный адрес отдаёт **530** (ошибка туннеля);
+- SSH-туннель `localhost.run` — ссылка открывается, но **большие файлы
+  обрываются** (вместо 3,9 МБ приходит 24 КБ) и сессия падает.
+
+Поэтому для ссылки «из другого города» нужен нормальный хостинг — Firebase
+Hosting (выше) или любой другой по токену (Netlify, Cloudflare Pages).
+
+## Отличия веб-версии от десктопной
 
 | Что | macOS / Windows | Браузер |
 |---|---|---|
@@ -40,124 +141,17 @@ FB=/Users/davidovjr7/.dsh/firebase-tools/node_modules/.bin/firebase
 | Заказы | JSON-файлы в `~/Downloads/Мягкие окна/Заказы` | локальное хранилище браузера (localStorage) |
 | Раскладка/чертежи | всё так же | всё так же |
 
-## Вариант 1. Локальная сеть (работает уже сейчас)
-
-```bash
-cd soft_window_drawer
-./serve-demo.sh          # соберёт при необходимости и напечатает ссылку
-```
-
-Ссылка для заказчика (он должен быть в той же сети) — скрипт печатает
-актуальный адрес, IP меняется при переподключении к роутеру:
-
-```
-http://192.168.1.9:8080
-```
-
-Сервер отдаёт файлы со сжатием gzip — бандл едет ~1 МБ вместо 3,6 МБ.
-Минус: работает, только пока включён этот компьютер и запущен сервер.
-
-### Почему не получилось через бесплатные туннели
-
-Пробовал два сервиса без аккаунта, оба не прошли через этого провайдера:
-
-- Cloudflare quick tunnel (`cloudflared tunnel --url`) — соединение
-  регистрируется, но публичный адрес отдаёт **530** (ошибка туннеля);
-- SSH-туннель `localhost.run` — ссылка открывается, но **большие файлы
-  обрываются** (вместо 3,6 МБ приходит 24 КБ) и сессия падает.
-
-Поэтому для ссылки «из другого города» нужен нормальный хостинг — Firebase
-Hosting (ниже) или любой другой по токену (Netlify, Cloudflare Pages).
-
-## Вариант 2. Firebase Hosting (публичная ссылка вида https://<проект>.web.app)
-
-Шаг 1 — вход (уже сделан, аккаунт `nevernacist@gmail.com`).
-
-Шаг 2 — один раз принять условия Firebase в консоли (иначе API отвечает
-`403 PERMISSION_DENIED` на `addFirebase`, проект создать нельзя):
-
-1. открыть https://console.firebase.google.com/ ;
-2. согласиться с условиями; в мастере выбрать
-   **«Add Firebase to an existing Google Cloud project»** и указать уже
-   созданный проект `myagkie-okna-demo-17612` (или создать новый — тогда
-   назовите его как хотите);
-3. сказать мне id проекта — дальше я всё сделаю сам.
-
-Проверить, что доступ появился, можно командой:
-
-```bash
-/Users/davidovjr7/.dsh/firebase-tools/node_modules/.bin/firebase projects:list
-```
-
-Шаг 3 — публикация. Для временной ссылки используем **preview-канал**:
-он живёт заданное время и сам исчезает, трогать боевой сайт не нужно.
-
-```bash
-cd soft_window_drawer
-export PATH="$HOME/Downloads/flutter/bin:$PATH"
-flutter build web --release
-
-FB=/Users/davidovjr7/.dsh/firebase-tools/node_modules/.bin/firebase
-"$FB" hosting:channel:deploy demo --expires 7d --project <id-проекта>
-```
-
-Firebase напечатает временный адрес вида
-`https://<проект>--demo-<хэш>.web.app` — его и отправляйте заказчику.
-Срок жизни канала можно менять (`12h`, `7d`, `30d`), а посмотреть и удалить
-каналы — так:
-
-```bash
-"$FB" hosting:channels:list <id-проекта>
-"$FB" hosting:channels:delete <id-проекта> demo
-```
-
-Боевой сайт (постоянная ссылка `https://<проект>.web.app`) публикуется так:
-
-```bash
-./deploy-web.sh <id-проекта>
-```
-
-или вручную:
-
-```bash
-export PATH="$HOME/Downloads/flutter/bin:$PATH"
-flutter build web --release
-/Users/davidovjr7/.dsh/firebase-tools/node_modules/.bin/firebase deploy --only hosting --project myagkie-okna-demo
-```
-
-После деплоя Firebase напечатает адреса: `https://<проект>.web.app` и
-`https://<проект>.firebaseapp.com` — эту ссылку и отправляйте заказчику.
-
-Конфигурация хостинга уже в проекте: `firebase.json` (папка `build/web`,
-переписывание всех путей на `index.html`, кэш-заголовки) и `.firebaserc`
-(пока пустой — проект передаётся параметром `--project`).
-
-### Если нужен вход без браузера
+## Если нужен вход в Firebase без браузера
 
 ```bash
 firebase login:ci          # напечатает токен
-firebase deploy --only hosting --project <проект> --token <токен>
+firebase deploy --only hosting:excl --project okna-7dbf8 --token <токен>
 ```
 
-## Прямые ссылки на вкладки
+## История
 
-Вкладку можно открыть сразу по ссылке:
-
-- чертёж — `https://okna-7dbf8--demo-yuif0q4a.web.app/`
-- раскладка на рулоне — `?tab=roll`
-- расходы — `?tab=costs`
-
-## Что уже проверено
-
-- `flutter analyze` — чисто, все тесты проходят (56);
-- `flutter build web --release` собирается без ошибок (в коде нет `dart:io`:
-  файловые операции вынесены в платформенный слой `file_saver_*` и `order_store_*`);
-- собранная страница отдаётся локальным сервером: заголовок «Мягкие окна»,
-  `main.dart.js` 3,5 МБ, ассеты и иконки на месте;
-- вёрстка адаптивная: при ширине окна меньше 1000 точек панель параметров
-  уезжает наверх, лист остаётся снизу, кнопки в шапке становятся иконками;
-- веб-версия отрендерена в headless-браузере (Chrome) и проверена по скриншотам:
-  плёнка голубая, окантовка — кольцо, раскладка и ведомость расходов
-  отрисовываются правильно. Ранее окно заливалось коричневым из-за
-  `Path.combine`, который в вебе не работает — заменён на путь с правилом
-  evenOdd, версия сборки видна в интерфейсе справа вверху (`v1.0.2`).
+- Первая версия («Мягкие окна 1») публиковалась как сайт `okna-7dbf8`
+  (канал `demo`, ссылка `https://okna-7dbf8--demo-yuif0q4a.web.app`).
+- Версия Excl публикуется на **отдельном** сайте `myagkie-okna-excl`
+  (канал `demo`, ссылка `https://myagkie-okna-excl--demo-ysodwqfm.web.app`),
+  чтобы сборки новой версии не затирали демонстрацию первой.

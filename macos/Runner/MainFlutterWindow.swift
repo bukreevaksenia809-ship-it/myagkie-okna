@@ -27,7 +27,7 @@ class MainFlutterWindow: NSWindow {
     }
 
     self.minSize = NSSize(width: 1100, height: 720)
-    self.title = "Мягкие окна"
+    self.title = "Мягкие окна Excl"
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 

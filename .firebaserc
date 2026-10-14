@@ -1,3 +1,17 @@
 {
-  "projects": {}
+  "projects": {
+    "default": "okna-7dbf8"
+  },
+  "targets": {
+    "okna-7dbf8": {
+      "hosting": {
+        "v1": [
+          "okna-7dbf8"
+        ],
+        "excl": [
+          "myagkie-okna-excl"
+        ]
+      }
+    }
+  }
 }
