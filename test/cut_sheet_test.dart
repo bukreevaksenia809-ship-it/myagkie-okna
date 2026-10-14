@@ -54,6 +54,20 @@ const _w1700 = WindowParams(
 
 const _order = OrderProject(windows: [_w2000, _w1500, _w1700]);
 
+/// Окно 2000 × 2000 мм с припуском на раскрой +100/+100: изделие остаётся
+/// 2000 × 2000, а заготовка к раскрою — 2050 × 2050 мм (до усадки).
+const _w2000Allowance = WindowParams(
+  projectName: 'Мягкое окно террасы',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-024',
+  bottomWidth: 2000,
+  topWidth: 2000,
+  leftHeight: 2000,
+  rightHeight: 2000,
+  allowanceWidthMm: 100,
+  allowanceHeightMm: 100,
+);
+
 /// Проверяет, что прямоугольники заготовок не пересекаются.
 void _expectNoOverlaps(CutLayout layout) {
   for (var i = 0; i < layout.placements.length; i++) {
@@ -101,17 +115,30 @@ void main() {
       }
     });
 
-    test('площадь заготовки равна площади плёнки по WindowSpec', () {
+    test('заготовка равна раскрою плёнки с припуском и усадкой', () {
       final layout = CutLayout.place(pieces, const Size(1632, 460));
 
       for (var i = 0; i < specs.length; i++) {
         final placement = layout.placements[i];
-        // Заготовка — прямоугольник по габаритам раскроя, поэтому её площадь
-        // совпадает с площадью плёнки из спецификации окна.
+        final spec = specs[i];
+        // Заготовка — прямоугольник по габаритам раскроя: припуск на раскрой
+        // и усадка уже внутри filmCut*WithShrinkage.
+        expect(
+          placement.widthMm,
+          closeTo(spec.filmCutWidthWithShrinkage, 1e-9),
+          reason: 'Окно №${i + 1}, ширина',
+        );
+        expect(
+          placement.heightMm,
+          closeTo(spec.filmCutHeightWithShrinkage, 1e-9),
+          reason: 'Окно №${i + 1}, высота',
+        );
+        // Площадь заготовки — это площадь к раскрою (с припуском) с усадкой.
+        final factor = 1 + spec.params.shrinkagePercent / 100;
         expect(
           placement.widthMm * placement.heightMm / 1000000,
-          closeTo(specs[i].filmAreaM2, 1e-9),
-          reason: 'Окно №${i + 1}',
+          closeTo(spec.filmCutAreaM2 * factor * factor, 1e-9),
+          reason: 'Окно №${i + 1}, площадь',
         );
       }
     });
@@ -266,8 +293,8 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('ЗАГОТОВОК'), findsOneWidget);
-      // «Площадь плёнки» есть и в итогах, и в штампе.
-      expect(find.text('ПЛОЩАДЬ ПЛЁНКИ'), findsWidgets);
+      // «Площадь заготовок» есть и в итогах, и в штампе.
+      expect(find.text('ПЛОЩАДЬ ЗАГОТОВОК'), findsWidgets);
       expect(find.text('С УЧЁТОМ УСАДКИ'), findsOneWidget);
     });
 
@@ -312,11 +339,20 @@ void main() {
       await loadRealFonts();
 
       final many = OrderProject(windows: [for (var i = 0; i < 12; i++) _w2000]);
+      const allowanceOrder =
+          OrderProject(windows: [_w2000, _w2000Allowance]);
       final cases = <String, ({Size viewport, OrderProject project})>{
         'raskroy': (
           viewport:
               CutSheet.sheetSize(_order, const Size(1720, 1080)) ?? const Size(1720, 1080),
           project: _order,
+        ),
+        // Припуск на раскрой: заготовка справа крупнее изделия слева.
+        'raskroy-pripusk': (
+          viewport:
+              CutSheet.sheetSize(allowanceOrder, const Size(1720, 1080)) ??
+                  const Size(1720, 1080),
+          project: allowanceOrder,
         ),
         // Заказ на несколько рядов: лист растёт, заготовки не обрезаются.
         'raskroy-zakaz': (

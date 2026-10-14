@@ -97,11 +97,12 @@ class WindowGeometry {
   });
 
   factory WindowGeometry.of(WindowParams params) {
-    // Геометрия строится по фактическим размерам: замер плюс припуск на
-    // раскрой. Тогда раскрой плёнки, окантовка, люверсы, площадь изделия,
-    // чертёж и документы автоматически считаются от фактического размера.
-    final bottom = _positive(params.effectiveBottomWidth);
-    final top = _positive(params.effectiveTopWidth);
+    // Геометрия строится по ОСНОВНЫМ размерам изделия (замеру). Припуск на
+    // раскрой сюда не входит: он добавляется только к заготовке плёнки
+    // (см. WindowSpec.filmCutWidthWithAllowance), поэтому чертёж, окантовка,
+    // люверсы, площадь изделия и документы считаются по чистому изделию.
+    final bottom = _positive(params.bottomWidth);
+    final top = _positive(params.topWidth);
     final offset = switch (params.topAlign) {
       TopAlign.center => (bottom - top) / 2,
       TopAlign.left => 0.0,
@@ -111,8 +112,8 @@ class WindowGeometry {
     return WindowGeometry(
       bottomWidth: bottom,
       topWidth: top,
-      leftHeight: _positive(params.effectiveLeftHeight),
-      rightHeight: _positive(params.effectiveRightHeight),
+      leftHeight: _positive(params.leftHeight),
+      rightHeight: _positive(params.rightHeight),
       topOffset: offset,
       pocketDrop: params.pocket && params.pocketWidth > 0 ? params.pocketWidth : 0,
     );
@@ -233,7 +234,7 @@ class WindowLayers {
   /// Габариты плёнки в раскрое (с напайкой под окантовку).
   late final Rect filmCutBounds = boundsOf(filmEdge);
 
-  /// Площадь плёнки в раскрое, м².
+  /// Площадь полотна изделия в раскрое (с напайкой, без припуска), м².
   double get filmAreaM2 =>
       math.max(polygonArea(filmEdge).abs() - cutoutAreaMm2, 0) / 1000000;
 
@@ -567,9 +568,14 @@ class WindowSpec {
   double get outerAreaM2 => geometry.areaM2;
 
   /// Площадь готового изделия по наружному контуру, м².
+  ///
+  /// Припуск на раскрой сюда не входит: изделие остаётся размером замера.
   double get productAreaM2 => geometry.areaM2;
 
-  /// Площадь плёнки в раскрое (с напайкой), м².
+  /// Площадь полотна изделия в раскрое (с напайкой, без припуска), м².
+  ///
+  /// Это справочная площадь самого полотна; для закупки и денег берётся
+  /// [filmCutAreaM2] — заготовка с припуском на раскрой.
   double get filmAreaM2 => layers.filmAreaM2;
 
   /// Видимый размер плёнки (по внутренней границе окантовки).
@@ -577,15 +583,37 @@ class WindowSpec {
   double get filmVisibleHeight => layers.filmVisibleBounds.height;
 
   /// Раскрой плёнки: видимый размер плюс напайка [weldOverlap] с двух сторон
-  /// (плёнка заходит под окантовку).
+  /// (плёнка заходит под окантовку). Припуск на раскрой здесь ещё не учтён.
   double get filmCutWidth => layers.filmCutBounds.width;
   double get filmCutHeight => layers.filmCutBounds.height;
 
-  /// Раскрой с компенсацией усадки ПВХ.
+  /// Заготовка плёнки к раскрою с припуском, без усадки, мм.
+  ///
+  /// Припуск на раскрой добавляется ТОЛЬКО к плёнке в раскрое: изделие,
+  /// чертёж, окантовка и люверсы считаются по основным размерам.
+  double get filmCutWidthWithAllowance =>
+      filmCutWidth + params.allowanceWidthMm;
+  double get filmCutHeightWithAllowance =>
+      filmCutHeight + params.allowanceHeightMm;
+
+  /// Заготовка плёнки с припуском на раскрой и компенсацией усадки ПВХ, мм.
   double get filmCutWidthWithShrinkage =>
-      filmCutWidth * (1 + params.shrinkagePercent / 100);
+      filmCutWidthWithAllowance * (1 + params.shrinkagePercent / 100);
   double get filmCutHeightWithShrinkage =>
-      filmCutHeight * (1 + params.shrinkagePercent / 100);
+      filmCutHeightWithAllowance * (1 + params.shrinkagePercent / 100);
+
+  /// Площадь заготовки плёнки к раскрою (с припуском, минус вырезы), м².
+  ///
+  /// Именно эта площадь идёт в расход материала, смету и ведомость, потому
+  /// что плёнка закупается и кроится по заготовке.
+  double get filmCutAreaM2 {
+    final blank = filmCutWidthWithAllowance * filmCutHeightWithAllowance;
+    return math.max(blank - layers.cutoutAreaMm2, 0) / 1000000;
+  }
+
+  /// Площадь заготовки к раскрою с учётом усадки, м².
+  double get filmCutAreaWithShrinkageM2 =>
+      filmCutAreaM2 * (1 + params.shrinkagePercent / 100);
 
   /// Расход окантовки по ширинам рулонов.
   Map<double, double> get edgeConsumption => layers.edgeConsumption;
@@ -730,12 +758,17 @@ class WindowSpec {
             'по всему периметру',
         'Окантовка по сторонам — ${edgeBySideSummary.lowercaseFirst}',
         'Расход окантовки: ${edgeConsumptionLabels.join(', ')}',
-        'Плёнка ПВХ 700 мкм в раскрое ${formatMm(filmCutWidth)} × ${formatMm(filmCutHeight)} мм; '
-            'усадка ${formatPercent(params.shrinkagePercent)} учтена',
+        'Плёнка ПВХ 700 мкм в раскрое: заготовка '
+            '${formatMm(filmCutWidthWithAllowance)} × '
+            '${formatMm(filmCutHeightWithAllowance)} мм; с усадкой '
+            '${formatPercent(params.shrinkagePercent)} — '
+            '${formatMm(filmCutWidthWithShrinkage)} × '
+            '${formatMm(filmCutHeightWithShrinkage)} мм',
         if (params.hasAllowance)
           'Припуск на раскрой: ширина ${params.allowanceWidthLabel} мм, '
-              'высота ${params.allowanceHeightLabel} мм (размер по замеру '
-              '${formatMm(params.bottomWidth)} × ${formatMm(params.leftHeight)} мм)',
+              'высота ${params.allowanceHeightLabel} мм — плёнка кроится '
+              '${formatMm(filmCutWidthWithAllowance)} × '
+              '${formatMm(filmCutHeightWithAllowance)} мм',
         'Люверсы ${eyeletType.label.toLowerCase()}, шаг $eyeletStepLabel '
             '(номинал ${formatMm(params.eyeletStep)} мм), от угла '
             '${formatMm(params.eyeletCornerOffset)} мм, всего $eyeletCount шт',

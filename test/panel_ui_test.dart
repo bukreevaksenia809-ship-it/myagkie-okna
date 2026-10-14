@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
+import 'package:soft_window_drawer/models/window_geometry.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/widgets/params_panel.dart';
 
@@ -105,14 +106,18 @@ void main() {
     expect(withAllowance.effectiveBottomWidth, withAllowance.bottomWidth + 120);
     expect(withAllowance.effectiveLeftHeight, withAllowance.leftHeight + 80);
 
-    // Строка-итог показывает фактические размеры с припуском.
+    // Строка-итог показывает заготовку плёнки с припуском, а не изделие:
+    // припуск влияет только на раскрой.
+    final spec = WindowSpec.of(withAllowance);
     expect(
       find.text(
-        'Фактический размер: ${formatMm(withAllowance.effectiveBottomWidth)} × '
-        '${formatMm(withAllowance.effectiveLeftHeight)} мм',
+        'Плёнка в раскрое с припуском: '
+        '${formatMm(spec.filmCutWidthWithAllowance)} × '
+        '${formatMm(spec.filmCutHeightWithAllowance)} мм',
       ),
       findsOneWidget,
     );
+    expect(find.byKey(const Key('allowance-cut-size')), findsOneWidget);
     expect(find.byKey(const Key('allowance-reset')), findsOneWidget);
     expect(tester.takeException(), isNull);
 

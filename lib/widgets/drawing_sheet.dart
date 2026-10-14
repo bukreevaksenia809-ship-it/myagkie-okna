@@ -400,9 +400,6 @@ class _Caption extends StatelessWidget {
     final extra = params.drawingNumber.trim().isEmpty
         ? ''
         : ' · ${params.drawingNumber.trim()}';
-    // Припуск на раскрой: показываем рядом с фактическим размером, чтобы было
-    // видно и замер, и то, из чего получился размер изделия.
-    final allowance = params.hasAllowance ? ' · ${params.allowanceLabel}' : '';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -423,8 +420,7 @@ class _Caption extends StatelessWidget {
             ),
           ),
           Text(
-            '${formatMm(spec.geometry.spanX)}×${formatMm(spec.geometry.overallHeight)} мм'
-            '$allowance · '
+            '${formatMm(spec.geometry.spanX)}×${formatMm(spec.geometry.overallHeight)} мм · '
             '${formatMeters(spec.productAreaM2)} м² · '
             '${params.windowType.label.toLowerCase()} · люверсов ${spec.eyeletCount}',
             maxLines: 1,
@@ -443,22 +439,17 @@ class _Caption extends StatelessWidget {
 
 // ------------------------------------------------------------------ штамп
 
-/// Размеры одного окна для штампа: замер, припуск и фактический размер.
+/// Размеры одного окна для штампа: только основные размеры изделия.
 ///
-/// Без припуска — как раньше: «1 500/1 500 · 2 520/2 520».
-String _sizesWithAllowance(WindowParams params) {
-  if (!params.hasAllowance) {
-    return '${formatMm(params.bottomWidth)}/${formatMm(params.topWidth)} · '
-        '${formatMm(params.leftHeight)}/${formatMm(params.rightHeight)}';
-  }
-  return '${formatSizeWithAllowance(params.bottomWidth, params.allowanceWidthMm)} / '
-      '${formatSizeWithAllowance(params.leftHeight, params.allowanceHeightMm)}';
-}
+/// Припуск на раскрой в размеры изделия не входит — он виден в примечаниях
+/// и в раскрое плёнки.
+String _sizesLabel(WindowParams params) =>
+    '${formatMm(params.bottomWidth)}/${formatMm(params.topWidth)} · '
+    '${formatMm(params.leftHeight)}/${formatMm(params.rightHeight)}';
 
 /// Короткая запись размера окна для заказа из нескольких окон.
-String _shortSizeWithAllowance(WindowParams params) =>
-    '${formatSizeWithAllowance(params.bottomWidth, params.allowanceWidthMm)}×'
-    '${formatSizeWithAllowance(params.leftHeight, params.allowanceHeightMm)}';
+String _shortSizeLabel(WindowParams params) =>
+    '${formatMm(params.bottomWidth)}×${formatMm(params.leftHeight)}';
 
 class _TitleBlock extends StatelessWidget {
   const _TitleBlock({required this.project, required this.scaleLabel});
@@ -472,8 +463,13 @@ class _TitleBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final windows = project.windows;
     final specs = [for (final params in windows) WindowSpec.of(params)];
+    // Плёнка на листе — заготовка к раскрою: с припуском и без усадки.
     final totalFilmArea =
-        specs.fold<double>(0, (sum, spec) => sum + spec.filmAreaM2);
+        specs.fold<double>(0, (sum, spec) => sum + spec.filmCutAreaM2);
+    final totalFilmAreaWithShrinkage = specs.fold<double>(
+      0,
+      (sum, spec) => sum + spec.filmCutAreaWithShrinkageM2,
+    );
     final totalProductArea =
         specs.fold<double>(0, (sum, spec) => sum + spec.productAreaM2);
     final totalEyelets =
@@ -545,16 +541,13 @@ class _TitleBlock extends StatelessWidget {
                   child: _cell(
                     'Размеры окон, мм',
                     windows.length == 1
-                        ? _sizesWithAllowance(first)
+                        ? _sizesLabel(first)
                         : windows
                             .asMap()
                             .entries
                             .map((entry) =>
-                                '№${entry.key + 1}: ${_shortSizeWithAllowance(entry.value)}')
+                                '№${entry.key + 1}: ${_shortSizeLabel(entry.value)}')
                             .join(' · '),
-                    // «2 000 + 120 → 2 120 / 2 000 + 80 → 2 080» в одну строку
-                    // не помещается — даём две.
-                    maxLines: windows.length == 1 && first.hasAllowance ? 2 : 1,
                   ),
                 ),
                 Expanded(
@@ -586,8 +579,8 @@ class _TitleBlock extends StatelessWidget {
                   child: _cell(
                     'Плёнка: раскрой с напайкой $weldOverlap мм',
                     windows.length == 1
-                        ? '${formatMm(specs.first.filmCutWidth)} × '
-                            '${formatMm(specs.first.filmCutHeight)}'
+                        ? '${formatMm(specs.first.filmCutWidthWithAllowance)} × '
+                            '${formatMm(specs.first.filmCutHeightWithAllowance)}'
                         : 'итого ${formatMeters(totalFilmArea)} м²',
                   ),
                 ),
@@ -598,7 +591,7 @@ class _TitleBlock extends StatelessWidget {
                     windows.length == 1
                         ? '${formatMm(specs.first.filmCutWidthWithShrinkage)} × '
                             '${formatMm(specs.first.filmCutHeightWithShrinkage)}'
-                        : '${formatMeters(totalFilmArea * (1 + first.shrinkagePercent / 100))} м²',
+                        : '${formatMeters(totalFilmAreaWithShrinkage)} м²',
                   ),
                 ),
                 Expanded(
@@ -611,7 +604,7 @@ class _TitleBlock extends StatelessWidget {
                 Expanded(
                   flex: 2,
                   child: _cell(
-                    'Площадь плёнки',
+                    'Площадь заготовок',
                     '${formatMeters(totalFilmArea)} м²',
                   ),
                 ),

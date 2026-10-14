@@ -177,10 +177,12 @@ class CutSheet extends StatelessWidget {
 class CutPiece {
   const CutPiece({required this.widthMm, required this.heightMm});
 
-  /// Габарит заготовки по раскрою: плёнка плюс напайка под окантовку.
+  /// Габарит заготовки к раскрою: плёнка с напайкой под окантовку, плюс
+  /// припуск на раскрой (см. [WindowSpec.filmCutWidthWithAllowance]) и
+  /// компенсация усадки ПВХ.
   factory CutPiece.ofSpec(WindowSpec spec) => CutPiece(
-        widthMm: _positive(spec.filmCutWidth),
-        heightMm: _positive(spec.filmCutHeight),
+        widthMm: _positive(spec.filmCutWidthWithShrinkage),
+        heightMm: _positive(spec.filmCutHeightWithShrinkage),
       );
 
   final double widthMm;
@@ -543,9 +545,9 @@ class CutSheetPainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// Площадь плёнки крупно по центру заготовки.
+  /// Площадь заготовки к раскрою крупно по центру прямоугольника.
   void _paintArea(Canvas canvas, Rect rect, WindowSpec spec) {
-    final text = '${formatMeters(spec.filmAreaM2)} м²';
+    final text = '${formatMeters(spec.filmCutAreaM2)} м²';
     var fontSize = math.min(21.0, rect.height * 0.34);
     if (fontSize < 8) return;
     var painter = _painter(text, fontSize: fontSize, bold: true);
@@ -672,7 +674,7 @@ class CutSheetPainter extends CustomPainter {
     );
   }
 
-  /// Подпись под заготовкой: номер и материал, при усадке — размер с запасом.
+  /// Подпись под заготовкой: номер и материал, припуск и усадка.
   void _paintCaption(Canvas canvas, Rect rect, WindowSpec spec, int index) {
     final params = spec.params;
     final material = params.material.label;
@@ -683,12 +685,22 @@ class CutSheetPainter extends CustomPainter {
       Offset(rect.center.dx, rect.bottom + 48),
       color: _ink,
     );
-    if (params.shrinkagePercent != 0) {
-      final text = 'с усадкой ${formatPercent(params.shrinkagePercent)}: '
-          '${formatMm(spec.filmCutWidthWithShrinkage)} × '
-          '${formatMm(spec.filmCutHeightWithShrinkage)} мм';
-      _label(canvas, text, Offset(rect.center.dx, rect.bottom + 64),
-          small: true, color: _dim);
+    final parts = <String>[
+      if (params.hasAllowance)
+        'припуск ${params.allowanceWidthLabel}/${params.allowanceHeightLabel} мм',
+      if (params.shrinkagePercent != 0)
+        'с усадкой ${formatPercent(params.shrinkagePercent)}: '
+            '${formatMm(spec.filmCutWidthWithShrinkage)} × '
+            '${formatMm(spec.filmCutHeightWithShrinkage)} мм',
+    ];
+    if (parts.isNotEmpty) {
+      _label(
+        canvas,
+        parts.join(' · '),
+        Offset(rect.center.dx, rect.bottom + 64),
+        small: true,
+        color: _dim,
+      );
     }
   }
 
@@ -748,30 +760,30 @@ class CutSheetPainter extends CustomPainter {
       oldDelegate.labelFontFamily != labelFontFamily;
 }
 
-/// Итоги раскроя: количество, площади плёнки и материалы.
+/// Итоги раскроя: количество, площади заготовок и материалы.
 class _CutTotals {
   _CutTotals(this.specs) {
     for (final spec in specs) {
-      final shrinkage =
-          spec.params.shrinkagePercent.isFinite ? spec.params.shrinkagePercent : 0.0;
-      filmAreaM2 += spec.filmAreaM2;
-      filmAreaWithShrinkageM2 += spec.filmAreaM2 * (1 + shrinkage / 100);
+      // Плёнка в раскрое — заготовка: припуск на раскрой уже внутри.
+      filmAreaM2 += spec.filmCutAreaM2;
+      filmAreaWithShrinkageM2 += spec.filmCutAreaWithShrinkageM2;
       productAreaM2 += spec.productAreaM2;
       areaByMaterial.update(
         spec.params.material,
-        (value) => value + spec.filmAreaM2,
-        ifAbsent: () => spec.filmAreaM2,
+        (value) => value + spec.filmCutAreaM2,
+        ifAbsent: () => spec.filmCutAreaM2,
       );
     }
   }
 
   final List<WindowSpec> specs;
 
+  /// Площадь заготовок к раскрою (с припуском), м².
   double filmAreaM2 = 0;
   double filmAreaWithShrinkageM2 = 0;
   double productAreaM2 = 0;
 
-  /// Площадь плёнки по материалам.
+  /// Площадь заготовок по материалам.
   final Map<FilmMaterial, double> areaByMaterial = {};
 
   /// Подписи по материалам: «Обычный ПВХ — 8,57 м²».
@@ -832,7 +844,7 @@ class _CutTotalsBlock extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: _statTile(
-                  'Площадь плёнки',
+                  'Площадь заготовок',
                   '${formatMeters(totals.filmAreaM2)} м²',
                 ),
               ),
@@ -941,7 +953,7 @@ class _CutTitleBlock extends StatelessWidget {
           ),
           Expanded(
             flex: 3,
-            child: _cell('Площадь плёнки',
+            child: _cell('Площадь заготовок',
                 '${formatMeters(totals.filmAreaM2)} м²'),
           ),
         ],

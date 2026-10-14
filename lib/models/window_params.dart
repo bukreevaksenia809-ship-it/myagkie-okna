@@ -435,10 +435,10 @@ class WindowParams {
   /// Припуск на раскрой по ширине, мм: плёнка кроится больше замера.
   ///
   /// Припуск прибавляется к ширине низа и верха, а по высоте — к левой и
-  /// правой высотам (см. [effectiveBottomWidth] и соседние геттеры).
-  /// Вся геометрия ([WindowGeometry.of]) строится уже по фактическим
-  /// размерам, поэтому раскрой, окантовка, люверсы и документы считаются
-  /// от замера с припуском.
+  /// правой высотам (см. [effectiveBottomWidth] и соседние геттеры), но
+  /// ТОЛЬКО к заготовке плёнки в раскрое. Изделие, чертёж, окантовка,
+  /// люверсы, площадь изделия и остальные расчёты идут по основным размерам
+  /// ([bottomWidth] и т. д.).
   final double allowanceWidthMm;
 
   /// Припуск на раскрой по высоте, мм (по умолчанию 0).
@@ -532,12 +532,14 @@ class WindowParams {
   /// Припуск по высоте в виде «+80» / «−30» / «0».
   String get allowanceHeightLabel => formatSignedMm(allowanceHeightMm);
 
-  /// Подпись припуска для чертежа: «припуск +120/+80 мм».
+  /// Подпись припуска для документов: «припуск +120/+80 мм».
   String get allowanceLabel => hasAllowance
       ? 'припуск $allowanceWidthLabel/$allowanceHeightLabel мм'
       : 'припуск 0/0 мм';
 
-  // Фактические размеры изделия: замер плюс припуск на раскрой.
+  // Размеры заготовки плёнки с припуском на раскрой. Изделие при этом
+  // остаётся размером замера: геометрия и все расчёты идут по основным
+  // размерам, а припуск добавляется только в раскрое плёнки.
   double get effectiveBottomWidth => bottomWidth + allowanceWidthMm;
   double get effectiveTopWidth => topWidth + allowanceWidthMm;
   double get effectiveLeftHeight => leftHeight + allowanceHeightMm;
@@ -857,16 +859,6 @@ String formatCm(double millimeters) => formatMm(millimeters / 10);
 String formatSignedMm(double value) {
   if (!value.isFinite) return '—';
   return value > 0 ? '+${formatMm(value)}' : formatMm(value);
-}
-
-/// Размер изделия с припуском на раскрой: «2 000 + 120 → 2 120».
-///
-/// Без припуска возвращает просто замер — документы выглядят как раньше.
-String formatSizeWithAllowance(double measured, double allowance) {
-  if (allowance == 0) return formatMm(measured);
-  final sign = allowance > 0 ? '+' : '−';
-  return '${formatMm(measured)} $sign ${formatMm(allowance.abs())} → '
-      '${formatMm(measured + allowance)}';
 }
 
 /// Метры с разделителем-запятой: «6,75».

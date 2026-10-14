@@ -119,8 +119,9 @@ const _customEdges = WindowParams(
   rollLeft: 240,
 );
 
-/// Окно с припуском на раскрой: замер 2000 × 2000 мм, припуск +120 по ширине
-/// и +80 по высоте, то есть изделие 2120 × 2080 мм.
+/// Окно с припуском на раскрой: изделие 2000 × 2000 мм, припуск +120 по
+/// ширине и +80 по высоте. Изделие на чертеже остаётся 2000 × 2000, а плёнка
+/// в раскрое кроится 2 070 × 2 030 мм (плюс усадка).
 const _allowance = WindowParams(
   projectName: 'Мягкое окно веранды',
   customer: 'Иванов И. И.',
@@ -246,6 +247,15 @@ void main() {
         viewport: const Size(1720, 1080),
         build: (key) => RollSheet(
           project: _order,
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      // Раскладка окна с припуском: на рулон ложится заготовка с припуском.
+      'raskladka-pripusk': (
+        viewport: const Size(1720, 1080),
+        build: (key) => RollSheet(
+          project: const OrderProject(windows: [_allowance]),
           captureKey: key,
           labelFontFamily: testFontFamily,
         ),

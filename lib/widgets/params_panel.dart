@@ -434,12 +434,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _updateWindow(_withEdgeWidth(_params, side, value));
   }
 
-  /// Ширина заготовки с припуском на раскрой, мм.
-  double _effectiveWidthMm(WindowParams params) => params.effectiveBottomWidth;
-
-  /// Высота заготовки с припуском на раскрой, мм.
-  double _effectiveHeightMm(WindowParams params) => params.effectiveLeftHeight;
-
   /// Ввод припуска на раскрой: 0…500 мм.
   void _onAllowanceChanged(_AllowanceField field, String raw) {
     final value = parseMm(raw);
@@ -471,9 +465,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
   }
 
   /// Блок «Припуски на раскрой»: кнопка-переключатель, два поля и итог.
-  Widget _allowanceSection(WindowParams params) {
-    final width = _effectiveWidthMm(params);
-    final height = _effectiveHeightMm(params);
+  Widget _allowanceSection(WindowSpec spec) {
+    final params = spec.params;
+    final width = spec.filmCutWidthWithAllowance;
+    final height = spec.filmCutHeightWithAllowance;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -523,8 +518,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Замер 2 000 × 2 000, припуск +120 по ширине и +80 по высоте → '
-            'в раскрой 2 120 × 2 080 мм',
+            'Припуск добавляется только к заготовке плёнки в раскрое. '
+            'Изделие, чертёж, окантовка и люверсы считаются по замеру и '
+            'не меняются.',
             style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
           const SizedBox(height: 10),
@@ -533,19 +529,24 @@ class _ParamsPanelState extends State<ParamsPanel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Фактический размер: ${formatMm(width)} × '
+                  'Плёнка в раскрое с припуском: ${formatMm(width)} × '
                   '${formatMm(height)} мм',
-                  key: const Key('allowance-effective-size'),
+                  key: const Key('allowance-cut-size'),
                   style: const TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'Припуск добавляется к габариту заготовки: это значение '
-                  'идёт в раскрой плёнки и в смету.',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                Text(
+                  'Изделие остаётся ${formatMm(params.bottomWidth)} × '
+                  '${formatMm(params.leftHeight)} мм; площадь изделия и расход '
+                  'окантовки не меняются, припуск виден в раскрое плёнки и '
+                  'в расходе материала.',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF66748A),
+                  ),
                 ),
                 if (params.hasAllowance) ...[
                   const SizedBox(height: 4),
@@ -714,7 +715,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
             _numberField(ParamField.topOffset),
           ],
           const SizedBox(height: 14),
-          _allowanceSection(params),
+          _allowanceSection(spec),
           const SizedBox(height: 20),
           _expansion(
             title: 'Полотно (плёнка)',
@@ -1071,7 +1072,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
           _expansion(
             title: 'Раскрой',
             subtitle:
-                'плёнка ${formatMm(spec.filmCutWidth)} × ${formatMm(spec.filmCutHeight)} мм',
+                'заготовка ${formatMm(spec.filmCutWidthWithAllowance)} × '
+                '${formatMm(spec.filmCutHeightWithAllowance)} мм',
             children: [
               _numberField(ParamField.shrinkagePercent),
               const SizedBox(height: 12),
@@ -1853,15 +1855,17 @@ class _CuttingCard extends StatelessWidget {
         '${formatMm(spec.filmVisibleWidth)} × ${formatMm(spec.filmVisibleHeight)} мм',
       ),
       (
-        'Плёнка в раскрое (напайка ${formatMm(weldOverlap)} мм)',
-        '${formatMm(spec.filmCutWidth)} × ${formatMm(spec.filmCutHeight)} мм',
+        'Заготовка с напайкой ${formatMm(weldOverlap)} мм'
+            '${params.hasAllowance ? ' и припуском' : ''}',
+        '${formatMm(spec.filmCutWidthWithAllowance)} × '
+            '${formatMm(spec.filmCutHeightWithAllowance)} мм',
       ),
       (
         'С усадкой ${formatPercent(params.shrinkagePercent)}',
         '${formatMm(spec.filmCutWidthWithShrinkage)} × '
             '${formatMm(spec.filmCutHeightWithShrinkage)} мм',
       ),
-      ('Площадь плёнки в раскрое', '${formatMeters(spec.filmAreaM2)} м²'),
+      ('Площадь заготовки в раскрое', '${formatMeters(spec.filmCutAreaM2)} м²'),
       for (final label in spec.edgeConsumptionLabels)
         ('Окантовка ${label.split(' — ').first}', label.split(' — ').last),
       ('Люверсов', '${spec.eyeletCount} шт, шаг ${spec.eyeletStepLabel}'),

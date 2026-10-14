@@ -721,8 +721,9 @@ class _StatusBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final specs = [for (final window in project.windows) WindowSpec.of(window)];
+    // Плёнка в заказе — заготовки к раскрою, то есть с припуском на раскрой.
     final totalFilmArea =
-        specs.fold<double>(0, (sum, spec) => sum + spec.filmAreaM2);
+        specs.fold<double>(0, (sum, spec) => sum + spec.filmCutAreaM2);
     final totalProductArea =
         specs.fold<double>(0, (sum, spec) => sum + spec.productAreaM2);
     final totalEyelets =
@@ -752,7 +753,7 @@ class _StatusBar extends StatelessWidget {
                 '${formatMm(selectedSpec.geometry.overallHeight)} мм',
           ),
           _stat('Площадь изделий', '${formatMeters(totalProductArea)} м²'),
-          _stat('Плёнка: площадь', '${formatMeters(totalFilmArea)} м²'),
+          _stat('Плёнка: заготовки', '${formatMeters(totalFilmArea)} м²'),
           _stat('Люверсы', 'всего $totalEyelets шт'),
           _stat('Расход окантовки', consumptionText),
           _stat(

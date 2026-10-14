@@ -146,17 +146,14 @@ class CostsSheet extends StatelessWidget {
         '№${i + 1}',
         window.windowType.label,
         window.material.label,
-        // С припуском показываем и замер, и то, что из него получилось.
-        if (window.hasAllowance)
-          '${formatSizeWithAllowance(window.bottomWidth, window.allowanceWidthMm)} / '
-              '${formatSizeWithAllowance(window.leftHeight, window.allowanceHeightMm)}'
-        else
-          '${formatMm(window.bottomWidth)}/${formatMm(window.topWidth)} · '
-              '${formatMm(window.leftHeight)}/${formatMm(window.rightHeight)}',
+        // Размеры изделия — только основные (припуск в изделие не входит).
+        '${formatMm(window.bottomWidth)}/${formatMm(window.topWidth)} · '
+            '${formatMm(window.leftHeight)}/${formatMm(window.rightHeight)}',
+        // Плёнка в раскрое — заготовка с припуском и усадкой.
         '${formatMm(spec.filmCutWidthWithShrinkage)} × '
             '${formatMm(spec.filmCutHeightWithShrinkage)}',
         formatMeters(spec.productAreaM2),
-        formatMeters(spec.filmAreaM2),
+        formatMeters(spec.filmCutAreaM2),
         '${spec.eyeletCount}',
         spec.edgeConsumptionLabels.join('; '),
         extras.isEmpty ? '—' : extras.join(', '),
@@ -170,7 +167,7 @@ class CostsSheet extends StatelessWidget {
       'Размеры полотна, мм',
       'Плёнка в раскрое с усадкой, мм',
       'Площадь изделия, м²',
-      'Площадь плёнки, м²',
+      'Площадь заготовки, м²',
       'Люверсы, шт',
       'Окантовка',
       'Спецэлементы',
@@ -234,7 +231,7 @@ class CostsSheet extends StatelessWidget {
       ]),
       ('Полотно (плёнка)', [
         ...summary.filmByMaterialLabels,
-        'Итого площадь в раскрое: ${formatMeters(summary.filmAreaM2)} м²',
+        'Итого площадь заготовок в раскрое: ${formatMeters(summary.filmAreaM2)} м²',
         'С учётом усадки: ${formatMeters(summary.filmAreaWithShrinkageM2)} м²',
       ]),
       ('Окантовка (по типам рулонов)', [
@@ -318,7 +315,9 @@ class CostsSheet extends StatelessWidget {
         const Text(
           'Напайка плёнки под окантовку 25 мм по всему периметру. '
           'Окантовка складывается пополам: рулон 100 → 50 мм, 200 → 100 мм, '
-          '240 → 120 мм. Плёнка ПВХ 700 мкм, морозостойкость до −30 °C.',
+          '240 → 120 мм. Плёнка ПВХ 700 мкм, морозостойкость до −30 °C. '
+          'Припуск на раскрой увеличивает только заготовку плёнки; размеры '
+          'изделия и площадь изделий считаются по замеру.',
           style: TextStyle(fontSize: 9.5, height: 1.3, color: Color(0xFF66748A)),
         ),
       ],

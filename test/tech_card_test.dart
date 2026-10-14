@@ -278,6 +278,75 @@ void main() {
     );
   });
 
+  group('припуск на раскрой в техкарте', () {
+    // Изделие 2000 × 2000, припуск +100/+100: плёнка кроится 2050 × 2050.
+    const withAllowance = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      allowanceWidthMm: 100,
+      allowanceHeightMm: 100,
+    );
+    const plain = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+    );
+
+    test('раскрой — с припуском, окантовка и люверсы — по изделию', () {
+      final card = TechCard.forWindow(withAllowance);
+      final base = TechCard.forWindow(plain);
+      final spec = WindowSpec.of(withAllowance);
+
+      final cutting = _op(card, TechOperationKind.cutting);
+      expect(cutting.title, 'Раскрой плёнки');
+      expect(
+        cutting.text,
+        contains('припуск на раскрой +100 по ширине и +100 по высоте'),
+      );
+      expect(
+        cutting.materials.first.size,
+        '${formatMm(spec.filmCutWidthWithShrinkage)} × '
+        '${formatMm(spec.filmCutHeightWithShrinkage)} мм',
+      );
+      expect(
+        cutting.text,
+        contains('${formatMeters(spec.filmCutAreaM2)} м²'),
+      );
+
+      // Окантовка и люверсы в припуске не нуждаются — числа те же.
+      final edging = _op(card, TechOperationKind.edging);
+      final baseEdging = _op(base, TechOperationKind.edging);
+      expect(edging.edgeTotals, baseEdging.edgeTotals);
+      expect(
+        _op(card, TechOperationKind.eyelets).text,
+        _op(base, TechOperationKind.eyelets).text,
+      );
+
+      // Контроль и спайка — по габариту изделия 2000 × 2000.
+      expect(
+        _op(card, TechOperationKind.control).text,
+        contains('2\u202F000 × 2\u202F000 мм'),
+      );
+      expect(
+        _op(card, TechOperationKind.control).text,
+        isNot(contains(formatMm(spec.filmCutWidthWithAllowance))),
+      );
+      final weldCard = TechCard.forWindow(
+        withAllowance.copyWith(weldedSides: const [EdgeSide.right]),
+      );
+      final weldBase = TechCard.forWindow(
+        plain.copyWith(weldedSides: const [EdgeSide.right]),
+      );
+      expect(
+        _op(weldCard, TechOperationKind.weldNeighbor).text,
+        _op(weldBase, TechOperationKind.weldNeighbor).text,
+      );
+    });
+  });
+
   testWidgets('лист техкарты строится и растёт под заказ', (tester) async {
     const project = OrderProject(windows: [_window, _rich, _mesh]);
 

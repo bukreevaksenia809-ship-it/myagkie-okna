@@ -170,7 +170,7 @@ class TechCard {
   /// Подпись под заголовком: окантовка, люверсы, крепёж.
   String get subtitle =>
       'Окантовка: ${spec.edgeBySideSummary} · '
-      'плёнка в раскрое с усадкой: '
+      'плёнка в раскрое с припуском и усадкой: '
       '${formatMm(spec.filmCutWidthWithShrinkage)} × '
       '${formatMm(spec.filmCutHeightWithShrinkage)} мм · '
       'люверсы: ${spec.eyeletCount} шт, шаг ${spec.eyeletStepLabel} · '
@@ -265,7 +265,11 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     description:
         'Отрезать полотно по раскрою: видимый размер '
         '${formatMm(visible.width)} × ${formatMm(visible.height)} мм, плюс '
-        'напайка ${formatMm(weldOverlap)} мм с каждой стороны, плюс усадка '
+        'напайка ${formatMm(weldOverlap)} мм с каждой стороны'
+        '${params.hasAllowance ? ', плюс припуск на раскрой '
+                  '${params.allowanceWidthLabel} по ширине и '
+                  '${params.allowanceHeightLabel} по высоте' : ''}'
+        ', плюс усадка '
         '${formatPercent(params.shrinkagePercent)}. Раскрой вести по длинной '
         'стороне рулона, кромку не подрезать.',
     materials: [
@@ -275,13 +279,14 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
             '${formatMm(spec.filmCutWidthWithShrinkage)} × '
             '${formatMm(spec.filmCutHeightWithShrinkage)} мм',
         note:
-            'до усадки ${formatMm(spec.filmCutWidth)} × '
-            '${formatMm(spec.filmCutHeight)} мм',
+            'до усадки ${formatMm(spec.filmCutWidthWithAllowance)} × '
+            '${formatMm(spec.filmCutHeightWithAllowance)} мм'
+            '${params.hasAllowance ? ' (с припуском на раскрой)' : ''}',
       ),
       TechMaterial(
-        name: 'Площадь плёнки в раскрое',
-        size: '${formatMeters(spec.filmAreaM2)} м²',
-        note: 'без площади вырезов',
+        name: 'Площадь заготовки в раскрое',
+        size: '${formatMeters(spec.filmCutAreaM2)} м²',
+        note: 'с припуском на раскрой, без площади вырезов',
       ),
     ],
     tool: 'Раскроечный стол, дисковый нож, рулетка, угольник, маркер',
@@ -289,7 +294,9 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         'Габарит ${formatMm(spec.filmCutWidthWithShrinkage)} × '
         '${formatMm(spec.filmCutHeightWithShrinkage)} мм (±5 мм), углы 90°, '
         'кромка ровная без задиров и волн',
-    source: 'WindowSpec.filmCutWidthWithShrinkage / filmCutHeightWithShrinkage',
+    source:
+        'WindowSpec.filmCutWidthWithShrinkage / filmCutHeightWithShrinkage '
+        '(припуск на раскрой + усадка)',
   );
 
   // ------------------------------------------- 2. напайка (сварка/шитьё)

@@ -7,6 +7,7 @@ import 'package:soft_window_drawer/models/order_project.dart';
 import 'package:soft_window_drawer/models/window_geometry.dart';
 import 'package:soft_window_drawer/services/costs_summary.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
+import 'package:soft_window_drawer/widgets/cut_sheet.dart';
 import 'package:soft_window_drawer/widgets/drawing_sheet.dart';
 
 /// Пример заказчика: окно 1500 × 2520 мм, окантовка 100 мм (50 мм готовых).
@@ -1031,9 +1032,30 @@ void _weldedWindowRules() {
 }
 
 // --- Припуск на раскрой ------------------------------------------------------
+//
+// Припуск добавляется ТОЛЬКО к заготовке плёнки в раскрое. Изделие, чертёж,
+// окантовка, люверсы, площадь изделия и остальные расчёты идут по основным
+// размерам замера.
 
 void _allowanceRules() {
   group('Припуск на раскрой', () {
+    // Пример заказчика: изделие 2000 × 2000 мм, окантовка 100 мм (готовая 50),
+    // напайка 25 мм, припуск +100 по ширине и +100 по высоте.
+    const product = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      allowanceWidthMm: 100,
+      allowanceHeightMm: 100,
+    );
+    const withoutAllowance = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+    );
+    // Припуск другого размера — для round-trip и подписей.
     const measured = WindowParams(
       bottomWidth: 2000,
       topWidth: 2000,
@@ -1041,12 +1063,6 @@ void _allowanceRules() {
       rightHeight: 2000,
       allowanceWidthMm: 120,
       allowanceHeightMm: 80,
-    );
-    const withoutAllowance = WindowParams(
-      bottomWidth: 2000,
-      topWidth: 2000,
-      leftHeight: 2000,
-      rightHeight: 2000,
     );
 
     test('по умолчанию припуска нет', () {
@@ -1063,75 +1079,140 @@ void _allowanceRules() {
       expect(measured.hasAllowance, isTrue);
     });
 
-    test('геометрия строится по фактическим размерам: 2000×2000 + 120/+80',
-        () {
-      final geometry = WindowGeometry.of(measured);
+    test('геометрия строится по основным размерам: 2000×2000 + 100/+100', () {
+      final geometry = WindowGeometry.of(product);
 
-      expect(geometry.spanX, closeTo(2120, 1e-9));
-      expect(geometry.overallHeight, closeTo(2080, 1e-9));
-      expect(geometry.bottomWidth, closeTo(2120, 1e-9));
-      expect(geometry.topWidth, closeTo(2120, 1e-9));
-      expect(geometry.leftHeight, closeTo(2080, 1e-9));
-      expect(geometry.rightHeight, closeTo(2080, 1e-9));
-      // Для трапеции припуск прибавляется к обеим высотам одинаково.
+      expect(geometry.spanX, closeTo(2000, 1e-9));
+      expect(geometry.overallHeight, closeTo(2000, 1e-9));
+      expect(geometry.bottomWidth, closeTo(2000, 1e-9));
+      expect(geometry.topWidth, closeTo(2000, 1e-9));
+      expect(geometry.leftHeight, closeTo(2000, 1e-9));
+      expect(geometry.rightHeight, closeTo(2000, 1e-9));
+      expect(geometry.topOffset, 0);
+      // Без припуска геометрия точно такая же.
+      final plain = WindowGeometry.of(withoutAllowance);
+      expect(geometry.spanX, closeTo(plain.spanX, 1e-9));
+      expect(geometry.overallHeight, closeTo(plain.overallHeight, 1e-9));
+
+      // Трапеция: припуск не сдвигает верх и не растягивает стороны.
       final trapezoid = WindowGeometry.of(measured.copyWith(
         bottomWidth: 3000,
         topWidth: 2400,
         leftHeight: 2500,
         rightHeight: 2500,
       ));
-      expect(trapezoid.spanX, closeTo(3120, 1e-9));
-      expect(trapezoid.overallHeight, closeTo(2580, 1e-9));
+      expect(trapezoid.spanX, closeTo(3000, 1e-9));
+      expect(trapezoid.overallHeight, closeTo(2500, 1e-9));
       expect(trapezoid.topOffset, closeTo(300, 1e-9));
     });
 
-    test('площадь изделия растёт вместе с припуском', () {
+    test('площадь изделия не зависит от припуска', () {
       final plain = WindowSpec.of(withoutAllowance);
-      final withAllowance = WindowSpec.of(measured);
+      final spec = WindowSpec.of(product);
 
-      expect(withAllowance.productAreaM2, closeTo(2120 * 2080 / 1e6, 1e-9));
-      expect(withAllowance.productAreaM2, greaterThan(plain.productAreaM2));
+      expect(spec.productAreaM2, closeTo(4.0, 1e-9));
+      expect(spec.productAreaM2, closeTo(plain.productAreaM2, 1e-9));
+      // Габарит изделия 2000 × 2000 = 4,00 м², а не 4,41 м².
       expect(
-        withAllowance.productAreaM2 / plain.productAreaM2,
-        closeTo(1.1024, 1e-6),
-      );
-      // Периметр тоже вырос на припуск.
-      expect(
-        withAllowance.outerPerimeter - plain.outerPerimeter,
-        closeTo(2 * (120 + 80), 1e-6),
+        spec.geometry.spanX * spec.geometry.overallHeight / 1e6,
+        closeTo(4.0, 1e-9),
       );
     });
 
-    test('плёнка в раскрое, окантовка и люверсы — от фактического размера',
-        () {
+    test('плёнка в раскрое: напайка, припуск и усадка', () {
       final plain = WindowSpec.of(withoutAllowance);
-      final spec = WindowSpec.of(measured);
+      final spec = WindowSpec.of(product);
 
-      // Окантовка 100 мм (готовая 50), напайка 25 → плёнка 2120−50 × 2080−50.
-      expect(spec.filmCutWidth, closeTo(2070, 0.6));
-      expect(spec.filmCutHeight, closeTo(2030, 0.6));
-      expect(spec.filmCutWidth - plain.filmCutWidth, closeTo(120, 0.6));
-      expect(spec.filmCutHeight - plain.filmCutHeight, closeTo(80, 0.6));
-      expect(spec.filmAreaM2, greaterThan(plain.filmAreaM2));
-
-      // Расход окантовки — по фактическому периметру: 2×(2120+2080).
-      final edge =
-          spec.edgeConsumption.values.fold(0.0, (sum, value) => sum + value);
-      expect(edge, closeTo(2 * (2120 + 2080), 1e-6));
-      // Люверсов на большем окне не меньше, чем на замере.
-      expect(spec.eyeletCount, greaterThanOrEqualTo(plain.eyeletCount));
+      // Окантовка 100 (готовая 50), напайка 25 → плёнка 2000 − 2×25 = 1950.
+      expect(spec.filmCutWidth, closeTo(1950, 1e-9));
+      expect(spec.filmCutHeight, closeTo(1950, 1e-9));
+      // Площадь полотна изделия — без припуска.
+      expect(spec.filmAreaM2, closeTo(1950 * 1950 / 1e6, 1e-9));
+      expect(plain.filmAreaM2, closeTo(spec.filmAreaM2, 1e-9));
+      // Заготовка к раскрою: припуск +100 → 2050 × 2050.
+      expect(spec.filmCutWidthWithAllowance, closeTo(2050, 1e-9));
+      expect(spec.filmCutHeightWithAllowance, closeTo(2050, 1e-9));
+      // Усадка считается от заготовки с припуском.
+      final factor = 1 + product.shrinkagePercent / 100;
+      expect(spec.filmCutWidthWithShrinkage, closeTo(2050 * factor, 1e-9));
+      expect(spec.filmCutHeightWithShrinkage, closeTo(2050 * factor, 1e-9));
+      // Площадь заготовки к раскрою — с припуском, без вырезов.
+      expect(spec.filmCutAreaM2, closeTo(2050 * 2050 / 1e6, 1e-9));
+      expect(spec.filmAreaM2, lessThan(spec.filmCutAreaM2));
     });
 
-    test('раскрой в смете и сводке расхода учитывает припуск', () {
-      final cost = CostsSummary(const OrderProject(windows: [measured]));
-      final plainCost =
+    test('окантовка, люверсы, периметр и спайки не зависят от припуска', () {
+      final plain = WindowSpec.of(withoutAllowance);
+      final spec = WindowSpec.of(product);
+
+      expect(spec.eyeletCount, plain.eyeletCount);
+      expect(spec.eyeletStepMin, closeTo(plain.eyeletStepMin!, 1e-9));
+      expect(spec.eyeletStepMax, closeTo(plain.eyeletStepMax!, 1e-9));
+      expect(spec.eyeletStepLabel, plain.eyeletStepLabel);
+      expect(spec.edgeConsumption, plain.edgeConsumption);
+      expect(spec.edgeConsumptionLabels, plain.edgeConsumptionLabels);
+      expect(spec.outerPerimeter, closeTo(plain.outerPerimeter, 1e-9));
+      expect(spec.layers.weldLengthMm, closeTo(plain.layers.weldLengthMm, 1e-9));
+      // Вырезы и их окантовка — по изделию.
+      expect(spec.layers.cutoutPerimeterMm, plain.layers.cutoutPerimeterMm);
+    });
+
+    test('расход в CostsSummary растёт только по плёнке', () {
+      final plain =
           CostsSummary(const OrderProject(windows: [withoutAllowance]));
+      final cost = CostsSummary(const OrderProject(windows: [product]));
 
-      expect(cost.productAreaM2, greaterThan(plainCost.productAreaM2));
-      expect(cost.filmAreaM2, greaterThan(plainCost.filmAreaM2));
+      // Площадь изделий не изменилась — припуск её не раздувает.
+      expect(cost.productAreaM2, closeTo(plain.productAreaM2, 1e-9));
+      expect(cost.productAreaM2, closeTo(4.0, 1e-9));
+      // Плёнка выросла ровно на припуск: 2050² − 1950².
       expect(
-        cost.edgeByRoll[100.0]! - plainCost.edgeByRoll[100.0]!,
-        closeTo(2 * (120 + 80), 1e-6),
+        cost.filmAreaM2 - plain.filmAreaM2,
+        closeTo((2050 * 2050 - 1950 * 1950) / 1e6, 1e-9),
+      );
+      expect(cost.filmAreaM2, closeTo(2050 * 2050 / 1e6, 1e-9));
+      expect(
+        cost.filmAreaByMaterial[FilmMaterial.clearPvc],
+        closeTo(2050 * 2050 / 1e6, 1e-9),
+      );
+      // Плёнка в раскрое — заготовка с припуском, а не полотно изделия.
+      expect(cost.filmAreaM2, greaterThan(WindowSpec.of(product).filmAreaM2));
+      // Окантовка и люверсы — те же, что без припуска.
+      expect(cost.edgeByRoll[100.0], closeTo(plain.edgeByRoll[100.0]!, 1e-9));
+      expect(cost.eyeletTotal, plain.eyeletTotal);
+      expect(cost.cutoutPerimeterMm, plain.cutoutPerimeterMm);
+    });
+
+    test('раскладка на рулоне не даёт отрицательного отхода', () {
+      // Заготовка 2050 × 2050 (плюс усадка) шире стандартного рулона 2000:
+      // раскладка предупреждает о сшивке, но отход не уходит в минус.
+      final summary = CostsSummary(const OrderProject(windows: [product]));
+
+      expect(summary.rollWastePercent, greaterThanOrEqualTo(0));
+      expect(summary.rollWastePercent, lessThanOrEqualTo(100));
+      for (final plan in summary.rollPlans) {
+        expect(plan.wastePercent, greaterThanOrEqualTo(0));
+        expect(plan.wastePercent, lessThanOrEqualTo(100));
+      }
+    });
+
+    test('лист раскроя показывает заготовку с припуском', () {
+      final spec = WindowSpec.of(product);
+      final piece = CutPiece.ofSpec(spec);
+
+      expect(piece.widthMm, closeTo(spec.filmCutWidthWithShrinkage, 1e-9));
+      expect(piece.heightMm, closeTo(spec.filmCutHeightWithShrinkage, 1e-9));
+      // Заготовка крупнее изделия на припуск (и на напайку с усадкой).
+      expect(piece.widthMm, greaterThan(product.bottomWidth));
+      expect(piece.heightMm, greaterThan(product.leftHeight));
+      expect(piece.widthMm * piece.heightMm / 1e6, greaterThan(4.0));
+      // Без припуска заготовка меньше — припуск реально входит в размер.
+      final plainPiece = CutPiece.ofSpec(WindowSpec.of(withoutAllowance));
+      expect(piece.widthMm, greaterThan(plainPiece.widthMm));
+      expect(piece.heightMm, greaterThan(plainPiece.heightMm));
+      expect(
+        piece.widthMm - plainPiece.widthMm,
+        closeTo(100 * (1 + product.shrinkagePercent / 100), 1e-9),
       );
     });
 
@@ -1195,26 +1276,33 @@ void _allowanceRules() {
       expect(formatSignedMm(120), '+120');
       expect(formatSignedMm(-30), formatMm(-30));
       expect(measured.allowanceLabel, 'припуск +120/+80 мм');
-      expect(
-        formatSizeWithAllowance(2000, 120),
-        '2\u202F000 + 120 → 2\u202F120',
-      );
-      expect(formatSizeWithAllowance(2000, 0), '2\u202F000');
+      expect(product.allowanceWidthLabel, '+100');
+      expect(product.allowanceHeightLabel, '+100');
     });
 
     test('примечания показывают замер и припуск', () {
-      final notes = WindowSpec.of(measured).notes.join('\n');
+      final notes = WindowSpec.of(product).notes.join('\n');
       expect(
         notes,
+        contains('Припуск на раскрой: ширина +100 мм, высота +100 мм'),
+      );
+      expect(notes, contains('плёнка кроится 2\u202F050 × 2\u202F050 мм'));
+
+      final measuredNotes = WindowSpec.of(measured).notes.join('\n');
+      expect(
+        measuredNotes,
         contains('Припуск на раскрой: ширина +120 мм, высота +80 мм'),
       );
-      expect(notes, contains('2\u202F000 × 2\u202F000 мм'));
+      expect(
+        measuredNotes,
+        contains('плёнка кроится 2\u202F070 × 2\u202F030 мм'),
+      );
 
       final plainNotes = WindowSpec.of(withoutAllowance).notes.join('\n');
       expect(plainNotes.contains('Припуск на раскрой'), isFalse);
     });
 
-    testWidgets('подпись окна и штамп листа показывают припуск',
+    testWidgets('чертёж показывает чистое изделие, припуск — в примечаниях',
         (WidgetTester tester) async {
       tester.view.physicalSize = const Size(1500, 1000);
       tester.view.devicePixelRatio = 1;
@@ -1241,20 +1329,27 @@ void _allowanceRules() {
       );
       await tester.pumpAndSettle();
 
-      // Подпись окна: фактический размер плюс строка про припуск.
-      expect(find.textContaining('2\u202F120×2\u202F080 мм'), findsWidgets);
-      expect(find.textContaining('припуск +120/+80 мм'), findsWidgets);
-      // Штамп: замер + припуск → фактический размер.
+      // Подпись окна и штамп — чистое изделие 2000 × 2000.
+      expect(find.textContaining('2\u202F000×2\u202F000 мм'), findsWidgets);
       expect(
-        find.textContaining('2\u202F000 + 120 → 2\u202F120'),
+        find.textContaining('2\u202F000/2\u202F000 · 2\u202F000/2\u202F000'),
         findsWidgets,
       );
+      // Старых записей «замер + припуск → размер» и «· припуск …» нет.
+      expect(find.textContaining('2\u202F000 + 120'), findsNothing);
+      expect(find.textContaining('2\u202F000 + 80'), findsNothing);
+      expect(find.textContaining('припуск +120/+80 мм'), findsNothing);
+      // Припуск виден только в примечаниях.
       expect(
-        find.textContaining('2\u202F000 + 80 → 2\u202F080'),
-        findsWidgets,
+        find.textContaining(
+            'Припуск на раскрой: ширина +120 мм, высота +80 мм'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('плёнка кроится 2\u202F070 × 2\u202F030 мм'),
+        findsOneWidget,
       );
       expect(tester.takeException(), isNull);
     });
   });
 }
-

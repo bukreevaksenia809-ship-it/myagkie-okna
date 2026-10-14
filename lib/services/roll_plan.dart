@@ -40,6 +40,7 @@ List<RollPlan> buildRollPlans(OrderProject project) {
         RollPiece(
           id: '${i + 1}',
           label: project.labelFor(i),
+          // На рулон укладывается заготовка с припуском на раскрой и усадкой.
           width: spec.filmCutWidthWithShrinkage,
           height: spec.filmCutHeightWithShrinkage,
         ),

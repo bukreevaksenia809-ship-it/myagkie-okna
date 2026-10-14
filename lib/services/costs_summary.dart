@@ -12,13 +12,13 @@ class CostsSummary {
         rollPlans = buildRollPlans(project) {
     for (final spec in specs) {
       productAreaM2 += spec.productAreaM2;
-      filmAreaM2 += spec.filmAreaM2;
-      filmAreaWithShrinkageM2 += spec.filmAreaM2 *
-          (1 + spec.params.shrinkagePercent / 100);
+      // Плёнка закупается и кроится по заготовке: с припуском на раскрой.
+      filmAreaM2 += spec.filmCutAreaM2;
+      filmAreaWithShrinkageM2 += spec.filmCutAreaWithShrinkageM2;
       filmAreaByMaterial.update(
         spec.params.material,
-        (value) => value + spec.filmAreaM2,
-        ifAbsent: () => spec.filmAreaM2,
+        (value) => value + spec.filmCutAreaM2,
+        ifAbsent: () => spec.filmCutAreaM2,
       );
       spec.edgeConsumption.forEach((roll, length) {
         edgeByRoll.update(roll, (value) => value + length,
@@ -63,10 +63,10 @@ class CostsSummary {
   /// Суммарная площадь готовых изделий по наружному контуру, м².
   double productAreaM2 = 0;
 
-  /// Площадь плёнки в раскрое, м².
+  /// Площадь заготовок плёнки к раскрою (с припуском, минус вырезы), м².
   double filmAreaM2 = 0;
 
-  /// Площадь плёнки с учётом усадки, м².
+  /// Площадь заготовок плёнки с учётом усадки, м².
   double filmAreaWithShrinkageM2 = 0;
 
   final Map<FilmMaterial, double> filmAreaByMaterial = {};
@@ -105,8 +105,12 @@ class CostsSummary {
   /// Площадь рулонов, м².
   double get rollArea => rollPlans.fold(0, (sum, plan) => sum + plan.rollArea);
 
-  double get rollWastePercent =>
-      rollArea > 0 ? ((rollArea - rollPiecesArea) / rollArea * 100) : 0;
+  /// Отход по рулонам, % (0…100). Заготовка с припуском может оказаться шире
+  /// выбранного рулона — тогда отход считаем нулевым и предупреждаем об этом
+  /// на листе раскладки, а не уходим в минус.
+  double get rollWastePercent => rollArea > 0
+      ? ((rollArea - rollPiecesArea) / rollArea * 100).clamp(0.0, 100.0)
+      : 0;
 
   /// Подписи расхода окантовки: «Тент 100 мм — 654 см».
   List<String> get edgeConsumptionLabels {
