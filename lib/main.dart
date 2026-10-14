@@ -10,6 +10,7 @@ import 'services/tech_checks.dart';
 import 'services/pdf_export.dart';
 import 'services/roll_plan.dart';
 import 'widgets/costs_sheet.dart';
+import 'widgets/cut_sheet.dart';
 import 'widgets/estimate_sheet.dart';
 import 'widgets/drawing_sheet.dart';
 import 'widgets/orders_panel.dart';
@@ -50,7 +51,7 @@ class SoftWindowApp extends StatelessWidget {
 }
 
 /// Что показано на листе.
-enum SheetTab { drawing, roll, costs, estimate, techCard }
+enum SheetTab { drawing, cut, roll, costs, estimate, techCard }
 
 class BuilderScreen extends StatefulWidget {
   const BuilderScreen({super.key});
@@ -85,6 +86,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
     return switch (requested) {
       'roll' || 'raskladka' => SheetTab.roll,
       'costs' || 'rashody' => SheetTab.costs,
+      'cut' || 'raskroy' => SheetTab.cut,
       'estimate' || 'smeta' => SheetTab.estimate,
       'tech' || 'tehkarta' || 'techcard' => SheetTab.techCard,
       _ => SheetTab.drawing,
@@ -221,6 +223,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
         SheetTab.drawing =>
           DrawingSheet.detailedSheetSize(_project, viewport),
         SheetTab.roll => null,
+        SheetTab.cut => CutSheet.sheetSize(_project, viewport),
         SheetTab.costs => CostsSheet.sheetSize(_project, viewport),
         SheetTab.estimate => EstimateSheet.sheetSize(_project, viewport),
         SheetTab.techCard => TechCardSheet.sheetSize(_project, viewport),
@@ -234,6 +237,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
   String get _sheetPrefix => switch (_tab) {
         SheetTab.drawing => 'Чертёж',
         SheetTab.roll => 'Раскладка',
+        SheetTab.cut => 'Раскрой',
         SheetTab.costs => 'Расходы',
         SheetTab.estimate => 'Смета',
         SheetTab.techCard => 'Техкарта',
@@ -534,6 +538,10 @@ class _BuilderScreenState extends State<BuilderScreen> {
                 project: _project,
                 captureKey: _sheetKey,
               ),
+            SheetTab.cut => CutSheet(
+                project: _project,
+                captureKey: _sheetKey,
+              ),
             SheetTab.costs => CostsSheet(
                 project: _project,
                 captureKey: _sheetKey,
@@ -585,9 +593,14 @@ class _BuilderScreenState extends State<BuilderScreen> {
                   label: Text('Чертёж'),
                 ),
                 ButtonSegment(
+                  value: SheetTab.cut,
+                  icon: Icon(Icons.crop_square_outlined, size: 18),
+                  label: Text('Раскрой'),
+                ),
+                ButtonSegment(
                   value: SheetTab.roll,
                   icon: Icon(Icons.view_week_outlined, size: 18),
-                  label: Text('Раскладка'),
+                  label: Text('Рулон'),
                 ),
                 ButtonSegment(
                   value: SheetTab.costs,

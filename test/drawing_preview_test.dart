@@ -119,6 +119,32 @@ const _customEdges = WindowParams(
   rollLeft: 240,
 );
 
+/// Окно с припуском на раскрой: замер 2000 × 2000 мм, припуск +120 по ширине
+/// и +80 по высоте, то есть изделие 2120 × 2080 мм.
+const _allowance = WindowParams(
+  projectName: 'Мягкое окно веранды',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-020',
+  bottomWidth: 2000,
+  topWidth: 2000,
+  leftHeight: 2000,
+  rightHeight: 2000,
+  allowanceWidthMm: 120,
+  allowanceHeightMm: 80,
+);
+
+/// Окно, спаянное с соседом сверху и снизу (вертикальная спайка).
+const _weldedVertically = WindowParams(
+  projectName: 'Мягкое окно веранды',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-021',
+  bottomWidth: 1800,
+  topWidth: 1800,
+  leftHeight: 2200,
+  rightHeight: 2200,
+  weldedSides: [EdgeSide.top],
+);
+
 const _order = OrderProject(
   windows: [_fixed, _lifting, _fixed, _liftingWide, _mesh],
   sheetMode: SheetMode.grid,
@@ -188,6 +214,30 @@ void main() {
         viewport: const Size(1720, 1080),
         build: (key) => CostsSheet(
           project: _order,
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      'pripusk': (
+        viewport: const Size(1720, 1080),
+        build: (key) => DrawingSheet(
+          project: const OrderProject(windows: [_allowance]),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      'pripusk-rashody': (
+        viewport: const Size(1720, 1080),
+        build: (key) => CostsSheet(
+          project: const OrderProject(windows: [_allowance]),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      'spayka-vertikalnaya': (
+        viewport: const Size(1720, 1080),
+        build: (key) => DrawingSheet(
+          project: const OrderProject(windows: [_weldedVertically, _weldedVertically]),
           captureKey: key,
           labelFontFamily: testFontFamily,
         ),

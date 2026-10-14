@@ -150,6 +150,15 @@ enum EdgeSide {
         EdgeSide.top => 'Верх',
         EdgeSide.left => 'Лево',
       };
+
+  /// Противоположная сторона — ею сваривается копия окна: право↔лево,
+  /// верх↔низ.
+  EdgeSide get opposite => switch (this) {
+        EdgeSide.bottom => EdgeSide.top,
+        EdgeSide.top => EdgeSide.bottom,
+        EdgeSide.left => EdgeSide.right,
+        EdgeSide.right => EdgeSide.left,
+      };
 }
 
 /// Тип люверса: круглый Ø10 мм или овальный 42×22 мм под скобу.
@@ -217,7 +226,9 @@ enum ParamField {
   drainCount,
   pocketWidth,
   shrinkagePercent,
-  rollGap;
+  rollGap,
+  allowanceWidth,
+  allowanceHeight;
 
   String get label => switch (this) {
         ParamField.bottomWidth => 'Ширина низ',
@@ -231,6 +242,8 @@ enum ParamField {
         ParamField.pocketWidth => 'Ширина кармана',
         ParamField.shrinkagePercent => 'Усадка ПВХ',
         ParamField.rollGap => 'Зазор при раскладке',
+        ParamField.allowanceWidth => 'Припуск на раскрой по ширине',
+        ParamField.allowanceHeight => 'Припуск на раскрой по высоте',
       };
 
   String get unit => switch (this) {
@@ -242,6 +255,9 @@ enum ParamField {
 
 /// Припуск на сварку (напайка): плёнка заходит под окантовку на 25 мм всегда.
 const double weldOverlap = 25;
+
+/// Разумный предел припуска на раскрой, мм: больше — почти наверняка опечатка.
+const double maxAllowanceMm = 500;
 
 /// Сколько молний и вырезов можно поставить на одно окно.
 const int maxZippers = 2;
@@ -374,6 +390,8 @@ class WindowParams {
     this.topWidth = 1500,
     this.leftHeight = 2520,
     this.rightHeight = 2520,
+    this.allowanceWidthMm = 0,
+    this.allowanceHeightMm = 0,
     this.topAlign = TopAlign.center,
     this.topOffsetMm = 0,
     this.rollBottom = 100,
@@ -413,6 +431,19 @@ class WindowParams {
   final double topWidth;
   final double leftHeight;
   final double rightHeight;
+
+  /// Припуск на раскрой по ширине, мм: плёнка кроится больше замера.
+  ///
+  /// Припуск прибавляется к ширине низа и верха, а по высоте — к левой и
+  /// правой высотам (см. [effectiveBottomWidth] и соседние геттеры).
+  /// Вся геометрия ([WindowGeometry.of]) строится уже по фактическим
+  /// размерам, поэтому раскрой, окантовка, люверсы и документы считаются
+  /// от замера с припуском.
+  final double allowanceWidthMm;
+
+  /// Припуск на раскрой по высоте, мм (по умолчанию 0).
+  final double allowanceHeightMm;
+
   final TopAlign topAlign;
   final double topOffsetMm;
 
@@ -492,6 +523,26 @@ class WindowParams {
   /// Сколько миллиметров окантовки экономят спайки с соседними окнами.
   bool isWelded(EdgeSide side) => weldedSides.contains(side);
 
+  /// Есть ли припуск на раскрой хотя бы по одной оси.
+  bool get hasAllowance => allowanceWidthMm != 0 || allowanceHeightMm != 0;
+
+  /// Припуск по ширине в виде «+120» / «−30» / «0».
+  String get allowanceWidthLabel => formatSignedMm(allowanceWidthMm);
+
+  /// Припуск по высоте в виде «+80» / «−30» / «0».
+  String get allowanceHeightLabel => formatSignedMm(allowanceHeightMm);
+
+  /// Подпись припуска для чертежа: «припуск +120/+80 мм».
+  String get allowanceLabel => hasAllowance
+      ? 'припуск $allowanceWidthLabel/$allowanceHeightLabel мм'
+      : 'припуск 0/0 мм';
+
+  // Фактические размеры изделия: замер плюс припуск на раскрой.
+  double get effectiveBottomWidth => bottomWidth + allowanceWidthMm;
+  double get effectiveTopWidth => topWidth + allowanceWidthMm;
+  double get effectiveLeftHeight => leftHeight + allowanceHeightMm;
+  double get effectiveRightHeight => rightHeight + allowanceHeightMm;
+
   /// У глухого окна ставятся только круглые люверсы.
   EyeletType get effectiveEyeletType =>
       windowType == WindowType.fixed ? EyeletType.round10 : eyeletType;
@@ -538,6 +589,8 @@ class WindowParams {
     double? topWidth,
     double? leftHeight,
     double? rightHeight,
+    double? allowanceWidthMm,
+    double? allowanceHeightMm,
     TopAlign? topAlign,
     double? topOffsetMm,
     double? rollBottom,
@@ -570,6 +623,8 @@ class WindowParams {
       topWidth: topWidth ?? this.topWidth,
       leftHeight: leftHeight ?? this.leftHeight,
       rightHeight: rightHeight ?? this.rightHeight,
+      allowanceWidthMm: allowanceWidthMm ?? this.allowanceWidthMm,
+      allowanceHeightMm: allowanceHeightMm ?? this.allowanceHeightMm,
       topAlign: topAlign ?? this.topAlign,
       topOffsetMm: topOffsetMm ?? this.topOffsetMm,
       rollBottom: rollBottom ?? this.rollBottom,
@@ -684,6 +739,8 @@ class WindowParams {
         ParamField.drainCount => copyWith(drainCount: value),
         ParamField.pocketWidth => copyWith(pocketWidth: value),
         ParamField.shrinkagePercent => copyWith(shrinkagePercent: value),
+        ParamField.allowanceWidth => copyWith(allowanceWidthMm: value),
+        ParamField.allowanceHeight => copyWith(allowanceHeightMm: value),
         // Зазор раскладки живёт в параметрах заказа — здесь только заглушка
         // для единообразия интерфейса.
         ParamField.rollGap => this,
@@ -700,6 +757,8 @@ class WindowParams {
         ParamField.drainCount => drainCount,
         ParamField.pocketWidth => pocketWidth,
         ParamField.shrinkagePercent => shrinkagePercent,
+        ParamField.allowanceWidth => allowanceWidthMm,
+        ParamField.allowanceHeight => allowanceHeightMm,
         ParamField.rollGap => 0,
       };
 
@@ -713,6 +772,8 @@ class WindowParams {
         topWidth,
         leftHeight,
         rightHeight,
+        allowanceWidthMm,
+        allowanceHeightMm,
         topAlign.name,
         topOffsetMm,
         rollBottom,
@@ -791,6 +852,22 @@ String formatMm(double value, {int decimals = 0}) {
 
 /// Сантиметры из миллиметров: «654».
 String formatCm(double millimeters) => formatMm(millimeters / 10);
+
+/// Знаковое число миллиметров: «+120», «−30» (минус U+2212), «0».
+String formatSignedMm(double value) {
+  if (!value.isFinite) return '—';
+  return value > 0 ? '+${formatMm(value)}' : formatMm(value);
+}
+
+/// Размер изделия с припуском на раскрой: «2 000 + 120 → 2 120».
+///
+/// Без припуска возвращает просто замер — документы выглядят как раньше.
+String formatSizeWithAllowance(double measured, double allowance) {
+  if (allowance == 0) return formatMm(measured);
+  final sign = allowance > 0 ? '+' : '−';
+  return '${formatMm(measured)} $sign ${formatMm(allowance.abs())} → '
+      '${formatMm(measured + allowance)}';
+}
 
 /// Метры с разделителем-запятой: «6,75».
 String formatMeters(double squareMeters, {int decimals = 2}) {

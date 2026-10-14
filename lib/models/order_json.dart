@@ -74,6 +74,9 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'topWidth': p.topWidth,
       'leftHeight': p.leftHeight,
       'rightHeight': p.rightHeight,
+      // Припуск на раскрой, мм: замер + припуск = фактический размер.
+      'allowanceWidthMm': p.allowanceWidthMm,
+      'allowanceHeightMm': p.allowanceHeightMm,
       'topAlign': p.topAlign.name,
       'topOffsetMm': p.topOffsetMm,
       // Ширина рулона окантовки — число миллиметров на каждую сторону.
@@ -117,6 +120,10 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     topWidth: _double(json['topWidth'], fallback.topWidth),
     leftHeight: _double(json['leftHeight'], fallback.leftHeight),
     rightHeight: _double(json['rightHeight'], fallback.rightHeight),
+    allowanceWidthMm:
+        _double(json['allowanceWidthMm'], fallback.allowanceWidthMm),
+    allowanceHeightMm:
+        _double(json['allowanceHeightMm'], fallback.allowanceHeightMm),
     topAlign: _enumByName(TopAlign.values, json['topAlign'], fallback.topAlign),
     topOffsetMm: _double(json['topOffsetMm'], fallback.topOffsetMm),
     rollBottom: _edgeWidthFromJson(json['rollBottom'], fallback.rollBottom),

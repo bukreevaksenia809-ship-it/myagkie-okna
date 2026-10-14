@@ -132,6 +132,34 @@ void main() {
     expect(restored.rollRight, 240);
   });
 
+  test('припуск на раскрой сохраняется и читается без потерь', () async {
+    const window = WindowParams(
+      projectName: 'Припуск',
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      allowanceWidthMm: 120,
+      allowanceHeightMm: 80,
+    );
+    final saved = await saveOrder(
+      const OrderProject(windows: [window]),
+      directoryPath: directory.path,
+      now: DateTime(2026, 10, 14, 12, 0),
+    );
+
+    final text = await File(saved.ref.id).readAsString();
+    expect(text, contains(RegExp(r'"allowanceWidthMm":\s*120')));
+    expect(text, contains(RegExp(r'"allowanceHeightMm":\s*80')));
+
+    // Прямой round-trip JSON тоже без потерь.
+    final restored = windowFromJson(windowToJson(window));
+    expect(restored.allowanceWidthMm, 120);
+    expect(restored.allowanceHeightMm, 80);
+    expect(restored.effectiveBottomWidth, 2120);
+    expect(restored.effectiveLeftHeight, 2080);
+  });
+
   test('старый JSON с именем пресета читается как ширина в мм', () {
     // Формат прежних версий: ширина писалась именем enum.
     final old = windowFromJson(const <String, dynamic>{

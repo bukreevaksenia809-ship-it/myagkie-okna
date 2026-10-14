@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:soft_window_drawer/models/order_json.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
 import 'package:soft_window_drawer/models/window_geometry.dart';
 import 'package:soft_window_drawer/services/costs_summary.dart';
@@ -27,6 +28,8 @@ const _rect = WindowParams(
 void main() {
   _eyeletRules();
   _costsSummaryRules();
+  _weldedWindowRules();
+  _allowanceRules();
   group('Геометрия полотна', () {
     test('прямоугольник: площадь и периметр', () {
       final geometry = WindowGeometry.of(_rect);
@@ -889,3 +892,369 @@ void _costsSummaryRules() {
     });
   });
 }
+
+// --- Спайка окон: четыре стороны -------------------------------------------
+
+void _weldedWindowRules() {
+  group('Спайка окон: копия к спайке', () {
+    test('спайка справа: копия встаёт после окна и варится слева', () {
+      const source = WindowParams(
+        drawingNumber: 'МО-014',
+        bottomWidth: 2000,
+        topWidth: 1980,
+        leftHeight: 1500,
+        rightHeight: 1520,
+        material: FilmMaterial.tintedPvc,
+        rollBottom: 150,
+        zippers: [ZipperSpec(centered: false, offsetMm: 500)],
+        cutouts: [Cutout(width: 300, height: 200, centerXMm: 700, centerYMm: 600)],
+        pocket: true,
+      );
+      final welded = const OrderProject(windows: [source])
+          .addWeldedWindow(EdgeSide.right);
+
+      expect(welded.windowCount, 2);
+      expect(welded.selectedIndex, 1);
+      expect(welded.windows[0].weldedSides, [EdgeSide.right]);
+      expect(welded.windows[1].weldedSides, [EdgeSide.left]);
+
+      // Шаблон скопирован целиком: размеры, материал, окантовка, молнии,
+      // вырезы и карман.
+      final copy = welded.windows[1];
+      expect(copy.bottomWidth, source.bottomWidth);
+      expect(copy.topWidth, source.topWidth);
+      expect(copy.leftHeight, source.leftHeight);
+      expect(copy.rightHeight, source.rightHeight);
+      expect(copy.material, source.material);
+      expect(copy.rollBottom, source.rollBottom);
+      expect(copy.zippers.length, source.zippers.length);
+      expect(copy.cutouts.length, source.cutouts.length);
+      expect(copy.pocket, source.pocket);
+
+      // Номера окон разные, у копии маркировка очищена.
+      expect(welded.labelFor(0), 'Окно №1');
+      expect(welded.labelFor(1), 'Окно №2');
+      expect(welded.windows[0].drawingNumber, 'МО-014');
+      expect(copy.drawingNumber, isEmpty);
+    });
+
+    test('спайка сверху: копия варится снизу; спайка снизу — копия сверху',
+        () {
+      final top = const OrderProject(windows: [_rect])
+          .addWeldedWindow(EdgeSide.top);
+      expect(top.windowCount, 2);
+      expect(top.windows[0].weldedSides, [EdgeSide.top]);
+      expect(top.windows[1].weldedSides, [EdgeSide.bottom]);
+
+      final bottom = const OrderProject(windows: [_rect])
+          .addWeldedWindow(EdgeSide.bottom);
+      expect(bottom.windows[0].weldedSides, [EdgeSide.bottom]);
+      expect(bottom.windows[1].weldedSides, [EdgeSide.top]);
+    });
+
+    test('повторная спайка по той же стороне не дублируется', () {
+      const source = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 1500,
+        rightHeight: 1500,
+        weldedSides: [EdgeSide.right],
+      );
+      final welded = const OrderProject(windows: [source])
+          .addWeldedWindow(EdgeSide.right);
+
+      // У текущего окна сторона уже была — второй раз её не добавляем.
+      expect(welded.windows[0].weldedSides, [EdgeSide.right]);
+      // Копия встаёт слева и варится с ним; унаследованная сторона тоже
+      // остаётся в единственном экземпляре.
+      expect(welded.windows[1].weldedSides, [EdgeSide.right, EdgeSide.left]);
+      expect(
+        welded.windows[1].weldedSides.where((side) => side == EdgeSide.left),
+        hasLength(1),
+      );
+      expect(
+        welded.windows[1].weldedSides.where((side) => side == EdgeSide.right),
+        hasLength(1),
+      );
+    });
+
+    test('расход окантовки уменьшается ровно на длину общей стороны', () {
+      final project = const OrderProject(windows: [_rect])
+          .addWeldedWindow(EdgeSide.bottom);
+      final plain = WindowSpec.of(_rect);
+      final bottomLength = plain.geometry.sideLengths[0];
+
+      for (final window in project.windows) {
+        final spec = WindowSpec.of(window);
+        expect(
+          plain.edgeConsumption[100.0]! - spec.edgeConsumption[100.0]!,
+          closeTo(bottomLength, 1e-6),
+          reason: 'нижняя спайка убирает ровно длину нижней кромки',
+        );
+        expect(
+          spec.edgeConsumption.values.every((length) => length >= 0),
+          isTrue,
+        );
+        expect(spec.layers.weldLengthMm, closeTo(bottomLength, 1e-6));
+      }
+    });
+
+    test('все четыре стороны спаяны: расход не уходит в минус', () {
+      final params = _rect.copyWith(weldedSides: EdgeSide.values);
+      final spec = WindowSpec.of(params);
+      final total =
+          spec.edgeConsumption.values.fold(0.0, (sum, value) => sum + value);
+
+      expect(total, 0);
+      expect(spec.layers.weldLengthMm, closeTo(spec.geometry.perimeter, 1e-6));
+    });
+
+    test('JSON round-trip заказа с вертикальной спайкой', () {
+      final project = const OrderProject(windows: [_rect])
+          .addWeldedWindow(EdgeSide.top);
+      final restored = orderFromJson(orderToJson(project));
+
+      expect(restored.windowCount, 2);
+      expect(restored.windows[0].weldedSides, [EdgeSide.top]);
+      expect(restored.windows[1].weldedSides, [EdgeSide.bottom]);
+      // Спаянная сторона по-прежнему без окантовки и с тем же швом.
+      final before = WindowSpec.of(project.windows[0]);
+      final after = WindowSpec.of(restored.windows[0]);
+      expect(after.layers.isSideWelded(2), isTrue);
+      expect(
+        after.edgeConsumption[100.0],
+        closeTo(before.edgeConsumption[100.0]!, 1e-6),
+      );
+      expect(after.layers.weldLengthMm, closeTo(before.layers.weldLengthMm, 1e-6));
+    });
+  });
+}
+
+// --- Припуск на раскрой ------------------------------------------------------
+
+void _allowanceRules() {
+  group('Припуск на раскрой', () {
+    const measured = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      allowanceWidthMm: 120,
+      allowanceHeightMm: 80,
+    );
+    const withoutAllowance = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+    );
+
+    test('по умолчанию припуска нет', () {
+      expect(const WindowParams().allowanceWidthMm, 0);
+      expect(const WindowParams().allowanceHeightMm, 0);
+      expect(withoutAllowance.hasAllowance, isFalse);
+      expect(withoutAllowance.effectiveBottomWidth, 2000);
+      expect(withoutAllowance.effectiveLeftHeight, 2000);
+      // Припуск по ширине не трогает высоту и наоборот.
+      expect(measured.effectiveBottomWidth, 2120);
+      expect(measured.effectiveTopWidth, 2120);
+      expect(measured.effectiveLeftHeight, 2080);
+      expect(measured.effectiveRightHeight, 2080);
+      expect(measured.hasAllowance, isTrue);
+    });
+
+    test('геометрия строится по фактическим размерам: 2000×2000 + 120/+80',
+        () {
+      final geometry = WindowGeometry.of(measured);
+
+      expect(geometry.spanX, closeTo(2120, 1e-9));
+      expect(geometry.overallHeight, closeTo(2080, 1e-9));
+      expect(geometry.bottomWidth, closeTo(2120, 1e-9));
+      expect(geometry.topWidth, closeTo(2120, 1e-9));
+      expect(geometry.leftHeight, closeTo(2080, 1e-9));
+      expect(geometry.rightHeight, closeTo(2080, 1e-9));
+      // Для трапеции припуск прибавляется к обеим высотам одинаково.
+      final trapezoid = WindowGeometry.of(measured.copyWith(
+        bottomWidth: 3000,
+        topWidth: 2400,
+        leftHeight: 2500,
+        rightHeight: 2500,
+      ));
+      expect(trapezoid.spanX, closeTo(3120, 1e-9));
+      expect(trapezoid.overallHeight, closeTo(2580, 1e-9));
+      expect(trapezoid.topOffset, closeTo(300, 1e-9));
+    });
+
+    test('площадь изделия растёт вместе с припуском', () {
+      final plain = WindowSpec.of(withoutAllowance);
+      final withAllowance = WindowSpec.of(measured);
+
+      expect(withAllowance.productAreaM2, closeTo(2120 * 2080 / 1e6, 1e-9));
+      expect(withAllowance.productAreaM2, greaterThan(plain.productAreaM2));
+      expect(
+        withAllowance.productAreaM2 / plain.productAreaM2,
+        closeTo(1.1024, 1e-6),
+      );
+      // Периметр тоже вырос на припуск.
+      expect(
+        withAllowance.outerPerimeter - plain.outerPerimeter,
+        closeTo(2 * (120 + 80), 1e-6),
+      );
+    });
+
+    test('плёнка в раскрое, окантовка и люверсы — от фактического размера',
+        () {
+      final plain = WindowSpec.of(withoutAllowance);
+      final spec = WindowSpec.of(measured);
+
+      // Окантовка 100 мм (готовая 50), напайка 25 → плёнка 2120−50 × 2080−50.
+      expect(spec.filmCutWidth, closeTo(2070, 0.6));
+      expect(spec.filmCutHeight, closeTo(2030, 0.6));
+      expect(spec.filmCutWidth - plain.filmCutWidth, closeTo(120, 0.6));
+      expect(spec.filmCutHeight - plain.filmCutHeight, closeTo(80, 0.6));
+      expect(spec.filmAreaM2, greaterThan(plain.filmAreaM2));
+
+      // Расход окантовки — по фактическому периметру: 2×(2120+2080).
+      final edge =
+          spec.edgeConsumption.values.fold(0.0, (sum, value) => sum + value);
+      expect(edge, closeTo(2 * (2120 + 2080), 1e-6));
+      // Люверсов на большем окне не меньше, чем на замере.
+      expect(spec.eyeletCount, greaterThanOrEqualTo(plain.eyeletCount));
+    });
+
+    test('раскрой в смете и сводке расхода учитывает припуск', () {
+      final cost = CostsSummary(const OrderProject(windows: [measured]));
+      final plainCost =
+          CostsSummary(const OrderProject(windows: [withoutAllowance]));
+
+      expect(cost.productAreaM2, greaterThan(plainCost.productAreaM2));
+      expect(cost.filmAreaM2, greaterThan(plainCost.filmAreaM2));
+      expect(
+        cost.edgeByRoll[100.0]! - plainCost.edgeByRoll[100.0]!,
+        closeTo(2 * (120 + 80), 1e-6),
+      );
+    });
+
+    test('припуски переживают JSON round-trip', () {
+      final restored = windowFromJson(windowToJson(measured));
+      expect(restored.allowanceWidthMm, 120);
+      expect(restored.allowanceHeightMm, 80);
+      expect(restored.effectiveBottomWidth, 2120);
+      expect(restored.effectiveLeftHeight, 2080);
+
+      // Заказ целиком тоже.
+      final project = orderFromJson(orderToJson(
+        const OrderProject(windows: [measured, withoutAllowance]),
+      ));
+      expect(project.windows[0].allowanceWidthMm, 120);
+      expect(project.windows[0].allowanceHeightMm, 80);
+      expect(project.windows[1].allowanceWidthMm, 0);
+      expect(project.windows[1].hasAllowance, isFalse);
+
+      // Старый JSON без полей припуска читается как «без припуска».
+      final old = windowFromJson(const <String, dynamic>{
+        'bottomWidth': 2000,
+        'topWidth': 2000,
+        'leftHeight': 2000,
+        'rightHeight': 2000,
+      });
+      expect(old.allowanceWidthMm, 0);
+      expect(old.allowanceHeightMm, 0);
+    });
+
+    test('припуск больше 500 мм и отрицательный — предупреждения', () {
+      final tooBig = validateParams(measured.copyWith(allowanceWidthMm: 600));
+      expect(
+        tooBig.any((issue) =>
+            issue.field == ParamField.allowanceWidth && !issue.isError),
+        isTrue,
+      );
+      expect(hasBlockingIssues(tooBig), isFalse);
+      expect(
+        tooBig.any((issue) => issue.message.contains('Припуск на раскрой')),
+        isTrue,
+      );
+
+      final negative = validateParams(measured.copyWith(allowanceHeightMm: -40));
+      expect(
+        negative.any((issue) =>
+            issue.field == ParamField.allowanceHeight && !issue.isError),
+        isTrue,
+      );
+      expect(hasBlockingIssues(negative), isFalse);
+
+      // Нормальный припуск замечаний не вызывает.
+      final normal = validateParams(measured);
+      expect(
+        normal.any((issue) => issue.message.contains('Припуск на раскрой')),
+        isFalse,
+      );
+    });
+
+    test('подписи припуска для документов', () {
+      expect(formatSignedMm(120), '+120');
+      expect(formatSignedMm(-30), formatMm(-30));
+      expect(measured.allowanceLabel, 'припуск +120/+80 мм');
+      expect(
+        formatSizeWithAllowance(2000, 120),
+        '2\u202F000 + 120 → 2\u202F120',
+      );
+      expect(formatSizeWithAllowance(2000, 0), '2\u202F000');
+    });
+
+    test('примечания показывают замер и припуск', () {
+      final notes = WindowSpec.of(measured).notes.join('\n');
+      expect(
+        notes,
+        contains('Припуск на раскрой: ширина +120 мм, высота +80 мм'),
+      );
+      expect(notes, contains('2\u202F000 × 2\u202F000 мм'));
+
+      final plainNotes = WindowSpec.of(withoutAllowance).notes.join('\n');
+      expect(plainNotes.contains('Припуск на раскрой'), isFalse);
+    });
+
+    testWidgets('подпись окна и штамп листа показывают припуск',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1500, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: DrawingSheet(
+              project: OrderProject(windows: [
+                WindowParams(
+                  bottomWidth: 2000,
+                  topWidth: 2000,
+                  leftHeight: 2000,
+                  rightHeight: 2000,
+                  allowanceWidthMm: 120,
+                  allowanceHeightMm: 80,
+                ),
+              ]),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Подпись окна: фактический размер плюс строка про припуск.
+      expect(find.textContaining('2\u202F120×2\u202F080 мм'), findsWidgets);
+      expect(find.textContaining('припуск +120/+80 мм'), findsWidgets);
+      // Штамп: замер + припуск → фактический размер.
+      expect(
+        find.textContaining('2\u202F000 + 120 → 2\u202F120'),
+        findsWidgets,
+      );
+      expect(
+        find.textContaining('2\u202F000 + 80 → 2\u202F080'),
+        findsWidgets,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  });
+}
+

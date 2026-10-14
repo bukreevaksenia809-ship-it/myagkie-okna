@@ -97,8 +97,11 @@ class WindowGeometry {
   });
 
   factory WindowGeometry.of(WindowParams params) {
-    final bottom = _positive(params.bottomWidth);
-    final top = _positive(params.topWidth);
+    // Геометрия строится по фактическим размерам: замер плюс припуск на
+    // раскрой. Тогда раскрой плёнки, окантовка, люверсы, площадь изделия,
+    // чертёж и документы автоматически считаются от фактического размера.
+    final bottom = _positive(params.effectiveBottomWidth);
+    final top = _positive(params.effectiveTopWidth);
     final offset = switch (params.topAlign) {
       TopAlign.center => (bottom - top) / 2,
       TopAlign.left => 0.0,
@@ -108,8 +111,8 @@ class WindowGeometry {
     return WindowGeometry(
       bottomWidth: bottom,
       topWidth: top,
-      leftHeight: _positive(params.leftHeight),
-      rightHeight: _positive(params.rightHeight),
+      leftHeight: _positive(params.effectiveLeftHeight),
+      rightHeight: _positive(params.effectiveRightHeight),
       topOffset: offset,
       pocketDrop: params.pocket && params.pocketWidth > 0 ? params.pocketWidth : 0,
     );
@@ -729,6 +732,10 @@ class WindowSpec {
         'Расход окантовки: ${edgeConsumptionLabels.join(', ')}',
         'Плёнка ПВХ 700 мкм в раскрое ${formatMm(filmCutWidth)} × ${formatMm(filmCutHeight)} мм; '
             'усадка ${formatPercent(params.shrinkagePercent)} учтена',
+        if (params.hasAllowance)
+          'Припуск на раскрой: ширина ${params.allowanceWidthLabel} мм, '
+              'высота ${params.allowanceHeightLabel} мм (размер по замеру '
+              '${formatMm(params.bottomWidth)} × ${formatMm(params.leftHeight)} мм)',
         'Люверсы ${eyeletType.label.toLowerCase()}, шаг $eyeletStepLabel '
             '(номинал ${formatMm(params.eyeletStep)} мм), от угла '
             '${formatMm(params.eyeletCornerOffset)} мм, всего $eyeletCount шт',
@@ -819,6 +826,39 @@ List<ParamIssue> validateParams(WindowParams params) {
     '0 мм (в углу) или до 70 мм',
   );
   checkRange(ParamField.shrinkagePercent, params.shrinkagePercent, 1, 2, '1–2 %');
+
+  // Припуск на раскрой: 0…500 мм. Отрицательный припуск — не ошибка ввода,
+  // но изделие получится меньше замера, поэтому предупреждаем.
+  void checkAllowance(ParamField field, double value, String axis) {
+    if (!value.isFinite) {
+      issues.add(ParamIssue(
+        field,
+        'Припуск на раскрой, $axis: укажите число в миллиметрах',
+        isError: false,
+      ));
+      return;
+    }
+    if (value < 0) {
+      issues.add(ParamIssue(
+        field,
+        'Припуск на раскрой, $axis: ${formatMm(value)} мм — отрицательный, '
+        'изделие будет меньше замера',
+        isError: false,
+      ));
+      return;
+    }
+    if (value > maxAllowanceMm) {
+      issues.add(ParamIssue(
+        field,
+        'Припуск на раскрой, $axis: ${formatMm(value)} мм — больше '
+        '${formatMm(maxAllowanceMm)} мм, проверьте значение',
+        isError: false,
+      ));
+    }
+  }
+
+  checkAllowance(ParamField.allowanceWidth, params.allowanceWidthMm, 'ширина');
+  checkAllowance(ParamField.allowanceHeight, params.allowanceHeightMm, 'высота');
 
   if (params.topWidth.isFinite &&
       params.bottomWidth.isFinite &&

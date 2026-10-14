@@ -400,6 +400,9 @@ class _Caption extends StatelessWidget {
     final extra = params.drawingNumber.trim().isEmpty
         ? ''
         : ' · ${params.drawingNumber.trim()}';
+    // Припуск на раскрой: показываем рядом с фактическим размером, чтобы было
+    // видно и замер, и то, из чего получился размер изделия.
+    final allowance = params.hasAllowance ? ' · ${params.allowanceLabel}' : '';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -420,7 +423,8 @@ class _Caption extends StatelessWidget {
             ),
           ),
           Text(
-            '${formatMm(spec.geometry.spanX)}×${formatMm(spec.geometry.overallHeight)} мм · '
+            '${formatMm(spec.geometry.spanX)}×${formatMm(spec.geometry.overallHeight)} мм'
+            '$allowance · '
             '${formatMeters(spec.productAreaM2)} м² · '
             '${params.windowType.label.toLowerCase()} · люверсов ${spec.eyeletCount}',
             maxLines: 1,
@@ -438,6 +442,23 @@ class _Caption extends StatelessWidget {
 }
 
 // ------------------------------------------------------------------ штамп
+
+/// Размеры одного окна для штампа: замер, припуск и фактический размер.
+///
+/// Без припуска — как раньше: «1 500/1 500 · 2 520/2 520».
+String _sizesWithAllowance(WindowParams params) {
+  if (!params.hasAllowance) {
+    return '${formatMm(params.bottomWidth)}/${formatMm(params.topWidth)} · '
+        '${formatMm(params.leftHeight)}/${formatMm(params.rightHeight)}';
+  }
+  return '${formatSizeWithAllowance(params.bottomWidth, params.allowanceWidthMm)} / '
+      '${formatSizeWithAllowance(params.leftHeight, params.allowanceHeightMm)}';
+}
+
+/// Короткая запись размера окна для заказа из нескольких окон.
+String _shortSizeWithAllowance(WindowParams params) =>
+    '${formatSizeWithAllowance(params.bottomWidth, params.allowanceWidthMm)}×'
+    '${formatSizeWithAllowance(params.leftHeight, params.allowanceHeightMm)}';
 
 class _TitleBlock extends StatelessWidget {
   const _TitleBlock({required this.project, required this.scaleLabel});
@@ -524,15 +545,16 @@ class _TitleBlock extends StatelessWidget {
                   child: _cell(
                     'Размеры окон, мм',
                     windows.length == 1
-                        ? '${formatMm(first.bottomWidth)}/${formatMm(first.topWidth)} · '
-                            '${formatMm(first.leftHeight)}/${formatMm(first.rightHeight)}'
+                        ? _sizesWithAllowance(first)
                         : windows
                             .asMap()
                             .entries
                             .map((entry) =>
-                                '№${entry.key + 1}: ${formatMm(entry.value.bottomWidth)}×'
-                                '${formatMm(entry.value.leftHeight)}')
+                                '№${entry.key + 1}: ${_shortSizeWithAllowance(entry.value)}')
                             .join(' · '),
+                    // «2 000 + 120 → 2 120 / 2 000 + 80 → 2 080» в одну строку
+                    // не помещается — даём две.
+                    maxLines: windows.length == 1 && first.hasAllowance ? 2 : 1,
                   ),
                 ),
                 Expanded(
@@ -601,9 +623,12 @@ class _TitleBlock extends StatelessWidget {
     );
   }
 
-  Widget _cell(String label, String value) {
+  Widget _cell(String label, String value, {int maxLines = 1}) {
+    // Двухстрочное значение (размеры с припуском) набираем мельче и с
+    // меньшими отступами, чтобы клетка штампа не переполнялась.
+    final dense = maxLines > 1;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: dense ? 5 : 9),
       decoration: const BoxDecoration(
         border: Border(left: BorderSide(color: Color(0xFFC3CCDA))),
       ),
@@ -626,11 +651,12 @@ class _TitleBlock extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             value.isEmpty ? '—' : value,
-            maxLines: 1,
+            maxLines: maxLines,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 12.5,
-              color: Color(0xFF1B1F27),
+            style: TextStyle(
+              fontSize: dense ? 11.5 : 12.5,
+              height: dense ? 1.15 : null,
+              color: const Color(0xFF1B1F27),
               fontWeight: FontWeight.w600,
             ),
           ),

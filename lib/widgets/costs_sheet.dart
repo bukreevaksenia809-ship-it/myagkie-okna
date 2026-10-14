@@ -146,8 +146,13 @@ class CostsSheet extends StatelessWidget {
         '№${i + 1}',
         window.windowType.label,
         window.material.label,
-        '${formatMm(window.bottomWidth)}/${formatMm(window.topWidth)} · '
-            '${formatMm(window.leftHeight)}/${formatMm(window.rightHeight)}',
+        // С припуском показываем и замер, и то, что из него получилось.
+        if (window.hasAllowance)
+          '${formatSizeWithAllowance(window.bottomWidth, window.allowanceWidthMm)} / '
+              '${formatSizeWithAllowance(window.leftHeight, window.allowanceHeightMm)}'
+        else
+          '${formatMm(window.bottomWidth)}/${formatMm(window.topWidth)} · '
+              '${formatMm(window.leftHeight)}/${formatMm(window.rightHeight)}',
         '${formatMm(spec.filmCutWidthWithShrinkage)} × '
             '${formatMm(spec.filmCutHeightWithShrinkage)}',
         formatMeters(spec.productAreaM2),

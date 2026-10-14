@@ -49,6 +49,19 @@ enum _CutoutField {
   final String label;
 }
 
+/// Припуски на раскрой: добавка к габариту заготовки, мм.
+enum _AllowanceField {
+  width('Прибавить к ширине, мм'),
+  height('Прибавить к высоте, мм');
+
+  const _AllowanceField(this.label);
+
+  final String label;
+}
+
+/// Разумный предел припуска на раскрой, мм.
+const double _maxAllowanceMm = 500;
+
 class _ParamsPanelState extends State<ParamsPanel> {
   static const _windowFields = <ParamField>[
     ParamField.bottomWidth,
@@ -80,6 +93,13 @@ class _ParamsPanelState extends State<ParamsPanel> {
   final Map<EdgeSide, TextEditingController> _edgeControllers = {};
   final Map<EdgeSide, String?> _edgeErrors = {};
 
+  /// Поля припусков на раскрой: добавка к ширине и к высоте, мм.
+  final Map<_AllowanceField, TextEditingController> _allowanceControllers = {};
+  final Map<_AllowanceField, String?> _allowanceErrors = {};
+
+  /// Раскрыт ли блок припусков на раскрой.
+  bool _allowanceExpanded = false;
+
   late final TextEditingController _nameController;
   late final TextEditingController _customerController;
   late final TextEditingController _drawingController;
@@ -100,6 +120,11 @@ class _ParamsPanelState extends State<ParamsPanel> {
     for (final side in EdgeSide.values) {
       _edgeControllers[side] = TextEditingController(
         text: _textFor(_params.rollForSide(side)),
+      );
+    }
+    for (final field in _AllowanceField.values) {
+      _allowanceControllers[field] = TextEditingController(
+        text: _textFor(_allowanceValue(_params, field)),
       );
     }
     _nameController = TextEditingController(text: _params.projectName);
@@ -125,6 +150,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _syncZipperFields(project.selected, force: windowChanged);
     _syncCutoutFields(project.selected, force: windowChanged);
     _syncEdgeFields(project.selected, force: windowChanged);
+    _syncAllowanceFields(project.selected, force: windowChanged);
 
     // Текстовые поля обновляем только если пользователь их не редактирует:
     // иначе набранное (и область ввода IME) сбрасывается на каждом символе.
@@ -203,7 +229,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _pruneErrors(_zipperBandErrors, params.zippers.length);
   }
 
-  void _syncCutoutFields(WindowParams params, {bool force = false}) {    for (var index = 0; index < params.cutouts.length; index++) {
+  void _syncCutoutFields(WindowParams params, {bool force = false}) {
+    for (var index = 0; index < params.cutouts.length; index++) {
       final cutout = params.cutouts[index];
       for (final field in _CutoutField.values) {
         _syncController(
@@ -278,6 +305,32 @@ class _ParamsPanelState extends State<ParamsPanel> {
     }
   }
 
+  /// Значение припуска на раскрой из модели.
+  double _allowanceValue(WindowParams params, _AllowanceField field) =>
+      switch (field) {
+        _AllowanceField.width => params.allowanceWidthMm,
+        _AllowanceField.height => params.allowanceHeightMm,
+      };
+
+  /// Синхронизация полей припусков: текст переписывается только если
+  /// распарсенное значение разошлось с моделью (та же схема, что у молний,
+  /// вырезов и ширины окантовки) — набор с клавиатуры не сбивается.
+  void _syncAllowanceFields(WindowParams params, {bool force = false}) {
+    for (final field in _AllowanceField.values) {
+      _syncController(
+        _allowanceControllers.putIfAbsent(
+          field,
+          () => TextEditingController(
+            text: _textFor(_allowanceValue(params, field)),
+          ),
+        ),
+        _allowanceValue(params, field),
+        force: force,
+      );
+      if (force) _allowanceErrors[field] = null;
+    }
+  }
+
   @override
   void dispose() {
     for (final controller in _controllers.values) {
@@ -293,6 +346,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
       controller.dispose();
     }
     for (final controller in _edgeControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _allowanceControllers.values) {
       controller.dispose();
     }
     _nameController.dispose();
@@ -346,13 +402,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
     WindowParams params,
     EdgeSide side,
     double value,
-  ) =>
-      switch (side) {
-        EdgeSide.bottom => params.copyWith(rollBottom: value),
-        EdgeSide.right => params.copyWith(rollRight: value),
-        EdgeSide.top => params.copyWith(rollTop: value),
-        EdgeSide.left => params.copyWith(rollLeft: value),
-      };
+  ) => switch (side) {
+    EdgeSide.bottom => params.copyWith(rollBottom: value),
+    EdgeSide.right => params.copyWith(rollRight: value),
+    EdgeSide.top => params.copyWith(rollTop: value),
+    EdgeSide.left => params.copyWith(rollLeft: value),
+  };
 
   /// Быстрый пресет ширины окантовки.
   void _applyEdgeWidth(EdgeSide side, double value) {
@@ -369,7 +424,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
     }
     if (value < minEdgeRollWidth || value > maxEdgeRollWidth) {
       setState(
-        () => _edgeErrors[side] = 'Ширина от '
+        () => _edgeErrors[side] =
+            'Ширина от '
             '${formatMm(minEdgeRollWidth)} до ${formatMm(maxEdgeRollWidth)} мм',
       );
       return;
@@ -377,6 +433,173 @@ class _ParamsPanelState extends State<ParamsPanel> {
     setState(() => _edgeErrors[side] = null);
     _updateWindow(_withEdgeWidth(_params, side, value));
   }
+
+  /// Ширина заготовки с припуском на раскрой, мм.
+  double _effectiveWidthMm(WindowParams params) => params.effectiveBottomWidth;
+
+  /// Высота заготовки с припуском на раскрой, мм.
+  double _effectiveHeightMm(WindowParams params) => params.effectiveLeftHeight;
+
+  /// Ввод припуска на раскрой: 0…500 мм.
+  void _onAllowanceChanged(_AllowanceField field, String raw) {
+    final value = parseMm(raw);
+    if (value == null) {
+      setState(() => _allowanceErrors[field] = 'Введите число, например 120');
+      return;
+    }
+    if (value < 0 || value > _maxAllowanceMm) {
+      setState(
+        () => _allowanceErrors[field] =
+            'Припуск 0…${formatMm(_maxAllowanceMm)} мм',
+      );
+      return;
+    }
+    setState(() => _allowanceErrors[field] = null);
+    _updateWindow(switch (field) {
+      _AllowanceField.width => _params.copyWith(allowanceWidthMm: value),
+      _AllowanceField.height => _params.copyWith(allowanceHeightMm: value),
+    });
+  }
+
+  /// Сброс обоих припусков на раскрой.
+  void _resetAllowance() {
+    setState(() {
+      _allowanceErrors[_AllowanceField.width] = null;
+      _allowanceErrors[_AllowanceField.height] = null;
+    });
+    _updateWindow(_params.copyWith(allowanceWidthMm: 0, allowanceHeightMm: 0));
+  }
+
+  /// Блок «Припуски на раскрой»: кнопка-переключатель, два поля и итог.
+  Widget _allowanceSection(WindowParams params) {
+    final width = _effectiveWidthMm(params);
+    final height = _effectiveHeightMm(params);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () =>
+                    setState(() => _allowanceExpanded = !_allowanceExpanded),
+                icon: const Icon(Icons.add_box_outlined, size: 18),
+                label: const Text('Припуски на раскрой'),
+              ),
+            ),
+            if (params.hasAllowance) ...[
+              const SizedBox(width: 8),
+              Text(
+                '${params.allowanceWidthLabel} / '
+                '${params.allowanceHeightLabel} мм',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0B62C4),
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (_allowanceExpanded) ...[
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _allowanceField(
+                  _AllowanceField.width,
+                  const Key('allowance-width-field'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _allowanceField(
+                  _AllowanceField.height,
+                  const Key('allowance-height-field'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Замер 2 000 × 2 000, припуск +120 по ширине и +80 по высоте → '
+            'в раскрой 2 120 × 2 080 мм',
+            style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+          const SizedBox(height: 10),
+          _panelCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Фактический размер: ${formatMm(width)} × '
+                  '${formatMm(height)} мм',
+                  key: const Key('allowance-effective-size'),
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Припуск добавляется к габариту заготовки: это значение '
+                  'идёт в раскрой плёнки и в смету.',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                ),
+                if (params.hasAllowance) ...[
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      key: const Key('allowance-reset'),
+                      onPressed: _resetAllowance,
+                      icon: const Icon(Icons.restart_alt, size: 18),
+                      label: const Text('Сбросить припуски'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _allowanceField(_AllowanceField field, Key key) {
+    return TextField(
+      key: key,
+      controller: _allowanceControllers[field],
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        labelText: field.label,
+        suffixText: 'мм',
+        helperText: '0…${formatMm(_maxAllowanceMm)}, шаг 1',
+        border: const OutlineInputBorder(),
+        isDense: true,
+        errorText: _allowanceErrors[field],
+        errorMaxLines: 2,
+      ),
+      onChanged: (raw) => _onAllowanceChanged(field, raw),
+    );
+  }
+
+  /// Подпись чипа спайки: сторона окна в винительном падеже.
+  String _weldedChipLabel(EdgeSide side) => switch (side) {
+    EdgeSide.bottom => 'Спаяно снизу',
+    EdgeSide.right => 'Спаяно справа',
+    EdgeSide.top => 'Спаяно сверху',
+    EdgeSide.left => 'Спаяно слева',
+  };
+
+  /// Подпись кнопки «добавить окно к спайке»: сторона окна в родительном.
+  String _addWeldedLabel(EdgeSide side) => switch (side) {
+    EdgeSide.bottom => '+ окно снизу',
+    EdgeSide.right => '+ окно справа',
+    EdgeSide.top => '+ окно сверху',
+    EdgeSide.left => '+ окно слева',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -415,8 +638,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 label: const Text('Добавить окно'),
               ),
               OutlinedButton.icon(
-                onPressed: () =>
-                    _updateProject(project.duplicateSelected()),
+                onPressed: () => _updateProject(project.duplicateSelected()),
                 icon: const Icon(Icons.copy_all_outlined, size: 18),
                 label: const Text('Дублировать'),
               ),
@@ -491,6 +713,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
             const SizedBox(height: 12),
             _numberField(ParamField.topOffset),
           ],
+          const SizedBox(height: 14),
+          _allowanceSection(params),
           const SizedBox(height: 20),
           _expansion(
             title: 'Полотно (плёнка)',
@@ -611,12 +835,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 spacing: 6,
                 runSpacing: 6,
                 children: [
-                  for (final side in const [EdgeSide.left, EdgeSide.right])
+                  for (final side in EdgeSide.values)
                     FilterChip(
                       label: Text(
-                        side == EdgeSide.left
-                            ? 'Спаяно слева'
-                            : 'Спаяно справа',
+                        _weldedChipLabel(side),
                         style: const TextStyle(fontSize: 12),
                       ),
                       selected: params.isWelded(side),
@@ -632,6 +854,38 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 'расход окантовки уменьшается, добавляется спайка 25 мм.',
                 style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
               ),
+              const SizedBox(height: 14),
+              const Text(
+                'Добавить окно к спайке',
+                style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final side in EdgeSide.values)
+                    OutlinedButton(
+                      key: Key('add-welded-${side.name}'),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                      onPressed: () =>
+                          _updateProject(project.addWeldedWindow(side)),
+                      child: Text(
+                        _addWeldedLabel(side),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Добавит копию этого окна с теми же размерами и сразу сваривает '
+                'их выбранной стороной.',
+                style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+              ),
               if (params.weldedSides.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 _panelCard(
@@ -641,7 +895,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     value: params.removeEyeletsOnWelded,
                     title: const Text(
                       'Убирать люверсы (крепёж) на спаянной стороне',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     subtitle: const Text(
                       'Выключите, если по спайке всё равно нужны люверсы — '
@@ -1457,7 +1714,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
             isDense: true,
             errorText: _edgeErrors[side],
             errorMaxLines: 2,
-            helperText: 'готовая полоса ${formatMm(finished)} мм '
+            helperText:
+                'готовая полоса ${formatMm(finished)} мм '
                 '(складывается пополам)',
             helperMaxLines: 2,
           ),
