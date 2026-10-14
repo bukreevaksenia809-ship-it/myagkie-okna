@@ -132,6 +132,43 @@ void main() {
     );
   });
 
+  test('смета скрина: без окантовки и тента, с подворотом и швом 3 мм', () {
+    const screen = WindowParams(
+      material: FilmMaterial.screen,
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      hemMm: 40,
+    );
+    const project = OrderProject(windows: [screen]);
+    final summary = CostsSummary(project);
+    final estimate = Estimate.of(project, PriceList.defaults());
+
+    // Окантовки у скрина нет вовсе.
+    expect(summary.edgeByRoll, isEmpty);
+    expect(
+      estimate.lines.any((line) => line.title.startsWith('Окантовка')),
+      isFalse,
+    );
+    // Полотно скрина: площадь заготовки 2080 × 2080 = 4,33 м².
+    final filmLine = estimate.lines
+        .firstWhere((line) => line.title.startsWith('Полотно'));
+    expect(filmLine.title, contains('Скрин'));
+    expect(filmLine.quantity, closeTo(4.3264, 1e-9));
+    // Работа: подворот по периметру 4 × 2 м и шов 3 мм.
+    final hemLine = estimate.lines
+        .firstWhere((line) => line.title.startsWith('Подворот скрина'));
+    expect(hemLine.title, contains('3'));
+    expect(hemLine.quantity, closeTo(8.0, 1e-9));
+    expect(hemLine.unit, 'м');
+    // Усадки нет — площадь с усадкой совпадает с заготовкой.
+    expect(
+      summary.filmAreaWithShrinkageM2,
+      closeTo(summary.filmAreaM2, 1e-9),
+    );
+  });
+
   test('смета: своя ширина окантовки 150 мм — интерполяция цены и подпись', () {
     final prices = PriceList.defaults();
     const custom = WindowParams(

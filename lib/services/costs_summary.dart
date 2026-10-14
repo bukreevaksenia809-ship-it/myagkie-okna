@@ -31,8 +31,11 @@ class CostsSummary {
       );
       // Молний в окне может быть две — считаем каждую полосу отдельно,
       // иначе смета на окно с двумя молниями занижается вдвое.
+      // У скрина молний нет: тента, в который они впаиваются, тоже нет.
       final zipperLength = spec.layers.filmVisibleBounds.height;
-      for (var i = 0; i < spec.layers.zipperBands.length; i++) {
+      final zipperBands =
+          spec.params.isScreen ? 0 : spec.layers.zipperBands.length;
+      for (var i = 0; i < zipperBands; i++) {
         zipperCount += 1;
         zipperBandLengthMm += zipperLength;
         // Спайка — полоса тента 100 мм, сложенная пополам.
@@ -59,7 +62,9 @@ class CostsSummary {
       strapCount += spec.strapCount;
       pocketWidthMm = spec.params.pocketWidth;
       cutoutCount += spec.params.cutouts.length;
-      drainTotal += spec.params.drainHoles ? spec.params.drainCount.round() : 0;
+      drainTotal += spec.params.drainHoles && !spec.params.isScreen
+          ? spec.params.drainCount.round()
+          : 0;
       cutoutPerimeterMm += spec.layers.cutoutPerimeterMm;
       weldLengthMm += spec.layers.weldLengthMm;
     }
@@ -165,8 +170,8 @@ class CostsSummary {
           'Спайка молнии: тент ${formatMm(100)} мм × '
               '${formatMm(zipperBandLengthMm)} мм — $zipperCount шт',
         if (pocketCount > 0)
-          'Карман (низ/верх): тент ${formatMm(200)} мм × '
-              '${formatMm(pocketLengthMm)} мм — $pocketCount шт',
+          'Карман (низ/верх): $pocketCount шт, полоса '
+              '${formatMm(pocketLengthMm)} мм',
         if (screenHemLengthMm > 0)
           'Подворот скрина и шов ${formatMm(screenSeamMm)} мм: '
               '${formatMm(screenHemLengthMm)} мм периметра — расход скрина '

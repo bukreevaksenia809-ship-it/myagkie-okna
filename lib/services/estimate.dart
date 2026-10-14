@@ -332,7 +332,8 @@ class Estimate {
 int _drainTotal(CostsSummary summary) {
   var total = 0;
   for (final spec in summary.specs) {
-    if (!spec.params.drainHoles) continue;
+    // У скрина нет нижней окантовки — дренаж не считается.
+    if (!spec.params.drainHoles || spec.params.isScreen) continue;
     final count = spec.params.drainCount;
     if (count.isFinite && count > 0) total += count.round();
   }

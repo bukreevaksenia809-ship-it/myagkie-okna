@@ -241,7 +241,10 @@ class CostsSheet extends StatelessWidget {
       ('Полотно (плёнка)', [
         ...summary.filmByMaterialLabels,
         'Итого площадь заготовок в раскрое: ${formatMeters(summary.filmAreaM2)} м²',
-        'С учётом усадки: ${formatMeters(summary.filmAreaWithShrinkageM2)} м²',
+        if (summary.project.windows.first.isScreen)
+          'Усадки нет: у скрина она равна 0 %'
+        else
+          'С учётом усадки: ${formatMeters(summary.filmAreaWithShrinkageM2)} м²',
       ]),
       ('Окантовка (по типам рулонов)', [
         if (summary.edgeConsumptionLabels.isEmpty) '—',
