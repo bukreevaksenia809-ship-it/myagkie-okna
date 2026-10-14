@@ -132,6 +132,48 @@ void main() {
     );
   });
 
+  test('смета: своя ширина окантовки 150 мм — интерполяция цены и подпись', () {
+    final prices = PriceList.defaults();
+    const custom = WindowParams(
+      bottomWidth: 1500,
+      topWidth: 1500,
+      leftHeight: 2520,
+      rightHeight: 2520,
+      rollBottom: 150,
+    );
+    final estimate = Estimate.ofWindow(custom, prices);
+    final line = estimate.lines
+        .firstWhere((candidate) => candidate.title.contains('Тент 150 мм'));
+
+    // Ожидание считаем от пресетов прайса: 150 мм — середина между 100 и 200.
+    final expected = (prices.edge100PerM + prices.edge200PerM) / 2;
+    expect(prices.edgePerMeterForWidth(150), closeTo(expected, 1e-9));
+    expect(line.unitPrice, closeTo(expected, 1e-9));
+    expect(line.title, 'Окантовка Тент 150 мм');
+    expect(line.note, contains('75'));
+    expect(line.quantity, closeTo(1.5, 1e-9));
+
+    // Пресеты считаются по своим ценам.
+    expect(prices.edgePerMeterForWidth(100), prices.edge100PerM);
+    expect(prices.edgePerMeterForWidth(200), prices.edge200PerM);
+    expect(prices.edgePerMeterForWidth(240), prices.edge240PerM);
+
+    // Вне диапазона — экстраполяция по ближайшему отрезку, без деления на ноль.
+    final below = prices.edgePerMeterForWidth(50);
+    expect(below.isFinite, isTrue);
+    expect(below, lessThan(prices.edge100PerM));
+    final above = prices.edgePerMeterForWidth(300);
+    expect(above.isFinite, isTrue);
+    expect(
+      above,
+      closeTo(
+        prices.edge240PerM +
+            (prices.edge240PerM - prices.edge200PerM) * (60 / 40),
+        1e-9,
+      ),
+    );
+  });
+
   test('скидка 10 % уменьшает ИТОГО ровно на 10 %', () {
     final base = PriceList.defaults();
     final full = Estimate.of(_project, base);

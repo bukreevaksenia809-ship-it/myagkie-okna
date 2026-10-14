@@ -186,12 +186,13 @@ class WindowLayers {
   /// Наружная граница (внешний контур окна).
   List<Offset> get outer => geometry.corners;
 
-  /// Рулоны окантовки по сторонам в порядке обхода: низ, право, верх, лево.
-  List<EdgeRoll> get rolls => [for (var i = 0; i < 4; i++) params.rollForEdge(i)];
+  /// Ширины рулонов окантовки по сторонам в порядке обхода:
+  /// низ, право, верх, лево (мм).
+  List<double> get rolls => [for (var i = 0; i < 4; i++) params.rollForEdge(i)];
 
   /// Готовые (сложенные пополам) ширины окантовки по сторонам.
   List<double> get finishedWidths =>
-      [for (final roll in rolls) roll.finishedWidth];
+      [for (final width in rolls) WindowParams.finishedEdgeWidth(width)];
 
   /// Внутренняя граница окантовки: видимая граница плёнки.
   late final List<Offset> edgeInner = insetPolygonPerSide(outer, finishedWidths);
@@ -293,12 +294,13 @@ class WindowLayers {
   /// Полоса первой молнии — для подписей и совместимости.
   Rect? get zipperBand => zipperBands.isEmpty ? null : zipperBands.first;
 
-  /// Расход окантовки по типам рулонов: тип → сумма длин, мм.
+  /// Расход окантовки по ширинам рулонов: ширина рулона (мм) → сумма длин, мм.
   ///
   /// Спаянные с соседним окном стороны окантовки не требуют — там идёт
-  /// сварка полотен. Вырезы, наоборот, добавляют расход по своему контуру.
-  Map<EdgeRoll, double> get edgeConsumption {
-    final result = <EdgeRoll, double>{};
+  /// сварка полотен. Вырезы, наоборот, добавляют расход по своему контуру
+  /// (по ширине нижней стороны).
+  Map<double, double> get edgeConsumption {
+    final result = <double, double>{};
     final lengths = geometry.sideLengths;
     for (var i = 0; i < lengths.length; i++) {
       if (isSideWelded(i)) continue;
@@ -334,10 +336,10 @@ class WindowLayers {
   /// Готовые подписи расхода окантовки: «Тент 100 мм — 654 см».
   List<String> get edgeConsumptionLabels {
     final entries = edgeConsumption.entries.toList()
-      ..sort((a, b) => a.key.rawWidth.compareTo(b.key.rawWidth));
+      ..sort((a, b) => a.key.compareTo(b.key));
     return [
       for (final entry in entries)
-        '${entry.key.shortLabel} — ${formatCm(entry.value)} см',
+        '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см',
     ];
   }
 
@@ -582,8 +584,8 @@ class WindowSpec {
   double get filmCutHeightWithShrinkage =>
       filmCutHeight * (1 + params.shrinkagePercent / 100);
 
-  /// Расход окантовки по типам рулонов.
-  Map<EdgeRoll, double> get edgeConsumption => layers.edgeConsumption;
+  /// Расход окантовки по ширинам рулонов.
+  Map<double, double> get edgeConsumption => layers.edgeConsumption;
 
   List<String> get edgeConsumptionLabels => layers.edgeConsumptionLabels;
 
@@ -611,8 +613,8 @@ class WindowSpec {
       ('лево', params.rollLeft),
     ];
     final groups = <String, List<String>>{};
-    for (final (name, roll) in sides) {
-      groups.putIfAbsent(roll.shortLabel, () => []).add(name);
+    for (final (name, width) in sides) {
+      groups.putIfAbsent(edgeBandLabel(width, short: true), () => []).add(name);
     }
     return groups.entries
         .map((entry) => '${entry.key}: ${entry.value.join(', ')}')
@@ -855,6 +857,37 @@ List<ParamIssue> validateParams(WindowParams params) {
       ParamField.bottomWidth,
       'Окантовка со швом не оставляет места плёнке — выберите рулон уже',
     ));
+  }
+
+  // Окантовка: ширина рулона вводится вручную на каждую сторону. Разумный
+  // диапазон — 40…400 мм; своя ширина (не из пресетов) это нормально и
+  // отдельного замечания не требует. А вот если готовой полосы (рулон / 2)
+  // не хватает на напайку с двух сторон (2 × weldOverlap), ленте не за что
+  // зацепиться — об этом предупреждаем.
+  for (final side in EdgeSide.values) {
+    final raw = params.rollForSide(side);
+    final name = side.label.toLowerCase();
+    if (!raw.isFinite || raw < minEdgeRollWidth || raw > maxEdgeRollWidth) {
+      issues.add(ParamIssue(
+        ParamField.bottomWidth,
+        'Окантовка, $name: ${formatMm(raw)} мм — вне диапазона '
+        '${formatMm(minEdgeRollWidth)}–${formatMm(maxEdgeRollWidth)} мм',
+        isError: false,
+      ));
+      continue;
+    }
+    final finished = WindowParams.finishedEdgeWidth(raw);
+    // Полоса складывается пополам: на напайку 25 мм нужна такая же полоса
+    // плюс запас на кромку, поэтому минимум — 25 + 15 = 40 мм готовой.
+    const minFinishedForWeld = weldOverlap + 15;
+    if (finished < minFinishedForWeld) {
+      issues.add(ParamIssue(
+        ParamField.bottomWidth,
+        'Окантовка, $name: готовая полоса ${formatMm(finished)} мм — уже '
+        '${formatMm(minFinishedForWeld)} мм, напайке 25 мм не хватает ленты',
+        isError: false,
+      ));
+    }
   }
 
   if (params.drainHoles) {

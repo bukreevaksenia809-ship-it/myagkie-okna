@@ -39,7 +39,7 @@ const _rich = WindowParams(
   topWidth: 2200,
   leftHeight: 2400,
   rightHeight: 2400,
-  rollBottom: EdgeRoll.roll200,
+  rollBottom: 200,
   fastenerType: FastenerType.frenchLocks,
   eyeletType: EyeletType.oval42x22,
   zippers: [
@@ -75,9 +75,9 @@ const _mesh = WindowParams(
 TechOperation _op(TechCard card, TechOperationKind kind) =>
     card.operations.firstWhere((operation) => operation.kind == kind);
 
-/// Суммы по типам рулонов, посчитанные по материалам операции «Окантовка».
-Map<EdgeRoll, double> _edgeSumsFromMaterials(TechOperation operation) {
-  final sums = <EdgeRoll, double>{};
+/// Суммы по ширинам рулонов, посчитанные по материалам операции «Окантовка».
+Map<double, double> _edgeSumsFromMaterials(TechOperation operation) {
+  final sums = <double, double>{};
   for (final material in operation.materials) {
     final roll = material.roll;
     if (roll == null) continue;
@@ -146,13 +146,29 @@ void main() {
         expect(edging.edgeTotals[entry.key], closeTo(entry.value, 1e-6));
       }
       // Готовая полоса — половина рулона.
-      expect(edging.text, contains(formatMm(EdgeRoll.roll100.finishedWidth)));
+      expect(edging.text, contains(formatMm(WindowParams.finishedEdgeWidth(100))));
       // Окантовка есть по каждой неспаянной стороне.
       expect(
         [
           for (final material in edging.materials) material.side,
         ].whereType<String>().toSet(),
         {'Низ', 'Право', 'Верх', 'Лево'},
+      );
+    });
+
+    test('операция «Окантовка» показывает и пресеты, и свою ширину', () {
+      final custom = _window.copyWith(rollBottom: 150);
+      final edging = _op(TechCard.forWindow(custom), TechOperationKind.edging);
+
+      // В описании — все пресеты и правило «половина рулона».
+      expect(edging.text, contains('100 → 50'));
+      expect(edging.text, contains('200 → 100'));
+      expect(edging.text, contains('240 → 120'));
+      // Своя ширина нижней стороны видна и в описании, и в позиции материала.
+      expect(edging.text, contains('Тент 150 мм'));
+      expect(
+        edging.materials.any((m) => m.roll == 150 && m.side == 'Низ'),
+        isTrue,
       );
     });
 

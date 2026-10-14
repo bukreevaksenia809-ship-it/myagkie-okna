@@ -56,8 +56,15 @@ enum FilmMaterial {
       rollWidths.map((width) => formatCm(width)).join(', ');
 }
 
-/// Рулон окантовки. Полоса складывается пополам, поэтому готовая ширина
-/// окантовки — половина ширины рулона.
+/// Разумный диапазон ширины рулона окантовки, мм.
+const double minEdgeRollWidth = 40;
+const double maxEdgeRollWidth = 400;
+
+/// Пресет рулона окантовки — оставлен ради совместимости: по нему читаются
+/// старые заказы, где ширина писалась именем типа, и берётся цена прайса.
+///
+/// Полоса складывается пополам, поэтому готовая ширина окантовки — половина
+/// ширины рулона.
 enum EdgeRoll {
   roll100(100, 'Тент 100 мм = окантовка 50 мм'),
   roll200(200, 'Тент 200 мм = окантовка 100 мм'),
@@ -74,6 +81,23 @@ enum EdgeRoll {
   double get finishedWidth => rawWidth / 2;
 
   String get shortLabel => 'Тент ${rawWidth.toStringAsFixed(0)} мм';
+
+  /// Ширина рулона по имени пресета («roll200» → 200) или null, если имя
+  /// не распознано. Нужна для чтения старых заказов с шириной-строкой.
+  static double? presetRawWidth(String name) {
+    for (final roll in EdgeRoll.values) {
+      if (roll.name == name) return roll.rawWidth;
+    }
+    return null;
+  }
+}
+
+/// Подпись окантовки по ширине рулона: «Тент 150 мм», в коротком виде —
+/// «150 мм». Работает и для пресетов, и для своей ширины.
+String edgeBandLabel(double rawWidth, {bool short = false}) {
+  if (!rawWidth.isFinite) return short ? '—' : 'Тент — мм';
+  final width = '${formatMm(rawWidth)} мм';
+  return short ? width : 'Тент $width';
 }
 
 /// Материал окантовки.
@@ -352,10 +376,10 @@ class WindowParams {
     this.rightHeight = 2520,
     this.topAlign = TopAlign.center,
     this.topOffsetMm = 0,
-    this.rollBottom = EdgeRoll.roll100,
-    this.rollTop = EdgeRoll.roll100,
-    this.rollLeft = EdgeRoll.roll100,
-    this.rollRight = EdgeRoll.roll100,
+    this.rollBottom = 100,
+    this.rollTop = 100,
+    this.rollLeft = 100,
+    this.rollRight = 100,
     this.edgeMaterial = EdgeMaterial.pvcTent630,
     this.edgeColor = EdgeColor.brown,
     this.eyeletType = EyeletType.round10,
@@ -392,11 +416,21 @@ class WindowParams {
   final TopAlign topAlign;
   final double topOffsetMm;
 
-  // Окантовка: своя ширина рулона на каждую сторону
-  final EdgeRoll rollBottom;
-  final EdgeRoll rollTop;
-  final EdgeRoll rollLeft;
-  final EdgeRoll rollRight;
+  /// Пресеты ширины рулона окантовки, мм — быстрые кнопки в панели.
+  ///
+  /// Свою ширину можно ввести вручную (40…400 мм); эти три значения остались
+  /// как готовые варианты и как опорные точки прайса
+  /// (PriceList.edgePerMeterForWidth).
+  static const List<double> edgePresets = [100, 200, 240];
+
+  // Окантовка: своя ширина рулона на каждую сторону, мм.
+  //
+  // Полоса складывается пополам, поэтому готовая ширина окантовки — половина
+  // ширины рулона (см. [finishedEdgeWidth]).
+  final double rollBottom;
+  final double rollTop;
+  final double rollLeft;
+  final double rollRight;
 
   final EdgeMaterial edgeMaterial;
   final EdgeColor edgeColor;
@@ -475,15 +509,20 @@ class WindowParams {
 
   bool get isLifting => windowType == WindowType.lifting;
 
-  /// Тип окантовки для стороны с индексом обхода углов.
-  EdgeRoll rollForEdge(int index) => switch (index % 4) {
+  /// Готовая (сложенная пополам) ширина окантовки по ширине рулона, мм.
+  static double finishedEdgeWidth(double rawWidth) => rawWidth / 2;
+
+  /// Ширина рулона окантовки для стороны с индексом обхода углов:
+  /// 0 — низ, 1 — право, 2 — верх, 3 — лево.
+  double rollForEdge(int index) => switch (index % 4) {
         0 => rollBottom,
         1 => rollRight,
         2 => rollTop,
         _ => rollLeft,
       };
 
-  EdgeRoll rollForSide(EdgeSide side) => switch (side) {
+  /// Ширина рулона окантовки для стороны окна.
+  double rollForSide(EdgeSide side) => switch (side) {
         EdgeSide.bottom => rollBottom,
         EdgeSide.right => rollRight,
         EdgeSide.top => rollTop,
@@ -501,10 +540,10 @@ class WindowParams {
     double? rightHeight,
     TopAlign? topAlign,
     double? topOffsetMm,
-    EdgeRoll? rollBottom,
-    EdgeRoll? rollTop,
-    EdgeRoll? rollLeft,
-    EdgeRoll? rollRight,
+    double? rollBottom,
+    double? rollTop,
+    double? rollLeft,
+    double? rollRight,
     EdgeMaterial? edgeMaterial,
     EdgeColor? edgeColor,
     FilmMaterial? material,
@@ -676,10 +715,10 @@ class WindowParams {
         rightHeight,
         topAlign.name,
         topOffsetMm,
-        rollBottom.name,
-        rollTop.name,
-        rollLeft.name,
-        rollRight.name,
+        rollBottom,
+        rollTop,
+        rollLeft,
+        rollRight,
         edgeMaterial.name,
         edgeColor.name,
         eyeletType.name,

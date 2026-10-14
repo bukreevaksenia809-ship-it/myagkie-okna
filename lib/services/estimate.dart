@@ -120,18 +120,20 @@ class Estimate {
       ));
     }
 
-    // --- Материалы: окантовка по типам рулонов ---------------------------
+    // --- Материалы: окантовка по ширинам рулонов -------------------------
     final edgeEntries = summary.edgeByRoll.entries.toList()
-      ..sort((a, b) => a.key.rawWidth.compareTo(b.key.rawWidth));
+      ..sort((a, b) => a.key.compareTo(b.key));
     for (final entry in edgeEntries) {
       final meters = entry.value / 1000;
       if (!(meters > 0)) continue;
+      final rawWidth = entry.key;
       lines.add(EstimateLine(
-        title: 'Окантовка ${entry.key.shortLabel}',
-        note: 'готовая полоса ${formatMm(entry.key.finishedWidth)} мм',
+        title: 'Окантовка ${edgeBandLabel(rawWidth)}',
+        note: 'готовая полоса '
+            '${formatMm(WindowParams.finishedEdgeWidth(rawWidth))} мм',
         quantity: meters,
         unit: 'м',
-        unitPrice: prices.edgePerMeter(entry.key),
+        unitPrice: prices.edgePerMeterForWidth(rawWidth),
         group: EstimateGroup.materials,
       ));
     }

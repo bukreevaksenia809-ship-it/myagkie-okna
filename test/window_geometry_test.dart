@@ -107,6 +107,33 @@ void main() {
       expect(EdgeRoll.roll100.finishedWidth, 50);
       expect(EdgeRoll.roll200.finishedWidth, 100);
       expect(EdgeRoll.roll240.finishedWidth, 120);
+      // Пресеты и разбор старых имён enum — для чтения прежних заказов.
+      expect(WindowParams.edgePresets, [100, 200, 240]);
+      expect(EdgeRoll.presetRawWidth('roll200'), 200);
+      expect(EdgeRoll.presetRawWidth('roll500'), isNull);
+      expect(WindowParams.finishedEdgeWidth(150), 75);
+    });
+
+    test('своя ширина 150 мм: полоса 75 мм, расход и площадь не падают', () {
+      const params = WindowParams(
+        bottomWidth: 1500,
+        topWidth: 1500,
+        leftHeight: 2520,
+        rightHeight: 2520,
+        rollBottom: 150,
+      );
+      final spec = WindowSpec.of(params);
+
+      // Готовая полоса нижней стороны — половина рулона.
+      expect(spec.layers.finishedWidths[0], 75);
+      // Расход ключуется шириной рулона (150), а не типом, и равен длине низа.
+      expect(spec.edgeConsumption[150], closeTo(1500, 1e-9));
+      expect(spec.edgeConsumption.containsKey(150), isTrue);
+      // Площадь плёнки и изделия остаются положительными.
+      expect(spec.filmAreaM2, greaterThan(0));
+      expect(spec.productAreaM2, closeTo(3.78, 1e-9));
+      expect(edgeBandLabel(150), 'Тент 150 мм');
+      expect(edgeBandLabel(150, short: true), '150 мм');
     });
 
     test('расход окантовки совпадает с примером заказчика (654 см + 150 см)', () {
@@ -115,10 +142,10 @@ void main() {
         topWidth: 1500,
         leftHeight: 2520,
         rightHeight: 2520,
-        rollBottom: EdgeRoll.roll100,
-        rollLeft: EdgeRoll.roll100,
-        rollRight: EdgeRoll.roll100,
-        rollTop: EdgeRoll.roll200,
+        rollBottom: 100,
+        rollLeft: 100,
+        rollRight: 100,
+        rollTop: 200,
       );
       final spec = WindowSpec.of(params);
 
@@ -434,8 +461,8 @@ void main() {
       // Периметр прямоугольника 300×300 — 1200 мм.
       expect(withCutout.layers.cutoutPerimeterMm, closeTo(1200, 1e-6));
 
-      final before = plain.edgeConsumption[EdgeRoll.roll100]!;
-      final after = withCutout.edgeConsumption[EdgeRoll.roll100]!;
+      final before = plain.edgeConsumption[100.0]!;
+      final after = withCutout.edgeConsumption[100.0]!;
       expect(after - before, closeTo(1200, 1e-6));
     });
 
@@ -496,8 +523,8 @@ void main() {
       expect(withWeld.layers.weldLengthMm, closeTo(rightLength, 1e-6));
 
       // Разница с окном без спайки — ровно длина правой стороны.
-      final before = plain.edgeConsumption[EdgeRoll.roll100]!;
-      final after = withWeld.edgeConsumption[EdgeRoll.roll100]!;
+      final before = plain.edgeConsumption[100.0]!;
+      final after = withWeld.edgeConsumption[100.0]!;
       expect(before - after, closeTo(rightLength, 1e-6));
     });
 
@@ -518,8 +545,8 @@ void main() {
       expect(withWeld.layers.isSideWelded(3), isTrue);
       expect(withWeld.layers.weldLengthMm, closeTo(expected, 1e-6));
 
-      final before = plain.edgeConsumption[EdgeRoll.roll100]!;
-      final after = withWeld.edgeConsumption[EdgeRoll.roll100]!;
+      final before = plain.edgeConsumption[100.0]!;
+      final after = withWeld.edgeConsumption[100.0]!;
       expect(before - after, closeTo(expected, 1e-6));
       // Остались только верх и низ.
       expect(after, closeTo(4000, 1e-6));
@@ -694,6 +721,36 @@ void main() {
 
       expect(hasBlockingIssues(issues), isFalse);
     });
+
+    test('ширина окантовки 20 мм даёт замечание', () {
+      final issues = validateParams(const WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        rollBottom: 20,
+      ));
+
+      expect(
+        issues.any((issue) => issue.message.contains('вне диапазона')),
+        isTrue,
+      );
+      expect(hasBlockingIssues(issues), isFalse);
+    });
+
+    test('нестандартная ширина окантовки — без замечаний', () {
+      final issues = validateParams(const WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        rollBottom: 150,
+        rollTop: 210,
+        rollLeft: 240,
+        rollRight: 100,
+      ));
+
+      expect(
+        issues.any((issue) => issue.message.contains('Окантовка')),
+        isFalse,
+      );
+    });
   });
 
   group('Форматирование', () {
@@ -812,8 +869,8 @@ void _costsSummaryRules() {
       );
       // Расход тента на спайку молний тоже удваивается.
       expect(
-        twoSummary.edgeByRoll[EdgeRoll.roll100]! -
-            oneSummary.edgeByRoll[EdgeRoll.roll100]!,
+        twoSummary.edgeByRoll[100.0]! -
+            oneSummary.edgeByRoll[100.0]!,
         closeTo(oneSummary.zipperBandLengthMm, 0.01),
       );
     });

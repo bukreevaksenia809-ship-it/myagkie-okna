@@ -457,14 +457,14 @@ class _TitleBlock extends StatelessWidget {
         specs.fold<double>(0, (sum, spec) => sum + spec.productAreaM2);
     final totalEyelets =
         specs.fold<int>(0, (sum, spec) => sum + spec.eyeletCount);
-    final consumption = <EdgeRoll, double>{};
+    final consumption = <double, double>{};
     for (final spec in specs) {
       spec.edgeConsumption.forEach((roll, length) {
         consumption[roll] = (consumption[roll] ?? 0) + length;
       });
     }
     final consumptionLabels = consumption.entries.toList()
-      ..sort((a, b) => a.key.rawWidth.compareTo(b.key.rawWidth));
+      ..sort((a, b) => a.key.compareTo(b.key));
     final now = DateTime.now();
     final date =
         '${now.day.toString().padLeft(2, '0')}.${now.month.toString().padLeft(2, '0')}.${now.year}';
@@ -501,7 +501,7 @@ class _TitleBlock extends StatelessWidget {
                         ? '—'
                         : consumptionLabels
                             .map((entry) =>
-                                '${entry.key.shortLabel} — ${formatCm(entry.value)} см')
+                                '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см')
                             .join(' · '),
                   ),
                 ),
@@ -848,13 +848,13 @@ class _SidePanel extends StatelessWidget {
   String _widthList(List<WindowParams> windows) {
     final widths = <double>{};
     for (final window in windows) {
-      for (final roll in [
+      for (final raw in [
         window.rollBottom,
         window.rollTop,
         window.rollLeft,
         window.rollRight,
       ]) {
-        widths.add(roll.finishedWidth);
+        widths.add(WindowParams.finishedEdgeWidth(raw));
       }
     }
     final sorted = widths.toList()..sort();
@@ -867,14 +867,14 @@ class _SidePanel extends StatelessWidget {
       return WindowSpec.of(project.windows.first).notes;
     }
     final specs = [for (final window in project.windows) WindowSpec.of(window)];
-    final consumption = <EdgeRoll, double>{};
+    final consumption = <double, double>{};
     for (final spec in specs) {
       spec.edgeConsumption.forEach((roll, length) {
         consumption[roll] = (consumption[roll] ?? 0) + length;
       });
     }
     final labels = consumption.entries.toList()
-      ..sort((a, b) => a.key.rawWidth.compareTo(b.key.rawWidth));
+      ..sort((a, b) => a.key.compareTo(b.key));
     final totalEyelets =
         specs.fold<int>(0, (sum, spec) => sum + spec.eyeletCount);
     final first = project.windows.first;
@@ -892,7 +892,7 @@ class _SidePanel extends StatelessWidget {
       'Окантовка складывается пополам, напайка на плёнку $weldOverlap мм '
           'по всему периметру',
       'Расход окантовки: '
-          '${labels.map((entry) => '${entry.key.shortLabel} — ${formatCm(entry.value)} см').join(', ')}',
+          '${labels.map((entry) => '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см').join(', ')}',
       'Люверсы: всего $totalEyelets шт, шаг ${specs.first.eyeletStepLabel}',
       'Крепёж: ${specs.first.fastenerSummary.toLowerCase()}',
       'Плёнка: усадка ${formatPercent(first.shrinkagePercent)} учтена в раскрое',

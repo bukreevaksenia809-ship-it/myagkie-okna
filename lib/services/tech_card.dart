@@ -57,8 +57,8 @@ class TechMaterial {
   /// Единица измерения количества: мм, шт, м².
   final String unit;
 
-  /// Тип рулона окантовки (только для позиций окантовки).
-  final EdgeRoll? roll;
+  /// Тип рулона окантовки (только для позиций окантовки): ширина рулона, мм.
+  final double? roll;
 
   /// Сторона окна (только для позиций окантовки и спаек).
   final String? side;
@@ -111,9 +111,9 @@ class TechOperation {
   /// Что проверить по этой операции.
   final String control;
 
-  /// Суммарный расход по типам рулонов — заполняется у операции «Окантовка»
+  /// Суммарный расход по ширинам рулонов — заполняется у операции «Окантовка»
   /// и совпадает с [WindowLayers.edgeConsumption].
-  final Map<EdgeRoll, double> edgeTotals;
+  final Map<double, double> edgeTotals;
 
   /// Откуда взяты числа операции (поле модели) — для разбора в цехе.
   final String source;
@@ -176,8 +176,8 @@ class TechCard {
       'люверсы: ${spec.eyeletCount} шт, шаг ${spec.eyeletStepLabel} · '
       'крепёж: ${spec.fastenerSummary.toLowerCase()}';
 
-  /// Расход окантовки по типам рулонов — из модели.
-  Map<EdgeRoll, double> get edgeTotals => spec.edgeConsumption;
+  /// Расход окантовки по ширинам рулонов — из модели.
+  Map<double, double> get edgeTotals => spec.edgeConsumption;
 
   /// Всего окантовки, мм.
   double get edgeTotalMm =>
@@ -186,8 +186,8 @@ class TechCard {
   int get eyeletCount => spec.eyeletCount;
 
   /// Суммарный расход окантовки по всем картам заказа.
-  static Map<EdgeRoll, double> orderEdgeTotals(Iterable<TechCard> cards) {
-    final totals = <EdgeRoll, double>{};
+  static Map<double, double> orderEdgeTotals(Iterable<TechCard> cards) {
+    final totals = <double, double>{};
     for (final card in cards) {
       card.edgeTotals.forEach((roll, length) {
         totals[roll] = (totals[roll] ?? 0) + length;
@@ -210,12 +210,12 @@ class TechCard {
   }
 
   /// Подписи расхода окантовки: «Тент 100 мм — 654 см».
-  static List<String> edgeTotalLabels(Map<EdgeRoll, double> totals) {
+  static List<String> edgeTotalLabels(Map<double, double> totals) {
     final entries = totals.entries.toList()
-      ..sort((a, b) => a.key.rawWidth.compareTo(b.key.rawWidth));
+      ..sort((a, b) => a.key.compareTo(b.key));
     return [
       for (final entry in entries)
-        '${entry.key.shortLabel} — ${formatCm(entry.value)} см',
+        '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см',
     ];
   }
 }
@@ -237,7 +237,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     required String tool,
     required String control,
     List<TechMaterial> materials = const [],
-    Map<EdgeRoll, double> edgeTotals = const {},
+    Map<double, double> edgeTotals = const {},
     String source = '',
   }) {
     number += 1;
@@ -356,7 +356,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
 
   // -------------------------------------------------------- 4. окантовка
   final sideLengths = geometry.sideLengths;
-  final edgeTotals = <EdgeRoll, double>{};
+  final edgeTotals = <double, double>{};
   final edgeMaterials = <TechMaterial>[];
   for (var i = 0; i < EdgeSide.values.length && i < sideLengths.length; i++) {
     if (layers.isSideWelded(i)) continue;
@@ -366,8 +366,9 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     edgeMaterials.add(
       TechMaterial(
         name:
-            '${roll.shortLabel} → полоса '
-            '${formatMm(roll.finishedWidth)} мм (сложить пополам)',
+            '${edgeBandLabel(roll)} → полоса '
+            '${formatMm(WindowParams.finishedEdgeWidth(roll))} мм '
+            '(сложить пополам)',
         size: '${formatMm(length)} мм',
         quantity: length,
         roll: roll,
@@ -381,7 +382,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     edgeTotals[roll] = (edgeTotals[roll] ?? 0) + perimeter;
     edgeMaterials.add(
       TechMaterial(
-        name: '${roll.shortLabel} → окантовка выреза',
+        name: '${edgeBandLabel(roll)} → окантовка выреза',
         size: '${formatMm(perimeter)} мм',
         quantity: perimeter,
         roll: roll,
@@ -400,17 +401,20 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     title: 'Окантовка',
     description:
         'Окантовку цвета «${params.edgeColor.label.toLowerCase()}» '
-        '(${params.edgeMaterial.label}) сложить пополам по всей длине: рулон '
-        '100 → полоса 50 мм, 200 → 100 мм, 240 → 120 мм. Полосу наложить на '
-        'плёнку с напайкой ${formatMm(weldOverlap)} мм и '
-        '${isWeldedEdge ? 'приварить' : 'пришить'}. Итого по типам: $totalsText.',
+        '(${params.edgeMaterial.label}) сложить пополам по всей длине: готовая '
+        'полоса — половина рулона (пресеты: 100 → 50 мм, 200 → 100 мм, '
+        '240 → 120 мм; свою ширину на каждую сторону мастер берёт из карты). '
+        'Полосу наложить на плёнку с напайкой ${formatMm(weldOverlap)} мм и '
+        '${isWeldedEdge ? 'приварить' : 'пришить'}. Итого по ширинам: '
+        '$totalsText.',
     materials: edgeMaterials,
     tool: isWeldedEdge
         ? 'Раскроечный стол, нож, линейка; фен-сварочник, прижимной ролик'
         : 'Раскроечный стол, нож, линейка; швейная машина',
     control:
         'Полоса сложена ровно, кромки совпадают, готовая ширина равна '
-        'половине рулона; стыки сторон без зазоров и нахлёстов',
+        'половине рулона; ширина каждой стороны — из карты; стыки сторон без '
+        'зазоров и нахлёстов',
     edgeTotals: edgeTotals,
     source:
         'WindowLayers.edgeConsumption (стороны без спаек + контуры вырезов)',

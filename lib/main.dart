@@ -714,15 +714,15 @@ class _StatusBar extends StatelessWidget {
         specs.fold<double>(0, (sum, spec) => sum + spec.productAreaM2);
     final totalEyelets =
         specs.fold<int>(0, (sum, spec) => sum + spec.eyeletCount);
-    final consumption = <EdgeRoll, double>{};
+    final consumption = <double, double>{};
     for (final spec in specs) {
       spec.edgeConsumption.forEach((roll, length) {
         consumption[roll] = (consumption[roll] ?? 0) + length;
       });
     }
     final consumptionText = (consumption.entries.toList()
-          ..sort((a, b) => a.key.rawWidth.compareTo(b.key.rawWidth)))
-        .map((entry) => '${entry.key.shortLabel}: ${formatCm(entry.value)} см')
+          ..sort((a, b) => a.key.compareTo(b.key)))
+        .map((entry) => '${edgeBandLabel(entry.key)}: ${formatCm(entry.value)} см')
         .join(' · ');
 
     return Container(

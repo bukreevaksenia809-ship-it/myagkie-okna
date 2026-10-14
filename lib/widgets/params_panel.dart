@@ -76,6 +76,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
   final Map<(int, _CutoutField), TextEditingController> _cutoutControllers = {};
   final Map<(int, _CutoutField), String?> _cutoutErrors = {};
 
+  /// Поля «своя ширина, мм» окантовки — по одной на каждую сторону окна.
+  final Map<EdgeSide, TextEditingController> _edgeControllers = {};
+  final Map<EdgeSide, String?> _edgeErrors = {};
+
   late final TextEditingController _nameController;
   late final TextEditingController _customerController;
   late final TextEditingController _drawingController;
@@ -93,6 +97,11 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _controllers[ParamField.rollGap] = TextEditingController(
       text: _textFor(widget.project.rollGap),
     );
+    for (final side in EdgeSide.values) {
+      _edgeControllers[side] = TextEditingController(
+        text: _textFor(_params.rollForSide(side)),
+      );
+    }
     _nameController = TextEditingController(text: _params.projectName);
     _customerController = TextEditingController(text: _params.customer);
     _drawingController = TextEditingController(text: _params.drawingNumber);
@@ -115,6 +124,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _syncField(ParamField.rollGap, project.rollGap, force: windowChanged);
     _syncZipperFields(project.selected, force: windowChanged);
     _syncCutoutFields(project.selected, force: windowChanged);
+    _syncEdgeFields(project.selected, force: windowChanged);
 
     // Текстовые поля обновляем только если пользователь их не редактирует:
     // иначе набранное (и область ввода IME) сбрасывается на каждом символе.
@@ -193,8 +203,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _pruneErrors(_zipperBandErrors, params.zippers.length);
   }
 
-  void _syncCutoutFields(WindowParams params, {bool force = false}) {
-    for (var index = 0; index < params.cutouts.length; index++) {
+  void _syncCutoutFields(WindowParams params, {bool force = false}) {    for (var index = 0; index < params.cutouts.length; index++) {
       final cutout = params.cutouts[index];
       for (final field in _CutoutField.values) {
         _syncController(
@@ -252,6 +261,23 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _CutoutField.centerY => cutout.centerYMm,
   };
 
+  /// Синхронизация полей «своя ширина, мм» окантовки: текст переписывается
+  /// только если распарсенное значение разошлось с моделью — набор с
+  /// клавиатуры не сбивается (та же схема, что у полей молний и вырезов).
+  void _syncEdgeFields(WindowParams params, {bool force = false}) {
+    for (final side in EdgeSide.values) {
+      _syncController(
+        _edgeControllers.putIfAbsent(
+          side,
+          () => TextEditingController(text: _textFor(params.rollForSide(side))),
+        ),
+        params.rollForSide(side),
+        force: force,
+      );
+      if (force) _edgeErrors[side] = null;
+    }
+  }
+
   @override
   void dispose() {
     for (final controller in _controllers.values) {
@@ -264,6 +290,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
       controller.dispose();
     }
     for (final controller in _cutoutControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _edgeControllers.values) {
       controller.dispose();
     }
     _nameController.dispose();
@@ -310,6 +339,43 @@ class _ParamsPanelState extends State<ParamsPanel> {
       if (issue.field == field && issue.isError) return issue.message;
     }
     return null;
+  }
+
+  /// Копия параметров с новой шириной рулона окантовки для стороны.
+  WindowParams _withEdgeWidth(
+    WindowParams params,
+    EdgeSide side,
+    double value,
+  ) =>
+      switch (side) {
+        EdgeSide.bottom => params.copyWith(rollBottom: value),
+        EdgeSide.right => params.copyWith(rollRight: value),
+        EdgeSide.top => params.copyWith(rollTop: value),
+        EdgeSide.left => params.copyWith(rollLeft: value),
+      };
+
+  /// Быстрый пресет ширины окантовки.
+  void _applyEdgeWidth(EdgeSide side, double value) {
+    setState(() => _edgeErrors[side] = null);
+    _updateWindow(_withEdgeWidth(_params, side, value));
+  }
+
+  /// Ввод своей ширины рулона окантовки: 40…400 мм.
+  void _onEdgeWidthChanged(EdgeSide side, String raw) {
+    final value = parseMm(raw);
+    if (value == null) {
+      setState(() => _edgeErrors[side] = 'Введите число, например 150');
+      return;
+    }
+    if (value < minEdgeRollWidth || value > maxEdgeRollWidth) {
+      setState(
+        () => _edgeErrors[side] = 'Ширина от '
+            '${formatMm(minEdgeRollWidth)} до ${formatMm(maxEdgeRollWidth)} мм',
+      );
+      return;
+    }
+    setState(() => _edgeErrors[side] = null);
+    _updateWindow(_withEdgeWidth(_params, side, value));
   }
 
   @override
@@ -481,48 +547,34 @@ class _ParamsPanelState extends State<ParamsPanel> {
             subtitle: '${spec.edgeBySideSummary} · ${params.edgeColor.label}',
             children: [
               const Text(
-                'Рулон на каждую сторону (складывается пополам)',
+                'Ширина рулона на каждую сторону, мм — пресеты или своё '
+                'значение (складывается пополам)',
                 style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
               ),
               const SizedBox(height: 8),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: _rollPicker(
-                      'Низ',
-                      params.rollBottom,
-                      (roll) => params.copyWith(rollBottom: roll),
-                    ),
-                  ),
+                  Expanded(child: _edgeWidthEditor(params, EdgeSide.bottom)),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: _rollPicker(
-                      'Верх',
-                      params.rollTop,
-                      (roll) => params.copyWith(rollTop: roll),
-                    ),
-                  ),
+                  Expanded(child: _edgeWidthEditor(params, EdgeSide.top)),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: _edgeWidthEditor(params, EdgeSide.left)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _edgeWidthEditor(params, EdgeSide.right)),
                 ],
               ),
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _rollPicker(
-                      'Лево',
-                      params.rollLeft,
-                      (roll) => params.copyWith(rollLeft: roll),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _rollPicker(
-                      'Право',
-                      params.rollRight,
-                      (roll) => params.copyWith(rollRight: roll),
-                    ),
-                  ),
-                ],
+              Text(
+                'Готовая полоса — половина рулона. Своя ширина 40…400 мм; '
+                'если ширина меньше 100 мм, напайке 2 × '
+                '${formatMm(weldOverlap)} мм может не хватить ленты.',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
               ),
               const SizedBox(height: 14),
               const Text(
@@ -1366,42 +1418,50 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
-  Widget _rollPicker(
-    String label,
-    EdgeRoll selected,
-    WindowParams Function(EdgeRoll) apply,
-  ) {
-    return Row(
+  /// Ширина окантовки одной стороны: быстрые пресеты 100/200/240 и поле
+  /// «своя ширина, мм» (готовая полоса — половина рулона).
+  Widget _edgeWidthEditor(WindowParams params, EdgeSide side) {
+    final raw = params.rollForSide(side);
+    final finished = WindowParams.finishedEdgeWidth(raw);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 46,
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
-          ),
+        Text(
+          side.label,
+          style: const TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
         ),
-        Expanded(
-          child: DropdownButton<EdgeRoll>(
-            value: selected,
-            isExpanded: true,
-            isDense: true,
-            style: const TextStyle(fontSize: 12.5, color: Color(0xFF1B1F27)),
-            items: [
-              for (final roll in EdgeRoll.values)
-                DropdownMenuItem(
-                  value: roll,
-                  child: Text(
-                    roll.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12.5),
-                  ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final preset in WindowParams.edgePresets)
+              ChoiceChip(
+                label: Text(
+                  edgeBandLabel(preset, short: true),
+                  style: const TextStyle(fontSize: 12),
                 ),
-            ],
-            onChanged: (roll) {
-              if (roll != null) _updateWindow(apply(roll));
-            },
+                selected: (raw - preset).abs() < 1e-9,
+                visualDensity: VisualDensity.compact,
+                onSelected: (_) => _applyEdgeWidth(side, preset),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _edgeControllers[side],
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: 'Своя ширина, мм',
+            border: const OutlineInputBorder(),
+            isDense: true,
+            errorText: _edgeErrors[side],
+            errorMaxLines: 2,
+            helperText: 'готовая полоса ${formatMm(finished)} мм '
+                '(складывается пополам)',
+            helperMaxLines: 2,
           ),
+          onChanged: (value) => _onEdgeWidthChanged(side, value),
         ),
       ],
     );

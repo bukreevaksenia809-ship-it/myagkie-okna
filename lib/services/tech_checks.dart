@@ -103,9 +103,9 @@ const double _minEyeletMaterialMarginMm = 5;
 const double _minFinishedEdgeMm = 40;
 const double _maxFinishedEdgeMm = 120;
 
-/// Под напайку окантовка должна быть не уже 2 × [weldOverlap], иначе плёнке
-/// не за что зацепиться: шов остаётся без тела.
-const double _minEdgeForWeldMm = weldOverlap * 2;
+/// Под напайку нужна лента шириной с саму напайку плюс запас на кромку:
+/// 25 + 15 = 40 мм готовой полосы. Меньше — шов остаётся без тела.
+const double _minEdgeForWeldMm = weldOverlap + 15;
 
 /// Полотно плёнки уже 300 мм не удержать в окантовке.
 const double _minFilmSideMm = 300;
@@ -305,7 +305,7 @@ void _checkEdgeRolls(WindowParams params, List<TechCheck> checks) {
   final weakWeld = <EdgeSide>[];
 
   for (final side in EdgeSide.values) {
-    final finished = params.rollForSide(side).finishedWidth;
+    final finished = WindowParams.finishedEdgeWidth(params.rollForSide(side));
     if (finished < _minFinishedEdgeMm) narrow.add(side);
     if (finished > _maxFinishedEdgeMm) wide.add(side);
     if (finished < _minEdgeForWeldMm) weakWeld.add(side);

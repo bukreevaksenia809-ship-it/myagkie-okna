@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:soft_window_drawer/models/order_json.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/order_storage.dart';
@@ -18,7 +19,7 @@ const _window = WindowParams(
   zippers: [ZipperSpec(centered: false, offsetMm: 400)],
   pocket: true,
   drainHoles: true,
-  rollTop: EdgeRoll.roll200,
+  rollTop: 200,
 );
 
 void main() {
@@ -59,7 +60,7 @@ void main() {
     expect(window.zipperOffsetMm, 400);
     expect(window.pocket, isTrue);
     expect(window.drainHoles, isTrue);
-    expect(window.rollTop, EdgeRoll.roll200);
+    expect(window.rollTop, 200);
   });
 
   test('в файле есть сводка расхода для отчётности', () async {
@@ -92,5 +93,69 @@ void main() {
     File('${directory.path}/broken.json').writeAsStringSync('{это не json');
 
     expect(await listSavedOrders(directoryPath: directory.path), isEmpty);
+  });
+
+  test('свои ширины окантовки сохраняются и читаются без потерь', () async {
+    const custom = WindowParams(
+      projectName: 'Свои ширины',
+      bottomWidth: 1500,
+      topWidth: 1500,
+      leftHeight: 2520,
+      rightHeight: 2520,
+      rollBottom: 150,
+      rollTop: 210,
+      rollLeft: 95,
+      rollRight: 240,
+    );
+    final saved = await saveOrder(
+      const OrderProject(windows: [custom]),
+      directoryPath: directory.path,
+      now: DateTime(2026, 10, 4, 10, 0),
+    );
+
+    // В файле ширина записана числом.
+    final text = await File(saved.ref.id).readAsString();
+    expect(text, contains(RegExp(r'"rollBottom":\s*150')));
+    expect(text, contains(RegExp(r'"rollTop":\s*210')));
+
+    final loaded = (await loadOrder(saved)).windows.single;
+    expect(loaded.rollBottom, 150);
+    expect(loaded.rollTop, 210);
+    expect(loaded.rollLeft, 95);
+    expect(loaded.rollRight, 240);
+
+    // Прямой round-trip JSON тоже без потерь.
+    final restored = windowFromJson(windowToJson(custom));
+    expect(restored.rollBottom, 150);
+    expect(restored.rollTop, 210);
+    expect(restored.rollLeft, 95);
+    expect(restored.rollRight, 240);
+  });
+
+  test('старый JSON с именем пресета читается как ширина в мм', () {
+    // Формат прежних версий: ширина писалась именем enum.
+    final old = windowFromJson(const <String, dynamic>{
+      'bottomWidth': 1500,
+      'topWidth': 1500,
+      'leftHeight': 2520,
+      'rightHeight': 2520,
+      'rollBottom': 'roll200',
+      'rollTop': 'roll100',
+      'rollLeft': 'roll240',
+    });
+
+    expect(old.rollBottom, 200);
+    expect(old.rollTop, 100);
+    expect(old.rollLeft, 240);
+    // Незнакомое и битое значение откатывается к 100 мм.
+    expect(old.rollRight, 100);
+    expect(
+      windowFromJson(const <String, dynamic>{'rollBottom': 'roll500'}).rollBottom,
+      100,
+    );
+    expect(
+      windowFromJson(const <String, dynamic>{'rollBottom': -50}).rollBottom,
+      100,
+    );
   });
 }

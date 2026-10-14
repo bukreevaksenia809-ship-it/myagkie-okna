@@ -41,7 +41,7 @@ const _lifting = WindowParams(
   topWidth: 1400,
   leftHeight: 1800,
   rightHeight: 1800,
-  rollTop: EdgeRoll.roll200,
+  rollTop: 200,
   fastenerType: FastenerType.turnBuckles,
   drainHoles: true,
   drainCount: 3,
@@ -71,7 +71,7 @@ const _rich = WindowParams(
   topWidth: 2200,
   leftHeight: 2400,
   rightHeight: 2400,
-  rollBottom: EdgeRoll.roll200,
+  rollBottom: 200,
   fastenerType: FastenerType.frenchLocks,
   zippers: [
     ZipperSpec(centered: false, offsetMm: 600),
@@ -100,6 +100,23 @@ const _mesh = WindowParams(
   topWidth: 1200,
   leftHeight: 2000,
   rightHeight: 2000,
+);
+
+/// Окно со своими (нетиповыми) ширинами окантовки на каждую сторону:
+/// низ 150, право 210, верх 95, лево 240 мм — полосы на чертеже разной
+/// толщины.
+const _customEdges = WindowParams(
+  projectName: 'Мягкое окно веранды',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-019',
+  bottomWidth: 1800,
+  topWidth: 1800,
+  leftHeight: 2200,
+  rightHeight: 2200,
+  rollBottom: 150,
+  rollRight: 210,
+  rollTop: 95,
+  rollLeft: 240,
 );
 
 const _order = OrderProject(
@@ -155,6 +172,14 @@ void main() {
         viewport: const Size(1720, 1180),
         build: (key) => DrawingSheet(
           project: const OrderProject(windows: [_rich]),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      'svoi-shiriny': (
+        viewport: const Size(1720, 1080),
+        build: (key) => DrawingSheet(
+          project: const OrderProject(windows: [_customEdges]),
           captureKey: key,
           labelFontFamily: testFontFamily,
         ),

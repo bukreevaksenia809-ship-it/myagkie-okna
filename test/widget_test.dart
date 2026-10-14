@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/main.dart';
+import 'package:soft_window_drawer/models/order_project.dart';
+import 'package:soft_window_drawer/widgets/params_panel.dart';
 
 void main() {
   testWidgets('экран конструктора: панель, лист и переключение вкладок',
@@ -61,5 +63,52 @@ void main() {
     await tester.tap(find.byIcon(Icons.architecture));
     await tester.pumpAndSettle();
     expect(find.textContaining('Окно №1'), findsWidgets);
+  });
+
+  testWidgets('панель 420: своя ширина окантовки вводится руками',
+      (WidgetTester tester) async {
+    // Узкая панель (420) и высокое окно: весь раздел «Окантовка» построен,
+    // по ширине ничего не переполняется.
+    tester.view.physicalSize = const Size(420, 6000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    var project = const OrderProject();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) => ParamsPanel(
+              project: project,
+              issues: const [],
+              onChanged: (value) => setState(() => project = value),
+              onReset: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    // По полю на каждую сторону и по три пресета в каждой.
+    expect(find.text('Своя ширина, мм'), findsNWidgets(4));
+    expect(find.text('100 мм'), findsNWidgets(4));
+    expect(find.text('200 мм'), findsNWidgets(4));
+    expect(find.text('240 мм'), findsNWidgets(4));
+
+    // Первое поле — низ: своя ширина 150 мм уходит в модель.
+    final bottomField = find
+        .ancestor(
+          of: find.text('Своя ширина, мм').first,
+          matching: find.byType(TextField),
+        )
+        .first;
+    await tester.enterText(bottomField, '150');
+    await tester.pumpAndSettle();
+
+    expect(project.selected.rollBottom, 150);
+    expect(tester.takeException(), isNull);
   });
 }

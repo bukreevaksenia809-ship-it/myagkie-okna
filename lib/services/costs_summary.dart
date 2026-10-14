@@ -36,8 +36,9 @@ class CostsSummary {
         zipperCount += 1;
         zipperBandLengthMm += zipperLength;
         // Спайка — полоса тента 100 мм, сложенная пополам.
+        final bandRoll = WindowParams.edgePresets.first;
         edgeByRoll.update(
-          EdgeRoll.roll100,
+          bandRoll,
           (value) => value + zipperLength,
           ifAbsent: () => zipperLength,
         );
@@ -70,8 +71,8 @@ class CostsSummary {
 
   final Map<FilmMaterial, double> filmAreaByMaterial = {};
 
-  /// Расход окантовки по типам рулонов, мм.
-  final Map<EdgeRoll, double> edgeByRoll = {};
+  /// Расход окантовки по ширинам рулонов (мм → мм).
+  final Map<double, double> edgeByRoll = {};
 
   final Map<EyeletType, int> eyeletsByType = {};
 
@@ -110,10 +111,10 @@ class CostsSummary {
   /// Подписи расхода окантовки: «Тент 100 мм — 654 см».
   List<String> get edgeConsumptionLabels {
     final entries = edgeByRoll.entries.toList()
-      ..sort((a, b) => a.key.rawWidth.compareTo(b.key.rawWidth));
+      ..sort((a, b) => a.key.compareTo(b.key));
     return [
       for (final entry in entries)
-        '${entry.key.shortLabel} — ${formatCm(entry.value)} см',
+        '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см',
     ];
   }
 

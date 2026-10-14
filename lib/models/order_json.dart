@@ -76,10 +76,11 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'rightHeight': p.rightHeight,
       'topAlign': p.topAlign.name,
       'topOffsetMm': p.topOffsetMm,
-      'rollBottom': p.rollBottom.name,
-      'rollTop': p.rollTop.name,
-      'rollLeft': p.rollLeft.name,
-      'rollRight': p.rollRight.name,
+      // Ширина рулона окантовки — число миллиметров на каждую сторону.
+      'rollBottom': p.rollBottom,
+      'rollTop': p.rollTop,
+      'rollLeft': p.rollLeft,
+      'rollRight': p.rollRight,
       'edgeMaterial': p.edgeMaterial.name,
       'edgeColor': p.edgeColor.name,
       'eyeletType': p.eyeletType.name,
@@ -118,12 +119,10 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     rightHeight: _double(json['rightHeight'], fallback.rightHeight),
     topAlign: _enumByName(TopAlign.values, json['topAlign'], fallback.topAlign),
     topOffsetMm: _double(json['topOffsetMm'], fallback.topOffsetMm),
-    rollBottom:
-        _enumByName(EdgeRoll.values, json['rollBottom'], fallback.rollBottom),
-    rollTop: _enumByName(EdgeRoll.values, json['rollTop'], fallback.rollTop),
-    rollLeft: _enumByName(EdgeRoll.values, json['rollLeft'], fallback.rollLeft),
-    rollRight:
-        _enumByName(EdgeRoll.values, json['rollRight'], fallback.rollRight),
+    rollBottom: _edgeWidthFromJson(json['rollBottom'], fallback.rollBottom),
+    rollTop: _edgeWidthFromJson(json['rollTop'], fallback.rollTop),
+    rollLeft: _edgeWidthFromJson(json['rollLeft'], fallback.rollLeft),
+    rollRight: _edgeWidthFromJson(json['rollRight'], fallback.rollRight),
     edgeMaterial: _enumByName(
         EdgeMaterial.values, json['edgeMaterial'], fallback.edgeMaterial),
     edgeColor:
@@ -158,6 +157,26 @@ T _enumByName<T extends Enum>(List<T> values, Object? name, T fallback) {
 
 double _double(Object? value, double fallback) =>
     value is num ? value.toDouble() : fallback;
+
+/// Ширина рулона окантовки из JSON.
+///
+/// Новые заказы пишут число миллиметров («150»), старые — имя пресета
+/// («roll200»). Принимаем оба варианта: имя разбираем через
+/// [EdgeRoll.presetRawWidth], остальное — как число. Битые значения
+/// заменяются [fallback] (по умолчанию 100 мм).
+double _edgeWidthFromJson(Object? value, double fallback) {
+  if (value is num) {
+    final width = value.toDouble();
+    return width.isFinite && width > 0 ? width : fallback;
+  }
+  if (value is String) {
+    final preset = EdgeRoll.presetRawWidth(value);
+    if (preset != null) return preset;
+    final parsed = double.tryParse(value.replaceAll(',', '.'));
+    if (parsed != null && parsed.isFinite && parsed > 0) return parsed;
+  }
+  return fallback;
+}
 
 int _int(Object? value, int fallback) => value is num ? value.toInt() : fallback;
 

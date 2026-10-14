@@ -216,6 +216,54 @@ class PriceList {
         EdgeRoll.roll240 => edge240PerM,
       };
 
+  /// Цена окантовки для произвольной ширины рулона, ₽/м.
+  ///
+  /// Пресеты прайса (100/200/240 мм) — три опорные точки. Если ширина совпала
+  /// с пресетом, берём его цену. Для своей ширины цена линейно
+  /// интерполируется между двумя соседними пресетами, а за пределами
+  /// диапазона — экстраполируется по ближайшему отрезку: так нестандартная
+  /// ширина считается плавно и не «прыгает» в цену соседнего пресета.
+  ///
+  /// Деления на ноль нет: знаменатель — разница ширин соседних пресетов,
+  /// а она всегда положительна; на всякий случай она проверяется.
+  double edgePerMeterForWidth(double rawWidthMm) {
+    final points = <(double, double)>[
+      (EdgeRoll.roll100.rawWidth, edge100PerM),
+      (EdgeRoll.roll200.rawWidth, edge200PerM),
+      (EdgeRoll.roll240.rawWidth, edge240PerM),
+    ];
+    if (!rawWidthMm.isFinite) return points.first.$2;
+
+    // Точное попадание в пресет — цена пресета.
+    for (final point in points) {
+      if ((rawWidthMm - point.$1).abs() < 1e-9) return point.$2;
+    }
+
+    // Ищем отрезок между соседними пресетами; вне диапазона берём крайний.
+    var left = points.first;
+    var right = points.last;
+    if (rawWidthMm < points.first.$1) {
+      left = points[0];
+      right = points[1];
+    } else if (rawWidthMm > points.last.$1) {
+      left = points[points.length - 2];
+      right = points.last;
+    } else {
+      for (var i = 0; i < points.length - 1; i++) {
+        if (rawWidthMm >= points[i].$1 && rawWidthMm <= points[i + 1].$1) {
+          left = points[i];
+          right = points[i + 1];
+          break;
+        }
+      }
+    }
+
+    final span = right.$1 - left.$1;
+    if (span.abs() < 1e-9) return left.$2;
+    final t = (rawWidthMm - left.$1) / span;
+    return left.$2 + (right.$2 - left.$2) * t;
+  }
+
   /// Цена люверса с установкой по типу, ₽/шт.
   double eyeletPerEach(EyeletType type) =>
       (type == EyeletType.round10 ? eyeletPrice : eyeletOvalPrice) +
