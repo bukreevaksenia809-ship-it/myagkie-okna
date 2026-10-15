@@ -252,6 +252,15 @@ class _BuilderScreenState extends State<BuilderScreen> {
           ? DrawingSheet.safeBreakFractions(_project, viewport)
           : null;
 
+  /// Формат страницы PDF для вкладки.
+  ///
+  /// Чертёж — A4 в портретной ориентации: лист построен ровно в пропорциях
+  /// A4 и печатается без масштабирования и обрезки. Табличным листам
+  /// (расходы, смета, техкарта, раскрой) нужна широкая страница A3.
+  SheetPageFormat _pageFormatFor(SheetTab tab) => tab == SheetTab.drawing
+      ? SheetPageFormat.a4Portrait
+      : SheetPageFormat.a3LandscapeAuto;
+
   String get _sheetPrefix => switch (_tab) {
         SheetTab.drawing => 'Чертёж',
         SheetTab.roll => 'Раскладка',
@@ -274,6 +283,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
         params: params,
         namePrefix: _sheetPrefix,
         safeBreakFractions: _safeBreakFractions(viewport),
+        pageFormat: _pageFormatFor(_tab),
       );
       messenger.showSnackBar(
         SnackBar(
@@ -365,6 +375,8 @@ class _BuilderScreenState extends State<BuilderScreen> {
         await builder.addSheet(
           captureKey: _sheetKey,
           safeBreakFractions: _safeBreakFractionsFor(tab, viewport),
+          // Чертёж — на A4, табличные листы — на широкой странице A3.
+          pageFormat: _pageFormatFor(tab),
           onPageAdded: (pagesInSheet) async {
             // После каждой страницы обновляем счётчик и отдаём управление,
             // чтобы браузер успел перерисовать окно прогресса.

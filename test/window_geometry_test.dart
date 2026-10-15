@@ -654,6 +654,22 @@ void main() {
       expect(padding, greaterThan(0));
       expect(padding, lessThan(100));
       expect(size.width, closeTo(DrawingSheet.a4Width + padding, 0.01));
+      // Сам лист (без полей рабочей области) — ровно A4: и по размеру,
+      // и по пропорциям 1 : 1,4142 (допуск 0,5 %).
+      expect(DrawingSheet.a4PageCount(five), 5);
+      expect(
+        DrawingSheet.a4Height / DrawingSheet.a4Width,
+        closeTo(DrawingSheet.a4Aspect, DrawingSheet.a4Aspect * 0.005),
+      );
+      expect(DrawingSheet.a4Aspect, closeTo(1.4142, 0.005));
+
+      // Резать PDF можно только по границам страниц A4 — окно не рвётся.
+      expect(DrawingSheet.safeBreakFractions(five, viewport), [
+        closeTo(0.2, 1e-9),
+        closeTo(0.4, 1e-9),
+        closeTo(0.6, 1e-9),
+        closeTo(0.8, 1e-9),
+      ]);
 
       // 5 окон в 2 колонки — три ряда, три страницы, лист ниже.
       final two = DrawingSheet.detailedSheetSize(
@@ -680,6 +696,17 @@ void main() {
       );
       expect(single.height, greaterThan(viewport.height));
       expect(single.width, lessThan(viewport.width + 200));
+
+      // Одно окно — резать нечего; размер листа не зависит от окна программы.
+      expect(DrawingSheet.safeBreakFractions(const OrderProject(), viewport),
+          isNull);
+      expect(
+        DrawingSheet.detailedSheetSize(
+          const OrderProject(),
+          const Size(800, 600),
+        ),
+        single,
+      );
     });
 
     test('удаление окна не уходит ниже одного', () {

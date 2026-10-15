@@ -291,7 +291,7 @@ class SheetPdfBuilder {
     if (format.autoHeight) {
       // Табличный лист: высота страницы — по пропорциям снимка.
       final heightPoints = hasSize
-          ? pageWidthPoints * imageHeight! / imageWidth!
+          ? pageWidthPoints * imageHeight / imageWidth
           : _pageHeightMm * _mmToPoints;
       document.addPage(
         pw.Page(
@@ -313,8 +313,8 @@ class SheetPdfBuilder {
       var imageHeightPoints = pageHeightPoints;
       if (hasSize) {
         final scale = math.min(
-          pageWidthPoints / imageWidth!,
-          pageHeightPoints / imageHeight!,
+          pageWidthPoints / imageWidth,
+          pageHeightPoints / imageHeight,
         );
         imageWidthPoints = imageWidth * scale;
         imageHeightPoints = imageHeight * scale;
@@ -437,19 +437,21 @@ Future<void> _yieldToBrowser() async {
   await Future<void>.delayed(const Duration(milliseconds: 4));
 }
 
-/// Снимает лист чертежа и собирает PDF: A3 по ширине, длинный лист режется
-/// на страницы A3 последовательно, без «половинок» посередине.
+/// Снимает лист чертежа и собирает PDF на страницах A4 в портретной
+/// ориентации: длинный лист режется по границам страниц A4, окно не рвётся.
 Future<Uint8List> buildSheetPdf({
   required GlobalKey captureKey,
   required WindowParams params,
   double? pixelRatio,
   List<double>? safeBreakFractions,
+  SheetPageFormat pageFormat = SheetPageFormat.a4Portrait,
 }) async {
   final builder = SheetPdfBuilder(title: 'Чертёж ${params.drawingNumber}');
   await builder.addSheet(
     captureKey: captureKey,
     pixelRatio: pixelRatio,
     safeBreakFractions: safeBreakFractions,
+    pageFormat: pageFormat,
     // Страницы добавляются по одной, между ними отдаём управление.
     onPageAdded: (pagesInSheet) => _yieldToBrowser(),
   );
@@ -457,12 +459,17 @@ Future<Uint8List> buildSheetPdf({
 }
 
 /// Сохраняет лист чертежа в PDF: на десктопе — файлом, в браузере — скачиванием.
+///
+/// Формат страницы по умолчанию — A4 в портретной ориентации. Для табличных
+/// листов (расходы, смета, техкарта, раскрой) передавайте
+/// [SheetPageFormat.a3LandscapeAuto]: им нужна широкая страница.
 Future<SavedFile> exportSheetToPdf({
   required GlobalKey captureKey,
   required WindowParams params,
   double? pixelRatio,
   String namePrefix = 'Чертёж',
   List<double>? safeBreakFractions,
+  SheetPageFormat pageFormat = SheetPageFormat.a4Portrait,
   String? directoryPath,
 }) async {
   final bytes = await buildSheetPdf(
@@ -470,6 +477,7 @@ Future<SavedFile> exportSheetToPdf({
     params: params,
     pixelRatio: pixelRatio,
     safeBreakFractions: safeBreakFractions,
+    pageFormat: pageFormat,
   );
   return saveBytes(
     bytes,
@@ -493,18 +501,23 @@ Future<bool> printPdfBytes({
 }
 
 /// Открывает системный диалог печати с текущим листом.
+///
+/// Формат страницы по умолчанию — A4 в портретной ориентации: так лист
+/// чертежа печатается без масштабирования и обрезки.
 Future<bool> printSheet({
   required GlobalKey captureKey,
   required WindowParams params,
   required String jobName,
   double? pixelRatio,
   List<double>? safeBreakFractions,
+  SheetPageFormat pageFormat = SheetPageFormat.a4Portrait,
 }) async {
   final builder = SheetPdfBuilder(title: 'Чертёж ${params.drawingNumber}');
   await builder.addSheet(
     captureKey: captureKey,
     pixelRatio: pixelRatio,
     safeBreakFractions: safeBreakFractions,
+    pageFormat: pageFormat,
   );
   return builder.print(jobName: jobName);
 }
@@ -515,8 +528,13 @@ Future<bool> printSheetPages({
   required List<Uint8List> pageImages,
   required String jobName,
   String? title,
+  SheetPageFormat format = SheetPageFormat.a3LandscapeAuto,
 }) async {
-  final bytes = await buildMultiSheetPdf(pageImages, title: title ?? jobName);
+  final bytes = await buildMultiSheetPdf(
+    pageImages,
+    title: title ?? jobName,
+    format: format,
+  );
   return printPdfBytes(bytes: bytes, jobName: jobName);
 }
 
