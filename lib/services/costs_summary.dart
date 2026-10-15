@@ -16,44 +16,63 @@ class CostsSummary {
       // чисел: габарит без компенсации усадки (filmAreaM2) и фактический
       // раскрой с усадкой (filmAreaWithShrinkageM2) — именно он идёт в
       // расход и деньги, потому что плёнка режется по усадочным размерам.
-      filmAreaM2 += spec.filmCutAreaM2;
-      filmAreaWithShrinkageM2 += spec.filmCutAreaWithShrinkageM2;
+      //
+      // У скрина к заготовке добавляются полосы молний: это отдельные детали
+      // из того же материала (ширина полосы × высота полотна на каждую
+      // молнию). У ПВХ полоса молнии — тент, он идёт в расход окантовки.
+      final zipperBandAreaM2 = spec.screenZipperBandAreaM2;
+      filmAreaM2 += spec.filmCutAreaM2 + zipperBandAreaM2;
+      filmAreaWithShrinkageM2 +=
+          spec.filmCutAreaWithShrinkageM2 + zipperBandAreaM2;
       filmNetAreaM2 += spec.filmAreaM2;
       filmAreaByMaterial.update(
         spec.params.material,
-        (value) => value + spec.filmCutAreaM2,
-        ifAbsent: () => spec.filmCutAreaM2,
+        (value) => value + spec.filmCutAreaM2 + zipperBandAreaM2,
+        ifAbsent: () => spec.filmCutAreaM2 + zipperBandAreaM2,
       );
       filmAreaByMaterialWithShrinkage.update(
         spec.params.material,
-        (value) => value + spec.filmCutAreaWithShrinkageM2,
-        ifAbsent: () => spec.filmCutAreaWithShrinkageM2,
+        (value) => value + spec.filmCutAreaWithShrinkageM2 + zipperBandAreaM2,
+        ifAbsent: () =>
+            spec.filmCutAreaWithShrinkageM2 + zipperBandAreaM2,
       );
       spec.edgeConsumption.forEach((roll, length) {
         edgeByRoll.update(roll, (value) => value + length,
             ifAbsent: () => length);
       });
-      eyeletsByType.update(
-        spec.eyeletType,
-        (value) => value + spec.eyeletCount,
-        ifAbsent: () => spec.eyeletCount,
-      );
+      // Люверсы считаем по типу, который реально ставится: по сторонам —
+      // выбранный пользователем тип, в углах — всегда круглый. Так расход и
+      // смета сходятся с чертежом и с техкартой.
+      for (final eyelet in spec.layers.eyelets) {
+        final type = spec.layers.typeFor(eyelet);
+        eyeletsByType.update(type, (value) => value + 1, ifAbsent: () => 1);
+      }
       // Молний в окне может быть две — считаем каждую полосу отдельно,
       // иначе смета на окно с двумя молниями занижается вдвое.
-      // У скрина молний нет: тента, в который они впаиваются, тоже нет.
+      //
+      // У ПВХ полоса впаивается в тент: это спайка шириной 50 мм из рулона
+      // 100 мм (идёт в расход окантовки). У скрина полоса — подвёрнутая ткань
+      // (накладная полоса из скрина): она считается материалом скрина по
+      // площади, а работа подворота/шва — по длине полосы.
       final zipperLength = spec.layers.filmVisibleBounds.height;
-      final zipperBands =
-          spec.params.isScreen ? 0 : spec.layers.zipperBands.length;
-      for (var i = 0; i < zipperBands; i++) {
+      for (final band in spec.layers.zipperBands) {
         zipperCount += 1;
         zipperBandLengthMm += zipperLength;
-        // Спайка — полоса тента 100 мм, сложенная пополам.
-        final bandRoll = WindowParams.edgePresets.first;
-        edgeByRoll.update(
-          bandRoll,
-          (value) => value + zipperLength,
-          ifAbsent: () => zipperLength,
-        );
+        if (spec.params.isScreen) {
+          screenZipperCount += 1;
+          screenZipperBandLengthMm += zipperLength;
+          screenZipperBandAreaMm2 += band.width * zipperLength;
+          // Шов полосы: работа по длине полосы (шов 3 мм по её краям).
+          screenHemLengthMm += zipperLength;
+        } else {
+          // Спайка — полоса тента 100 мм, сложенная пополам.
+          final bandRoll = WindowParams.edgePresets.first;
+          edgeByRoll.update(
+            bandRoll,
+            (value) => value + zipperLength,
+            ifAbsent: () => zipperLength,
+          );
+        }
       }
       if (spec.params.pocket) {
         pocketCount += 1;
@@ -127,8 +146,19 @@ class CostsSummary {
   double pocketLengthMm = 0;
   double pocketWidthMm = 0;
 
-  /// Длина подворота скрина по периметру, мм (скрин — без окантовки).
+  /// Длина подворота скрина, мм: периметр готового изделия плюс швы полос
+  /// молний (у скрина полоса молнии тоже обрабатывается подворотом/швом).
   double screenHemLengthMm = 0;
+
+  /// Полосы молний у скрина: сколько штук и какова их общая площадь, мм².
+  int screenZipperCount = 0;
+  double screenZipperBandAreaMm2 = 0;
+
+  /// Суммарная длина полос молний скрина, мм (шов по длине полосы).
+  double screenZipperBandLengthMm = 0;
+
+  /// Площадь полос молний скрина, м² — материал скрина поверх заготовки.
+  double get screenZipperBandAreaM2 => screenZipperBandAreaMm2 / 1000000;
 
   int strapCount = 0;
 
@@ -205,16 +235,22 @@ class CostsSummary {
         if (weldLengthMm > 0)
           'Спайка с соседними окнами: ${formatMm(weldLengthMm)} мм '
               '(окантовка на этих сторонах не ставится)',
-        if (zipperCount > 0)
+        if (zipperCount - screenZipperCount > 0)
           'Спайка молнии: тент ${formatMm(100)} мм × '
-              '${formatMm(zipperBandLengthMm)} мм — $zipperCount шт',
+              '${formatMm(zipperBandLengthMm - screenZipperBandLengthMm)} мм — '
+              '${zipperCount - screenZipperCount} шт',
+        if (screenZipperCount > 0)
+          'Полоса молнии из скрина: $screenZipperCount шт, ткань '
+              '${formatMeters(screenZipperBandAreaM2)} м², шов '
+              '${formatMm(screenSeamMm)} мм по краям полосы (длина '
+              '${formatMm(screenZipperBandLengthMm)} мм)',
         if (pocketCount > 0)
           'Карман (низ/верх): $pocketCount шт, полоса '
               '${formatMm(pocketLengthMm)} мм',
         if (screenHemLengthMm > 0)
           'Подворот скрина и шов ${formatMm(screenSeamMm)} мм: '
-              '${formatMm(screenHemLengthMm)} мм периметра — расход скрина '
-              'считается по площади заготовки',
+              '${formatMm(screenHemLengthMm)} мм периметра и полос — расход '
+              'скрина считается по площади заготовки и полос молний',
         if (drainTotal > 0) 'Дренаж Ø6 мм: $drainTotal шт',
         if (strapCount > 0)
           'Подъёмные ремни: ${formatMm(50)} × ${formatMm(500)} мм — '

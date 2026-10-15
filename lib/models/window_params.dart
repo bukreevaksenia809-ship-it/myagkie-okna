@@ -12,7 +12,8 @@ enum WindowType {
 
   String get hint => switch (this) {
         WindowType.fixed =>
-          'Только круглые люверсы по периметру. Молния и карман — по желанию',
+          'Люверсы по периметру (любого типа, в углах круглые). '
+              'Молния и карман — по желанию',
         WindowType.lifting =>
           'Сверху ряд люверсов, ниже скобы; сверху висят подъёмные ремни',
       };
@@ -59,7 +60,7 @@ enum FilmMaterial {
   screen(
     'Скрин',
     'скрин-ткань ПВХ',
-    [1400, 1800, 2000, 2400, 2600],
+    [1400, 1800, 2000, 2400, 2500, 2600, 5000],
   );
 
   const FilmMaterial(this.label, this.thickness, this.rollWidths);
@@ -318,14 +319,22 @@ ParamField hemFieldForSide(EdgeSide side) => switch (side) {
     };
 
 /// Припуск на сварку (напайка, запайка): на сколько плёнка ПВХ заходит под
-/// окантовку. Значение по умолчанию; у каждого окна своё поле
-/// [WindowParams.weldOverlapMm] (5…60 мм), введённое руками.
-const double defaultWeldOverlapMm = 25;
+/// окантовку. Значение по умолчанию — **5 мм** (подсов ПВХ под тент у цеха
+/// 5–6 мм); у каждого окна своё поле [WindowParams.weldOverlapMm] (5…60 мм),
+/// введённое руками.
+const double defaultWeldOverlapMm = 5;
 const double minWeldOverlapMm = 5;
 const double maxWeldOverlapMm = 60;
 
 /// Шов сварки подворота скрина, мм — с каждой стороны подворота.
 const double screenSeamMm = 3;
+
+/// Минимальное расстояние от края полосы молнии до кромки подворота скрина, мм.
+///
+/// Полоса молнии у скрина — подвёрнутая ткань (или накладная полоса из скрина);
+/// если она подходит к линии подворота ближе 100 мм, шов полосы и шов подворота
+/// сливаются, кромка теряет тело и рвётся по люверсу/молнии.
+const double minScreenZipperHemMm = 100;
 
 /// Подворот скрина: сколько материала подворачивается на каждую сторону.
 ///
@@ -496,6 +505,8 @@ class WindowParams {
     this.cutouts = const [],
     this.weldedSides = const [],
     this.removeEyeletsOnWelded = true,
+    this.noEyeletsTop = false,
+    this.noEyeletsBottom = false,
     this.pocket = false,
     this.pocketTop = false,
     this.pocketWidth = pocketFinishedWidth,
@@ -608,6 +619,17 @@ class WindowParams {
   /// только рвёт тент. Кнопка в панели позволяет оставить крепёж.
   final bool removeEyeletsOnWelded;
 
+  /// Не ставить люверсы сверху.
+  ///
+  /// Сторона остаётся совсем без крепежа: там предполагается спайка с соседним
+  /// окном или крепление полотна к стене/раме другим способом. Углы стороны
+  /// тоже не ставятся — они принадлежат ей по правилу обхода (см.
+  /// `WindowLayers.eyelets`).
+  final bool noEyeletsTop;
+
+  /// Не ставить люверсы снизу — зеркально [noEyeletsTop].
+  final bool noEyeletsBottom;
+
   /// Карман из тента по нижней кромке: утяжитель заводится в его полость.
   /// У скрина карман образуется верхним/нижним подворотом.
   final bool pocket;
@@ -662,9 +684,43 @@ class WindowParams {
   double get effectiveLeftHeight => leftHeight + allowanceHeightMm;
   double get effectiveRightHeight => rightHeight + allowanceHeightMm;
 
-  /// У глухого окна ставятся только круглые люверсы.
-  EyeletType get effectiveEyeletType =>
-      windowType == WindowType.fixed ? EyeletType.round10 : eyeletType;
+  /// Тип люверса, который реально ставится.
+  ///
+  /// Тип выбирает пользователь, и он действует на **любом** типе окна, включая
+  /// глухое: овальный 42×22 под скобу — это фурнитура, а не признак
+  /// подъёмного окна. Принудительной замены на круглый для глухих больше нет.
+  /// Единственное правило по типу — «в углах круглый»: его применяет
+  /// `WindowLayers.typeFor`, потому что угол тянет по диагонали и овальный
+  /// люверс, развёрнутый вдоль одной стороны, там не держит.
+  EyeletType get effectiveEyeletType => eyeletType;
+
+  /// Стороны, на которых люверсы не ставятся (кнопки панели).
+  ///
+  /// Порядок обхода углов: низ, право, верх, лево.
+  List<EdgeSide> get eyeletlessSides => [
+        if (noEyeletsBottom) EdgeSide.bottom,
+        if (noEyeletsTop) EdgeSide.top,
+      ];
+
+  /// Есть ли сторона без люверсов.
+  bool get hasEyeletlessSides => noEyeletsTop || noEyeletsBottom;
+
+  /// Сторона окна без люверсов.
+  bool hasEyeletsOn(EdgeSide side) => switch (side) {
+        EdgeSide.bottom => !noEyeletsBottom,
+        EdgeSide.top => !noEyeletsTop,
+        EdgeSide.left || EdgeSide.right => true,
+      };
+
+  /// Подпись сторон без люверсов: «верх», «низ», «низ и верх».
+  String get eyeletlessSidesLabel {
+    final labels = [
+      for (final side in eyeletlessSides) side.label.toLowerCase(),
+    ];
+    if (labels.isEmpty) return '';
+    if (labels.length == 1) return labels.first;
+    return '${labels.sublist(0, labels.length - 1).join(', ')} и ${labels.last}';
+  }
 
   /// Доступные ширины рулонов для выбранного материала, мм.
   List<double> get availableRollWidths => material.rollWidths;
@@ -800,6 +856,8 @@ class WindowParams {
     List<Cutout>? cutouts,
     List<EdgeSide>? weldedSides,
     bool? removeEyeletsOnWelded,
+    bool? noEyeletsTop,
+    bool? noEyeletsBottom,
     bool? pocket,
     bool? pocketTop,
     double? pocketWidth,
@@ -841,6 +899,8 @@ class WindowParams {
       weldedSides: weldedSides ?? this.weldedSides,
       removeEyeletsOnWelded:
           removeEyeletsOnWelded ?? this.removeEyeletsOnWelded,
+      noEyeletsTop: noEyeletsTop ?? this.noEyeletsTop,
+      noEyeletsBottom: noEyeletsBottom ?? this.noEyeletsBottom,
       pocket: pocket ?? this.pocket,
       pocketTop: pocketTop ?? this.pocketTop,
       pocketWidth: pocketWidth ?? this.pocketWidth,
@@ -1008,6 +1068,8 @@ class WindowParams {
               '${cutout.centerXMm}:${cutout.centerYMm}',
         for (final side in weldedSides) side.name,
         removeEyeletsOnWelded,
+        noEyeletsTop,
+        noEyeletsBottom,
         zipperEnabled,
         zipperCentered,
         zipperOffsetMm,

@@ -42,6 +42,7 @@ class _PanelHostState extends State<_PanelHost> {
 void main() {
   _screenAndWeldRules();
   _eyeletIntervalPanelRules();
+  _rollWidthsAndEyeletsPanelRules();
   testWidgets('панель 420: спайка добавляет окно, припуски идут в модель', (
     WidgetTester tester,
   ) async {
@@ -312,6 +313,80 @@ void _eyeletIntervalPanelRules() {
     await tester.enterText(find.byKey(const Key('eyelet-step-field')), '500');
     await tester.pumpAndSettle();
     expect(hostKey.currentState!.project.selected.eyeletStep, 500);
+    expect(tester.takeException(), isNull);
+  });
+}
+
+/// Панель: новые ширины рулонов скрина, стороны без люверсов и молния скрина.
+void _rollWidthsAndEyeletsPanelRules() {
+  testWidgets('панель: ширины 2500/5000, люверсы по сторонам, молния скрина', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 14000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final hostKey = GlobalKey<_PanelHostState>();
+    await tester.pumpWidget(_PanelHost(key: hostKey));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    // --- Скрин: новые ширины рулонов появляются в списке ---
+    final screenChip = find.text('Скрин');
+    await tester.ensureVisible(screenChip);
+    await tester.tap(screenChip);
+    await tester.pumpAndSettle();
+
+    expect(find.text('250 см'), findsOneWidget);
+    expect(find.text('500 см'), findsOneWidget);
+    await tester.ensureVisible(find.text('500 см'));
+    await tester.tap(find.text('500 см'));
+    await tester.pumpAndSettle();
+    expect(
+      hostKey.currentState!.project.rollWidthFor(FilmMaterial.screen),
+      5000,
+    );
+
+    // --- Стороны без люверсов: два переключателя уходят в модель ---
+    final topSwitch = find.byKey(const Key('no-eyelets-top'));
+    await tester.ensureVisible(topSwitch);
+    await tester.tap(topSwitch);
+    await tester.pumpAndSettle();
+    expect(hostKey.currentState!.project.selected.noEyeletsTop, isTrue);
+    expect(
+      find.textContaining('без сторон: верх'),
+      findsOneWidget,
+    );
+
+    final bottomSwitch = find.byKey(const Key('no-eyelets-bottom'));
+    await tester.ensureVisible(bottomSwitch);
+    await tester.tap(bottomSwitch);
+    await tester.pumpAndSettle();
+    expect(hostKey.currentState!.project.selected.noEyeletsBottom, isTrue);
+    expect(
+      find.textContaining('без сторон: низ и верх'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    // --- Овальный люверс доступен на любом окне (скрине) ---
+    final ovalChip = find.text('Овальный 42×22 мм');
+    await tester.ensureVisible(ovalChip);
+    await tester.tap(ovalChip);
+    await tester.pumpAndSettle();
+    expect(
+      hostKey.currentState!.project.selected.eyeletType,
+      EyeletType.oval42x22,
+    );
+
+    // --- Молния на скрине: кнопка есть и она работает ---
+    final addZipper = find.text('Добавить молнию');
+    await tester.ensureVisible(addZipper);
+    await tester.tap(addZipper);
+    await tester.pumpAndSettle();
+    expect(hostKey.currentState!.project.selected.zippers, hasLength(1));
+    expect(find.text('Ширина полосы'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

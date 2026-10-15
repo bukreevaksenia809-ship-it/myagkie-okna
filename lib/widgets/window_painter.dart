@@ -883,10 +883,12 @@ class WindowDrawingPainter extends CustomPainter {
     );
   }
 
-  /// Молнии впаяны в полосы тента: полоса, по её краям зоны напайки,
-  /// по центру — застёжка из зубцов с бегунком. У скрина тента нет.
+  /// Молния: у ПВХ впаяна в полосу тента, у скрина — в подвёрнутую полосу
+  /// (накладную полосу) из того же скрина.
+  ///
+  /// У ПВХ по краям полосы рисуются зоны напайки [WindowParams.weldOverlapMm],
+  /// у скрина той же полосой идёт шов [screenSeamMm] мм серым цветом скрина.
   void _paintZipper(Canvas canvas) {
-    if (params.isScreen) return;
     for (var i = 0; i < layers.zippers.length; i++) {
       _paintOneZipper(canvas, layers.zippers[i], layers.zipperBands[i], i);
     }
@@ -912,60 +914,93 @@ class WindowDrawingPainter extends CustomPainter {
     canvas.rotate(angle);
 
     final rect = Rect.fromLTWH(0, -half, length, bandWidth);
-    // Полоса тента под молнию — с тем же тканевым видом, что окантовка.
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            _edgeDark,
-            _edgeColor,
-            Color.lerp(_edgeColor, Colors.white, 0.2)!,
-            _edgeColor,
-            _edgeDark,
-          ],
-          stops: const [0, 0.2, 0.45, 0.8, 1],
-        ).createShader(rect),
-    );
-    canvas.save();
-    canvas.clipRect(rect);
-    final texture = Paint()
-      ..color = _edgeDark.withValues(alpha: 0.10)
-      ..strokeWidth = 1;
-    for (var x = 0.0; x < length; x += 4) {
-      canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), texture);
-    }
-    canvas.restore();
-
-    // Зоны напайки по обоим краям полосы.
-    for (final side in [-1.0, 1.0]) {
-      final weldRect = side > 0
-          ? Rect.fromLTRB(rect.left, half - weld, rect.right, half)
-          : Rect.fromLTRB(rect.left, -half, rect.right, -half + weld);
-      canvas.save();
-      canvas.clipRect(weldRect);
-      final hatch = Paint()
-        ..color = _edgeDark.withValues(alpha: 0.45)
-        ..strokeWidth = 1;
-      for (var x = weldRect.left - weldRect.height;
-          x < weldRect.right + weldRect.height;
-          x += 7) {
+    if (params.isScreen) {
+      // Полоса скрина: серая ткань, как подворот, с тем же швом 3 мм по краям
+      // (вместо зон напайки 25 мм у тента).
+      canvas.drawRect(
+        rect,
+        Paint()..color = const Color(0xFFB9BEC4).withValues(alpha: 0.85),
+      );
+      final seam = math.max(layout.px(screenSeamMm), 1.2);
+      for (final y in [rect.top, rect.bottom]) {
         canvas.drawLine(
-          Offset(x, weldRect.top),
-          Offset(x + weldRect.height, weldRect.bottom),
-          hatch,
+          Offset(rect.left, y),
+          Offset(rect.right, y),
+          Paint()
+            ..color = const Color(0xFF8C9298)
+            ..strokeWidth = seam,
+        );
+        canvas.drawLine(
+          Offset(rect.left, y),
+          Offset(rect.right, y),
+          Paint()
+            ..color = Colors.white.withValues(alpha: 0.85)
+            ..strokeWidth = math.max(seam * 0.35, 0.6),
         );
       }
-      canvas.restore();
-      canvas.drawRect(
-        weldRect,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1
-          ..color = _edgeDark.withValues(alpha: 0.6),
+      _label(
+        canvas,
+        'шов ${formatMm(screenSeamMm)} мм по краям полосы',
+        Offset(length * 0.5, -half - 13),
+        small: true,
+        color: const Color(0xFF5B6B80),
       );
+    } else {
+      // Полоса тента под молнию — с тем же тканевым видом, что окантовка.
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              _edgeDark,
+              _edgeColor,
+              Color.lerp(_edgeColor, Colors.white, 0.2)!,
+              _edgeColor,
+              _edgeDark,
+            ],
+            stops: const [0, 0.2, 0.45, 0.8, 1],
+          ).createShader(rect),
+      );
+      canvas.save();
+      canvas.clipRect(rect);
+      final texture = Paint()
+        ..color = _edgeDark.withValues(alpha: 0.10)
+        ..strokeWidth = 1;
+      for (var x = 0.0; x < length; x += 4) {
+        canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), texture);
+      }
+      canvas.restore();
+
+      // Зоны напайки по обоим краям полосы.
+      for (final side in [-1.0, 1.0]) {
+        final weldRect = side > 0
+            ? Rect.fromLTRB(rect.left, half - weld, rect.right, half)
+            : Rect.fromLTRB(rect.left, -half, rect.right, -half + weld);
+        canvas.save();
+        canvas.clipRect(weldRect);
+        final hatch = Paint()
+          ..color = _edgeDark.withValues(alpha: 0.45)
+          ..strokeWidth = 1;
+        for (var x = weldRect.left - weldRect.height;
+            x < weldRect.right + weldRect.height;
+            x += 7) {
+          canvas.drawLine(
+            Offset(x, weldRect.top),
+            Offset(x + weldRect.height, weldRect.bottom),
+            hatch,
+          );
+        }
+        canvas.restore();
+        canvas.drawRect(
+          weldRect,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = _edgeDark.withValues(alpha: 0.6),
+        );
+      }
     }
 
     canvas.drawRect(
@@ -973,7 +1008,7 @@ class WindowDrawingPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.2
-        ..color = _edgeDark,
+        ..color = params.isScreen ? const Color(0xFF5B6B80) : _edgeDark,
     );
 
     // Застёжка: два ряда зубцов и щель между ними.
@@ -1068,11 +1103,11 @@ class WindowDrawingPainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// Цепочка размеров вокруг молний: слева до спайки, спайка, справа до кромки.
+  /// Цепочка размеров вокруг молний: слева до полосы, полоса, справа до кромки.
   ///
   /// У каждой следующей молнии цепочка идёт ниже, чтобы подписи не налезали.
+  /// У скрина цепочка меряется до кромки подворота (видимого контура).
   void _paintZipperDimensions(Canvas canvas) {
-    if (params.isScreen) return;
     final all = layers.zipperGapsAll;
     if (all.isEmpty) return;
     final bounds = layers.filmVisibleBounds;

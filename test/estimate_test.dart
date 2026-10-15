@@ -227,6 +227,104 @@ void main() {
     expect(hemLine.quantity, closeTo(8.0, 1e-9));
   });
 
+  test('смета скрина с молнией: ткань скрина, молния и работа шва', () {
+    const screen = WindowParams(
+      material: FilmMaterial.screen,
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      hemBottomMm: 40,
+      hemRightMm: 40,
+      hemTopMm: 40,
+      hemLeftMm: 40,
+      zippers: [ZipperSpec(centered: true)],
+    );
+    const project = OrderProject(windows: [screen]);
+    final summary = CostsSummary(project);
+    final prices = PriceList.defaults();
+    final estimate = Estimate.of(project, prices);
+    final titles = estimate.lines.map((line) => line.title).join(' | ');
+
+    expect(titles, contains('Полотно: Скрин'));
+    expect(titles, contains('Молния тракторная'));
+    expect(titles, contains('Подворот скрина'));
+    expect(titles, isNot(contains('Окантовка')));
+
+    // Полоса молнии — материал скрина: 50 × 2000 = 0,1 м² поверх заготовки.
+    expect(summary.screenZipperBandAreaM2, closeTo(0.1, 1e-9));
+    expect(summary.filmAreaWithShrinkageM2, closeTo(4.3264 + 0.1, 1e-9));
+    final filmLine = estimate.lines
+        .firstWhere((line) => line.title.startsWith('Полотно'));
+    expect(filmLine.quantity, closeTo(4.4264, 1e-9));
+    expect(filmLine.unitPrice, prices.filmScreenPerM2);
+    expect(filmLine.note, contains('полосы молний'));
+
+    // Работа: периметр 8 м плюс шов полосы 2 м — по цене подворота скрина.
+    final hemLine = estimate.lines
+        .firstWhere((line) => line.title.startsWith('Подворот скрина'));
+    expect(hemLine.quantity, closeTo(10.0, 1e-9));
+    expect(hemLine.unitPrice, prices.screenHemPerM);
+    expect(hemLine.note, contains('швы полос молний'));
+
+    // Молния: 2 м по цене прайса, подпись про полосу скрина.
+    final zipperLine = estimate.lines
+        .firstWhere((line) => line.title.startsWith('Молния'));
+    expect(zipperLine.quantity, closeTo(2.0, 1e-9));
+    expect(zipperLine.unitPrice, prices.zipperPerM);
+    expect(zipperLine.note, contains('скрина'));
+    // Полосы тента (окантовки) у скрина в расходе нет.
+    expect(summary.edgeByRoll, isEmpty);
+  });
+
+  test('смета: сторона без люверсов уменьшает строку люверсов', () {
+    const withoutTop = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 1500,
+      rightHeight: 1500,
+      noEyeletsTop: true,
+    );
+    final summary = CostsSummary(const OrderProject(windows: [withoutTop]));
+    final estimate = Estimate.ofWindow(withoutTop, PriceList.defaults());
+    final eyeletLine = estimate.lines
+        .firstWhere((line) => line.title.startsWith('Люверсы'));
+
+    // Окно 2000 × 1500 даёт 24 люверса, верх без люверсов — 17.
+    expect(summary.eyeletTotal, 17);
+    expect(eyeletLine.quantity, 17);
+    expect(eyeletLine.note, contains('установка'));
+  });
+
+  test('смета: овальный люверс на глухом окне — по цене овального', () {
+    const fixedOval = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 1500,
+      rightHeight: 1500,
+      eyeletType: EyeletType.oval42x22,
+    );
+    final prices = PriceList.defaults();
+    final estimate = Estimate.ofWindow(fixedOval, prices);
+    final ovalLine = estimate.lines.firstWhere(
+      (candidate) => candidate.title.contains(EyeletType.oval42x22.label),
+    );
+    final roundLine = estimate.lines.firstWhere(
+      (candidate) => candidate.title.contains(EyeletType.round10.label),
+    );
+
+    // 24 люверса: 20 овальных по сторонам и 4 круглых в углах.
+    expect(ovalLine.quantity, 20);
+    expect(ovalLine.unitPrice, prices.eyeletOvalPrice + prices.eyeletInstall);
+    expect(roundLine.quantity, 4);
+    expect(roundLine.unitPrice, prices.eyeletPrice + prices.eyeletInstall);
+    expect(
+      prices.eyeletOvalPrice,
+      greaterThan(prices.eyeletPrice),
+      reason: 'овальный люверс дороже круглого',
+    );
+  });
+
   test('смета: своя ширина окантовки 150 мм — интерполяция цены и подпись', () {
     final prices = PriceList.defaults();
     const custom = WindowParams(

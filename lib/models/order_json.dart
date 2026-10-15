@@ -103,6 +103,9 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'zippers': [for (final zipper in p.zippers) zipper.toJson()],
       'cutouts': [for (final cutout in p.cutouts) cutout.toJson()],
       'weldedSides': [for (final side in p.weldedSides) side.name],
+      // Кнопки «не ставить люверсы сверху/снизу».
+      'noEyeletsTop': p.noEyeletsTop,
+      'noEyeletsBottom': p.noEyeletsBottom,
       // Старые поля оставлены, чтобы заказы читались старыми версиями.
       'zipperEnabled': p.zipperEnabled,
       'zipperCentered': p.zipperCentered,
@@ -164,6 +167,8 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     zippers: _zippersFromJson(json),
     cutouts: _cutoutsFromJson(json['cutouts']),
     weldedSides: _weldedFromJson(json['weldedSides']),
+    noEyeletsTop: _bool(json['noEyeletsTop'], fallback.noEyeletsTop),
+    noEyeletsBottom: _bool(json['noEyeletsBottom'], fallback.noEyeletsBottom),
     pocket: _bool(json['pocket'], fallback.pocket),
     pocketTop: _bool(json['pocketTop'], fallback.pocketTop),
     pocketWidth: _double(json['pocketWidth'], fallback.pocketWidth),

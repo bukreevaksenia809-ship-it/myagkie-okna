@@ -267,10 +267,15 @@ class CostsSheet extends StatelessWidget {
       if (summary.screenHemLengthMm > 0)
         ('Скрин: подворот и шов 3 мм', [
           ..._screenHemLabels(),
-          'Длина подворота по периметру: '
-              '${formatCm(summary.screenHemLengthMm)} см',
+          summary.screenZipperCount > 0
+              ? 'Длина подворота по периметру и швов полос молний: '
+                  '${formatCm(summary.screenHemLengthMm)} см '
+                  '(полосы — ${formatCm(summary.screenZipperBandLengthMm)} см)'
+              : 'Длина подворота по периметру: '
+                  '${formatCm(summary.screenHemLengthMm)} см',
           'Расход скрина — по площади заготовок в раскрое (готовый размер '
-              'плюс подворот по сторонам)',
+              'плюс подворот по сторонам'
+              '${summary.screenZipperCount > 0 ? ' и полосы молний' : ''})',
         ]),
       ('Люверсы', [
         ...summary.eyeletLabels,

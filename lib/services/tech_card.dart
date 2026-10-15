@@ -207,14 +207,16 @@ class TechCard {
   }
 
   /// Люверсы заказа по типам: тип → количество.
+  ///
+  /// Тип берётся из [WindowLayers.typeFor]: по сторонам — выбранный, в углах —
+  /// круглый, поэтому сводка сходится и с чертежом, и со сметой.
   static Map<EyeletType, int> orderEyeletsByType(Iterable<TechCard> cards) {
     final totals = <EyeletType, int>{};
     for (final card in cards) {
-      totals.update(
-        card.spec.eyeletType,
-        (value) => value + card.eyeletCount,
-        ifAbsent: () => card.eyeletCount,
-      );
+      for (final eyelet in card.spec.layers.eyelets) {
+        final type = card.spec.layers.typeFor(eyelet);
+        totals.update(type, (value) => value + 1, ifAbsent: () => 1);
+      }
     }
     return totals;
   }
@@ -553,6 +555,9 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         'вверх, поэтому факт не больше заданного), отступ от угла '
         '${formatMm(params.eyeletCornerOffset)} мм. В углах только круглые '
         '${EyeletType.round10.label}: овальный люверс угол не держит. '
+        '${params.hasEyeletlessSides ? 'Люверсы не ставятся на сторонах: '
+            '${layers.eyeletlessSidesLabel} — сторона остаётся без крепежа '
+            '(там спайка с соседним окном или крепление к стене). ' : ''}'
         '${isScreen ? 'Люверсы ставятся по линии подворота; крепёж скрина — '
                   'только люверсы, без скоб, замков и ремней.' : params.isLifting ? '${spec.fastenerSummary}: сверху ряд люверсов под '
                   'саморезы, низ и бока — '
@@ -577,22 +582,25 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           note: 'кроме углов',
         ),
       if (params.isLifting && !isScreen) ...[
-        TechMaterial(
-          name: 'Саморезы по верхнему ряду',
-          size: '${layers.topEyelets.length} шт',
-          quantity: layers.topEyelets.length.toDouble(),
-          unit: 'шт',
-          note: 'верхняя кромка крепится к раме',
-        ),
-        TechMaterial(
-          name:
-              'Крепёж низа и боков: '
-              '${params.fastenerType.label.toLowerCase()}',
-          size: '${layers.movableSideEyelets.length} шт',
-          quantity: layers.movableSideEyelets.length.toDouble(),
-          unit: 'шт',
-          note: 'кроме углов — там круглые люверсы',
-        ),
+        // Саморезов нет, если верхняя сторона оставлена без люверсов.
+        if (layers.topEyelets.isNotEmpty)
+          TechMaterial(
+            name: 'Саморезы по верхнему ряду',
+            size: '${layers.topEyelets.length} шт',
+            quantity: layers.topEyelets.length.toDouble(),
+            unit: 'шт',
+            note: 'верхняя кромка крепится к раме',
+          ),
+        if (layers.movableSideEyelets.isNotEmpty)
+          TechMaterial(
+            name:
+                'Крепёж низа и боков: '
+                '${params.fastenerType.label.toLowerCase()}',
+            size: '${layers.movableSideEyelets.length} шт',
+            quantity: layers.movableSideEyelets.length.toDouble(),
+            unit: 'шт',
+            note: 'кроме углов — там круглые люверсы',
+          ),
       ],
     ],
     tool: 'Пресс для люверсов, пробойник, наковальня, молоток',
@@ -605,8 +613,9 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
   );
 
   // ----------------------------------------------------------- 6. молнии
-  // Молния впаивается в полосу тента — у скрина её нет.
-  if (params.zippers.isNotEmpty && !isScreen) {
+  // У ПВХ молния впаивается в полосу тента, у скрина — в подвёрнутую полосу
+  // (накладную полосу) из того же скрина; шов вместо напайки 25 мм — 3 мм.
+  if (params.zippers.isNotEmpty) {
     final bands = layers.zipperBands;
     final zipperMaterials = <TechMaterial>[];
     for (var i = 0; i < bands.length; i++) {
@@ -617,32 +626,55 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
             name: 'Молния №${i + 1} (вертикальная)',
             size: '${formatMm(band.height)} мм',
             quantity: band.height,
-            note: 'впаивается в полосу тента по центру',
+            note: isScreen
+                ? 'вшивается в полосу скрина по центру'
+                : 'впаивается в полосу тента по центру',
           ),
         )
         ..add(
           TechMaterial(
-            name: 'Полоса тента под молнию №${i + 1}',
+            name: isScreen
+                ? 'Полоса скрина под молнию №${i + 1}'
+                : 'Полоса тента под молнию №${i + 1}',
             size: '${formatMm(band.width)} × ${formatMm(band.height)} мм',
-            note: 'спайка ${formatMm(band.width)} мм',
+            note: isScreen
+                ? 'шов ${formatMm(screenSeamMm)} мм по краям полосы; подворот '
+                    'или накладная полоса из скрина'
+                : 'спайка ${formatMm(band.width)} мм',
           ),
         );
     }
     add(
       kind: TechOperationKind.zipper,
       title: 'Молнии',
-      description:
-          '${params.zippers.length == 1 ? 'Впаять молнию' : 'Впаять молнии'}: '
-          '${spec.zippersSummary}. Полосу тента с молнией сварить с полотном по '
-          'всей высоте, шов ровный, полотно без волны.',
+      description: isScreen
+          ? '${params.zippers.length == 1 ? 'Вшить молнию' : 'Вшить молнии'} '
+              'в полосу из скрина: ${spec.zippersSummary}. Полосу подвёрнутой '
+              'ткани (или накладную полосу из скрина) шириной '
+              '${formatMm(params.zipperBandWidth)} мм уложить по всей высоте '
+              'полотна и сварить горячим воздухом швом '
+              '${formatMm(screenSeamMm)} мм по обоим краям полосы; молния идёт '
+              'по её середине. Расстояние от края полосы до кромки подворота — '
+              'не меньше ${formatMm(minScreenZipperHemMm)} мм, за пределы '
+              'заготовки полоса не выходит.'
+          : '${params.zippers.length == 1 ? 'Впаять молнию' : 'Впаять молнии'}: '
+              '${spec.zippersSummary}. Полосу тента с молнией сварить с '
+              'полотном по всей высоте, шов ровный, полотно без волны.',
       materials: zipperMaterials,
-      tool: isWeldedEdge
+      tool: isScreen || isWeldedEdge
           ? 'Фен-сварочник, прижимной ролик, шаблон для ровной укладки'
           : 'Швейная машина, лапка для молнии, прочные нитки',
-      control:
-          'Молния вертикальна и не смещена, ширина спайки '
-          '${formatMm(params.zipperBandWidth)} ± 2 мм, бегунок ходит свободно',
-      source: 'WindowLayers.zipperBands / WindowSpec.zippersSummary',
+      control: isScreen
+          ? 'Молния вертикальна и не смещена, шов '
+              '${formatMm(screenSeamMm)} ± 0,5 мм по краям полосы; от полосы до '
+              'кромки подворота не меньше ${formatMm(minScreenZipperHemMm)} мм; '
+              'бегунок ходит свободно'
+          : 'Молния вертикальна и не смещена, ширина спайки '
+              '${formatMm(params.zipperBandWidth)} ± 2 мм, бегунок ходит свободно',
+      source: isScreen
+          ? 'WindowLayers.zipperBands / WindowSpec.zippersSummary; '
+              'screenSeamMm = 3 мм'
+          : 'WindowLayers.zipperBands / WindowSpec.zippersSummary',
     );
   }
 

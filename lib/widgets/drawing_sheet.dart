@@ -151,41 +151,48 @@ class DrawingSheet extends StatelessWidget {
   static const double _detailPadBottom = 96;
 
   /// Меньшие поля для ячейки режима «Все окна»: там чертёж мельче.
-  static const double _cellPad = 64;
+  ///
+  /// Меньше 80 ставить нельзя: размерные линии и подписи выносятся от контура
+  /// окна на 52–75 точек, и при меньшем поле их обрежет рамка.
+  static const double _cellPad = 88;
 
   /// Запас к размеру рамки: страхует пересчёт масштаба от погрешности.
-  static const double frameSlack = 2;
+  static const double _frameSlack = 2;
 
   /// Раскладка чертежа для свободного поля [area] (в точках листа).
   ///
-  /// Внутри чертёж считается в точках 96 dpi — в них масштаб совпадает
-  /// с масштабной линейкой, — поэтому поле и поля переводим в те же точки.
+  /// Чертёж всегда считается в «экранных» точках 96 dpi — в них стандартный
+  /// масштаб (1:10, 1:15, 1:20 …) совпадает с масштабной линейкой. Поэтому
+  /// поле переводим в эти точки делением на [paintScale], а поля оставляем
+  /// как есть: их размеры заданы в тех же точках, что и выноски чертежа.
   DrawingLayout _drawingLayout(
     Size area,
     WindowSpec spec, {
+    double paintScale = _paintScale,
     double padLeft = _detailPadLeft,
     double padRight = _detailPadRight,
     double padTop = _detailPadTop,
     double padBottom = _detailPadBottom,
   }) =>
       DrawingLayout(
-        size: area / _paintScale,
+        size: area / paintScale,
         geometry: spec.geometry,
-        padLeft: padLeft / _paintScale,
-        padRight: padRight / _paintScale,
-        padTop: padTop / _paintScale,
-        padBottom: padBottom / _paintScale,
+        padLeft: padLeft,
+        padRight: padRight,
+        padTop: padTop,
+        padBottom: padBottom,
       );
 
   /// Рамка чертежа: масштаб выбираем по свободному полю, затем строим рамку
   /// ровно под сам чертёж плюс поля под размеры и выноски.
   ///
-  /// К размеру рамки добавлен [frameSlack]: тогда масштаб, пересчитанный уже
+  /// К размеру рамки добавлен небольшой запас: тогда масштаб, пересчитанный
   /// от рамки, не «прыгнет» на следующий стандартный из-за погрешности
   /// округления, и чертёж гарантированно влезает в рамку.
   Size _drawingFrame(
     Size area,
     WindowSpec spec, {
+    double paintScale = _paintScale,
     double padLeft = _detailPadLeft,
     double padRight = _detailPadRight,
     double padTop = _detailPadTop,
@@ -194,35 +201,35 @@ class DrawingSheet extends StatelessWidget {
     final layout = _drawingLayout(
       area,
       spec,
+      paintScale: paintScale,
       padLeft: padLeft,
       padRight: padRight,
       padTop: padTop,
       padBottom: padBottom,
     );
     return Size(
-      spec.geometry.spanX * layout.scale * _paintScale +
-          padLeft +
-          padRight +
-          frameSlack,
-      spec.geometry.spanY * layout.scale * _paintScale +
-          padTop +
-          padBottom +
-          frameSlack,
+      (spec.geometry.spanX * layout.scale + padLeft + padRight) * paintScale +
+          _frameSlack,
+      (spec.geometry.spanY * layout.scale + padTop + padBottom) * paintScale +
+          _frameSlack,
     );
   }
 
   /// Отрисовка чертежа в рамке [frame].
   ///
-  /// Чертёж рисуется в точках 96 dpi и растягивается до плотности листа A4:
-  /// так масштаб на бумаге остаётся честным, а линии и подписи — резкими.
+  /// У листа одного окна чертёж рисуется в точках 96 dpi и растягивается до
+  /// плотности листа A4 ([paintScale]): так масштаб на бумаге остаётся
+  /// честным, а линии и подписи — резкими. В режиме «Все окна» чертежи мелкие
+  /// и масштаб у каждого свой — их рисуем как есть.
   Widget _drawingBox({
     required Size frame,
     required DrawingLayout layout,
     required WindowParams params,
     required WindowSpec spec,
+    double paintScale = _paintScale,
     double labelScale = 1,
   }) {
-    final paintSize = frame / _paintScale;
+    final paintSize = frame / paintScale;
     return SizedBox(
       width: frame.width,
       height: frame.height,
@@ -234,7 +241,7 @@ class DrawingSheet extends StatelessWidget {
           maxWidth: paintSize.width,
           maxHeight: paintSize.height,
           child: Transform.scale(
-            scale: _paintScale,
+            scale: paintScale,
             child: SizedBox(
               width: paintSize.width,
               height: paintSize.height,
@@ -433,6 +440,7 @@ class DrawingSheet extends StatelessWidget {
     final frame = _drawingFrame(
       area,
       spec,
+      paintScale: 1,
       padLeft: _cellPad,
       padRight: _cellPad,
       padTop: _cellPad,
@@ -441,6 +449,7 @@ class DrawingSheet extends StatelessWidget {
     final layout = _drawingLayout(
       frame,
       spec,
+      paintScale: 1,
       padLeft: _cellPad,
       padRight: _cellPad,
       padTop: _cellPad,
@@ -462,6 +471,7 @@ class DrawingSheet extends StatelessWidget {
                 layout: layout,
                 params: params,
                 spec: spec,
+                paintScale: 1,
                 // Подробный режим: подписи крупные, в ячейке они чуть мельче.
                 labelScale: 0.9,
               ),
@@ -846,7 +856,12 @@ class _SidePanel extends StatelessWidget {
       if (anyZipper)
         (
           LegendKind.zipperBand,
-          'Спайка ${formatMm(params.zipperBandWidth)} мм с молнией по центру'
+          // У скрина полоса под молнию — из скрина, со швом 3 мм по краям;
+          // у ПВХ — спайка тента шириной 50 мм.
+          params.isScreen
+              ? 'Полоса скрина ${formatMm(params.zipperBandWidth)} мм с молнией '
+                  '(шов ${formatMm(screenSeamMm)} мм)'
+              : 'Спайка ${formatMm(params.zipperBandWidth)} мм с молнией по центру'
         ),
       if (anyCutout)
         (
@@ -951,8 +966,9 @@ class _SidePanel extends StatelessWidget {
                           'без «по размеру страницы». Чертёж построен ровно '
                           'в этом масштабе — приложите линейку, размеры сойдутся.'
                       : 'Лист A4 (210 × 297 мм): печатайте в масштабе 100 %, '
-                          'без «по размеру страницы». Каждое окно построено '
-                          'в своём стандартном масштабе.',
+                          'без «по размеру страницы». Чертежи окон здесь '
+                          'обзорные — точный масштаб смотрите на листе '
+                          'одного окна.',
                   style: const TextStyle(
                     fontSize: 10.5,
                     height: 1.25,

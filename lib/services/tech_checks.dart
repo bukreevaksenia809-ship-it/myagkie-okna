@@ -171,6 +171,7 @@ List<TechCheck> techChecksFor(WindowParams params) {
   _checkCutouts(spec, checks);
   _checkWeldedSides(params, spec, checks);
   _checkFastener(params, checks);
+  _checkEyeletlessSides(params, spec, checks);
   _checkShrinkage(params, checks);
   _checkSection(params, spec, checks);
 
@@ -545,11 +546,16 @@ void _checkLifting(
 /// Молнии в полотне.
 ///
 /// Две молнии ближе 300 мм друг к другу неудобны в работе: створки мешают
-/// друг другу, а между спайками остаётся узкая полоса плёнки. Спайка молнии
-/// ближе 150 мм к кромке плёнки — это слабый шов: с одной стороны спайки
-/// остаётся слишком мало полотна, и шов работает на отрыв. Молния выходит на
-/// нижнюю кромку, где устроен карман: спайка и шов кармана делят одну
-/// окантовку, а утяжителю нужно свободно заводиться в полость кармана.
+/// друг другу, а между спайками остаётся узкая полоса плёнки. У ПВХ спайка
+/// молнии ближе 150 мм к кромке плёнки — это слабый шов: с одной стороны спайки
+/// остаётся слишком мало полотна, и шов работает на отрыв. У скрина молния идёт
+/// в подвёрнутую полосу из того же скрина, поэтому своё ограничение: до кромки
+/// подворота должно оставаться не меньше [minScreenZipperHemMm] мм — иначе шов
+/// полосы сливается со швом подворота и кромка рвётся.
+///
+/// Молния выходит на нижнюю кромку, где устроен карман: спайка и шов кармана
+/// делят одну окантовку, а утяжителю нужно свободно заводиться в полость
+/// кармана.
 void _checkZippers(
   WindowParams params,
   WindowSpec spec,
@@ -557,20 +563,35 @@ void _checkZippers(
 ) {
   if (params.zippers.isEmpty) return;
 
+  final isScreen = params.isScreen;
+  final minEdge = isScreen ? minScreenZipperHemMm : _minZipperToEdgeMm;
   final gaps = spec.layers.zipperGapsAll;
   for (var i = 0; i < gaps.length; i++) {
     final gap = gaps[i];
-    if (gap.left < _minZipperToEdgeMm || gap.right < _minZipperToEdgeMm) {
+    if (gap.left < minEdge || gap.right < minEdge) {
       checks.add(TechCheck(
-        ruleId: 'zipper-edge-near',
+        ruleId: isScreen ? 'screen-zipper-hem-near' : 'zipper-edge-near',
         severity: TechSeverity.warning,
-        title: 'Молния №${i + 1}: от спайки до кромки плёнки меньше '
-            '${formatMm(_minZipperToEdgeMm)} мм',
-        explanation: 'С одной стороны спайки остаётся узкая полоса плёнки '
-          '(слева ${formatMm(gap.left)} мм, справа ${formatMm(gap.right)} мм): '
-          'шов слабый, при натяжении полотно рвёт вдоль спайки.',
-        recommendation: 'Сместите молнию так, чтобы от спайки до кромок '
-            'плёнки было не меньше ${formatMm(_minZipperToEdgeMm)} мм.',
+        title: isScreen
+            ? 'Молния №${i + 1}: от полосы до кромки подворота меньше '
+                '${formatMm(minEdge)} мм'
+            : 'Молния №${i + 1}: от спайки до кромки плёнки меньше '
+                '${formatMm(minEdge)} мм',
+        explanation: isScreen
+            ? 'Полоса молнии у скрина — подвёрнутая ткань; до линии подворота '
+                'остаётся ${formatMm(gap.left < gap.right ? gap.left : gap.right)} '
+                'мм (слева ${formatMm(gap.left)} мм, справа '
+                '${formatMm(gap.right)} мм). Шов полосы сливается со швом '
+                'подворота, кромка теряет тело и рвётся по молнии.'
+            : 'С одной стороны спайки остаётся узкая полоса плёнки '
+                '(слева ${formatMm(gap.left)} мм, справа '
+                '${formatMm(gap.right)} мм): шов слабый, при натяжении полотно '
+                'рвёт вдоль спайки.',
+        recommendation: isScreen
+            ? 'Сместите молнию от кромки подворота не меньше чем на '
+                '${formatMm(minScreenZipperHemMm)} мм или сузьте полосу.'
+            : 'Сместите молнию так, чтобы от спайки до кромок плёнки было не '
+                'меньше ${formatMm(_minZipperToEdgeMm)} мм.',
       ));
     }
   }
@@ -596,13 +617,13 @@ void _checkZippers(
   }
 
   if (params.pocket || params.pocketTop) {
-    checks.add(const TechCheck(
+    checks.add(TechCheck(
       ruleId: 'zipper-pocket-axis',
       severity: TechSeverity.warning,
       title: 'Молния в окне с карманом',
       explanation: 'Вертикальная молния доходит до кромки, где идёт карман: '
-          'спайка молнии и шов кармана делят одну окантовку, а утяжителю '
-          'нужно свободно заводиться в полость кармана.',
+          '${isScreen ? 'шов полосы молнии и шов кармана делят подворот' : 'спайка молнии и шов кармана делят одну окантовку'}, '
+          'а утяжителю нужно свободно заводиться в полость кармана.',
       recommendation: 'Сместите молнию от середины кармана, укоротите её до '
           'кармана или разорвите карман в месте прохода молнии.',
     ));
@@ -765,10 +786,11 @@ void _checkWeldedSides(
 
 /// Крепёж окна.
 ///
-/// У глухого окна по технологии только круглые люверсы: овальный люверс под
-/// скобу там не держит. Если пользователь выбрал овальный — он не попадёт на
-/// чертёж, об этом надо сказать. Подъёмное окно с крепежом «только люверсы»
-/// поднимать нечем: за люверс не тянут, нужны скобы, замки или ремни.
+/// Тип люверса доступен на любом окне: овальный 42×22 — это фурнитура, а не
+/// признак подъёмного окна, поэтому отдельного запрета «глухое + овальный» больше
+/// нет. Здесь остаются правила про крепёж подвижных сторон: подъёмное окно с
+/// крепежом «только люверсы» поднимать нечем — за люверс не тянут, нужны скобы,
+/// замки или ремни.
 void _checkFastener(WindowParams params, List<TechCheck> checks) {
   // Скрин крепится только люверсами: выбранный крепёж игнорируется.
   if (params.isScreen) {
@@ -787,20 +809,6 @@ void _checkFastener(WindowParams params, List<TechCheck> checks) {
     return;
   }
 
-  if (params.windowType == WindowType.fixed &&
-      params.eyeletType != EyeletType.round10) {
-    checks.add(const TechCheck(
-      ruleId: 'fixed-window-oval-eyelet',
-      severity: TechSeverity.warning,
-      title: 'Для глухого окна выбран овальный люверс',
-      explanation: 'У глухого окна крепёж — саморезы по окантовке, овальный люверс '
-          'под скобу там не нужен; при расчёте он всё равно заменяется на '
-          'круглый Ø10 мм.',
-      recommendation: 'Выберите круглый люверс Ø10 мм или переключите окно на '
-          'подъёмное, если планируется скоба.',
-    ));
-  }
-
   if (params.isLifting && params.fastenerType == FastenerType.eyeletsOnly) {
     checks.add(const TechCheck(
       ruleId: 'lifting-eyelets-only',
@@ -813,6 +821,43 @@ void _checkFastener(WindowParams params, List<TechCheck> checks) {
           'силиконовые ремни для низа и боков.',
     ));
   }
+}
+
+/// Стороны без люверсов (кнопки «не ставить сверху/снизу»).
+///
+/// Если сторона отключена и при этом не спаяна с соседним окном, у полотна
+/// там нет ни одной точки крепления: ветер отрывает его по углам, а верх/низ
+/// «хлопает» и рвётся по ближайшим люверсам. Спайка — законная причина оставить
+/// сторону без люверсов: полотна сварены, крепёж не нужен.
+void _checkEyeletlessSides(
+  WindowParams params,
+  WindowSpec spec,
+  List<TechCheck> checks,
+) {
+  if (!params.hasEyeletlessSides) return;
+
+  void checkSide(EdgeSide side, {required bool disabled}) {
+    if (!disabled) return;
+    if (params.isWelded(side)) return;
+    final isTop = side == EdgeSide.top;
+    final name = _sideLabel(side);
+    checks.add(TechCheck(
+      ruleId: isTop ? 'eyelet-top-unfastened' : 'eyelet-bottom-unfastened',
+      severity: TechSeverity.warning,
+      field: ParamField.eyeletStep,
+      title: isTop ? 'Верх нечем крепить' : 'Низ нечем крепить',
+      explanation: 'На стороне «$name» люверсы отключены, а с соседним окном '
+          'она не спаяна: у полотна там нет ни одной точки крепления. Ветер '
+          'отрывает полотно по углам, а сторона «$name» парусит и рвётся по '
+          'ближайшим люверсам. Всего люверсов на окне: ${spec.eyeletCount} шт.',
+      recommendation: 'Включите люверсы на стороне «$name», спаяйте её с '
+          'соседним окном или заранее предусмотрите крепление полотна к '
+          'стене/раме по этой стороне.',
+    ));
+  }
+
+  checkSide(EdgeSide.top, disabled: params.noEyeletsTop);
+  checkSide(EdgeSide.bottom, disabled: params.noEyeletsBottom);
 }
 
 // ——————————————————————— Усадка и сечение ———————————————————————

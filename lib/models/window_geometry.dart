@@ -310,12 +310,36 @@ class WindowLayers {
   List<EyeletPlacement> get topEyelets =>
       eyelets.where((eyelet) => eyelet.side == WindowSide.top).toList();
 
+  /// Стороны, на которых люверсы не ставятся (кнопки «не ставить сверху/снизу»).
+  ///
+  /// Порядок — по обходу углов: низ, право, верх, лево.
+  List<WindowSide> get eyeletlessSides => [
+        if (params.noEyeletsBottom) WindowSide.bottom,
+        if (params.noEyeletsTop) WindowSide.top,
+      ];
+
+  /// Подпись сторон без люверсов для документов: «верх», «низ», «низ и верх».
+  String get eyeletlessSidesLabel {
+    final labels = [for (final side in eyeletlessSides) side.label];
+    if (labels.isEmpty) return '';
+    if (labels.length == 1) return labels.first;
+    return '${labels.sublist(0, labels.length - 1).join(', ')} и ${labels.last}';
+  }
+
+  /// Ставятся ли на этой стороне люверсы (кнопки «не ставить сверху/снизу»).
+  bool sideHasEyelets(WindowSide side) => switch (side) {
+        WindowSide.bottom => !params.noEyeletsBottom,
+        WindowSide.top => !params.noEyeletsTop,
+        WindowSide.left || WindowSide.right => true,
+      };
+
   /// Тип люверса в конкретной точке: в углах всегда круглый (угол тянет
-  /// по диагонали, овальный там не держит), у глухого окна — тоже круглые.
+  /// по диагонали, овальный там не держит), по сторонам — выбранный
+  /// пользователем тип. Глухое окно больше не заменяет тип принудительно.
   EyeletType typeFor(EyeletPlacement eyelet) =>
       eyelet.isCorner ? EyeletType.round10 : params.effectiveEyeletType;
 
-  /// Тип люверса с учётом типа окна: у глухого — только круглые.
+  /// Тип люверса, который ставится по сторонам окна.
   EyeletType get eyeletType => params.effectiveEyeletType;
 
   /// Подъёмные ремни: висят сверху вниз, ширина [liftStrapWidth] мм.
@@ -445,11 +469,18 @@ class WindowLayers {
 
 
   /// Линии всех молний: всегда вертикально, по низу до верха видимой плёнки.
+  ///
+  /// У скрина видимый контур — готовое изделие (кромка подворота), поэтому
+  /// полоса молнии целиком лежит внутри заготовки: заготовка больше готового
+  /// размера на подворот по сторонам. Положение зажато в границах видимого
+  /// контура (см. [_zipperOf]).
   List<({Offset start, Offset end, double bandWidth})> get zippers => [
         for (final spec in params.zippers) _zipperOf(spec),
       ];
 
   ({Offset start, Offset end, double bandWidth}) _zipperOf(ZipperSpec spec) {
+    // Для скрина это кромка подворота: полоса не выходит за заготовку и не
+    // заходит на сам подворот.
     final bounds = filmVisibleBounds;
     final half = math.max(spec.bandWidth, 20) / 2;
     final x = spec.centered
@@ -599,7 +630,9 @@ class WindowLayers {
       // получается ровно один интервал: по люверсу в каждом углу стороны.
       final intervals = math.max(1, (usable / nominal).ceil());
       final actual = usable / intervals;
-      steps.add(actual);
+      // Сторона без люверсов (кнопка «не ставить сверху/снизу») в подпись
+      // фактического интервала не попадает: крепежа там нет.
+      if (sideHasEyelets(side)) steps.add(actual);
 
       for (var k = 0; k <= intervals; k++) {
         var distance = offset + actual * k;
@@ -653,7 +686,19 @@ class WindowLayers {
       if (!isDuplicate) merged.add(eyelet);
     }
 
-    return _EyeletResult(merged, steps);
+    // Стороны без люверсов: сторона и её угловые точки исключаются.
+    //
+    // Угол принадлежит стороне, которая идёт первой в обходе
+    // (низ → право → верх → лево): у низа это оба нижних угла, у права —
+    // правый верхний, у верха — левый верхний. Поэтому у выключенной стороны
+    // пропадают её крепления вместе с её углами, а соседние стороны свои углы
+    // сохраняют. Крепёж считается уменьшенным предсказуемо — см. тесты.
+    final visible = [
+      for (final eyelet in merged)
+        if (sideHasEyelets(eyelet.side)) eyelet,
+    ];
+
+    return _EyeletResult(visible, steps);
   }
 }
 
@@ -823,13 +868,38 @@ class WindowSpec {
   /// Количество подъёмных ремней.
   int get strapCount => params.liftStrapCount;
 
-  /// Заготовка полосы тента под молнию: (ширина, длина), мм.
+  /// Заготовка полосы под молнию: (ширина, длина), мм.
+  ///
+  /// У ПВХ это полоса тента, у скрина — полоса (подворот) из самого скрина.
   (double, double)? get zipperBandPiece {
     final band = layers.zipperBand;
     if (band == null) return null;
     final visible = layers.filmVisibleBounds;
-    // Заготовка спайки: полоса по высоте плёнки.
+    // Заготовка полосы: по всей высоте полотна.
     return (band.width, visible.height);
+  }
+
+  /// Площадь полос молний у скрина, м² (0 у ПВХ: там полоса из тента).
+  ///
+  /// Полоса молнии скрина — отдельная деталь из того же материала, поэтому она
+  /// входит в расход скрина: ширина полосы × высота полотна на каждую молнию.
+  double get screenZipperBandAreaM2 {
+    if (!params.isScreen) return 0;
+    final height = layers.filmVisibleBounds.height;
+    var area = 0.0;
+    for (final band in layers.zipperBands) {
+      area += band.width * height;
+    }
+    return area / 1000000;
+  }
+
+  /// Длина полос молний у скрина, мм (0 у ПВХ).
+  ///
+  /// По ней считается работа подворота/шва полосы: шов идёт по длине полосы.
+  double get screenZipperBandLengthMm {
+    if (!params.isScreen) return 0;
+    final height = layers.filmVisibleBounds.height;
+    return height * layers.zipperBands.length;
   }
 
   /// Подпись всех молний: «2 шт: 33 % и 66 % ширины».
@@ -839,8 +909,11 @@ class WindowSpec {
     final parts = <String>[];
     for (final gaps in layers.zipperGapsAll) {
       final band = gaps.band;
-      parts.add('спайка ${formatMm(band)} мм (слева ${formatMm(gaps.left)}, '
-          'справа ${formatMm(gaps.right)} мм)');
+      parts.add(
+        '${params.isScreen ? 'полоса скрина' : 'спайка'} '
+        '${formatMm(band)} мм (слева ${formatMm(gaps.left)}, '
+        'справа ${formatMm(gaps.right)} мм)',
+      );
     }
     return '${params.zippers.length} шт — ${parts.join('; ')}';
   }
@@ -885,19 +958,26 @@ class WindowSpec {
     final position = params.zipperCentered
         ? 'по центру'
         : '${formatMm(params.zipperOffsetMm)} мм от левого края';
+    // У скрина видимая кромка — линия подворота, у ПВХ — кромка плёнки.
+    final edge = params.isScreen ? 'кромки подворота' : 'кромок плёнки';
     final around = gaps == null
         ? ''
         : ', слева ${formatMm(gaps.left)} / справа ${formatMm(gaps.right)} мм '
-            'до кромок плёнки';
+            'до $edge';
     return 'вертикальная, $position$around';
   }
 
-  /// Подпись молнии с полосой тента.
+  /// Подпись молнии с полосой: у ПВХ — тента, у скрина — скрина.
   String get zipperBandSummary {
     final piece = zipperBandPiece;
     if (piece == null) return '—';
     final bandWidth = piece.$1;
     final bandLength = piece.$2;
+    if (params.isScreen) {
+      return '$zipperSummary; полоса скрина ${formatMm(bandWidth)} × '
+          '${formatMm(bandLength)} мм, шов ${formatMm(screenSeamMm)} мм '
+          'по краям полосы';
+    }
     return '$zipperSummary; полоса тента ${formatMm(bandWidth)} × '
         '${formatMm(bandLength)} мм';
   }
@@ -911,7 +991,9 @@ class WindowSpec {
     return [
       if (params.isScreen) ...[
         'Скрин: технология без тента и окантовки — материал подворачивается '
-            'сам, крепёж только люверсы',
+            'сам, крепёж только люверсы; молния ставится в полосу из скрина '
+            '(подворот или накладная полоса), шов '
+            '${formatMm(screenSeamMm)} мм по краям полосы',
         'Подворот материала по сторонам — ${params.hemBySideLabel} '
             '(низ/право/верх/лево); шов сварки подворота '
             '${formatMm(screenSeamMm)} мм с каждой стороны',
@@ -921,7 +1003,9 @@ class WindowSpec {
             '(${formatMm(filmCutWidth)} × ${formatMm(filmCutHeight)} мм '
             'до припуска); усадки нет',
         'Расход скрина — площадь заготовки (габарит) '
-            '${formatMeters(filmCutAreaWithShrinkageM2)} м²',
+            '${formatMeters(filmCutAreaWithShrinkageM2)} м²'
+            '${screenZipperBandAreaM2 > 0 ? ' плюс полосы молний '
+                '${formatMeters(screenZipperBandAreaM2)} м²' : ''}',
       ] else ...[
         'Окантовка складывается пополам; запайка плёнки под окантовку '
             '${formatMm(params.weldOverlapMm)} мм по всему периметру',
@@ -944,7 +1028,9 @@ class WindowSpec {
       'Люверсы ${eyeletType.label.toLowerCase()}: интервал задан '
           '${formatMm(params.eyeletStep)} мм, факт $eyeletStepLabel по '
           'сторонам, от угла ${formatMm(params.eyeletCornerOffset)} мм, '
-          'всего $eyeletCount шт',
+          'всего $eyeletCount шт'
+          '${params.hasEyeletlessSides ? '; без люверсов: '
+              '${layers.eyeletlessSidesLabel} (сторона остаётся без крепежа)' : ''}',
       'Крепёж: ${fastenerSummary.toLowerCase()}',
       if (params.isLifting && !params.isScreen)
         'Подъёмные ремни: $strapCount шт, '
@@ -952,10 +1038,22 @@ class WindowSpec {
             '(2 шт до 2 м ширины, далее +1 на метр)',
       if (params.zippers.length == 1) 'Молния: $zipperBandSummary',
       if (params.zippers.length > 1) 'Молнии: $zippersSummary',
-      if (params.hasZipper && layers.zipperGaps != null && params.zippers.length == 1)
-        'Спайка молнии ${formatMm(params.zipperBandWidth)} мм; от спайки до '
-            'кромок плёнки: слева ${formatMm(layers.zipperGaps!.left)} мм, '
-            'справа ${formatMm(layers.zipperGaps!.right)} мм',
+      if (params.hasZipper &&
+          layers.zipperGaps != null &&
+          params.zippers.length == 1)
+        params.isScreen
+            ? 'Полоса молнии из скрина ${formatMm(params.zipperBandWidth)} мм; '
+                'от полосы до кромки подворота: слева '
+                '${formatMm(layers.zipperGaps!.left)} мм, справа '
+                '${formatMm(layers.zipperGaps!.right)} мм (не меньше '
+                '${formatMm(minScreenZipperHemMm)} мм)'
+            : 'Спайка молнии ${formatMm(params.zipperBandWidth)} мм; от спайки '
+                'до кромок плёнки: слева ${formatMm(layers.zipperGaps!.left)} мм, '
+                'справа ${formatMm(layers.zipperGaps!.right)} мм',
+      if (params.isScreen && screenZipperBandAreaM2 > 0)
+        'Расход скрина на полосы молний: '
+            '${formatMeters(screenZipperBandAreaM2)} м² (ширина полосы × высота '
+            'полотна, поверх площади заготовки)',
       if (params.cutouts.isNotEmpty) 'Вырезы: $cutoutsSummary',
       if (params.weldedSides.isNotEmpty) 'Спайка окон: $weldSummary',
       if (params.drainHoles && !params.isScreen)
@@ -1333,9 +1431,11 @@ List<ParamIssue> validateParams(WindowParams params) {
   for (var i = 0; i < params.zippers.length; i++) {
     final spec = params.zippers[i];
     if (spec.bandWidth < 40 || spec.bandWidth > 120) {
-      issues.add(const ParamIssue(
+      issues.add(ParamIssue(
         ParamField.bottomWidth,
-        'Ширина спайки молнии — 40–120 мм (обычно 50 мм)',
+        params.isScreen
+            ? 'Ширина полосы молнии — 40–120 мм (обычно 50 мм)'
+            : 'Ширина спайки молнии — 40–120 мм (обычно 50 мм)',
         isError: false,
       ));
     }
@@ -1346,9 +1446,29 @@ List<ParamIssue> validateParams(WindowParams params) {
       if (spec.offsetMm < half || spec.offsetMm > limit - half) {
         issues.add(ParamIssue(
           ParamField.bottomWidth,
-          'Молния №${i + 1} выходит за пределы плёнки '
-              '(доступно ${formatMm(limit)} мм)',
+          params.isScreen
+              ? 'Молния №${i + 1} выходит за пределы заготовки '
+                  '(ширина по кромке подворота ${formatMm(limit)} мм)'
+              : 'Молния №${i + 1} выходит за пределы плёнки '
+                  '(доступно ${formatMm(limit)} мм)',
         ));
+      }
+    }
+    // Скрин: полоса молнии не подходит к кромке подворота ближе 100 мм —
+    // иначе шов полосы сливается со швом подворота и кромка рвётся.
+    if (params.isScreen) {
+      final gaps = layers.zipperGapsAll;
+      if (i < gaps.length) {
+        final near = math.min(gaps[i].left, gaps[i].right);
+        if (near < minScreenZipperHemMm) {
+          issues.add(ParamIssue(
+            ParamField.bottomWidth,
+            'Молния №${i + 1} на скрине: до кромки подворота '
+            '${formatMm(near)} мм — меньше '
+            '${formatMm(minScreenZipperHemMm)} мм',
+            isError: false,
+          ));
+        }
       }
     }
   }

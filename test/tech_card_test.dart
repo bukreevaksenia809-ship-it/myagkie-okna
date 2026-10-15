@@ -78,6 +78,23 @@ const _screen = WindowParams(
   pocketTop: true,
 );
 
+/// Скрин 2000 × 2000 с молнией: полоса из скрина, шов 3 мм по краям.
+const _screenZipper = WindowParams(
+  projectName: 'Мягкое окно веранды',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-023',
+  material: FilmMaterial.screen,
+  bottomWidth: 2000,
+  topWidth: 2000,
+  leftHeight: 2000,
+  rightHeight: 2000,
+  hemBottomMm: 40,
+  hemRightMm: 40,
+  hemTopMm: 40,
+  hemLeftMm: 40,
+  zippers: [ZipperSpec(centered: true)],
+);
+
 /// Простое глухое окно из москитной сетки.
 const _mesh = WindowParams(
   projectName: 'Мягкое окно веранды',
@@ -504,6 +521,71 @@ void main() {
       expect(pocket.text, contains(formatMm(_screen.pocketWidth)));
       expect(pocket.materials.first.quantity,
           closeTo(_screen.topWidth, 1e-9));
+    });
+
+    test('молния скрина — полоса из скрина со швом 3 мм', () {
+      final zipperCard = TechCard.forWindow(_screenZipper);
+      final zipper = _op(zipperCard, TechOperationKind.zipper);
+
+      expect(zipper.text, contains('Вшить'));
+      expect(zipper.text, contains('скрина'));
+      expect(zipper.text, contains('швом ${formatMm(screenSeamMm)} мм'));
+      expect(zipper.text, contains(formatMm(minScreenZipperHemMm)));
+      expect(zipper.text, isNot(contains('напайк')));
+      expect(
+        zipper.materials.any(
+          (material) => material.name.contains('Полоса скрина под молнию №1'),
+        ),
+        isTrue,
+      );
+      final band = zipper.materials.firstWhere(
+        (material) => material.name.contains('Полоса скрина под молнию'),
+      );
+      expect(band.size, '${formatMm(50)} × ${formatMm(2000)} мм');
+      expect(band.note, contains('шов ${formatMm(screenSeamMm)} мм'));
+    });
+
+    test('сторона без люверсов честно указана в операции', () {
+      final params = _screen.copyWith(
+        noEyeletsTop: true,
+        noEyeletsBottom: true,
+      );
+      final eyelets = _op(
+        TechCard.forWindow(params),
+        TechOperationKind.eyelets,
+      );
+
+      expect(eyelets.text, contains('Люверсы не ставятся на сторонах'));
+      expect(eyelets.text, contains('низ и верх'));
+      expect(eyelets.text, contains('сторона остаётся без крепежа'));
+    });
+  });
+
+  group('люверс любого типа на любом окне', () {
+    const fixedOval = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 1500,
+      rightHeight: 1500,
+      eyeletType: EyeletType.oval42x22,
+    );
+
+    test('глухое окно: овальные по сторонам, круглые в углах', () {
+      final eyelets =
+          _op(TechCard.forWindow(fixedOval), TechOperationKind.eyelets);
+
+      expect(eyelets.text, contains(EyeletType.oval42x22.label.toLowerCase()));
+      expect(eyelets.text, contains('углах только круглые'));
+      final oval = eyelets.materials.firstWhere(
+        (material) => material.name.contains(EyeletType.oval42x22.label),
+      );
+      final round = eyelets.materials.firstWhere(
+        (material) => material.name.contains(EyeletType.round10.label),
+      );
+      // 24 люверса: 4 угла круглые, 20 по сторонам — овальные.
+      expect(oval.quantity, 20);
+      expect(round.quantity, 4);
+      expect(round.name, contains('в углах'));
     });
   });
 

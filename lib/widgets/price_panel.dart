@@ -126,9 +126,19 @@ class _PricePanelState extends State<PricePanel> {
             ]),
             _group('Фурнитура', [
               _row(
-                'Люверс, ₽/шт',
+                'Люверс круглый, ₽/шт',
                 prices.eyeletPrice,
                 (value) => _set(prices.copyWith(eyeletPrice: value)),
+              ),
+              _row(
+                'Люверс овальный, ₽/шт',
+                prices.eyeletOvalPrice,
+                (value) => _set(prices.copyWith(eyeletOvalPrice: value)),
+              ),
+              _row(
+                'Установка люверса, ₽/шт',
+                prices.eyeletInstall,
+                (value) => _set(prices.copyWith(eyeletInstall: value)),
               ),
               _row(
                 'Молния, ₽/м',

@@ -103,6 +103,44 @@ void main() {
       expect(check, isNotNull);
       expect(check!.severity, TechSeverity.warning);
     });
+
+    test('молния скрина ближе 100 мм к кромке подворота — предупреждение', () {
+      const screen = WindowParams(
+        material: FilmMaterial.screen,
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2000,
+        rightHeight: 2000,
+        hemBottomMm: 40,
+        hemRightMm: 40,
+        hemTopMm: 40,
+        hemLeftMm: 40,
+        zippers: [ZipperSpec(centered: false, offsetMm: 100)],
+      );
+      final checks = techChecksFor(screen);
+      final check = _check(checks, 'screen-zipper-hem-near');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
+      expect(check.title, contains('подворота'));
+      expect(check.recommendation, contains('100'));
+      // Правило ПВХ про 150 мм к плёнке к скрину не применяется.
+      expect(_check(checks, 'zipper-edge-near'), isNull);
+    });
+
+    test('молния скрина по центру — запас до подворота достаточный', () {
+      const screen = WindowParams(
+        material: FilmMaterial.screen,
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2000,
+        rightHeight: 2000,
+        zippers: [ZipperSpec(centered: true)],
+      );
+      final checks = techChecksFor(screen);
+
+      expect(_check(checks, 'screen-zipper-hem-near'), isNull);
+    });
   });
 
   group('Спайка окон', () {
@@ -266,12 +304,45 @@ void main() {
       expect(_check(checks, 'pocket-corner-lifted'), isNull);
     });
 
-    test('глухое окно с овальным люверсом — предупреждение', () {
+    test('глухое окно с овальным люверсом — без запрета', () {
+      // Тип люверса доступен на любом окне: правила «глухое + овальный» нет.
       final params = _correct.copyWith(eyeletType: EyeletType.oval42x22);
-      final check = _check(techChecksFor(params), 'fixed-window-oval-eyelet');
+      final checks = techChecksFor(params);
+
+      expect(_check(checks, 'fixed-window-oval-eyelet'), isNull);
+      expect(params.effectiveEyeletType, EyeletType.oval42x22);
+    });
+
+    test('верх без люверсов и не спаян — предупреждение «нечем крепить»', () {
+      final params = _correct.copyWith(noEyeletsTop: true);
+      final check = _check(techChecksFor(params), 'eyelet-top-unfastened');
 
       expect(check, isNotNull);
       expect(check!.severity, TechSeverity.warning);
+      expect(check.title, 'Верх нечем крепить');
+      expect(check.explanation, contains('не спаяна'));
+
+      // Если сторона спаяна с соседним окном — крепёж там не нужен.
+      final welded = params.copyWith(weldedSides: const [EdgeSide.top]);
+      expect(_check(techChecksFor(welded), 'eyelet-top-unfastened'), isNull);
+    });
+
+    test('низ без люверсов и не спаян — предупреждение', () {
+      final params = _correct.copyWith(noEyeletsBottom: true);
+      final check = _check(techChecksFor(params), 'eyelet-bottom-unfastened');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
+      expect(check.title, 'Низ нечем крепить');
+
+      final welded = params.copyWith(weldedSides: const [EdgeSide.bottom]);
+      expect(_check(techChecksFor(welded), 'eyelet-bottom-unfastened'), isNull);
+    });
+
+    test('без выключенных сторон предупреждений о крепеже нет', () {
+      final checks = techChecksFor(_correct);
+      expect(_check(checks, 'eyelet-top-unfastened'), isNull);
+      expect(_check(checks, 'eyelet-bottom-unfastened'), isNull);
     });
 
     test('усадка 4 % — предупреждение', () {

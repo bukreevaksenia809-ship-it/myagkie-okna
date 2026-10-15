@@ -117,12 +117,15 @@ class Estimate {
       lines.add(EstimateLine(
         title: 'Полотно: ${entry.key.label}',
         // У скрина полотно считается по площади заготовки: готовый размер
-        // плюс подворот на каждую сторону. Подпись показывает это человеку
+        // плюс подворот на каждую сторону, а если стоят молнии — ещё и полосы
+        // под них (материал тот же, скрин). Подпись показывает это человеку
         // прямо в смете.
         note: entry.key == FilmMaterial.screen
             ? 'скрин: заготовка (габарит) ${formatMeters(entry.value)} м² × '
                 '${_unitPriceLabel(pricePerM2)} ₽/м² — готовый размер плюс '
                 'подворот по сторонам'
+                '${summary.screenZipperCount > 0 ? ', включая полосы молний '
+                    '${formatMeters(summary.screenZipperBandAreaM2)} м²' : ''}'
             : '${entry.key.thickness}; заготовка (габарит) с компенсацией '
                 'усадки',
         quantity: entry.value,
@@ -166,9 +169,19 @@ class Estimate {
     }
 
     if (summary.zipperCount > 0 && summary.zipperBandLengthMm > 0) {
+      final note = summary.screenZipperCount == 0
+          ? 'полотно и вставка с впайкой, ${summary.zipperCount} шт'
+          : summary.screenZipperCount == summary.zipperCount
+              ? 'полотно и вставка; полоса из скрина со швом '
+                  '${formatMm(screenSeamMm)} мм по краям — '
+                  '${summary.screenZipperCount} шт'
+              : 'полотно и вставка: с полосой тента '
+                  '${summary.zipperCount - summary.screenZipperCount} шт, '
+                  'с полосой скрина ${summary.screenZipperCount} шт (шов '
+                  '${formatMm(screenSeamMm)} мм)';
       lines.add(EstimateLine(
         title: 'Молния тракторная',
-        note: 'полотно и вставка с впайкой, ${summary.zipperCount} шт',
+        note: note,
         quantity: summary.zipperBandLengthMm / 1000,
         unit: 'м',
         unitPrice: prices.zipperPerM,
@@ -253,15 +266,19 @@ class Estimate {
       ));
     }
     // Скрин: вместо окантовки — подворот по сторонам и шов 3 мм. Работа
-    // считается по длине подворота: периметр готового изделия.
+    // считается по длине подворота: периметр готового изделия, а если у окна
+    // есть молнии — плюс шов по длине полосы каждой молнии.
     if (summary.screenHemLengthMm > 0) {
       final hemMeters = summary.screenHemLengthMm / 1000;
       lines.add(EstimateLine(
         title: 'Подворот скрина и шов ${formatMm(screenSeamMm)} мм',
         note: 'подворот по сторонам (низ, право, верх, лево): '
             '${formatMeters(hemMeters)} м × '
-            '${_unitPriceLabel(prices.screenHemPerM)} ₽/м — длина по периметру '
-            'готового изделия',
+            '${_unitPriceLabel(prices.screenHemPerM)} ₽/м — '
+            '${summary.screenZipperCount > 0 ? 'периметр готового изделия плюс '
+                'швы полос молний '
+                '(${formatMm(summary.screenZipperBandLengthMm)} мм)' : 'длина по периметру '
+                'готового изделия'}',
         quantity: hemMeters,
         unit: 'м',
         unitPrice: prices.screenHemPerM,

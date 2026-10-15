@@ -28,19 +28,24 @@ void expectClose(num actual, num expected, String reason, {double tol = 1e-6}) {
 }
 
 /// Прямоугольник 2000 × 1500 мм, окантовка 100 (50 готовых), запайка 25.
+///
+/// Запайка задана явно: по умолчанию в модели 5 мм (подсов ПВХ 5–6 мм),
+/// а этот аудит считает по примеру заказчика с напайкой 25 мм.
 const _rect2000x1500 = WindowParams(
   bottomWidth: 2000,
   topWidth: 2000,
   leftHeight: 1500,
   rightHeight: 1500,
+  weldOverlapMm: 25,
 );
 
-/// Прямоугольник 2000 × 2500 мм, окантовка 100, запайка 25.
+/// Прямоугольник 2000 × 2500 мм, окантовка 100, запайка 25 (задана явно).
 const _rect2000x2500 = WindowParams(
   bottomWidth: 2000,
   topWidth: 2000,
   leftHeight: 2500,
   rightHeight: 2500,
+  weldOverlapMm: 25,
 );
 
 void main() {
@@ -116,6 +121,7 @@ void _filamentBlankAudit() {
         topWidth: 2000,
         leftHeight: 2000,
         rightHeight: 2000,
+        weldOverlapMm: 25,
       );
       final spec = WindowSpec.of(params);
 
@@ -508,6 +514,7 @@ void _areaAudit() {
         topWidth: 1000,
         leftHeight: 1000,
         rightHeight: 1000,
+        weldOverlapMm: 25,
       );
       final spec = WindowSpec.of(params);
 
@@ -738,6 +745,8 @@ void _rollLayoutAudit() {
         topWidth: 1000,
         leftHeight: 1000,
         rightHeight: 1000,
+        // Запайка 25 мм — как в ручном расчёте ниже (по умолчанию 5 мм).
+        weldOverlapMm: 25,
       );
       final project = OrderProject(
         windows: const [params],
@@ -763,6 +772,8 @@ void _rollLayoutAudit() {
         topWidth: 2000,
         leftHeight: 2000,
         rightHeight: 2000,
+        // Запайка 25 мм — как в ручном расчёте ниже (по умолчанию 5 мм).
+        weldOverlapMm: 25,
       );
       final project = OrderProject(
         windows: const [params],

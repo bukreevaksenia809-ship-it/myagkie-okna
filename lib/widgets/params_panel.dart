@@ -851,8 +851,11 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     'подворачивается по периметру, подворот задаётся на каждую '
                     'сторону (низ, право, верх, лево — обычно 40/50/60 мм), шов '
                     '${formatMm(screenSeamMm)} мм, крепёж — только люверсы по '
-                    'линии подворота. Тента и окантовки у скрина нет: '
-                    'заготовка равна готовому размеру плюс подворот по сторонам.'
+                    'линии подворота. Молния ставится в полосу из скрина '
+                    '(подворот или накладная полоса) со швом '
+                    '${formatMm(screenSeamMm)} мм по краям. Тента и окантовки у '
+                    'скрина нет: заготовка равна готовому размеру плюс подворот '
+                    'по сторонам.'
                 : 'Каждое окно рисуется слоями: окантовка (складывается '
                     'пополам), запайка плёнки под окантовку, плёнка, люверсы и '
                     'крепёж. Номера окон подписываются на листе, раскладка '
@@ -1196,21 +1199,18 @@ class _ParamsPanelState extends State<ParamsPanel> {
               const SizedBox(height: 6),
               _chips<EyeletType>(
                 values: EyeletType.values,
-                selected: params.effectiveEyeletType,
+                selected: params.eyeletType,
                 labelOf: (value) => value.label,
-                enabledOf: (value) =>
-                    params.windowType != WindowType.fixed ||
-                    value == EyeletType.round10,
                 onSelected: (value) =>
                     _updateWindow(params.copyWith(eyeletType: value)),
               ),
-              if (params.windowType == WindowType.fixed) ...[
-                const SizedBox(height: 6),
-                const Text(
-                  'У глухого окна ставятся только круглые люверсы.',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-                ),
-              ],
+              const SizedBox(height: 6),
+              const Text(
+                'Тип люверса доступен на любом окне, включая глухое. '
+                'В углах всегда круглый Ø10 мм: угол тянет по диагонали, '
+                'а овальный люверс развёрнут вдоль одной стороны.',
+                style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+              ),
               const SizedBox(height: 12),
               _eyeletStepField(spec),
               const SizedBox(height: 12),
@@ -1223,6 +1223,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     : 'Люверсы ставятся от углов: при 0 мм первый люверс стоит в углу.',
                 style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
               ),
+              const SizedBox(height: 12),
+              _noEyeletsSection(params),
               if (!params.isScreen) ...[
                 const SizedBox(height: 14),
                 Text(
@@ -1257,41 +1259,41 @@ class _ParamsPanelState extends State<ParamsPanel> {
             title: 'Молния и карман',
             subtitle: _specElementsSummary(params),
             children: [
-              if (!params.isScreen) ...[
-                if (params.zippers.isEmpty)
+              if (params.zippers.isEmpty)
+                OutlinedButton.icon(
+                  onPressed: () => _updateWindow(params.addZipper()),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Добавить молнию'),
+                )
+              else ...[
+                for (var index = 0; index < params.zippers.length; index++)
+                  _zipperCard(params, spec, index),
+                if (params.zippers.length == 1 && maxZippers > 1)
                   OutlinedButton.icon(
                     onPressed: () => _updateWindow(params.addZipper()),
                     icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Добавить молнию'),
-                  )
-                else ...[
-                  for (var index = 0; index < params.zippers.length; index++)
-                    _zipperCard(params, spec, index),
-                  if (params.zippers.length == 1 && maxZippers > 1)
-                    OutlinedButton.icon(
-                      onPressed: () => _updateWindow(params.addZipper()),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Добавить вторую молнию'),
-                    ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Молния впаивается в полосу тента: на чертеже показаны полоса '
-                    'спайки и расстояния до кромок плёнки. Всего до $maxZippers молний.',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF66748A),
-                    ),
+                    label: const Text('Добавить вторую молнию'),
                   ),
-                ],
-                const SizedBox(height: 10),
-              ] else ...[
-                const Text(
-                  'Молния у скрина не ставится: полотно подворачивается и '
-                  'крепится люверсами.',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                const SizedBox(height: 6),
+                Text(
+                  params.isScreen
+                      ? 'Полоса под молнию у скрина — подвёрнутая ткань (или '
+                          'накладная полоса из скрина): на чертеже полоса серая, '
+                          'как подворот, со швом '
+                          '${formatMm(screenSeamMm)} мм по краям. Молния не '
+                          'должна подходить к кромке подворота ближе '
+                          '${formatMm(minScreenZipperHemMm)} мм. Всего до '
+                          '$maxZippers молний.'
+                      : 'Молния впаивается в полосу тента: на чертеже показаны '
+                          'полоса спайки и расстояния до кромок плёнки. Всего '
+                          'до $maxZippers молний.',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF66748A),
+                  ),
                 ),
-                const SizedBox(height: 10),
               ],
+              const SizedBox(height: 10),
               SwitchListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
@@ -1623,6 +1625,66 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
+  /// Переключатели «не ставить люверсы сверху/снизу».
+  ///
+  /// Сторона остаётся без крепежа: там предполагается спайка с соседним окном
+  /// или крепление полотна к стене/раме другим способом. Углы выключенной
+  /// стороны тоже не ставятся — угол принадлежит стороне, которая идёт первой
+  /// в обходе (см. WindowLayers.eyelets).
+  Widget _noEyeletsSection(WindowParams params) {
+    return _panelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Стороны без люверсов',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          SwitchListTile(
+            key: const Key('no-eyelets-top'),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            value: params.noEyeletsTop,
+            title: const Text(
+              'Не ставить люверсы сверху',
+              style: TextStyle(fontSize: 12),
+            ),
+            subtitle: const Text(
+              'Верх останется без крепежа: например, там будет спайка с '
+              'соседним окном или крепление к стене.',
+              style: TextStyle(fontSize: 11),
+            ),
+            onChanged: (value) =>
+                _updateWindow(params.copyWith(noEyeletsTop: value)),
+          ),
+          SwitchListTile(
+            key: const Key('no-eyelets-bottom'),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            value: params.noEyeletsBottom,
+            title: const Text(
+              'Не ставить люверсы снизу',
+              style: TextStyle(fontSize: 12),
+            ),
+            subtitle: const Text(
+              'Низ останется без крепежа: например, там будет спайка с '
+              'соседним окном или крепление к стене.',
+              style: TextStyle(fontSize: 11),
+            ),
+            onChanged: (value) =>
+                _updateWindow(params.copyWith(noEyeletsBottom: value)),
+          ),
+          Text(
+            'Всего люверсов на окне: ${WindowSpec.of(params).eyeletCount} шт'
+            '${params.hasEyeletlessSides ? ' (без сторон: '
+                '${WindowSpec.of(params).layers.eyeletlessSidesLabel})' : ''}.',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Карточка одной молнии: центр или сдвиг, ширина спайки, удаление.
   Widget _zipperCard(WindowParams params, WindowSpec spec, int index) {
     final zipper = params.zippers[index];
@@ -1686,11 +1748,15 @@ class _ParamsPanelState extends State<ParamsPanel> {
             _zipperOffsetField(index, offset, maxOffset),
             const SizedBox(height: 8),
           ],
-          _zipperBandField(index, zipper.bandWidth),
+          _zipperBandField(index, zipper.bandWidth, isScreen: params.isScreen),
           const SizedBox(height: 6),
           Text(
-            'Спайка шириной ${formatMm(zipper.bandWidth)} мм: молния впаивается '
-            'в полосу тента и идёт по её середине.',
+            params.isScreen
+                ? 'Полоса шириной ${formatMm(zipper.bandWidth)} мм из скрина '
+                    '(подворот или накладная полоса): молния идёт по её '
+                    'середине, шов ${formatMm(screenSeamMm)} мм по краям полосы.'
+                : 'Спайка шириной ${formatMm(zipper.bandWidth)} мм: молния '
+                    'впаивается в полосу тента и идёт по её середине.',
             style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
         ],
@@ -1718,7 +1784,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
-  Widget _zipperBandField(int index, double value) {
+  Widget _zipperBandField(int index, double value, {required bool isScreen}) {
     return TextField(
       controller: _zipperBandControllers.putIfAbsent(
         index,
@@ -1726,7 +1792,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       ),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
-        labelText: 'Ширина спайки',
+        labelText: isScreen ? 'Ширина полосы' : 'Ширина спайки',
         suffixText: 'мм',
         helperText: '40–120 мм, по умолчанию 50',
         border: const OutlineInputBorder(),
@@ -1773,7 +1839,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
       return;
     }
     if (value < 40 || value > 120) {
-      setState(() => _zipperBandErrors[index] = 'Ширина спайки 40–120 мм');
+      setState(() => _zipperBandErrors[index] = _params.isScreen
+          ? 'Ширина полосы 40–120 мм'
+          : 'Ширина спайки 40–120 мм');
       return;
     }
     setState(() => _zipperBandErrors[index] = null);
