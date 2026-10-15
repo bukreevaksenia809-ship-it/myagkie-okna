@@ -395,6 +395,37 @@ class _ParamsPanelState extends State<ParamsPanel> {
     }
   }
 
+  /// Ввод интервала люверсов: 50…2000 мм.
+  ///
+  /// Интервал задаёт пользователь, поэтому жёсткого коридора 250–400 больше
+  /// нет. Внутри рамок значение уходит в модель как есть; фактический интервал
+  /// по сторонам считается в геометрии и показывается рядом.
+  void _onEyeletStepChanged(String raw) {
+    final value = parseMm(raw);
+    if (value == null) {
+      setState(
+        () => _errors[ParamField.eyeletStep] = 'Введите число, например 280',
+      );
+      return;
+    }
+    if (value < minEyeletStepMm || value > maxEyeletStepMm) {
+      setState(
+        () => _errors[ParamField.eyeletStep] =
+            'Интервал от ${formatMm(minEyeletStepMm)} до '
+            '${formatMm(maxEyeletStepMm)} мм',
+      );
+      return;
+    }
+    setState(() => _errors[ParamField.eyeletStep] = null);
+    _updateWindow(_params.copyWith(eyeletStep: value));
+  }
+
+  /// Быстрый пресет интервала люверсов.
+  void _applyEyeletStep(double value) {
+    setState(() => _errors[ParamField.eyeletStep] = null);
+    _updateWindow(_params.copyWith(eyeletStep: value));
+  }
+
   String? _errorFor(ParamField field) {
     final local = _errors[field];
     if (local != null) return local;
@@ -1153,7 +1184,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
           _expansion(
             title: 'Крепёж',
             subtitle:
-                '${spec.eyeletType.label} · шаг ${formatMm(params.eyeletStep)} мм · '
+                '${spec.eyeletType.label} · интервал '
+                '${formatMm(params.eyeletStep)} мм (факт. '
+                '${spec.eyeletStepLabel}) · '
                 '${spec.eyeletCount} шт на окно',
             children: [
               const Text(
@@ -1179,13 +1212,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 ),
               ],
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: _numberField(ParamField.eyeletStep)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _numberField(ParamField.eyeletCornerOffset)),
-                ],
-              ),
+              _eyeletStepField(spec),
+              const SizedBox(height: 12),
+              _numberField(ParamField.eyeletCornerOffset),
               const SizedBox(height: 6),
               Text(
                 params.isScreen
@@ -2093,6 +2122,73 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
+  /// Интервал люверсов: пресеты, своё число и фактический интервал по сторонам.
+  ///
+  /// Пользователь задаёт «примерный» интервал, а приложение расставляет
+  /// люверсы так, чтобы фактический интервал был НЕ БОЛЬШЕ заданного: число
+  /// интервалов по стороне округляется вверх. Поэтому рядом с полем всегда
+  /// видно, что получилось на самом деле.
+  Widget _eyeletStepField(WindowSpec spec) {
+    final params = spec.params;
+    final value = params.eyeletStep;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Интервал люверсов, мм',
+          style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final preset in eyeletStepPresets)
+              ChoiceChip(
+                label: Text(
+                  formatMm(preset),
+                  style: const TextStyle(fontSize: 11),
+                ),
+                selected: (value - preset).abs() < 1e-9,
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+                onSelected: (_) => _applyEyeletStep(preset),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          key: const Key('eyelet-step-field'),
+          controller: _controllers[ParamField.eyeletStep],
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: ParamField.eyeletStep.label,
+            suffixText: 'мм',
+            helperText: '${formatMm(minEyeletStepMm)}…'
+                '${formatMm(maxEyeletStepMm)} мм; рекомендовано '
+                '${formatMm(recommendedEyeletStepMinMm)}–'
+                '${formatMm(recommendedEyeletStepMaxMm)}',
+            helperMaxLines: 2,
+            border: const OutlineInputBorder(),
+            isDense: true,
+            errorText: _errorFor(ParamField.eyeletStep),
+            errorMaxLines: 2,
+          ),
+          onChanged: _onEyeletStepChanged,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Задан ${formatMm(value)} мм → фактически '
+          '${spec.eyeletStepLabel} по сторонам: число интервалов округляют '
+          'вверх, поэтому факт не больше заданного.',
+          key: const Key('eyelet-step-actual'),
+          style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+        ),
+      ],
+    );
+  }
+
   Widget _numberField(ParamField field) {
     return TextField(
       controller: _controllers[field],
@@ -2165,7 +2261,10 @@ class _CuttingCard extends StatelessWidget {
         ),
       for (final label in spec.edgeConsumptionLabels)
         ('Окантовка ${label.split(' — ').first}', label.split(' — ').last),
-      ('Люверсов', '${spec.eyeletCount} шт, шаг ${spec.eyeletStepLabel}'),
+      (
+        'Люверсов',
+        '${spec.eyeletCount} шт, ${spec.eyeletStepLabel}',
+      ),
     ];
 
     return Container(

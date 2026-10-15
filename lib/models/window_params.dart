@@ -86,6 +86,30 @@ enum FilmMaterial {
 const double minEdgeRollWidth = 40;
 const double maxEdgeRollWidth = 400;
 
+/// Границы ввода интервала люверсов, мм.
+///
+/// Интервал задаёт пользователь: 50…2000 мм — это рамки ввода, а не
+/// «рекомендация». Значение внутри диапазона принимается всегда, даже если
+/// выходит за рекомендуемые 250–450 мм (см. [recommendedEyeletStepMinMm]).
+const double minEyeletStepMm = 50;
+const double maxEyeletStepMm = 2000;
+
+/// Рекомендуемый интервал люверсов, мм: внутри него полотно держит ветер,
+/// а фурнитуры уходит в норму. Выход за диапазон — только подсказка, не запрет.
+const double recommendedEyeletStepMinMm = 250;
+const double recommendedEyeletStepMaxMm = 450;
+
+/// Технологические пороги интервала люверсов, мм.
+///
+/// Свыше [looseEyeletStepMm] полотно парусит между креплениями, ниже
+/// [denseEyeletStepMm] — перерасход люверсов и узкая перемычка между ними.
+const double looseEyeletStepMm = 800;
+const double denseEyeletStepMm = 150;
+
+/// Быстрые пресеты интервала люверсов в панели, мм. Пользователь может
+/// выбрать любой из них или ввести своё число в поле.
+const List<double> eyeletStepPresets = [250, 300, 350, 400, 500];
+
 /// Пресет рулона окантовки — оставлен ради совместимости: по нему читаются
 /// старые заказы, где ширина писалась именем типа, и берётся цена прайса.
 ///
@@ -262,7 +286,7 @@ enum ParamField {
         ParamField.leftHeight => 'Высота лево',
         ParamField.rightHeight => 'Высота право',
         ParamField.topOffset => 'Смещение верх',
-        ParamField.eyeletStep => 'Шаг люверсов',
+        ParamField.eyeletStep => 'Интервал люверсов',
         ParamField.eyeletCornerOffset => 'Отступ люверса от угла',
         ParamField.drainCount => 'Дренажных отверстий',
         ParamField.pocketWidth => 'Ширина кармана',
@@ -552,6 +576,14 @@ class WindowParams {
 
   // Крепёж
   final EyeletType eyeletType;
+
+  /// Примерный (заданный) интервал люверсов, мм.
+  ///
+  /// Пользователь задаёт его сам: [minEyeletStepMm]…[maxEyeletStepMm], по
+  /// умолчанию 300. Число интервалов по стороне = ceil(длина / интервал),
+  /// поэтому фактический интервал получается НЕ БОЛЬШЕ заданного — люверсы
+  /// «не разъезжаются», а лишний остаток уходит в запас (см.
+  /// `WindowLayers.eyeletSteps` и `WindowSpec.eyeletStepLabel`).
   final double eyeletStep;
 
   /// Отступ первого люверса от угла; 0 — люверс стоит в углу.

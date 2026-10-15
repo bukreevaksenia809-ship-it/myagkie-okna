@@ -156,7 +156,7 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     hemLeftMm: _double(json['hemLeftMm'], legacyHem),
     eyeletType:
         _enumByName(EyeletType.values, json['eyeletType'], fallback.eyeletType),
-    eyeletStep: _double(json['eyeletStep'], fallback.eyeletStep),
+    eyeletStep: _eyeletStepFromJson(json['eyeletStep'], fallback.eyeletStep),
     eyeletCornerOffset:
         _double(json['eyeletCornerOffset'], fallback.eyeletCornerOffset),
     fastenerType: _enumByName(
@@ -185,6 +185,23 @@ T _enumByName<T extends Enum>(List<T> values, Object? name, T fallback) {
 
 double _double(Object? value, double fallback) =>
     value is num ? value.toDouble() : fallback;
+
+/// Интервал люверсов из JSON.
+///
+/// Новые заказы пишут число миллиметров («280»), но встречаются и строки
+/// («280» или «280,0») — читаем оба варианта. Битое значение заменяется
+/// [fallback] (по умолчанию 300 мм), чтобы старые заказы открывались.
+double _eyeletStepFromJson(Object? value, double fallback) {
+  if (value is num) {
+    final step = value.toDouble();
+    return step.isFinite && step > 0 ? step : fallback;
+  }
+  if (value is String) {
+    final parsed = double.tryParse(value.trim().replaceAll(',', '.'));
+    if (parsed != null && parsed.isFinite && parsed > 0) return parsed;
+  }
+  return fallback;
+}
 
 /// Ширина рулона окантовки из JSON.
 ///

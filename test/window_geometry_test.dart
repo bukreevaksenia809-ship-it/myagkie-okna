@@ -28,6 +28,7 @@ const _rect = WindowParams(
 
 void main() {
   _eyeletRules();
+  _freeEyeletStepRules();
   _costsSummaryRules();
   _weldedWindowRules();
   _allowanceRules();
@@ -634,7 +635,7 @@ void main() {
       expect(project.setGridColumns(9).gridColumns, 4);
     });
 
-    test('подробный лист растёт под число окон', () {
+    test('подробный лист растёт под число окон (страницы A4)', () {
       const viewport = Size(1500, 900);
       final five = const OrderProject()
           .addWindow()
@@ -646,30 +647,38 @@ void main() {
 
       final size = DrawingSheet.detailedSheetSize(five, viewport);
       expect(size, isNotNull);
-      // 5 окон в одну колонку — пять рядов по 640.
-      expect(size!.height,
-          closeTo(DrawingSheet.titleBlockHeight + 40 + 5 * 640, 0.01));
-      expect(size.width, greaterThanOrEqualTo(1360));
+      // Лист чертежа — A4: 5 окон в одну колонку — пять страниц A4.
+      // Поля рабочей области вокруг листа выводим из самого размера, чтобы
+      // не дублировать приватную константу: высота = 5 × A4 + поля.
+      final padding = size!.height - DrawingSheet.a4Height * 5;
+      expect(padding, greaterThan(0));
+      expect(padding, lessThan(100));
+      expect(size.width, closeTo(DrawingSheet.a4Width + padding, 0.01));
 
-      // Теперь подробный режим всегда: и при 2 колонках, и при одном окне
-      // лист получает собственный размер, а не растягивается на окно программы.
-      // 5 окон в 2 колонки — три ряда, лист ниже.
+      // 5 окон в 2 колонки — три ряда, три страницы, лист ниже.
       final two = DrawingSheet.detailedSheetSize(
         five.setGridColumns(2),
         viewport,
       );
       expect(two, isNotNull);
-      expect(two!.height,
-          closeTo(DrawingSheet.titleBlockHeight + 40 + 3 * 640, 0.01));
+      expect(
+        two!.height,
+        closeTo(DrawingSheet.a4Height * 3 + padding, 0.01),
+      );
       expect(two.height, lessThan(size.height));
+      expect(two.width, closeTo(size.width, 0.01));
 
       final single = DrawingSheet.detailedSheetSize(
         const OrderProject(),
         viewport,
       );
       expect(single, isNotNull);
-      // Лист одного окна выше окна программы: чертёж крупный, лист листается.
-      expect(single!.height, greaterThan(viewport.height));
+      // Лист одного окна — одна страница A4, выше окна программы.
+      expect(
+        single!.height,
+        closeTo(DrawingSheet.a4Height + padding, 0.01),
+      );
+      expect(single.height, greaterThan(viewport.height));
       expect(single.width, lessThan(viewport.width + 200));
     });
 
@@ -683,7 +692,7 @@ void main() {
   });
 
   group('Проверка параметров', () {
-    test('шаг люверсов вне 250–400 — предупреждение', () {
+    test('интервал люверсов 500 мм — подсказка, не запрет', () {
       final issues = validateParams(
         const WindowParams(bottomWidth: 2000, topWidth: 2000, eyeletStep: 500),
       );
@@ -691,7 +700,8 @@ void main() {
       expect(hasBlockingIssues(issues), isFalse);
       expect(
         issues.any((issue) =>
-            issue.field == ParamField.eyeletStep && !issue.isError),
+            issue.field == ParamField.eyeletStep &&
+            issue.severity == ParamIssueSeverity.info),
         isTrue,
       );
     });
@@ -840,6 +850,198 @@ void _eyeletRules() {
       final layers = WindowLayers(params, WindowGeometry.of(params));
 
       expect(layers.eyelets.any((e) => e.side == WindowSide.right), isTrue);
+    });
+  });
+}
+
+/// Свободный интервал люверсов: пользователь задаёт его сам, а фактический
+/// интервал по сторонам получается НЕ БОЛЬШЕ заданного.
+void _freeEyeletStepRules() {
+  /// Окно 2000 × 1500 с окантовкой 100 мм (линия люверсов 1950 × 1450).
+  WindowParams rect(double step) => WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 1500,
+        rightHeight: 1500,
+        eyeletStep: step,
+      );
+
+  WindowLayers layersOf(WindowParams params) =>
+      WindowLayers(params, WindowGeometry.of(params));
+
+  group('Свободный интервал люверсов', () {
+    test('шаг 280 на 2000 × 1500: факт не больше 280, число по ручному расчёту',
+        () {
+      final layers = layersOf(rect(280));
+
+      // Линия люверсов — середина окантовки: 2000 − 2×25 = 1950,
+      // 1500 − 2×25 = 1450. Интервалы: ceil(1950/280) = 7, ceil(1450/280) = 6.
+      const longSide = 1950.0;
+      const shortSide = 1450.0;
+      const longIntervals = 7;
+      const shortIntervals = 6;
+      expect((longSide / 280).ceil(), longIntervals);
+      expect((shortSide / 280).ceil(), shortIntervals);
+
+      expect(layers.eyeletSteps.length, 4, reason: 'по записи на сторону');
+      for (final step in layers.eyeletSteps) {
+        expect(step, lessThanOrEqualTo(280 + 1e-9),
+            reason: 'фактический интервал не больше заданного');
+        // Гарантия алгоритма: ceil даёт факт в пределах (заданный/2, заданный].
+        expect(step, greaterThan(140));
+      }
+
+      // Длинные стороны: 1950/7 ≈ 278,6 мм; короткие: 1450/6 ≈ 241,7 мм.
+      final sorted = [...layers.eyeletSteps]..sort();
+      expect(sorted[0], closeTo(shortSide / shortIntervals, 1e-9));
+      expect(sorted[1], closeTo(shortSide / shortIntervals, 1e-9));
+      expect(sorted[2], closeTo(longSide / longIntervals, 1e-9));
+      expect(sorted[3], closeTo(longSide / longIntervals, 1e-9));
+
+      // Уникальных люверсов: (7+1) + (6+1) + (7+1) + (6+1) − 4 общих угла.
+      const manual = 8 + 7 + 8 + 7 - 4;
+      expect(manual, 26);
+      expect(layers.eyeletCount, manual);
+    });
+
+    test('шаг 280 на скрине 2000 × 1500: факт ровно 250 по всем сторонам', () {
+      // У скрина линия люверсов — сам контур (без окантовки): 2000 и 1500.
+      // ceil(2000/280) = 8 → 250; ceil(1500/280) = 6 → 250.
+      const params = WindowParams(
+        material: FilmMaterial.screen,
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 1500,
+        rightHeight: 1500,
+        eyeletStep: 280,
+      );
+      final layers = layersOf(params);
+
+      expect(layers.eyeletSteps, hasLength(4));
+      for (final step in layers.eyeletSteps) {
+        expect(step, inInclusiveRange(250, 280));
+        expect(step, closeTo(250, 1e-9));
+      }
+      expect(WindowSpec.of(params).eyeletStepLabel, '250 мм');
+    });
+
+    test('шаг 600: факт не больше 600, люверсов меньше, чем при 300', () {
+      final step300 = layersOf(rect(300));
+      final step600 = layersOf(rect(600));
+
+      for (final step in step600.eyeletSteps) {
+        expect(step, lessThanOrEqualTo(600 + 1e-9));
+      }
+      expect(step600.eyeletCount, lessThan(step300.eyeletCount));
+      // Вручную: ceil(1950/600) = 4, ceil(1450/600) = 3 →
+      // (4+1) + (3+1) + (4+1) + (3+1) − 4 = 14.
+      expect(step600.eyeletCount, 14);
+      expect(step300.eyeletCount, 24);
+    });
+
+    test('шаг 1500 на окне 800 × 600: по люверсу в углах, без падения', () {
+      const params = WindowParams(
+        bottomWidth: 800,
+        topWidth: 800,
+        leftHeight: 600,
+        rightHeight: 600,
+        eyeletStep: 1500,
+      );
+      final layers = layersOf(params);
+
+      // Линия люверсов 750 × 550: на каждой стороне ровно один интервал,
+      // то есть по люверсу в углах. Четыре угла общие для соседних сторон.
+      expect(layers.eyeletCount, 4);
+      expect(layers.eyelets.every((eyelet) => eyelet.isCorner), isTrue);
+      for (final step in layers.eyeletSteps) {
+        expect(step, lessThanOrEqualTo(1500 + 1e-9));
+      }
+      // Подпись фактического интервала считается без ошибок.
+      expect(WindowSpec.of(params).eyeletStepLabel, isNot('—'));
+    });
+
+    test('нулевой и битый интервал не ломают геометрию (минимум 50 мм)', () {
+      for (final step in const [0.0, -100.0, double.nan]) {
+        final layers = layersOf(rect(step));
+        expect(layers.eyeletCount, greaterThan(0));
+        for (final actual in layers.eyeletSteps) {
+          expect(actual, greaterThanOrEqualTo(50));
+        }
+      }
+    });
+
+    test('интервал 280 переживает JSON round-trip', () {
+      final params = rect(280);
+      expect(windowToJson(params)['eyeletStep'], 280);
+      expect(windowFromJson(windowToJson(params)).eyeletStep, 280);
+
+      final project = orderFromJson(
+        orderToJson(OrderProject(windows: [params])),
+      );
+      expect(project.windows.first.eyeletStep, 280);
+
+      // Старый заказ без поля и заказ со строкой читаются без потерь.
+      expect(
+        windowFromJson(const <String, dynamic>{
+          'bottomWidth': 2000,
+          'topWidth': 2000,
+        }).eyeletStep,
+        300,
+      );
+      expect(
+        windowFromJson(const <String, dynamic>{'eyeletStep': '280'}).eyeletStep,
+        280,
+      );
+    });
+  });
+
+  group('Проверка свободного интервала люверсов', () {
+    ParamIssue? issueFor(double step) {
+      for (final issue in validateParams(rect(step))) {
+        if (issue.field == ParamField.eyeletStep) return issue;
+      }
+      return null;
+    }
+
+    test('500 мм — подсказка (info), а не ошибка и не запрет', () {
+      final issue = issueFor(500.0);
+      expect(issue, isNotNull);
+      expect(issue!.severity, ParamIssueSeverity.info);
+      expect(issue.isError, isFalse);
+      expect(issue.isWarning, isFalse);
+      expect(issue.message, contains('рекомендуем'));
+    });
+
+    test('100 мм — предупреждение о перерасходе', () {
+      final issue = issueFor(100.0);
+      expect(issue, isNotNull);
+      expect(issue!.severity, ParamIssueSeverity.warning);
+      expect(issue.isError, isFalse);
+      expect(issue.message, contains('перерасход'));
+    });
+
+    test('900 мм — предупреждение о парусности', () {
+      final issue = issueFor(900.0);
+      expect(issue, isNotNull);
+      expect(issue!.severity, ParamIssueSeverity.warning);
+      expect(issue.message, contains('парусить'));
+    });
+
+    test('40 мм и 2500 мм — ошибки (вне рамок 50…2000)', () {
+      final low = issueFor(40.0);
+      expect(low, isNotNull);
+      expect(low!.isError, isTrue);
+      expect(hasBlockingIssues(validateParams(rect(40))), isTrue);
+
+      final high = issueFor(2500.0);
+      expect(high, isNotNull);
+      expect(high!.isError, isTrue);
+      expect(hasBlockingIssues(validateParams(rect(2500))), isTrue);
+    });
+
+    test('280 и 300 мм — без замечаний', () {
+      expect(issueFor(280.0), isNull);
+      expect(issueFor(300.0), isNull);
     });
   });
 }

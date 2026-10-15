@@ -277,7 +277,7 @@ class WindowLayers {
   /// Все люверсы по периметру; угловые не дублируются.
   List<EyeletPlacement> get eyelets => _eyeletResult.placements;
 
-  /// Фактический шаг по каждой стороне.
+  /// Фактический интервал по каждой стороне, мм (не больше заданного).
   List<double> get eyeletSteps => _eyeletResult.steps;
 
   int get eyeletCount => eyelets.length;
@@ -583,7 +583,20 @@ class WindowLayers {
 
       final offset = params.eyeletCornerOffset.clamp(0.0, math.max(length / 2 - 1, 0));
       final usable = length - offset * 2;
-      final nominal = params.eyeletStep.clamp(50.0, 1000.0);
+      // Интервал задаёт пользователь ([WindowParams.eyeletStep], 50…2000 мм).
+      // Жёсткого «рекомендованного» коридора здесь нет: берём ровно введённое
+      // число. Защищаемся только от нуля/NaN/отрицательного значения — иначе
+      // деление даст бесконечность, и минимум 50 мм.
+      final requested = params.eyeletStep;
+      final nominal = requested.isFinite && requested >= minEyeletStepMm
+          ? requested
+          : minEyeletStepMm;
+      // Число интервалов округляем ВВЕРХ: тогда фактический интервал
+      // usable / intervals получается НЕ БОЛЬШЕ заданного, и «хвоста» в углу
+      // нет. Именно поэтому это «примерный интервал»: задан 300 мм — фактически
+      // 269…291 мм по сторонам.
+      // Если заданный интервал больше стороны (1500 мм на стороне 800 мм),
+      // получается ровно один интервал: по люверсу в каждом углу стороны.
       final intervals = math.max(1, (usable / nominal).ceil());
       final actual = usable / intervals;
       steps.add(actual);
@@ -928,9 +941,10 @@ class WindowSpec {
             '${params.isScreen ? 'скрин кроится' : 'плёнка кроится'} '
             '${formatMm(filmCutWidthWithAllowance)} × '
             '${formatMm(filmCutHeightWithAllowance)} мм',
-      'Люверсы ${eyeletType.label.toLowerCase()}, шаг $eyeletStepLabel '
-          '(номинал ${formatMm(params.eyeletStep)} мм), от угла '
-          '${formatMm(params.eyeletCornerOffset)} мм, всего $eyeletCount шт',
+      'Люверсы ${eyeletType.label.toLowerCase()}: интервал задан '
+          '${formatMm(params.eyeletStep)} мм, факт $eyeletStepLabel по '
+          'сторонам, от угла ${formatMm(params.eyeletCornerOffset)} мм, '
+          'всего $eyeletCount шт',
       'Крепёж: ${fastenerSummary.toLowerCase()}',
       if (params.isLifting && !params.isScreen)
         'Подъёмные ремни: $strapCount шт, '
@@ -982,13 +996,105 @@ extension on String {
       isEmpty ? this : '${this[0].toLowerCase()}${substring(1)}';
 }
 
+/// Важность замечания к параметрам: подсказка, предупреждение или ошибка.
+///
+/// Ошибка блокирует производство ([ParamIssue.isError]), предупреждение —
+/// риск брака, подсказка — «так тоже можно, но обычно делают иначе».
+enum ParamIssueSeverity {
+  info,
+  warning,
+  error;
+
+  String get label => switch (this) {
+        ParamIssueSeverity.info => 'Подсказка',
+        ParamIssueSeverity.warning => 'Предупреждение',
+        ParamIssueSeverity.error => 'Ошибка',
+      };
+}
+
 /// Замечание к введённым параметрам.
 class ParamIssue {
-  const ParamIssue(this.field, this.message, {this.isError = true});
+  const ParamIssue(
+    this.field,
+    this.message, {
+    bool isError = true,
+    ParamIssueSeverity? severity,
+  }) : severity =
+            severity ?? (isError ? ParamIssueSeverity.error : ParamIssueSeverity.info);
 
   final ParamField field;
   final String message;
-  final bool isError;
+
+  /// Важность замечания. Старый флаг [isError] выводится из неё, поэтому
+  /// прежние вызовы `isError: false` продолжают работать как «подсказка».
+  final ParamIssueSeverity severity;
+
+  bool get isError => severity == ParamIssueSeverity.error;
+
+  /// Предупреждение — не ошибка, но и не безобидная подсказка.
+  bool get isWarning => severity == ParamIssueSeverity.warning;
+}
+
+/// Проверка интервала люверсов.
+///
+/// Пользователь задаёт интервал сам ([WindowParams.eyeletStep]), поэтому
+/// «шага 250–400» тут больше нет. Ошибки — только выход за рамки ввода
+/// [minEyeletStepMm]…[maxEyeletStepMm]. Внутри рамок значение принимается:
+/// 250–450 мм — рекомендация (подсказка), свыше [looseEyeletStepMm] — риск
+/// парусности, ниже [denseEyeletStepMm] — перерасход люверсов.
+void _checkEyeletStep(WindowParams params, List<ParamIssue> issues) {
+  final step = params.eyeletStep;
+  if (!step.isFinite) {
+    issues.add(const ParamIssue(
+      ParamField.eyeletStep,
+      'Интервал люверсов: укажите число в миллиметрах',
+    ));
+    return;
+  }
+  if (step < minEyeletStepMm) {
+    issues.add(ParamIssue(
+      ParamField.eyeletStep,
+      'Интервал люверсов: ${formatMm(step)} мм — меньше минимума '
+      '${formatMm(minEyeletStepMm)} мм',
+    ));
+    return;
+  }
+  if (step > maxEyeletStepMm) {
+    issues.add(ParamIssue(
+      ParamField.eyeletStep,
+      'Интервал люверсов: ${formatMm(step)} мм — больше максимума '
+      '${formatMm(maxEyeletStepMm)} мм',
+    ));
+    return;
+  }
+  if (step > looseEyeletStepMm) {
+    issues.add(ParamIssue(
+      ParamField.eyeletStep,
+      'Интервал люверсов: ${formatMm(step)} мм — полотно будет парусить '
+      'между креплениями',
+      severity: ParamIssueSeverity.warning,
+    ));
+    return;
+  }
+  if (step < denseEyeletStepMm) {
+    issues.add(ParamIssue(
+      ParamField.eyeletStep,
+      'Интервал люверсов: ${formatMm(step)} мм — перерасход люверсов и узкая '
+      'перемычка',
+      severity: ParamIssueSeverity.warning,
+    ));
+    return;
+  }
+  // Рекомендуемый диапазон: вне него — только подсказка, ввод не запрещён.
+  if (step < recommendedEyeletStepMinMm || step > recommendedEyeletStepMaxMm) {
+    issues.add(ParamIssue(
+      ParamField.eyeletStep,
+      'Интервал люверсов: ${formatMm(step)} мм — вне рекомендуемых '
+      '${formatMm(recommendedEyeletStepMinMm)}–'
+      '${formatMm(recommendedEyeletStepMaxMm)} мм, но так тоже делают',
+      severity: ParamIssueSeverity.info,
+    ));
+  }
 }
 
 /// Проверка параметров окна: физически невозможные значения — ошибки,
@@ -1030,7 +1136,11 @@ List<ParamIssue> validateParams(WindowParams params) {
   checkPositive(ParamField.leftHeight, params.leftHeight);
   checkPositive(ParamField.rightHeight, params.rightHeight);
 
-  checkRange(ParamField.eyeletStep, params.eyeletStep, 250, 400, '250–400 мм');
+  // Интервал люверсов задаёт пользователь: 50…2000 мм — рамки ввода.
+  // Внутри них значение принимается всегда (это не «шаг 250–400» из старой
+  // версии). Выход за рекомендуемые 250–450 мм — подсказка, парусность
+  // (свыше 800 мм) и перерасход (ниже 150 мм) — предупреждения.
+  _checkEyeletStep(params, issues);
   checkRange(
     ParamField.eyeletCornerOffset,
     params.eyeletCornerOffset,

@@ -83,15 +83,16 @@ class TechCheck {
 
 // ——— Пороги технологии (реальные допуски для мягких окон из ПВХ) ———
 
-/// Рекомендуемый шаг люверсов: 250–400 мм.
-const double _minEyeletStepMm = 250;
-const double _maxEyeletStepMm = 400;
+/// Рекомендуемый интервал люверсов: 250–450 мм. Это подсказка, а не запрет:
+/// интервал задаёт пользователь в рамках [minEyeletStepMm]…[maxEyeletStepMm].
+const double _minEyeletStepMm = recommendedEyeletStepMinMm;
+const double _maxEyeletStepMm = recommendedEyeletStepMaxMm;
 
-/// Свыше 500 мм полотно между точками крепления начинает парусить и хлопать.
-const double _looseEyeletStepMm = 500;
+/// Свыше 800 мм полотно между точками крепления парусит и хлопает.
+const double _looseEyeletStepMm = looseEyeletStepMm;
 
-/// Ниже 200 мм люверсы идут слишком часто: перерасход и разрыв перемычки.
-const double _denseEyeletStepMm = 200;
+/// Ниже 150 мм люверсы идут слишком часто: перерасход и узкая перемычка.
+const double _denseEyeletStepMm = denseEyeletStepMm;
 
 /// Минимальная перемычка окантовки от люверса до угла, мм.
 const double _minEyeletCornerClearanceMm = 40;
@@ -194,13 +195,15 @@ List<TechCheck> techChecksForOrder(OrderProject project) {
 
 // ——————————————————————— Правила по люверсам ———————————————————————
 
-/// Шаг люверсов.
+/// Интервал люверсов.
 ///
-/// Люверс передаёт ветровую нагрузку на окантовку точечно. Слишком редкий шаг
-/// (свыше 500 мм) оставляет полотно без промежуточных точек: окно парусит,
+/// Интервал задаёт пользователь, поэтому жёсткого коридора «250–400» здесь
+/// нет: это замечания технолога, а не запрет. Слишком редкий интервал
+/// (свыше 800 мм) оставляет полотно без промежуточных точек: окно парусит,
 /// хлопает на ветру, окантовка работает на отрыв. Слишком частый (меньше
-/// 200 мм) съедает тент и металл, а перемычка между соседними кольцами
-/// становится настолько узкой, что рвётся по пробою.
+/// 150 мм) съедает тент и металл, а перемычка между соседними кольцами
+/// становится настолько узкой, что рвётся по пробою. Между 450 и 800 мм —
+/// справка «на верхней границе», между 150 и 250 мм — «чаще рекомендуемого».
 void _checkEyeletStep(WindowParams params, List<TechCheck> checks) {
   final step = params.eyeletStep;
   if (!step.isFinite || step <= 0) return;
@@ -210,11 +213,11 @@ void _checkEyeletStep(WindowParams params, List<TechCheck> checks) {
       ruleId: 'eyelet-step-loose',
       severity: TechSeverity.warning,
       field: ParamField.eyeletStep,
-      title: 'Шаг люверсов ${formatMm(step)} мм — слишком редкий',
+      title: 'Интервал люверсов ${formatMm(step)} мм — слишком редкий',
       explanation: 'Полотно между точками крепления провисает: при ветре окно '
           'парусит и хлопает, окантовка и люверсы работают на отрыв, '
           'тент вытягивается по пробою.',
-      recommendation: 'Уменьшите шаг до 250–400 мм (на ветреных фасадах — '
+      recommendation: 'Уменьшите интервал до 250–450 мм (на ветреных фасадах — '
           'ближе к 250–300 мм) или добавьте промежуточные люверсы по длинным '
           'сторонам.',
     ));
@@ -223,7 +226,7 @@ void _checkEyeletStep(WindowParams params, List<TechCheck> checks) {
       ruleId: 'eyelet-step-wide',
       severity: TechSeverity.info,
       field: ParamField.eyeletStep,
-      title: 'Шаг люверсов ${formatMm(step)} мм — на верхней границе',
+      title: 'Интервал люверсов ${formatMm(step)} мм — на верхней границе',
       explanation: 'Формально допустимо, но запас до «парусности» уже небольшой: '
           'на открытом фасаде полотно начнёт хлопать.',
       recommendation: 'Для ветреных мест ставьте 250–300 мм.',
@@ -233,19 +236,19 @@ void _checkEyeletStep(WindowParams params, List<TechCheck> checks) {
       ruleId: 'eyelet-step-tight',
       severity: TechSeverity.warning,
       field: ParamField.eyeletStep,
-      title: 'Шаг люверсов ${formatMm(step)} мм — слишком частый',
+      title: 'Интервал люверсов ${formatMm(step)} мм — слишком частый',
       explanation: 'Люверсы идут почти вплотную: перерасход тента и фурнитуры, '
           'а узкая перемычка между кольцами рвётся по пробою при нагрузке.',
-      recommendation: 'Увеличьте шаг до 250–400 мм.',
+      recommendation: 'Увеличьте интервал до 250–450 мм.',
     ));
   } else if (step < _minEyeletStepMm) {
     checks.add(TechCheck(
       ruleId: 'eyelet-step-narrow',
       severity: TechSeverity.info,
       field: ParamField.eyeletStep,
-      title: 'Шаг люверсов ${formatMm(step)} мм — ниже рекомендуемого',
+      title: 'Интервал люверсов ${formatMm(step)} мм — ниже рекомендуемого',
       explanation: 'Работает, но люверсов и тента уходит больше нормы.',
-      recommendation: 'Если окно не на ветреном фасаде, хватит 250–400 мм.',
+      recommendation: 'Если окно не на ветреном фасаде, хватит 250–450 мм.',
     ));
   }
 }

@@ -13,8 +13,41 @@ import '../models/window_params.dart';
 import 'file_saver.dart';
 import 'image_slice.dart';
 
-/// Ширина страницы PDF: A3 по ширине.
-const double _pageWidthMm = 420.0;
+/// Формат страницы PDF для снимка листа.
+///
+/// У PDF каждая страница может быть своего размера, поэтому в одном документе
+/// спокойно соседствуют лист чертежа на A4 и табличная ведомость на A3.
+enum SheetPageFormat {
+  /// A4 в портретной ориентации (210 × 297 мм).
+  ///
+  /// Лист чертежа построен ровно в пропорциях A4, поэтому картинка ложится
+  /// на страницу без масштабирования и обрезки — так и печатается.
+  a4Portrait(widthMm: 210, heightMm: 297),
+
+  /// Широкая страница A3 (420 мм), высота — по пропорциям снимка.
+  ///
+  /// Так печатаются табличные листы: расходам, смете, техкарте и раскрою
+  /// нужна широкая страница.
+  a3LandscapeAuto(widthMm: 420, heightMm: 297);
+
+  const SheetPageFormat({required this.widthMm, required this.heightMm});
+
+  /// Ширина страницы в миллиметрах.
+  final double widthMm;
+
+  /// Высота страницы в миллиметрах. У [a3LandscapeAuto] это запасное
+  /// значение: обычно высота считается по пропорциям снимка.
+  final double heightMm;
+
+  /// Высота страницы подстраивается под пропорции снимка.
+  bool get autoHeight => this == SheetPageFormat.a3LandscapeAuto;
+
+  /// Ширина страницы в точках PDF.
+  double get widthPoints => widthMm * _mmToPoints;
+
+  /// Высота страницы в точках PDF.
+  double get heightPoints => heightMm * _mmToPoints;
+}
 
 /// Высота страницы A3 — запасной вариант, если пропорции снимка неизвестны.
 const double _pageHeightMm = 297.0;
@@ -64,6 +97,9 @@ double effectiveSheetPixelRatio(
 /// по возможности по безопасным границам ([safeBreakFractions]), чтобы
 /// не разорвать окно пополам. Пустых страниц не бывает.
 ///
+/// [pageFormat] задаёт размер страницы и, значит, шаг нарезки: для чертежа это
+/// A4 в портретной ориентации, для табличных листов — широкая страница.
+///
 /// Главное отличие от [renderSheetPages]: список страниц нигде не копится.
 /// Каждая готовая страница сразу уходит в [onPage], поэтому одновременно в
 /// памяти живут только снимок листа (самая крупная картинка) и одна
@@ -76,6 +112,7 @@ Future<int> renderSheetPagesEach({
   required FutureOr<void> Function(Uint8List png, int pageIndex) onPage,
   double? pixelRatio,
   List<double>? safeBreakFractions,
+  SheetPageFormat pageFormat = SheetPageFormat.a3LandscapeAuto,
 }) async {
   final context = captureKey.currentContext;
   if (context == null) {
@@ -98,15 +135,20 @@ Future<int> renderSheetPagesEach({
     final imageWidth = image.width.toDouble();
     final imageHeight = image.height.toDouble();
 
-    final naturalHeightMm = _pageWidthMm * imageHeight / imageWidth;
-    // Небольшой запас: почти-A3 лист не режем на две страницы из-за пары мм.
-    final singlePage = naturalHeightMm <= _pageHeightMm * 1.06;
-    final pointsPerImagePixel = (_pageWidthMm * _mmToPoints) / imageWidth;
+    final pageWidthMm = pageFormat.widthMm;
+    final pageHeightMm = pageFormat.heightMm;
+    final naturalHeightMm = pageWidthMm * imageHeight / imageWidth;
+    // Небольшой запас: почти-страничный лист не режем на две из-за пары мм.
+    final singlePage = naturalHeightMm <= pageHeightMm * 1.06;
+    final pointsPerImagePixel = (pageWidthMm * _mmToPoints) / imageWidth;
     final pageHeightPixels =
-        (_pageHeightMm * _mmToPoints) / pointsPerImagePixel;
+        (pageHeightMm * _mmToPoints) / pointsPerImagePixel;
+    // Допуск поиска безопасной границы: погрешность округления и накопленный
+    // сдвиг на длинном листе. Меньше процента страницы — на вид не влияет.
+    final breakTolerance = math.max(2.0, imageHeight * 0.0008);
 
-    // Границы страниц: режем только там, где это безопасно (между окнами),
-    // иначе — по высоте листа A3.
+    // Границы страниц: режем только там, где это безопасно (по границам
+    // страниц листа), иначе — по высоте страницы.
     final breaks = <double>[];
     if (singlePage) {
       breaks
@@ -124,7 +166,9 @@ Future<int> renderSheetPagesEach({
           end = imageHeight;
         } else {
           final candidates = safeBreaks
-              .where((position) => position > start + 1 && position <= end + 1)
+              .where((position) =>
+                  position > start + 1 &&
+                  position <= end + breakTolerance)
               .toList();
           if (candidates.isNotEmpty) end = candidates.last;
         }
@@ -164,12 +208,14 @@ Future<List<Uint8List>> renderSheetPages({
   required GlobalKey captureKey,
   double? pixelRatio,
   List<double>? safeBreakFractions,
+  SheetPageFormat pageFormat = SheetPageFormat.a3LandscapeAuto,
 }) async {
   final pages = <Uint8List>[];
   await renderSheetPagesEach(
     captureKey: captureKey,
     pixelRatio: pixelRatio,
     safeBreakFractions: safeBreakFractions,
+    pageFormat: pageFormat,
     onPage: (png, index) => pages.add(png),
   );
   return pages;
@@ -222,33 +268,74 @@ class SheetPdfBuilder {
 
   /// Добавляет в PDF готовую страницу-картинку.
   ///
-  /// Пропорции берутся из картинки, ширина страницы — A3, поэтому лист не
-  /// растягивается. Если размеры неизвестны, берётся стандартная A3.
-  void addPageImage(Uint8List png) {
+  /// [format] задаёт размер страницы. Для [SheetPageFormat.a3LandscapeAuto]
+  /// пропорции берутся из картинки, а ширина страницы — A3, поэтому лист не
+  /// растягивается. Для [SheetPageFormat.a4Portrait] страница всегда A4
+  /// (210 × 297 мм), а картинка вписывается в неё без искажений: лист чертежа
+  /// построен ровно в пропорциях A4 и ложится на страницу один в один.
+  void addPageImage(
+    Uint8List png, {
+    SheetPageFormat format = SheetPageFormat.a3LandscapeAuto,
+  }) {
     final document = _open;
     final image = pw.MemoryImage(png);
     final imageWidth = image.width;
     final imageHeight = image.height;
-    const pageWidthPoints = _pageWidthMm * _mmToPoints;
-    final pageHeightPoints =
-        imageWidth == null || imageWidth <= 0 ||
-                imageHeight == null || imageHeight <= 0
-            ? _pageHeightMm * _mmToPoints
-            : pageWidthPoints * imageHeight / imageWidth;
-    document.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat(
-          pageWidthPoints,
-          pageHeightPoints,
-          marginAll: 0,
+    final hasSize = imageWidth != null &&
+        imageWidth > 0 &&
+        imageHeight != null &&
+        imageHeight > 0;
+    final pageWidthPoints = format.widthPoints;
+    final pageHeightPoints = format.heightPoints;
+
+    if (format.autoHeight) {
+      // Табличный лист: высота страницы — по пропорциям снимка.
+      final heightPoints = hasSize
+          ? pageWidthPoints * imageHeight! / imageWidth!
+          : _pageHeightMm * _mmToPoints;
+      document.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat(
+            pageWidthPoints,
+            heightPoints,
+            marginAll: 0,
+          ),
+          build: (context) => pw.Image(
+            image,
+            width: pageWidthPoints,
+            height: heightPoints,
+          ),
         ),
-        build: (context) => pw.Image(
-          image,
-          width: pageWidthPoints,
-          height: pageHeightPoints,
+      );
+    } else {
+      // A4: страница фиксированная, картинку вписываем целиком и по центру.
+      var imageWidthPoints = pageWidthPoints;
+      var imageHeightPoints = pageHeightPoints;
+      if (hasSize) {
+        final scale = math.min(
+          pageWidthPoints / imageWidth!,
+          pageHeightPoints / imageHeight!,
+        );
+        imageWidthPoints = imageWidth * scale;
+        imageHeightPoints = imageHeight * scale;
+      }
+      document.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat(
+            pageWidthPoints,
+            pageHeightPoints,
+            marginAll: 0,
+          ),
+          build: (context) => pw.Center(
+            child: pw.Image(
+              image,
+              width: imageWidthPoints,
+              height: imageHeightPoints,
+            ),
+          ),
         ),
-      ),
-    );
+      );
+    }
     _pageCount++;
   }
 
@@ -256,11 +343,13 @@ class SheetPdfBuilder {
   ///
   /// Возвращает число добавленных страниц. [onPageAdded] вызывается после
   /// каждой страницы и может отдать управление интерфейсу, чтобы окно
-  /// прогресса успело перерисоваться.
+  /// прогресса успело перерисоваться. [pageFormat] задаёт формат страниц:
+  /// чертёж печатается на A4, табличные листы — на широкой странице.
   Future<int> addSheet({
     required GlobalKey captureKey,
     double? pixelRatio,
     List<double>? safeBreakFractions,
+    SheetPageFormat pageFormat = SheetPageFormat.a3LandscapeAuto,
     FutureOr<void> Function(int pagesInSheet)? onPageAdded,
   }) async {
     _ensureOpen();
@@ -269,10 +358,11 @@ class SheetPdfBuilder {
       captureKey: captureKey,
       pixelRatio: pixelRatio,
       safeBreakFractions: safeBreakFractions,
+      pageFormat: pageFormat,
       onPage: (png, pageIndex) async {
         // Страница уходит в документ и здесь же отпускается: список
         // готовых картинок снаружи не ведём.
-        addPageImage(png);
+        addPageImage(png, format: pageFormat);
         if (onPageAdded != null) await onPageAdded(_pageCount - before);
       },
     );
@@ -318,6 +408,7 @@ Future<Uint8List> buildMultiSheetPdf(
   String title = 'Мягкие окна',
   String author = 'Мягкие окна',
   String creator = 'soft_window_drawer',
+  SheetPageFormat format = SheetPageFormat.a3LandscapeAuto,
 }) async {
   if (pageImages.isEmpty) {
     throw ArgumentError.value(pageImages, 'pageImages', 'Нет страниц для PDF');
@@ -329,7 +420,7 @@ Future<Uint8List> buildMultiSheetPdf(
     creator: creator,
   );
   for (final png in pageImages) {
-    builder.addPageImage(png);
+    builder.addPageImage(png, format: format);
   }
   return builder.save();
 }

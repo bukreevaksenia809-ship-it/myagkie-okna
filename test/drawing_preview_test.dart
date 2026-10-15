@@ -1,8 +1,13 @@
 // Генерирует PNG-превью листов в build/preview/, чтобы можно было
 // посмотреть, как выглядит чертёж и раскладка, без запуска приложения.
 //
+// Лист чертежа — A4 в портретной ориентации (1240 × 1754 точки), поэтому
+// превью чертежей снимается в размере листа: одна страница — одна A4,
+// режим «Все окна» — несколько страниц, сшитых вертикально.
+//
 // Запуск: flutter test test/drawing_preview_test.dart
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -179,10 +184,24 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    // Для каждого листа — свой размер окна: подробный режим длиннее экрана.
+    // Чертежи снимаем ровно в размере листа A4 (1240 × 1754 на страницу),
+    // табличные листы — в размере окна программы: у них свой формат.
+    const a4Viewport = Size(
+      DrawingSheet.a4Width + 40,
+      DrawingSheet.a4Height + 40,
+    );
+    const twoPagesViewport = Size(
+      DrawingSheet.a4Width + 40,
+      DrawingSheet.a4Height * 2 + 40,
+    );
+    const fivePagesViewport = Size(
+      DrawingSheet.a4Width + 40,
+      DrawingSheet.a4Height * 5 + 40,
+    );
+
     final cases = <String, ({Size viewport, Widget Function(GlobalKey) build})>{
       'odno-okno': (
-        viewport: const Size(1720, 1080),
+        viewport: a4Viewport,
         build: (key) => DrawingSheet(
           project: const OrderProject(windows: [_fixed]),
           captureKey: key,
@@ -190,7 +209,7 @@ void main() {
         ),
       ),
       'podyomnoe': (
-        viewport: const Size(1720, 1080),
+        viewport: a4Viewport,
         build: (key) => DrawingSheet(
           project: const OrderProject(windows: [_liftingWide]),
           captureKey: key,
@@ -198,7 +217,7 @@ void main() {
         ),
       ),
       'zakaz-5-okon': (
-        viewport: const Size(1720, 1080),
+        viewport: twoPagesViewport,
         build: (key) => DrawingSheet(
           project: _order,
           captureKey: key,
@@ -206,7 +225,7 @@ void main() {
         ),
       ),
       'zakaz-podrobno': (
-        viewport: const Size(1500, 3400),
+        viewport: fivePagesViewport,
         build: (key) => DrawingSheet(
           project: _order.setGridColumns(1),
           captureKey: key,
@@ -214,7 +233,7 @@ void main() {
         ),
       ),
       'dve-molnii-vyrezy': (
-        viewport: const Size(1720, 1180),
+        viewport: a4Viewport,
         build: (key) => DrawingSheet(
           project: const OrderProject(windows: [_rich]),
           captureKey: key,
@@ -222,7 +241,7 @@ void main() {
         ),
       ),
       'skrin': (
-        viewport: const Size(1720, 1080),
+        viewport: a4Viewport,
         build: (key) => DrawingSheet(
           project: const OrderProject(windows: [_screen]),
           captureKey: key,
@@ -238,7 +257,7 @@ void main() {
         ),
       ),
       'svoi-shiriny': (
-        viewport: const Size(1720, 1080),
+        viewport: a4Viewport,
         build: (key) => DrawingSheet(
           project: const OrderProject(windows: [_customEdges]),
           captureKey: key,
@@ -254,7 +273,7 @@ void main() {
         ),
       ),
       'pripusk': (
-        viewport: const Size(1720, 1080),
+        viewport: a4Viewport,
         build: (key) => DrawingSheet(
           project: const OrderProject(windows: [_allowance]),
           captureKey: key,
@@ -270,7 +289,7 @@ void main() {
         ),
       ),
       'spayka-vertikalnaya': (
-        viewport: const Size(1720, 1080),
+        viewport: a4Viewport,
         build: (key) => DrawingSheet(
           project: const OrderProject(windows: [_weldedVertically, _weldedVertically]),
           captureKey: key,
@@ -312,7 +331,12 @@ void main() {
       final bytes = await tester.runAsync(() async {
         final boundary = captureKey.currentContext!.findRenderObject()!
             as RenderRepaintBoundary;
-        final image = await boundary.toImage(pixelRatio: 2.2);
+        // Лист может быть длинным (несколько A4) — держим превью разумного
+        // размера, чтобы файл можно было открыть и посмотреть глазами.
+        final longest =
+            math.max(boundary.size.width, boundary.size.height);
+        final ratio = math.min(2.2, 10000 / longest);
+        final image = await boundary.toImage(pixelRatio: ratio);
         final data = await image.toByteData(format: ui.ImageByteFormat.png);
         return data!.buffer.asUint8List();
       });

@@ -204,6 +204,21 @@ void main() {
       expect(eyelets.text, contains(formatMm(_window.eyeletCornerOffset)));
     });
 
+    test('люверсы: в операции и заданный интервал, и фактический', () {
+      final eyelets = _op(card, TechOperationKind.eyelets);
+      final requested = formatMm(_window.eyeletStep);
+
+      // Заданный интервал вводит пользователь; фактический не больше него.
+      expect(eyelets.text, contains('интервал задан $requested мм'));
+      expect(
+        eyelets.text,
+        contains('фактически ${spec.eyeletStepLabel} по сторонам'),
+      );
+      expect(eyelets.control, contains('Интервал задан $requested мм'));
+      expect(eyelets.control, contains('фактический ${spec.eyeletStepLabel}'));
+      expect(spec.eyeletStepMax, lessThanOrEqualTo(_window.eyeletStep));
+    });
+
     test('молния: количество и полоса тента из zipperBandPiece', () {
       final zipper = _op(card, TechOperationKind.zipper);
       final piece = spec.zipperBandPiece!;

@@ -41,6 +41,7 @@ class _PanelHostState extends State<_PanelHost> {
 
 void main() {
   _screenAndWeldRules();
+  _eyeletIntervalPanelRules();
   testWidgets('панель 420: спайка добавляет окно, припуски идут в модель', (
     WidgetTester tester,
   ) async {
@@ -253,6 +254,66 @@ void _screenAndWeldRules() {
   });
 
   _pricePanelRules();
+}
+
+/// Панель: интервал люверсов вводится руками, пресеты работают, фактический
+/// интервал показан рядом, панель 420 px не переполняется.
+void _eyeletIntervalPanelRules() {
+  testWidgets('панель: интервал люверсов и фактический шаг', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 9000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final hostKey = GlobalKey<_PanelHostState>();
+    await tester.pumpWidget(_PanelHost(key: hostKey));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    // Поле есть, подписано «Интервал люверсов, мм», по умолчанию 300.
+    final field = find.byKey(const Key('eyelet-step-field'));
+    expect(field, findsOneWidget);
+    expect(find.text('Интервал люверсов, мм'), findsOneWidget);
+    expect(hostKey.currentState!.project.selected.eyeletStep, 300);
+
+    // Ввод 280 уходит в модель, рядом появляется фактический интервал.
+    await tester.enterText(field, '280');
+    await tester.pumpAndSettle();
+    final params = hostKey.currentState!.project.selected;
+    expect(params.eyeletStep, 280);
+    final spec = WindowSpec.of(params);
+    expect(spec.eyeletStepMax, isNotNull);
+    expect(spec.eyeletStepMax!, lessThanOrEqualTo(280));
+
+    final actual = tester.widget<Text>(
+      find.byKey(const Key('eyelet-step-actual')),
+    );
+    expect(actual.data, contains('Задан 280 мм'));
+    expect(actual.data, contains('фактически ${spec.eyeletStepLabel}'));
+    expect(tester.takeException(), isNull);
+
+    // Пресет 350 — тоже в модель.
+    final preset = find.text('350');
+    await tester.ensureVisible(preset);
+    await tester.tap(preset);
+    await tester.pumpAndSettle();
+    expect(hostKey.currentState!.project.selected.eyeletStep, 350);
+
+    // 40 мм — вне рамок 50…2000: ошибка, модель не меняется.
+    await tester.enterText(find.byKey(const Key('eyelet-step-field')), '40');
+    await tester.pumpAndSettle();
+    expect(hostKey.currentState!.project.selected.eyeletStep, 350);
+    expect(find.textContaining('Интервал от 50 до'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // 500 мм принимается свободно (это пресет, а не рекомендация).
+    await tester.enterText(find.byKey(const Key('eyelet-step-field')), '500');
+    await tester.pumpAndSettle();
+    expect(hostKey.currentState!.project.selected.eyeletStep, 500);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 /// Панель «Прайс-лист»: цены скрина видны и уходят в модель.

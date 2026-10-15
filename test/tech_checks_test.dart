@@ -23,8 +23,8 @@ TechCheck? _check(List<TechCheck> checks, String ruleId) {
 
 void main() {
   group('Люверсы', () {
-    test('шаг 600 мм даёт предупреждение с рекомендацией', () {
-      final checks = techChecksFor(_correct.copyWith(eyeletStep: 600));
+    test('интервал 900 мм даёт предупреждение с рекомендацией', () {
+      final checks = techChecksFor(_correct.copyWith(eyeletStep: 900));
       final check = _check(checks, 'eyelet-step-loose');
 
       expect(check, isNotNull);
@@ -33,6 +33,23 @@ void main() {
       expect(check.reason, check.explanation);
       expect(check.recommendation, isNotEmpty);
       expect(check.field, ParamField.eyeletStep);
+    });
+
+    test('интервал 600 мм — справка, а не запрет', () {
+      final checks = techChecksFor(_correct.copyWith(eyeletStep: 600));
+      final check = _check(checks, 'eyelet-step-wide');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.info);
+      expect(_check(checks, 'eyelet-step-loose'), isNull);
+    });
+
+    test('интервал 100 мм — предупреждение о перерасходе', () {
+      final checks = techChecksFor(_correct.copyWith(eyeletStep: 100));
+      final check = _check(checks, 'eyelet-step-tight');
+
+      expect(check, isNotNull);
+      expect(check!.severity, TechSeverity.warning);
     });
 
     test('шаг 300 мм и корректные параметры — без ошибок', () {
@@ -171,7 +188,7 @@ void main() {
     test('проверки заказа не дублируют проверки окон', () {
       final project = OrderProject(windows: [
         _correct,
-        _correct.copyWith(eyeletStep: 600),
+        _correct.copyWith(eyeletStep: 900),
       ]);
       final orderChecks = techChecksForOrder(project);
 

@@ -174,13 +174,16 @@ class TechCard {
           '(низ/право/верх/лево), шов ${formatMm(screenSeamMm)} мм · заготовка '
           '${formatMm(spec.filmCutWidthWithAllowance)} × '
           '${formatMm(spec.filmCutHeightWithAllowance)} мм · '
-          'люверсы: ${spec.eyeletCount} шт, шаг ${spec.eyeletStepLabel} · '
+          'люверсы: ${spec.eyeletCount} шт, интервал '
+          '${formatMm(params.eyeletStep)} мм (факт. '
+          '${spec.eyeletStepLabel}) · '
           'крепёж: только люверсы'
       : 'Окантовка: ${spec.edgeBySideSummary} · '
           'плёнка в раскрое с припуском и усадкой: '
           '${formatMm(spec.filmCutWidthWithShrinkage)} × '
           '${formatMm(spec.filmCutHeightWithShrinkage)} мм · '
-          'люверсы: ${spec.eyeletCount} шт, шаг ${spec.eyeletStepLabel} · '
+          'люверсы: ${spec.eyeletCount} шт, интервал '
+          '${formatMm(params.eyeletStep)} мм (факт. ${spec.eyeletStepLabel}) · '
           'крепёж: ${spec.fastenerSummary.toLowerCase()}';
 
   /// Расход окантовки по ширинам рулонов — из модели.
@@ -544,8 +547,10 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     title: 'Люверсы',
     description:
         'Установить люверсы ${eyeletType.label.toLowerCase()} — всего '
-        '${spec.eyeletCount} шт, шаг ${spec.eyeletStepLabel} (номинал '
-        '${formatMm(params.eyeletStep)} мм), отступ от угла '
+        '${spec.eyeletCount} шт, интервал задан '
+        '${formatMm(params.eyeletStep)} мм, фактически '
+        '${spec.eyeletStepLabel} по сторонам (число интервалов округляется '
+        'вверх, поэтому факт не больше заданного), отступ от угла '
         '${formatMm(params.eyeletCornerOffset)} мм. В углах только круглые '
         '${EyeletType.round10.label}: овальный люверс угол не держит. '
         '${isScreen ? 'Люверсы ставятся по линии подворота; крепёж скрина — '
@@ -592,7 +597,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     ],
     tool: 'Пресс для люверсов, пробойник, наковальня, молоток',
     control:
-        'Шаг ${spec.eyeletStepLabel} (±5 мм), отступ от угла '
+        'Интервал задан ${formatMm(params.eyeletStep)} мм, фактический '
+        '${spec.eyeletStepLabel} (±5 мм), отступ от угла '
         '${formatMm(params.eyeletCornerOffset)} мм; люверсы зажаты без '
         'перекосов и задиров, полотно между ними не порвано',
     source: 'WindowLayers.eyelets / eyeletStepLabel / typeFor',
@@ -802,7 +808,9 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         '${params.windowType.label.toLowerCase()}.',
     tool: 'Рулетка, угольник, маркер, упаковочная плёнка',
     control:
-        'Размеры по чертежу (±10 мм); шаг люверсов ${spec.eyeletStepLabel}; '
+        'Размеры по чертежу (±10 мм); интервал люверсов задан '
+        '${formatMm(params.eyeletStep)} мм, фактический '
+        '${spec.eyeletStepLabel}; '
         'нет перекосов, волн и заломов полотна; '
         '${isScreen ? 'подворот ровный, шов ${formatMm(screenSeamMm)} мм без '
                   'расслоений' : 'окантовка ровная, швы без расслоений'}; '
