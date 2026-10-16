@@ -850,10 +850,13 @@ void _checkEyeletlessSides(
 
 /// Усадка ПВХ.
 ///
-/// Типовая усадка плёнки — 1–2 % (её и компенсирует раскрой). Больше 3 % —
-/// признак другой партии или другого производителя: деталь может уйти в
-/// минус по размеру после прогрева на солнце.
+/// Проверяем только включённую усадку: при выключенном тумблере значение к
+/// раскрою не применяется, и замечаний по нему быть не должно. Типовая усадка
+/// плёнки — 1–2 % (её и компенсирует раскрой). Больше 3 % — признак другой
+/// партии или другого производителя: деталь может уйти в минус по размеру
+/// после прогрева на солнце.
 void _checkShrinkage(WindowParams params, List<TechCheck> checks) {
+  if (!params.isPvcFilm || !params.shrinkageEnabled) return;
   final shrinkage = params.shrinkagePercent;
   if (shrinkage.isFinite && shrinkage > _maxShrinkagePercent) {
     checks.add(TechCheck(

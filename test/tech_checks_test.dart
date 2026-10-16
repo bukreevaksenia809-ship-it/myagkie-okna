@@ -382,12 +382,23 @@ void main() {
       expect(_check(checks, 'eyelet-bottom-unfastened'), isNull);
     });
 
-    test('усадка 4 % — предупреждение', () {
-      final params = _correct.copyWith(shrinkagePercent: 4);
+    test('усадка 4 % при включённом тумблере — предупреждение', () {
+      final params = _correct.copyWith(
+        shrinkageEnabled: true,
+        shrinkagePercent: 4,
+      );
       final check = _check(techChecksFor(params), 'shrinkage-high');
 
       expect(check, isNotNull);
       expect(check!.severity, TechSeverity.warning);
+    });
+
+    test('при выключенной усадке про неё замечаний нет', () {
+      // Процент задан, но тумблер выключен: к раскрою он не применяется.
+      final params = _correct.copyWith(shrinkagePercent: 4);
+      expect(params.shrinkageEnabled, isFalse);
+      expect(params.effectiveShrinkagePercent, 0);
+      expect(_check(techChecksFor(params), 'shrinkage-high'), isNull);
     });
 
     test('высокая трапеция с разницей 600 мм — предупреждение', () {

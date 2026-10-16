@@ -107,9 +107,13 @@ void main() {
     final withAllowance = hostKey.currentState!.project.selected;
     expect(withAllowance.allowanceWidthMm, 120);
     expect(withAllowance.allowanceHeightMm, 80);
+    expect(withAllowance.hasManualAllowance, isTrue);
     expect(withAllowance.hasAllowance, isTrue);
     expect(withAllowance.effectiveBottomWidth, withAllowance.bottomWidth + 120);
-    expect(withAllowance.effectiveLeftHeight, withAllowance.leftHeight + 80);
+    // По высоте к ручным 80 мм добавляется авто +10 мм для ПВХ.
+    expect(withAllowance.effectiveLeftHeight, withAllowance.leftHeight + 90);
+    expect(withAllowance.heightAllowanceBreakdownLabel,
+        'Припуск по высоте: 10 мм (авто) + 80 мм (вручную) = 90 мм');
 
     // Строка-итог показывает заготовку плёнки с припуском, а не изделие:
     // припуск влияет только на раскрой.
@@ -126,14 +130,136 @@ void main() {
     expect(find.byKey(const Key('allowance-reset')), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    // 4. Сброс припусков обнуляет модель и убирает кнопку сброса.
+    // 4. Сброс припусков обнуляет РУЧНЫЕ припуски и убирает кнопку сброса;
+    // авто-припуск ПВХ (+10 мм) сбросом не трогается.
     await tester.tap(find.byKey(const Key('allowance-reset')));
     await tester.pumpAndSettle();
     final reset = hostKey.currentState!.project.selected;
     expect(reset.allowanceWidthMm, 0);
     expect(reset.allowanceHeightMm, 0);
-    expect(reset.hasAllowance, isFalse);
+    expect(reset.hasManualAllowance, isFalse);
+    expect(reset.hasAutoHeightAllowance, isTrue);
+    expect(reset.autoHeightAllowanceMm, pvcHeightAllowanceMm);
     expect(find.byKey(const Key('allowance-reset')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('панель: пресеты 80 и 120 уходят в модель окна', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 9000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final hostKey = GlobalKey<_PanelHostState>();
+    await tester.pumpWidget(_PanelHost(key: hostKey));
+    await tester.pumpAndSettle();
+
+    // Все пять пресетов — на каждой из четырёх сторон.
+    for (final preset in WindowParams.edgePresets) {
+      expect(
+        find.text(edgeBandLabel(preset, short: true)),
+        findsNWidgets(EdgeSide.values.length),
+        reason: 'пресет ${formatMm(preset)} мм на каждую сторону',
+      );
+    }
+
+    // Низ — 80 мм, верх — 120 мм: кнопки пишут ширину рулона в модель.
+    await tester.ensureVisible(find.text('80 мм').first);
+    await tester.tap(find.text('80 мм').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('120 мм').last);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    final params = hostKey.currentState!.project.selected;
+    expect(
+      [params.rollBottom, params.rollTop, params.rollLeft, params.rollRight],
+      containsAll(<double>[80, 120]),
+    );
+    // Цена такого рулона берётся из прайса, а не интерполяцией.
+    final prices = PriceList.defaults();
+    expect(prices.edgePerMeterForWidth(80), 120);
+    expect(prices.edgePerMeterForWidth(120), 165);
+  });
+
+  testWidgets('панель: тумблер усадки скрывает и показывает процент', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 9000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final hostKey = GlobalKey<_PanelHostState>();
+    await tester.pumpWidget(_PanelHost(key: hostKey));
+    await tester.pumpAndSettle();
+
+    // По умолчанию усадка выключена: поля процента нет.
+    var params = hostKey.currentState!.project.selected;
+    expect(params.shrinkageEnabled, isFalse);
+    expect(params.shrinkagePercent, 0);
+    expect(params.effectiveShrinkagePercent, 0);
+    expect(find.byKey(const Key('shrinkage-toggle')), findsOneWidget);
+    expect(find.text('Усадка ПВХ'), findsNothing);
+
+    // Включаем — появляется поле и подставляется типовое значение 1,5 %.
+    await tester.ensureVisible(find.byKey(const Key('shrinkage-toggle')));
+    await tester.tap(find.byKey(const Key('shrinkage-toggle')));
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.shrinkageEnabled, isTrue);
+    expect(params.shrinkagePercent, defaultShrinkagePercent);
+    expect(params.effectiveShrinkagePercent, defaultShrinkagePercent);
+    expect(find.text('Усадка ПВХ'), findsOneWidget);
+
+    // Выключаем обратно — усадка не применяется.
+    await tester.tap(find.byKey(const Key('shrinkage-toggle')));
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.shrinkageEnabled, isFalse);
+    expect(params.effectiveShrinkagePercent, 0);
+    expect(find.text('Усадка ПВХ'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('панель: тумблер +10 мм к высоте (ПВХ) меняет заготовку', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 9000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final hostKey = GlobalKey<_PanelHostState>();
+    await tester.pumpWidget(_PanelHost(key: hostKey));
+    await tester.pumpAndSettle();
+
+    var params = hostKey.currentState!.project.selected;
+    expect(params.pvcHeightAllowanceEnabled, isTrue);
+    expect(params.autoHeightAllowanceMm, pvcHeightAllowanceMm);
+    final onHeight =
+        WindowSpec.of(params).filmCutHeightWithAllowance;
+
+    // Блок «Припуски на раскрой» по умолчанию свёрнут — раскрываем его.
+    await tester.ensureVisible(find.text('Припуски на раскрой'));
+    await tester.tap(find.text('Припуски на раскрой'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(
+      find.byKey(const Key('pvc-height-allowance-toggle')),
+    );
+    await tester.tap(find.byKey(const Key('pvc-height-allowance-toggle')));
+    await tester.pumpAndSettle();
+
+    params = hostKey.currentState!.project.selected;
+    expect(params.pvcHeightAllowanceEnabled, isFalse);
+    expect(params.autoHeightAllowanceMm, 0);
+    expect(
+      WindowSpec.of(params).filmCutHeightWithAllowance,
+      closeTo(onHeight - pvcHeightAllowanceMm, 1e-9),
+    );
     expect(tester.takeException(), isNull);
   });
 }
@@ -479,6 +605,11 @@ void _pricePanelRules() {
     expect(find.text('Подворот скрина, ₽/м'), findsOneWidget);
     expect(hostKey.currentState!.prices.filmScreenPerM2, 520);
     expect(hostKey.currentState!.prices.screenHemPerM, 180);
+    // Новые пресеты окантовки 80 и 120 мм есть в прайсе и правятся.
+    expect(find.text('Тент 80 мм'), findsOneWidget);
+    expect(find.text('Тент 120 мм'), findsOneWidget);
+    expect(hostKey.currentState!.prices.edge80PerM, 120);
+    expect(hostKey.currentState!.prices.edge120PerM, 165);
 
     Future<void> setRow(String label, String value) async {
       final row = find
@@ -493,8 +624,12 @@ void _pricePanelRules() {
 
     await setRow('Скрин, ₽/м²', '640');
     await setRow('Подворот скрина, ₽/м', '210');
+    await setRow('Тент 80 мм', '130');
+    await setRow('Тент 120 мм', '175');
     expect(hostKey.currentState!.prices.filmScreenPerM2, 640);
     expect(hostKey.currentState!.prices.screenHemPerM, 210);
+    expect(hostKey.currentState!.prices.edge80PerM, 130);
+    expect(hostKey.currentState!.prices.edge120PerM, 175);
     expect(tester.takeException(), isNull);
   });
 }

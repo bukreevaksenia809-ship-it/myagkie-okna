@@ -35,6 +35,7 @@ void main() {
   _costsSummaryRules();
   _weldedWindowRules();
   _allowanceRules();
+  _shrinkageAndPvcAllowanceRules();
   _weldOverlapRules();
   _screenRules();
   _pocketRules();
@@ -118,12 +119,18 @@ void main() {
   });
 
   group('Окантовка и раскрой', () {
-    test('рулон складывается пополам: 100 → 50, 200 → 100, 240 → 120', () {
+    test('рулон складывается пополам: 80 → 40, 100 → 50, 120 → 60, '
+        '200 → 100, 240 → 120', () {
+      expect(EdgeRoll.roll80.finishedWidth, 40);
       expect(EdgeRoll.roll100.finishedWidth, 50);
+      expect(EdgeRoll.roll120.finishedWidth, 60);
       expect(EdgeRoll.roll200.finishedWidth, 100);
       expect(EdgeRoll.roll240.finishedWidth, 120);
-      // Пресеты и разбор старых имён enum — для чтения прежних заказов.
-      expect(WindowParams.edgePresets, [100, 200, 240]);
+      // Пресеты (в порядке ширины рулона) и разбор старых имён enum — для
+      // чтения прежних заказов и как опорные точки прайса.
+      expect(WindowParams.edgePresets, [80, 100, 120, 200, 240]);
+      expect(EdgeRoll.presetRawWidth('roll80'), 80);
+      expect(EdgeRoll.presetRawWidth('roll120'), 120);
       expect(EdgeRoll.presetRawWidth('roll200'), 200);
       expect(EdgeRoll.presetRawWidth('roll500'), isNull);
       expect(WindowParams.finishedEdgeWidth(150), 75);
@@ -189,12 +196,24 @@ void main() {
     });
 
     test('напайка 25 мм и усадка увеличивают раскрой плёнки', () {
-      final spec = WindowSpec.of(_rect);
+      // Усадка по умолчанию выключена — включаем её явно, чтобы проверить
+      // компенсацию 1,5 % (типовое значение).
+      final shrunk = _rect.copyWith(
+        shrinkageEnabled: true,
+        shrinkagePercent: defaultShrinkagePercent,
+      );
+      final spec = WindowSpec.of(shrunk);
 
       expect(spec.filmVisibleWidth, closeTo(1900, 0.01));
       expect(spec.filmCutWidth, closeTo(1950, 0.01));
       expect(spec.filmCutHeight, closeTo(1450, 0.01));
       expect(spec.filmCutWidthWithShrinkage, closeTo(1950 * 1.015, 0.02));
+
+      // С выключенной усадкой заготовка чистая: ширина 1950, высота
+      // 1450 + 10 (авто-припуск ПВХ) = 1460 мм.
+      final plain = WindowSpec.of(_rect);
+      expect(plain.filmCutWidthWithShrinkage, closeTo(1950, 1e-9));
+      expect(plain.filmCutHeightWithShrinkage, closeTo(1460, 1e-9));
     });
   });
 
@@ -1321,18 +1340,24 @@ void _allowanceRules() {
       allowanceHeightMm: 80,
     );
 
-    test('по умолчанию припуска нет', () {
+    test('по умолчанию ручного припуска нет, но есть авто +10 мм у ПВХ', () {
       expect(const WindowParams().allowanceWidthMm, 0);
       expect(const WindowParams().allowanceHeightMm, 0);
-      expect(withoutAllowance.hasAllowance, isFalse);
+      expect(withoutAllowance.hasManualAllowance, isFalse);
+      // Авто-припуск +10 мм к высоте включён по умолчанию для ПВХ.
+      expect(withoutAllowance.hasAutoHeightAllowance, isTrue);
+      expect(withoutAllowance.autoHeightAllowanceMm, pvcHeightAllowanceMm);
+      expect(withoutAllowance.hasAllowance, isTrue);
       expect(withoutAllowance.effectiveBottomWidth, 2000);
-      expect(withoutAllowance.effectiveLeftHeight, 2000);
-      // Припуск по ширине не трогает высоту и наоборот.
+      expect(withoutAllowance.effectiveLeftHeight, 2010);
+      // Припуск по ширине не трогает высоту и наоборот; по высоте авто
+      // складывается с ручным.
       expect(measured.effectiveBottomWidth, 2120);
       expect(measured.effectiveTopWidth, 2120);
-      expect(measured.effectiveLeftHeight, 2080);
-      expect(measured.effectiveRightHeight, 2080);
-      expect(measured.hasAllowance, isTrue);
+      expect(measured.effectiveLeftHeight, 2090);
+      expect(measured.effectiveRightHeight, 2090);
+      expect(measured.hasManualAllowance, isTrue);
+      expect(measured.effectiveAllowanceHeightMm, 90);
     });
 
     test('геометрия строится по основным размерам: 2000×2000 + 100/+100', () {
@@ -1375,7 +1400,7 @@ void _allowanceRules() {
       );
     });
 
-    test('плёнка в раскрое: напайка, припуск и усадка', () {
+    test('плёнка в раскрое: напайка, припуск и авто +10 мм к высоте', () {
       final plain = WindowSpec.of(withoutAllowance);
       final spec = WindowSpec.of(product);
 
@@ -1385,29 +1410,37 @@ void _allowanceRules() {
       // Площадь полотна изделия — без припуска.
       expect(spec.filmAreaM2, closeTo(1950 * 1950 / 1e6, 1e-9));
       expect(plain.filmAreaM2, closeTo(spec.filmAreaM2, 1e-9));
-      // Заготовка к раскрою: припуск +100 → 2050 × 2050.
+      // Заготовка к раскрою: припуск +100 по ширине и +100 вручную по высоте
+      // плюс авто +10 мм к высоте для ПВХ → 2050 × 2060.
       expect(spec.filmCutWidthWithAllowance, closeTo(2050, 1e-9));
-      expect(spec.filmCutHeightWithAllowance, closeTo(2050, 1e-9));
-      // Усадка считается от заготовки с припуском.
-      final factor = 1 + product.shrinkagePercent / 100;
-      expect(spec.filmCutWidthWithShrinkage, closeTo(2050 * factor, 1e-9));
-      expect(spec.filmCutHeightWithShrinkage, closeTo(2050 * factor, 1e-9));
+      expect(spec.filmCutHeightWithAllowance, closeTo(2060, 1e-9));
+      // Усадка выключена — «с усадкой» совпадает с заготовкой.
+      expect(spec.filmCutWidthWithShrinkage, closeTo(2050, 1e-9));
+      expect(spec.filmCutHeightWithShrinkage, closeTo(2060, 1e-9));
       // Площадь заготовки к раскрою — с припуском, без вырезов.
-      expect(spec.filmCutAreaM2, closeTo(2050 * 2050 / 1e6, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(2050 * 2060 / 1e6, 1e-9));
       expect(spec.filmAreaM2, lessThan(spec.filmCutAreaM2));
-      // Площадь с усадкой считается из линейных размеров: усадка растёт по
-      // обеим сторонам, поэтому множитель применяется дважды.
+
+      // Включаем усадку 1,5 %: она считается от заготовки с припуском по
+      // обеим сторонам, поэтому площадь — произведение усадочных сторон.
+      final shrunk = WindowSpec.of(product.copyWith(
+        shrinkageEnabled: true,
+        shrinkagePercent: defaultShrinkagePercent,
+      ));
+      final factor = 1 + defaultShrinkagePercent / 100;
+      expect(shrunk.filmCutWidthWithShrinkage, closeTo(2050 * factor, 1e-9));
+      expect(shrunk.filmCutHeightWithShrinkage, closeTo(2060 * factor, 1e-9));
       expect(
-        spec.filmCutAreaWithShrinkageM2,
-        closeTo((2050 * factor) * (2050 * factor) / 1e6, 1e-9),
+        shrunk.filmCutAreaWithShrinkageM2,
+        closeTo((2050 * factor) * (2060 * factor) / 1e6, 1e-9),
       );
       expect(
-        spec.filmCutAreaWithShrinkageM2,
-        greaterThan(spec.filmCutAreaM2 * factor),
+        shrunk.filmCutAreaWithShrinkageM2,
+        greaterThan(shrunk.filmCutAreaM2 * factor),
       );
       // Площадь полотна и заготовка — разные числа: в подписях это
       // «площадь полотна» против «заготовки (габарит)».
-      expect(spec.filmAreaM2, lessThan(spec.filmCutAreaWithShrinkageM2));
+      expect(shrunk.filmAreaM2, lessThan(shrunk.filmCutAreaWithShrinkageM2));
     });
 
     test('окантовка, люверсы, периметр и спайки не зависят от припуска', () {
@@ -1434,15 +1467,16 @@ void _allowanceRules() {
       // Площадь изделий не изменилась — припуск её не раздувает.
       expect(cost.productAreaM2, closeTo(plain.productAreaM2, 1e-9));
       expect(cost.productAreaM2, closeTo(4.0, 1e-9));
-      // Плёнка выросла ровно на припуск: 2050² − 1950².
+      // Плёнка выросла ровно на припуск: 2050 × 2060 против 1950 × 1960
+      // (у окна без припуска высота тоже с авто +10 мм для ПВХ).
       expect(
         cost.filmAreaM2 - plain.filmAreaM2,
-        closeTo((2050 * 2050 - 1950 * 1950) / 1e6, 1e-9),
+        closeTo((2050 * 2060 - 1950 * 1960) / 1e6, 1e-9),
       );
-      expect(cost.filmAreaM2, closeTo(2050 * 2050 / 1e6, 1e-9));
+      expect(cost.filmAreaM2, closeTo(2050 * 2060 / 1e6, 1e-9));
       expect(
         cost.filmAreaByMaterial[FilmMaterial.clearPvc],
-        closeTo(2050 * 2050 / 1e6, 1e-9),
+        closeTo(2050 * 2060 / 1e6, 1e-9),
       );
       // Плёнка в раскрое — заготовка с припуском, а не полотно изделия.
       expect(cost.filmAreaM2, greaterThan(WindowSpec.of(product).filmAreaM2));
@@ -1489,8 +1523,9 @@ void _allowanceRules() {
       final restored = windowFromJson(windowToJson(measured));
       expect(restored.allowanceWidthMm, 120);
       expect(restored.allowanceHeightMm, 80);
+      expect(restored.pvcHeightAllowanceEnabled, isTrue);
       expect(restored.effectiveBottomWidth, 2120);
-      expect(restored.effectiveLeftHeight, 2080);
+      expect(restored.effectiveLeftHeight, 2090);
 
       // Заказ целиком тоже.
       final project = orderFromJson(orderToJson(
@@ -1499,9 +1534,11 @@ void _allowanceRules() {
       expect(project.windows[0].allowanceWidthMm, 120);
       expect(project.windows[0].allowanceHeightMm, 80);
       expect(project.windows[1].allowanceWidthMm, 0);
-      expect(project.windows[1].hasAllowance, isFalse);
+      expect(project.windows[1].hasManualAllowance, isFalse);
+      expect(project.windows[1].autoHeightAllowanceMm, pvcHeightAllowanceMm);
 
-      // Старый JSON без полей припуска читается как «без припуска».
+      // Старый JSON без полей припуска читается как «без ручного припуска»,
+      // авто +10 мм для ПВХ остаётся включённым.
       final old = windowFromJson(const <String, dynamic>{
         'bottomWidth': 2000,
         'topWidth': 2000,
@@ -1510,6 +1547,8 @@ void _allowanceRules() {
       });
       expect(old.allowanceWidthMm, 0);
       expect(old.allowanceHeightMm, 0);
+      expect(old.pvcHeightAllowanceEnabled, isTrue);
+      expect(old.autoHeightAllowanceMm, pvcHeightAllowanceMm);
     });
 
     test('припуск больше 500 мм и отрицательный — предупреждения', () {
@@ -1544,31 +1583,57 @@ void _allowanceRules() {
     test('подписи припуска для документов', () {
       expect(formatSignedMm(120), '+120');
       expect(formatSignedMm(-30), formatMm(-30));
-      expect(measured.allowanceLabel, 'припуск +120/+80 мм');
+      // Высота в подписи — фактическая: ручная плюс авто +10 мм для ПВХ.
+      expect(measured.allowanceLabel, 'припуск +120/+90 мм');
+      expect(measured.manualAllowanceHeightLabel, '+80');
       expect(product.allowanceWidthLabel, '+100');
-      expect(product.allowanceHeightLabel, '+100');
+      expect(product.allowanceHeightLabel, '+110');
+      expect(
+        product.heightAllowanceBreakdownLabel,
+        'Припуск по высоте: 10 мм (авто) + 100 мм (вручную) = 110 мм',
+      );
     });
 
     test('примечания показывают замер и припуск', () {
       final notes = WindowSpec.of(product).notes.join('\n');
       expect(
         notes,
-        contains('Припуск на раскрой: ширина +100 мм, высота +100 мм'),
+        contains('Припуск на раскрой: ширина +100 мм, высота +110 мм'),
       );
-      expect(notes, contains('плёнка кроится 2\u202F050 × 2\u202F050 мм'));
+      expect(notes, contains('в том числе авто 10 мм к высоте для ПВХ'));
+      expect(notes, contains('плёнка кроится 2\u202F050 × 2\u202F060 мм'));
+      expect(notes, contains('усадка не учитывается'));
 
       final measuredNotes = WindowSpec.of(measured).notes.join('\n');
       expect(
         measuredNotes,
-        contains('Припуск на раскрой: ширина +120 мм, высота +80 мм'),
+        contains('Припуск на раскрой: ширина +120 мм, высота +90 мм'),
       );
       expect(
         measuredNotes,
-        contains('плёнка кроится 2\u202F070 × 2\u202F030 мм'),
+        contains('плёнка кроится 2\u202F070 × 2\u202F040 мм'),
       );
 
+      // Даже без ручного припуска у ПВХ есть авто +10 мм к высоте.
       final plainNotes = WindowSpec.of(withoutAllowance).notes.join('\n');
-      expect(plainNotes.contains('Припуск на раскрой'), isFalse);
+      expect(
+        plainNotes,
+        contains('Припуск на раскрой: ширина 0 мм, высота +10 мм'),
+      );
+      expect(
+        plainNotes,
+        contains('плёнка кроится 1\u202F950 × 1\u202F960 мм'),
+      );
+
+      // У скрина авто-припуска нет: примечания не содержат «Припуск».
+      final screenNotes = WindowSpec.of(const WindowParams(
+        material: FilmMaterial.screen,
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2000,
+        rightHeight: 2000,
+      )).notes.join('\n');
+      expect(screenNotes.contains('Припуск на раскрой'), isFalse);
     });
 
     testWidgets('чертёж показывает чистое изделие, припуск — в примечаниях',
@@ -1609,17 +1674,182 @@ void _allowanceRules() {
       expect(find.textContaining('2\u202F000 + 120'), findsNothing);
       expect(find.textContaining('2\u202F000 + 80'), findsNothing);
       expect(find.textContaining('припуск +120/+80 мм'), findsNothing);
-      // Припуск виден только в примечаниях.
+      // Припуск виден только в примечаниях; высота — фактическая
+      // (+80 вручную и +10 авто для ПВХ).
       expect(
         find.textContaining(
-            'Припуск на раскрой: ширина +120 мм, высота +80 мм'),
+            'Припуск на раскрой: ширина +120 мм, высота +90 мм'),
         findsOneWidget,
       );
       expect(
-        find.textContaining('плёнка кроится 2\u202F070 × 2\u202F030 мм'),
+        find.textContaining('плёнка кроится 2\u202F070 × 2\u202F040 мм'),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
+    });
+  });
+}
+
+// --- Усадка ПВХ и авто-припуск +10 мм к высоте ------------------------------
+
+/// Правки заказчика: усадка выключена по умолчанию и включается тумблером;
+/// для ПВХ по умолчанию есть авто-припуск +10 мм к высоте заготовки, на скрин
+/// он не действует; JSON читает и новые флаги, и старые заказы.
+void _shrinkageAndPvcAllowanceRules() {
+  group('Усадка ПВХ и авто-припуск +10 мм', () {
+    // Пример заказчика: окно 2000 × 2500, окантовка 100 мм (готовая 50),
+    // напуск 5 мм (значение по умолчанию).
+    const pvc = WindowParams(
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2500,
+      rightHeight: 2500,
+    );
+
+    test('по умолчанию усадка выключена и равна 0 %', () {
+      const params = WindowParams();
+      expect(params.shrinkageEnabled, isFalse);
+      expect(params.shrinkagePercent, 0);
+      expect(params.effectiveShrinkagePercent, 0);
+      expect(params.hasShrinkage, isFalse);
+    });
+
+    test('ПВХ по умолчанию: +10 мм к высоте заготовки → 1910 × 2420', () {
+      final spec = WindowSpec.of(pvc);
+
+      // Вручную. Ширина: 2000 − 50 − 50 + 2 × 5 = 1910 мм.
+      // Высота до авто-припуска: 2500 − 50 − 50 + 2 × 5 = 2410 мм,
+      // плюс +10 мм для ПВХ → 2420 мм.
+      expect(pvc.autoHeightAllowanceMm, pvcHeightAllowanceMm);
+      expect(spec.filmCutWidth, closeTo(1910, 1e-9));
+      expect(spec.filmCutWidthWithAllowance, closeTo(1910, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2410, 1e-9));
+      expect(spec.filmCutHeightWithAllowance, closeTo(2420, 1e-9));
+      expect(spec.filmCutHeightWithShrinkage, closeTo(2420, 1e-9));
+    });
+
+    test('выключенный тумблер убирает +10 мм', () {
+      final params = pvc.copyWith(pvcHeightAllowanceEnabled: false);
+      final spec = WindowSpec.of(params);
+
+      expect(params.autoHeightAllowanceMm, 0);
+      expect(params.hasAutoHeightAllowance, isFalse);
+      expect(spec.filmCutWidthWithAllowance, closeTo(1910, 1e-9));
+      expect(spec.filmCutHeightWithAllowance, closeTo(2410, 1e-9));
+    });
+
+    test('для скрина авто-припуск не действует', () {
+      final screen = pvc.copyWith(material: FilmMaterial.screen);
+      final spec = WindowSpec.of(screen);
+
+      expect(screen.isPvcFilm, isFalse);
+      expect(screen.autoHeightAllowanceMm, 0);
+      expect(screen.pvcHeightAllowanceEnabled, isTrue);
+      // Заготовка скрина — готовый размер плюс удвоенный больший подворот.
+      expect(
+        spec.filmCutHeight,
+        closeTo(2500 + 2 * defaultScreenHemMm, 1e-9),
+      );
+      expect(spec.filmCutHeightWithAllowance, closeTo(spec.filmCutHeight, 1e-9));
+    });
+
+    test('ручной припуск складывается с авто: 20 вручную → 30 по высоте', () {
+      final params = pvc.copyWith(allowanceHeightMm: 20, allowanceWidthMm: 100);
+      final spec = WindowSpec.of(params);
+
+      expect(params.autoHeightAllowanceMm, pvcHeightAllowanceMm);
+      expect(params.effectiveAllowanceHeightMm, 30);
+      expect(params.allowanceHeightLabel, '+30');
+      expect(params.manualAllowanceHeightLabel, '+20');
+      expect(spec.filmCutWidthWithAllowance, closeTo(1910 + 100, 1e-9));
+      expect(spec.filmCutHeightWithAllowance, closeTo(2410 + 30, 1e-9));
+    });
+
+    test('включение усадки 1,5 % повторяет прежнюю формулу раскроя', () {
+      final params = pvc.copyWith(
+        allowanceWidthMm: 100,
+        allowanceHeightMm: 100,
+        shrinkageEnabled: true,
+        shrinkagePercent: defaultShrinkagePercent,
+      );
+      final spec = WindowSpec.of(params);
+
+      // Заготовка до усадки: ширина 1910 + 100 = 2010;
+      // высота 2410 + 100 (ручной) + 10 (авто ПВХ) = 2520.
+      expect(spec.filmCutWidthWithAllowance, closeTo(2010, 1e-9));
+      expect(spec.filmCutHeightWithAllowance, closeTo(2520, 1e-9));
+      // Усадка 1,5 % по обеим сторонам: 2030,15 × 2545,2 мм.
+      expect(spec.filmCutWidthWithShrinkage, closeTo(2010 * 1.015, 1e-9));
+      expect(spec.filmCutHeightWithShrinkage, closeTo(2520 * 1.015, 1e-9));
+      expect(
+        spec.filmCutAreaWithShrinkageM2,
+        closeTo((2010 * 1.015) * (2520 * 1.015) / 1000000, 1e-9),
+      );
+      // Площадь заготовки без усадки при этом не меняется.
+      expect(spec.filmCutAreaM2, closeTo(2010 * 2520 / 1000000, 1e-9));
+    });
+
+    test('JSON round-trip: тумблеры, процент усадки и авто-припуск', () {
+      final source = pvc.copyWith(
+        shrinkageEnabled: true,
+        shrinkagePercent: 2,
+        pvcHeightAllowanceEnabled: false,
+      );
+      final restored = windowFromJson(windowToJson(source));
+
+      expect(restored.shrinkageEnabled, isTrue);
+      expect(restored.shrinkagePercent, 2);
+      expect(restored.effectiveShrinkagePercent, 2);
+      expect(restored.pvcHeightAllowanceEnabled, isFalse);
+      expect(
+        WindowSpec.of(restored).filmCutHeightWithShrinkage,
+        closeTo(WindowSpec.of(source).filmCutHeightWithShrinkage, 1e-9),
+      );
+    });
+
+    test('старый заказ с усадкой 1,5 % читается как «включена»', () {
+      final old = windowFromJson(const <String, dynamic>{
+        'bottomWidth': 2000,
+        'topWidth': 2000,
+        'leftHeight': 2000,
+        'rightHeight': 2000,
+        'shrinkagePercent': 1.5,
+      });
+
+      expect(old.shrinkageEnabled, isTrue);
+      expect(old.shrinkagePercent, 1.5);
+      expect(old.effectiveShrinkagePercent, 1.5);
+    });
+
+    test('старый заказ с нулевой усадкой читается как «выключена»', () {
+      final old =
+          windowFromJson(const <String, dynamic>{'shrinkagePercent': 0});
+
+      expect(old.shrinkageEnabled, isFalse);
+      expect(old.shrinkagePercent, 0);
+      expect(old.effectiveShrinkagePercent, 0);
+    });
+
+    test('новый заказ с явным флагом false не включает усадку', () {
+      final order = windowFromJson(const <String, dynamic>{
+        'shrinkageEnabled': false,
+        'shrinkagePercent': 1.5,
+      });
+
+      expect(order.shrinkageEnabled, isFalse);
+      expect(order.shrinkagePercent, 1.5);
+      expect(order.effectiveShrinkagePercent, 0);
+    });
+
+    test('технолог молчит про выключенную усадку и подсказывает про 4 %', () {
+      // Проверки живут в services/tech_checks.dart; здесь — только модель.
+      expect(pvc.copyWith(shrinkagePercent: 4).effectiveShrinkagePercent, 0);
+      expect(
+        pvc
+            .copyWith(shrinkageEnabled: true, shrinkagePercent: 4)
+            .effectiveShrinkagePercent,
+        4,
+      );
     });
   });
 }
@@ -1654,11 +1884,12 @@ void _weldOverlapRules() {
       expect(const WindowParams(weldOverlapMm: 25).weldOverlapMm, 25);
     });
 
-    test('контрольные числа: полосы 40/60 мм, напуск 5 мм → 1930 × 2390', () {
+    test('контрольные числа: полосы 40/60 мм, напуск 5 мм → 1930 × 2400', () {
       // «Полоса» — готовая окантовка, а рулон складывается пополам: бок
       // 40 мм готовых — это рулон 80 мм, верх/низ 60 мм готовых — рулон 120.
       // Напуск не задаём: он берётся по умолчанию (5 мм, подсов ПВХ).
-      // Припуск 0 и усадка 0 — числа заготовки чистые, без поправок.
+      // Припуск 0 и усадка 0, но авто +10 мм к высоте для ПВХ включён:
+      // 2500 − 120 + 10 (напуск) + 10 (авто) = 2400 мм.
       const control = WindowParams(
         bottomWidth: 2000,
         topWidth: 2000,
@@ -1675,18 +1906,28 @@ void _weldOverlapRules() {
       expect(control.allowanceWidthMm, 0);
       expect(control.allowanceHeightMm, 0);
       expect(control.effectiveShrinkagePercent, 0);
+      expect(control.pvcHeightAllowanceEnabled, isTrue);
 
       final spec = WindowSpec.of(control);
 
       // Ширина: 2000 − 40 − 40 + 2 × 5 = 1930 мм (совпадает с заказчиком).
       expect(spec.filmCutWidth, closeTo(2000 - 80 + 10, 1e-9));
       expect(spec.filmCutWidth, closeTo(1930, 1e-9));
-      // Высота: 2500 − 60 − 60 + 2 × 5 = 2390 мм (заказчик подтвердил).
+      // Высота заготовки: 2500 − 60 − 60 + 2 × 5 = 2390 мм, плюс авто
+      // +10 мм для ПВХ (см. [pvcHeightAllowanceMm]) → 2400 мм.
       expect(spec.filmCutHeight, closeTo(2500 - 120 + 10, 1e-9));
       expect(spec.filmCutHeight, closeTo(2390, 1e-9));
-      // Заготовка к раскрою без припуска и усадки — те же 1930 × 2390.
+      expect(spec.filmCutHeightWithAllowance, closeTo(2400, 1e-9));
+      // Заготовка к раскрою без усадки: ширина 1930, высота 2400.
       expect(spec.filmCutWidthWithShrinkage, closeTo(1930, 1e-9));
-      expect(spec.filmCutHeightWithShrinkage, closeTo(2390, 1e-9));
+      expect(spec.filmCutHeightWithShrinkage, closeTo(2400, 1e-9));
+
+      // С выключенным тумблером авто-припуска высота снова 2390 мм.
+      final off = WindowSpec.of(control.copyWith(
+        pvcHeightAllowanceEnabled: false,
+      ));
+      expect(off.filmCutWidthWithShrinkage, closeTo(1930, 1e-9));
+      expect(off.filmCutHeightWithShrinkage, closeTo(2390, 1e-9));
     });
 
     test('пример заказчика: запайка 10 мм даёт заготовку 1920 × 1930', () {
@@ -1943,13 +2184,25 @@ void _screenRules() {
       expect(params.hemBySideShortLabel, '40/50/60/40 мм');
     });
 
-    test('у скрина нет усадки: 2080 × 2080 без усадки', () {
+    test('у скрина нет усадки и нет авто-припуска: 2080 × 2080', () {
       final spec = WindowSpec.of(screenWith(40));
-      expect(spec.params.shrinkagePercent, isNot(0));
+      // Скрин — не ПВХ: ни усадки, ни авто-припуска +10 мм к высоте.
+      expect(spec.params.isPvcFilm, isFalse);
       expect(spec.params.effectiveShrinkagePercent, 0);
+      expect(spec.params.autoHeightAllowanceMm, 0);
       expect(spec.filmCutWidthWithShrinkage, closeTo(2080, 1e-9));
       expect(spec.filmCutHeightWithShrinkage, closeTo(2080, 1e-9));
       expect(spec.filmCutAreaM2, closeTo(4.3264, 1e-9));
+    });
+
+    test('усадка скрину не задаётся даже при включённом тумблере', () {
+      final params = screenWith(40).copyWith(
+        shrinkageEnabled: true,
+        shrinkagePercent: 2,
+      );
+      final spec = WindowSpec.of(params);
+      expect(spec.params.effectiveShrinkagePercent, 0);
+      expect(spec.filmCutHeightWithShrinkage, closeTo(2080, 1e-9));
     });
 
     test('окантовки нет: расход нулевой, готовая полоса нулевая', () {

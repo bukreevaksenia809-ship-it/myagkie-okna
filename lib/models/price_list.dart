@@ -15,7 +15,9 @@ enum PriceField {
   filmTinted,
   filmMesh,
   filmScreen,
+  edge80,
   edge100,
+  edge120,
   edge200,
   edge240;
 
@@ -25,7 +27,9 @@ enum PriceField {
         PriceField.filmTinted => 'Плёнка ПВХ тонированная',
         PriceField.filmMesh => 'Москитная сетка',
         PriceField.filmScreen => 'Скрин (ткань)',
+        PriceField.edge80 => 'Окантовка, рулон 80 мм (готово 40)',
         PriceField.edge100 => 'Окантовка, рулон 100 мм (готово 50)',
+        PriceField.edge120 => 'Окантовка, рулон 120 мм (готово 60)',
         PriceField.edge200 => 'Окантовка, рулон 200 мм (готово 100)',
         PriceField.edge240 => 'Окантовка, рулон 240 мм (готово 120)',
       };
@@ -36,7 +40,9 @@ enum PriceField {
         PriceField.filmTinted => 'ПВХ тонированный',
         PriceField.filmMesh => 'Сетка',
         PriceField.filmScreen => 'Скрин',
+        PriceField.edge80 => 'Тент 80',
         PriceField.edge100 => 'Тент 100',
+        PriceField.edge120 => 'Тент 120',
         PriceField.edge200 => 'Тент 200',
         PriceField.edge240 => 'Тент 240',
       };
@@ -70,10 +76,24 @@ const double defaultFilmScreenPerM2 = 520;
 /// Подворот скрина и шов 3 мм — работа, ₽/м по периметру.
 const double defaultScreenHemPerM = 180;
 
+/// Окантовка из рулона 80 мм (готовая полоса 40 мм), ₽/м.
+///
+/// Ориентир: рулон уже 100-го, материала на метр уходит меньше, но раскрой и
+/// шов на каждый погонный метр те же, поэтому цена снижается не пропорционально
+/// ширине: 120 ₽/м ≈ 0,86 от цены 100-го рулона.
+const double defaultEdge80PerM = 120;
+
 /// Окантовка из рулона 100 мм (готовая полоса 50 мм), ₽/м.
 ///
 /// Ориентир: 120–160 ₽/м; тонкий рулон режется вдвое, но требует больше шва.
 const double defaultEdge100PerM = 140;
+
+/// Окантовка из рулона 120 мм (готовая полоса 60 мм), ₽/м.
+///
+/// Между 100-м (140 ₽/м) и 200-м (230 ₽/м) рулонами: линейная интерполяция
+/// дала бы 158 ₽/м, берём 165 ₽/м — полоса 60 мм нестандартная, её чаще
+/// режут из более широкого рулона, поэтому закладываем небольшой отход.
+const double defaultEdge120PerM = 165;
 
 /// Окантовка из рулона 200 мм (готовая 100 мм), ₽/м. Ориентир 200–260 ₽/м.
 const double defaultEdge200PerM = 230;
@@ -148,7 +168,9 @@ class PriceList {
     this.filmMeshPerM2 = defaultFilmMeshPerM2,
     this.filmScreenPerM2 = defaultFilmScreenPerM2,
     this.screenHemPerM = defaultScreenHemPerM,
+    this.edge80PerM = defaultEdge80PerM,
     this.edge100PerM = defaultEdge100PerM,
+    this.edge120PerM = defaultEdge120PerM,
     this.edge200PerM = defaultEdge200PerM,
     this.edge240PerM = defaultEdge240PerM,
     this.eyeletPrice = defaultEyeletPrice,
@@ -182,7 +204,9 @@ class PriceList {
   /// Подворот скрина и шов, ₽/м периметра.
   final double screenHemPerM;
 
+  final double edge80PerM;
   final double edge100PerM;
+  final double edge120PerM;
   final double edge200PerM;
   final double edge240PerM;
 
@@ -230,26 +254,28 @@ class PriceList {
 
   /// Цена окантовки по типу рулона, ₽/м.
   double edgePerMeter(EdgeRoll roll) => switch (roll) {
+        EdgeRoll.roll80 => edge80PerM,
         EdgeRoll.roll100 => edge100PerM,
+        EdgeRoll.roll120 => edge120PerM,
         EdgeRoll.roll200 => edge200PerM,
         EdgeRoll.roll240 => edge240PerM,
       };
 
   /// Цена окантовки для произвольной ширины рулона, ₽/м.
   ///
-  /// Пресеты прайса (100/200/240 мм) — три опорные точки. Если ширина совпала
-  /// с пресетом, берём его цену. Для своей ширины цена линейно
-  /// интерполируется между двумя соседними пресетами, а за пределами
-  /// диапазона — экстраполируется по ближайшему отрезку: так нестандартная
-  /// ширина считается плавно и не «прыгает» в цену соседнего пресета.
+  /// Пресеты [EdgeRoll.values] (80/100/120/200/240 мм) — опорные точки, у
+  /// каждого есть своя цена. Если ширина совпала с пресетом, берём его цену.
+  /// Для своей ширины цена линейно интерполируется между двумя соседними
+  /// пресетами, а за пределами диапазона — экстраполируется по ближайшему
+  /// отрезку: так нестандартная ширина считается плавно и не «прыгает» в цену
+  /// соседнего пресета. Старый прайс без цен 80/120 читается с дефолтами
+  /// (см. [PriceList.fromJson]), поэтому кривая остаётся непрерывной.
   ///
   /// Деления на ноль нет: знаменатель — разница ширин соседних пресетов,
   /// а она всегда положительна; на всякий случай она проверяется.
   double edgePerMeterForWidth(double rawWidthMm) {
     final points = <(double, double)>[
-      (EdgeRoll.roll100.rawWidth, edge100PerM),
-      (EdgeRoll.roll200.rawWidth, edge200PerM),
-      (EdgeRoll.roll240.rawWidth, edge240PerM),
+      for (final roll in EdgeRoll.values) (roll.rawWidth, edgePerMeter(roll)),
     ];
     if (!rawWidthMm.isFinite) return points.first.$2;
 
@@ -302,7 +328,9 @@ class PriceList {
 
   /// Цена окантовки по полю панели цен. См. [film].
   double edge(PriceField field) => switch (field) {
+        PriceField.edge80 => edge80PerM,
         PriceField.edge100 => edge100PerM,
+        PriceField.edge120 => edge120PerM,
         PriceField.edge200 => edge200PerM,
         PriceField.edge240 => edge240PerM,
         _ => 0,
@@ -317,7 +345,9 @@ class PriceList {
     double? filmMeshPerM2,
     double? filmScreenPerM2,
     double? screenHemPerM,
+    double? edge80PerM,
     double? edge100PerM,
+    double? edge120PerM,
     double? edge200PerM,
     double? edge240PerM,
     double? eyeletPrice,
@@ -343,7 +373,9 @@ class PriceList {
       filmMeshPerM2: filmMeshPerM2 ?? this.filmMeshPerM2,
       filmScreenPerM2: filmScreenPerM2 ?? this.filmScreenPerM2,
       screenHemPerM: screenHemPerM ?? this.screenHemPerM,
+      edge80PerM: edge80PerM ?? this.edge80PerM,
       edge100PerM: edge100PerM ?? this.edge100PerM,
+      edge120PerM: edge120PerM ?? this.edge120PerM,
       edge200PerM: edge200PerM ?? this.edge200PerM,
       edge240PerM: edge240PerM ?? this.edge240PerM,
       eyeletPrice: eyeletPrice ?? this.eyeletPrice,
@@ -370,7 +402,9 @@ class PriceList {
         'filmMeshPerM2': filmMeshPerM2,
         'filmScreenPerM2': filmScreenPerM2,
         'screenHemPerM': screenHemPerM,
+        'edge80PerM': edge80PerM,
         'edge100PerM': edge100PerM,
+        'edge120PerM': edge120PerM,
         'edge200PerM': edge200PerM,
         'edge240PerM': edge240PerM,
         'eyeletPrice': eyeletPrice,
@@ -402,7 +436,11 @@ class PriceList {
       filmScreenPerM2:
           _price(json['filmScreenPerM2'], fallback.filmScreenPerM2),
       screenHemPerM: _price(json['screenHemPerM'], fallback.screenHemPerM),
+      // Старый прайс без цен 80/120 мм читается с дефолтами: опорные точки
+      // кривой цены остаются на месте, а нестандартная ширина интерполируется.
+      edge80PerM: _price(json['edge80PerM'], fallback.edge80PerM),
       edge100PerM: _price(json['edge100PerM'], fallback.edge100PerM),
+      edge120PerM: _price(json['edge120PerM'], fallback.edge120PerM),
       edge200PerM: _price(json['edge200PerM'], fallback.edge200PerM),
       edge240PerM: _price(json['edge240PerM'], fallback.edge240PerM),
       eyeletPrice: _price(json['eyeletPrice'], fallback.eyeletPrice),

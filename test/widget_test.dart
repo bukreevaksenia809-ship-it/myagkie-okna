@@ -9,9 +9,9 @@ void main() {
   testWidgets('экран конструктора: панель, лист и переключение вкладок',
       (WidgetTester tester) async {
     // Высокое окно, чтобы вся панель параметров была построена без прокрутки.
-    // Панель выросла (подворот по сторонам и площади заготовки), поэтому
+    // Панель выросла (тумблеры усадки и авто-припуска +10 мм), поэтому
     // берём запас по высоте.
-    tester.view.physicalSize = const Size(1700, 7000);
+    tester.view.physicalSize = const Size(1700, 9000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -71,7 +71,7 @@ void main() {
       (WidgetTester tester) async {
     // Узкая панель (420) и высокое окно: весь раздел «Окантовка» построен,
     // по ширине ничего не переполняется.
-    tester.view.physicalSize = const Size(420, 6000);
+    tester.view.physicalSize = const Size(420, 9000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -94,9 +94,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    // По полю на каждую сторону и по три пресета в каждой.
+    // По полю на каждую сторону и по пять пресетов в каждой — включая
+    // новые 80 и 120 мм.
     expect(find.text('Своя ширина, мм'), findsNWidgets(4));
+    expect(find.text('80 мм'), findsNWidgets(4));
     expect(find.text('100 мм'), findsNWidgets(4));
+    expect(find.text('120 мм'), findsNWidgets(4));
     expect(find.text('200 мм'), findsNWidgets(4));
     expect(find.text('240 мм'), findsNWidgets(4));
 

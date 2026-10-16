@@ -249,16 +249,18 @@ class CostsSheet extends StatelessWidget {
       ]),
       ('Полотно (плёнка)', [
         ...summary.filmByMaterialLabels,
-        'Итого заготовки (габарит) с усадкой: '
+        'Итого заготовки (габарит): '
             '${formatMeters(summary.filmAreaWithShrinkageM2)} м²',
         'Заготовки (габарит) без усадки: '
             '${formatMeters(summary.filmAreaM2)} м²',
         'Площадь полотна изделий (без припуска): '
             '${formatMeters(summary.filmNetAreaM2)} м²',
-        if (summary.project.windows.first.isScreen)
+        if (summary.project.windows.every((window) => window.isScreen))
           'Усадки нет: у скрина она равна 0 %'
+        else if (summary.hasShrinkage)
+          'В расход и деньги идёт заготовка с усадкой'
         else
-          'В расход и деньги идёт заготовка с усадкой',
+          'Усадка не учитывается: заготовка считается без запаса на усадку',
       ]),
       ('Окантовка (по типам рулонов)', [
         if (summary.edgeConsumptionLabels.isEmpty) '—',

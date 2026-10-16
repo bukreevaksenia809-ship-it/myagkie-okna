@@ -111,13 +111,16 @@ const double denseEyeletStepMm = 150;
 /// выбрать любой из них или ввести своё число в поле.
 const List<double> eyeletStepPresets = [250, 300, 350, 400, 500];
 
-/// Пресет рулона окантовки — оставлен ради совместимости: по нему читаются
-/// старые заказы, где ширина писалась именем типа, и берётся цена прайса.
+/// Пресет рулона окантовки: по нему читаются старые заказы, где ширина
+/// писалась именем типа, и берётся цена прайса. Порядок значений — по ширине
+/// рулона, он же порядок опорных точек цены ([PriceList.edgePerMeterForWidth]).
 ///
 /// Полоса складывается пополам, поэтому готовая ширина окантовки — половина
 /// ширины рулона.
 enum EdgeRoll {
+  roll80(80, 'Тент 80 мм = окантовка 40 мм'),
   roll100(100, 'Тент 100 мм = окантовка 50 мм'),
+  roll120(120, 'Тент 120 мм = окантовка 60 мм'),
   roll200(200, 'Тент 200 мм = окантовка 100 мм'),
   roll240(240, 'Тент 240 мм = окантовка 120 мм');
 
@@ -350,6 +353,27 @@ const List<double> screenHemPresets = [40, 50, 60];
 /// Разумный предел припуска на раскрой, мм: больше — почти наверняка опечатка.
 const double maxAllowanceMm = 500;
 
+/// Авто-припуск к ВЫСОТЕ заготовки для ПВХ-полотна, мм.
+///
+/// По умолчанию цех кроит ПВХ на 10 мм выше: ролики и шов напайки по верхней
+/// и нижней кромке «съедают» высоту, и без запаса полотно после сварки уходит
+/// в минус по замеру. Припуск — только на РАСКРОЙ (заготовку): изделие,
+/// чертёж, окантовка и люверсы считаются по замеру. У скрина запаса нет —
+/// он подворачивается и кроится по удвоенному большему подвороту оси,
+/// см. [WindowParams.hemAxisBottomTopIncrease].
+const double pvcHeightAllowanceMm = 10;
+
+/// Усадка ПВХ, % — значение, которое панель подставляет в поле, когда
+/// технолог включает тумблер «Учитывать усадку ПВХ».
+///
+/// Сам тумблер по умолчанию выключен, и тогда заготовка кроится без запаса
+/// на усадку ([WindowParams.effectiveShrinkagePercent] = 0). Типовая усадка
+/// плёнки — 1–2 %, поэтому при включении подставляем 1,5 %.
+const double defaultShrinkagePercent = 1.5;
+
+/// Рамка ввода поля усадки, %: 0…5. Больше — уже не типовая партия.
+const double maxShrinkageFieldPercent = 5;
+
 /// Сколько молний и вырезов можно поставить на одно окно.
 const int maxZippers = 2;
 const int maxCutouts = 4;
@@ -512,7 +536,9 @@ class WindowParams {
     this.pocketWidth = pocketFinishedWidth,
     this.drainHoles = false,
     this.drainCount = 3,
-    this.shrinkagePercent = 1.5,
+    this.shrinkageEnabled = false,
+    this.shrinkagePercent = 0,
+    this.pvcHeightAllowanceEnabled = true,
   });
 
   // Маркировка
@@ -540,18 +566,30 @@ class WindowParams {
   /// ([bottomWidth] и т. д.).
   final double allowanceWidthMm;
 
-  /// Припуск на раскрой по высоте, мм (по умолчанию 0).
+  /// Припуск на раскрой по высоте, мм — вводится вручную (по умолчанию 0).
+  ///
+  /// К заготовке ПВХ добавляется ещё авто-припуск [pvcHeightAllowanceMm]
+  /// (см. [effectiveAllowanceHeightMm]) — он учитывается только в раскрое.
   final double allowanceHeightMm;
+
+  /// Тумблер «+10 мм к высоте по умолчанию (ПВХ)».
+  ///
+  /// Включён по умолчанию: заготовка ПВХ кроится на [pvcHeightAllowanceMm]
+  /// выше замера ([autoHeightAllowanceMm]). Для скрина флаг не действует:
+  /// у скрина авто-припуска нет никогда.
+  final bool pvcHeightAllowanceEnabled;
 
   final TopAlign topAlign;
   final double topOffsetMm;
 
   /// Пресеты ширины рулона окантовки, мм — быстрые кнопки в панели.
   ///
-  /// Свою ширину можно ввести вручную (40…400 мм); эти три значения остались
-  /// как готовые варианты и как опорные точки прайса
-  /// (PriceList.edgePerMeterForWidth).
-  static const List<double> edgePresets = [100, 200, 240];
+  /// Свою ширину можно ввести вручную (40…400 мм); эти пять значений —
+  /// готовые варианты в панели и одновременно опорные точки прайса
+  /// (PriceList.edgePerMeterForWidth): у каждого пресета есть своя цена,
+  /// поэтому нестандартная ширина между ними считается интерполяцией.
+  /// Порядок — по возрастанию ширины рулона.
+  static const List<double> edgePresets = [80, 100, 120, 200, 240];
 
   // Окантовка: своя ширина рулона на каждую сторону, мм.
   //
@@ -644,7 +682,19 @@ class WindowParams {
   final double drainCount;
 
   /// Усадка ПВХ, % — плёнка кроится больше на эту величину.
+  ///
+  /// Значение применяется, только когда включён [shrinkageEnabled]
+  /// (см. [effectiveShrinkagePercent]). По умолчанию усадка выключена,
+  /// поэтому и процент по умолчанию 0.
   final double shrinkagePercent;
+
+  /// Учитывать усадку ПВХ при раскрое.
+  ///
+  /// По умолчанию **выключено**: заготовка равна расчётной, а поле процента в
+  /// панели скрыто. Включает технолог, если партия плёнки даёт усадку; тогда
+  /// применяется [shrinkagePercent] (типовое значение
+  /// [defaultShrinkagePercent]).
+  final bool shrinkageEnabled;
 
   bool get hasZipper => zippers.isNotEmpty;
 
@@ -662,16 +712,46 @@ class WindowParams {
   /// Сколько миллиметров окантовки экономят спайки с соседними окнами.
   bool isWelded(EdgeSide side) => weldedSides.contains(side);
 
-  /// Есть ли припуск на раскрой хотя бы по одной оси.
-  bool get hasAllowance => allowanceWidthMm != 0 || allowanceHeightMm != 0;
+  /// Есть ли припуск на раскрой хотя бы по одной оси — с учётом авто-припуска
+  /// ПВХ по высоте ([effectiveAllowanceHeightMm]).
+  bool get hasAllowance =>
+      allowanceWidthMm != 0 || effectiveAllowanceHeightMm != 0;
+
+  /// Задан ли припуск на раскрой вручную (без авто-припуска ПВХ).
+  bool get hasManualAllowance =>
+      allowanceWidthMm != 0 || allowanceHeightMm != 0;
+
+  /// Авто-припуск к высоте заготовки, мм: [pvcHeightAllowanceMm] для ПВХ при
+  /// включённом [pvcHeightAllowanceEnabled]; у скрина — всегда 0.
+  double get autoHeightAllowanceMm =>
+      (isPvcFilm && pvcHeightAllowanceEnabled) ? pvcHeightAllowanceMm : 0;
+
+  /// Припуск по высоте, который реально уходит в раскрой: ручной
+  /// [allowanceHeightMm] плюс авто-припуск ПВХ ([autoHeightAllowanceMm]).
+  double get effectiveAllowanceHeightMm =>
+      allowanceHeightMm + autoHeightAllowanceMm;
+
+  /// Есть ли авто-припуск по высоте (для подписей «(авто)»).
+  bool get hasAutoHeightAllowance => autoHeightAllowanceMm != 0;
 
   /// Припуск по ширине в виде «+120» / «−30» / «0».
   String get allowanceWidthLabel => formatSignedMm(allowanceWidthMm);
 
-  /// Припуск по высоте в виде «+80» / «−30» / «0».
-  String get allowanceHeightLabel => formatSignedMm(allowanceHeightMm);
+  /// Фактический припуск по высоте («авто + вручную») в виде «+10» / «0».
+  String get allowanceHeightLabel =>
+      formatSignedMm(effectiveAllowanceHeightMm);
 
-  /// Подпись припуска для документов: «припуск +120/+80 мм».
+  /// Ручной припуск по высоте в виде «+80» / «0» — для разбивки в панели.
+  String get manualAllowanceHeightLabel => formatSignedMm(allowanceHeightMm);
+
+  /// Разбивка припуска по высоте для панели и документов:
+  /// «Припуск по высоте: 10 мм (авто) + 0 мм (вручную) = 10 мм».
+  String get heightAllowanceBreakdownLabel =>
+      'Припуск по высоте: ${formatMm(autoHeightAllowanceMm)} мм (авто) + '
+      '${formatMm(allowanceHeightMm)} мм (вручную) = '
+      '${formatMm(effectiveAllowanceHeightMm)} мм';
+
+  /// Подпись припуска для документов: «припуск +120/+10 мм».
   String get allowanceLabel => hasAllowance
       ? 'припуск $allowanceWidthLabel/$allowanceHeightLabel мм'
       : 'припуск 0/0 мм';
@@ -679,10 +759,11 @@ class WindowParams {
   // Размеры заготовки плёнки с припуском на раскрой. Изделие при этом
   // остаётся размером замера: геометрия и все расчёты идут по основным
   // размерам, а припуск добавляется только в раскрое плёнки.
+  // По высоте берётся фактический припуск: ручной плюс авто-припуск ПВХ.
   double get effectiveBottomWidth => bottomWidth + allowanceWidthMm;
   double get effectiveTopWidth => topWidth + allowanceWidthMm;
-  double get effectiveLeftHeight => leftHeight + allowanceHeightMm;
-  double get effectiveRightHeight => rightHeight + allowanceHeightMm;
+  double get effectiveLeftHeight => leftHeight + effectiveAllowanceHeightMm;
+  double get effectiveRightHeight => rightHeight + effectiveAllowanceHeightMm;
 
   /// Тип люверса, который реально ставится.
   ///
@@ -734,10 +815,25 @@ class WindowParams {
   /// Технология изделия, выведенная из материала (см. [WindowTech]).
   WindowTech get tech => isScreen ? WindowTech.screen : WindowTech.pvcTent;
 
-  /// Усадка, которая реально применяется к раскрою: у скрина усадки нет
-  /// (ткань не тянется, как плёнка ПВХ), у ПВХ — поле [shrinkagePercent].
-  /// Нужен запас — его добавляют припуском на раскрой.
-  double get effectiveShrinkagePercent => isScreen ? 0 : shrinkagePercent;
+  /// Полотно из ПВХ: обычный ПВХ, тонированный ПВХ и москитная сетка.
+  ///
+  /// Все три кроятся по одной технологии — заготовка с напайкой под
+  /// окантовку, — поэтому авто-припуск [pvcHeightAllowanceMm] к высоте
+  /// действует и на москитную сетку (это тоже ПВХ-полотно, просто сетчатое).
+  /// Скрин — отдельная технология с подворотом: авто-припуска у него нет.
+  bool get isPvcFilm => !isScreen;
+
+  /// Усадка, которая реально применяется к раскрою.
+  ///
+  /// У скрина усадки нет (ткань не тянется, как плёнка ПВХ). У ПВХ усадка
+  /// берётся из [shrinkagePercent], но только когда тумблер
+  /// [shrinkageEnabled] включён: при выключенном тумблере заготовка кроится
+  /// ровно по расчёту, а поле процента в панели скрыто.
+  double get effectiveShrinkagePercent =>
+      (isScreen || !shrinkageEnabled) ? 0 : shrinkagePercent;
+
+  /// Применяется ли усадка к раскрою ([effectiveShrinkagePercent] > 0).
+  bool get hasShrinkage => effectiveShrinkagePercent > 0;
 
   /// Количество подъёмных ремней: 2 при ширине до 2 м, далее +1 на каждый метр.
   int get liftStrapCount {
@@ -890,7 +986,9 @@ class WindowParams {
     double? pocketWidth,
     bool? drainHoles,
     double? drainCount,
+    bool? shrinkageEnabled,
     double? shrinkagePercent,
+    bool? pvcHeightAllowanceEnabled,
   }) {
     return WindowParams(
       projectName: projectName ?? this.projectName,
@@ -933,7 +1031,10 @@ class WindowParams {
       pocketWidth: pocketWidth ?? this.pocketWidth,
       drainHoles: drainHoles ?? this.drainHoles,
       drainCount: drainCount ?? this.drainCount,
+      shrinkageEnabled: shrinkageEnabled ?? this.shrinkageEnabled,
       shrinkagePercent: shrinkagePercent ?? this.shrinkagePercent,
+      pvcHeightAllowanceEnabled:
+          pvcHeightAllowanceEnabled ?? this.pvcHeightAllowanceEnabled,
     );
   }
 
@@ -1106,7 +1207,9 @@ class WindowParams {
         pocketWidth,
         drainHoles,
         drainCount,
+        shrinkageEnabled,
         shrinkagePercent,
+        pvcHeightAllowanceEnabled,
       ].join('|');
 }
 

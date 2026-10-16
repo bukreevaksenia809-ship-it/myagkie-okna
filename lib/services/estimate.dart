@@ -127,8 +127,12 @@ class Estimate {
                 '2 × больший подворот по оси'
                 '${summary.screenZipperCount > 0 ? ', включая полосы молний '
                     '${formatMeters(summary.screenZipperBandAreaM2)} м²' : ''}'
-            : '${entry.key.thickness}; заготовка (габарит) с компенсацией '
-                'усадки',
+            : '${entry.key.thickness}; заготовка (габарит)'
+                '${summary.hasShrinkage ? ' с компенсацией усадки' : ''}'
+                '${summary.hasAutoHeightAllowance
+                    ? '${summary.hasShrinkage ? ' и' : ' с'} авто-припуском '
+                        '+10 мм к высоте (ПВХ)'
+                    : ''}',
         quantity: entry.value,
         unit: 'м²',
         unitPrice: pricePerM2,

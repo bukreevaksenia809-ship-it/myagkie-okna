@@ -179,7 +179,9 @@ class TechCard {
           '${spec.eyeletStepLabel}) · '
           'крепёж: ${spec.fastenerSummary.toLowerCase()}'
       : 'Окантовка: ${spec.edgeBySideSummary} · '
-          'плёнка в раскрое с припуском и усадкой: '
+          'плёнка в раскрое'
+          '${params.hasAllowance ? ' с припуском' : ''}'
+          '${params.hasShrinkage ? ' и усадкой' : ''}: '
           '${formatMm(spec.filmCutWidthWithShrinkage)} × '
           '${formatMm(spec.filmCutHeightWithShrinkage)} мм · '
           'люверсы: ${spec.eyeletCount} шт, интервал '
@@ -331,12 +333,15 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           'Отрезать полотно по раскрою: видимый размер '
           '${formatMm(visible.width)} × ${formatMm(visible.height)} мм, плюс '
           'запайка ${formatMm(params.weldOverlapMm)} мм с каждой стороны'
-          '${params.hasAllowance ? ', плюс припуск на раскрой '
+          '${params.hasManualAllowance ? ', плюс припуск на раскрой '
                     '${params.allowanceWidthLabel} по ширине и '
-                    '${params.allowanceHeightLabel} по высоте' : ''}'
-          ', плюс усадка '
-          '${formatPercent(params.effectiveShrinkagePercent)}. Раскрой вести '
-          'по длинной стороне рулона, кромку не подрезать.',
+                    '${params.manualAllowanceHeightLabel} по высоте' : ''}'
+          '${params.hasAutoHeightAllowance ? ', плюс авто +'
+                    '${formatMm(params.autoHeightAllowanceMm)} мм к высоте '
+                    'заготовки (ПВХ)' : ''}'
+          '${params.hasShrinkage ? ', плюс усадка '
+                    '${formatPercent(params.effectiveShrinkagePercent)}' : ''}. '
+          'Раскрой вести по длинной стороне рулона, кромку не подрезать.',
       materials: [
         TechMaterial(
           name: '${params.material.label} (${params.material.thickness})',
@@ -349,9 +354,13 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
               '${params.hasAllowance ? ' (с припуском на раскрой)' : ''}',
         ),
         TechMaterial(
-          name: 'Площадь заготовки (габарит) с усадкой',
+          name: params.hasShrinkage
+              ? 'Площадь заготовки (габарит) с усадкой'
+              : 'Площадь заготовки (габарит)',
           size: '${formatMeters(spec.filmCutAreaWithShrinkageM2)} м²',
-          note: 'с припуском на раскрой и усадкой, без площади вырезов',
+          note: params.hasShrinkage
+              ? 'с припуском на раскрой и усадкой, без площади вырезов'
+              : 'с припуском на раскрой, без площади вырезов',
         ),
       ],
       tool: 'Раскроечный стол, дисковый нож, рулетка, угольник, маркер',

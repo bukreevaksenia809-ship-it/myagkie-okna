@@ -88,8 +88,8 @@ void _filamentBlankAudit() {
       expectClose(spec.filmCutHeight, 1930, 'высота заготовки: 2000−50−40+20');
     });
 
-    test('тот же пример с припуском +100/+100 и усадкой 1,5 % '
-        '→ 2020 × 2030 → 2050,3 × 2060,45', () {
+    test('тот же пример с припуском +100/+100, авто +10 мм к высоте и '
+        'усадкой 1,5 % → 2020 × 2040 → 2050,3 × 2070,6', () {
       final params = const WindowParams(
         bottomWidth: 2000,
         topWidth: 2000,
@@ -100,19 +100,27 @@ void _filamentBlankAudit() {
         rollLeft: 100,
         rollTop: 80,
         weldOverlapMm: 10,
-      ).copyWith(allowanceWidthMm: 100, allowanceHeightMm: 100);
+      ).copyWith(
+        allowanceWidthMm: 100,
+        allowanceHeightMm: 100,
+        // Усадка по умолчанию выключена — включаем явно.
+        shrinkageEnabled: true,
+        shrinkagePercent: defaultShrinkagePercent,
+      );
       final spec = WindowSpec.of(params);
 
-      // Вручную: 1920 + 100 = 2020; 1930 + 100 = 2030.
+      // Вручную: ширина 1920 + 100 = 2020;
+      // высота 1930 + 100 (ручной) + 10 (авто ПВХ) = 2040.
       expectClose(spec.filmCutWidthWithAllowance, 2020, 'заготовка с припуском');
-      expectClose(spec.filmCutHeightWithAllowance, 2030, 'заготовка с припуском');
-      // Вручную: 2020 × 1,015 = 2050,3; 2030 × 1,015 = 2060,45.
+      expectClose(spec.filmCutHeightWithAllowance, 2040,
+          'заготовка с припуском и авто +10');
+      // Вручную: 2020 × 1,015 = 2050,3; 2040 × 1,015 = 2070,6.
       expectClose(spec.filmCutWidthWithShrinkage, 2050.3, 'ширина с усадкой',
           tol: 1e-9);
-      expectClose(spec.filmCutHeightWithShrinkage, 2060.45, 'высота с усадкой',
+      expectClose(spec.filmCutHeightWithShrinkage, 2070.6, 'высота с усадкой',
           tol: 1e-9);
-      // Площадь заготовки без усадки: 2020 × 2030 = 4 100 600 мм² = 4,1006 м².
-      expectClose(spec.filmCutAreaM2, 4.1006, 'площадь заготовки 4,1006 м²');
+      // Площадь заготовки без усадки: 2020 × 2040 = 4 120 800 мм² = 4,1208 м².
+      expectClose(spec.filmCutAreaM2, 4.1208, 'площадь заготовки 4,1208 м²');
     });
 
     test('запайка 25 и окантовка 100 со всех сторон → 1950 × 1950', () {
@@ -131,7 +139,7 @@ void _filamentBlankAudit() {
     });
 
     test('площадь с усадкой считается из линейных размеров: '
-        '2050,3 × 2060,45 = 4,224541 м²', () {
+        '2050,3 × 2070,6 = 4,245351 м²', () {
       final params = const WindowParams(
         bottomWidth: 2000,
         topWidth: 2000,
@@ -142,22 +150,27 @@ void _filamentBlankAudit() {
         rollLeft: 100,
         rollTop: 80,
         weldOverlapMm: 10,
-      ).copyWith(allowanceWidthMm: 100, allowanceHeightMm: 100);
+      ).copyWith(
+        allowanceWidthMm: 100,
+        allowanceHeightMm: 100,
+        shrinkageEnabled: true,
+        shrinkagePercent: defaultShrinkagePercent,
+      );
       final spec = WindowSpec.of(params);
 
-      // Вручную: 2050,3 × 2060,45 = 4 224 540,635 мм² = 4,224541 м². Усадка
+      // Вручную: 2050,3 × 2070,6 = 4 245 351,18 мм² = 4,245351 м². Усадка
       // масштабирует ОБЕ стороны заготовки, поэтому площадь берётся из
       // линейных размеров, а не умножением площади на (1 + s/100).
       expectClose(
         spec.filmCutAreaWithShrinkageM2,
-        4.224540635,
-        'площадь заготовки с усадкой = 2050,3 × 2060,45 мм',
+        4.24535118,
+        'площадь заготовки с усадкой = 2050,3 × 2070,6 мм',
         tol: 1e-9,
       );
-      // Старая (ошибочная) формула дала бы 4,1006 × 1,015 = 4,162109 м².
+      // Старая (ошибочная) формула дала бы 4,1208 × 1,015 = 4,182612 м².
       expect(
         spec.filmCutAreaWithShrinkageM2,
-        greaterThan(4.162109),
+        greaterThan(4.182612),
         reason: 'площадь не должна считаться умножением на один множитель',
       );
     });
@@ -387,30 +400,33 @@ void _eyeletAudit() {
 // ---------------------------------------------------------------------------
 void _areaAudit() {
   group('5. Площади', () {
-    test('изделие 2000 × 1500 = 3,0 м²; заготовка 1950 × 1450 = 2,8275 м²', () {
+    test('изделие 2000 × 1500 = 3,0 м²; заготовка 1950 × 1460 = 2,847 м²', () {
       final spec = WindowSpec.of(_rect2000x1500);
 
       // Вручную: изделие 2000 × 1500 = 3 000 000 мм² = 3,0 м².
       expectClose(spec.productAreaM2, 3.0, 'площадь изделия 3,0 м²');
       expectClose(spec.outerAreaM2, 3.0, 'площадь по наружному контуру 3,0 м²');
-      // Вручную: заготовка без припуска (2000−50) × (1500−50) =
-      // 1950 × 1450 = 2 827 500 мм² = 2,8275 м².
-      expectClose(spec.filmCutAreaM2, 2.8275, 'заготовка без припуска 2,8275 м²');
+      // Вручную: заготовка (2000−50) × (1500−50 + 10 авто ПВХ) =
+      // 1950 × 1460 = 2 847 000 мм² = 2,847 м².
+      expectClose(spec.filmCutAreaM2, 2.847, 'заготовка с авто +10 = 2,847 м²');
+      // Справочная площадь полотна — без припуска: 1950 × 1450 = 2,8275 м².
       expectClose(spec.filmAreaM2, 2.8275,
           'справочная площадь полотна 2,8275 м²');
     });
 
-    test('припуск +100/+100: заготовка 2050 × 1550 = 3,1775 м²', () {
+    test('припуск +100/+100: заготовка 2050 × 1560 = 3,198 м²', () {
       final params = _rect2000x1500.copyWith(
         allowanceWidthMm: 100,
         allowanceHeightMm: 100,
       );
       final spec = WindowSpec.of(params);
 
-      // Вручную: 2050 × 1550 = 3 177 500 мм² = 3,1775 м².
+      // Вручную: 2050 × (1550 + 10 авто) = 2050 × 1560 = 3 198 000 мм² =
+      // 3,198 м².
       expectClose(spec.filmCutWidthWithAllowance, 2050, 'ширина с припуском');
-      expectClose(spec.filmCutHeightWithAllowance, 1550, 'высота с припуском');
-      expectClose(spec.filmCutAreaM2, 3.1775, 'площадь с припуском 3,1775 м²');
+      expectClose(spec.filmCutHeightWithAllowance, 1560,
+          'высота с припуском и авто +10');
+      expectClose(spec.filmCutAreaM2, 3.198, 'площадь с припуском 3,198 м²');
     });
 
     test('скрин 2000 × 2000, подворот 40: заготовка 2080 × 2080 = 4,3264 м²',
@@ -459,10 +475,10 @@ void _areaAudit() {
       expectClose(spec.layers.cutoutAreaMm2, 90000 + math.pi * 300 * 300 / 4,
           'суммарная площадь вырезов');
       // Площадь плёнки в ведомости = площадь заготовки минус вырезы:
-      // 1950 × 1450 − 160 685,8347 = 2 666 814,1653 мм² = 2,666814 м².
+      // 1950 × 1460 − 160 685,8347 = 2 686 314,1653 мм² = 2,686314 м².
       expectClose(
         spec.filmCutAreaM2,
-        (1950 * 1450 - 90000 - math.pi * 300 * 300 / 4) / 1000000,
+        (1950 * 1460 - 90000 - math.pi * 300 * 300 / 4) / 1000000,
         'ведомость: заготовка минус вырезы',
       );
       // То же число отдаёт сводка расхода (ведомость заказа).
@@ -482,36 +498,42 @@ void _areaAudit() {
         rollLeft: 100,
         rollTop: 80,
         weldOverlapMm: 10,
-      ).copyWith(allowanceWidthMm: 100, allowanceHeightMm: 100);
+      ).copyWith(
+        allowanceWidthMm: 100,
+        allowanceHeightMm: 100,
+        shrinkageEnabled: true,
+        shrinkagePercent: defaultShrinkagePercent,
+      );
       final spec = WindowSpec.of(params);
       final summary = CostsSummary(OrderProject(windows: [params]));
       final estimate = Estimate.ofWindow(params, PriceList.defaults());
 
-      // Вручную: плёнка кроится 2050,3 × 2060,45 мм = 4,224540635 м².
-      expectClose(spec.filmCutAreaWithShrinkageM2, 4.224540635,
+      // Вручную: заготовка 2020 × 2040 (высота включает авто +10 мм ПВХ),
+      // плёнка кроится 2050,3 × 2070,6 мм = 4,24535118 м².
+      expectClose(spec.filmCutAreaWithShrinkageM2, 4.24535118,
           'фактическая площадь заготовки с усадкой', tol: 1e-9);
       // Сводка расхода отдаёт именно её — и в итог, и по материалам.
-      expectClose(summary.filmAreaWithShrinkageM2, 4.224540635,
+      expectClose(summary.filmAreaWithShrinkageM2, 4.24535118,
           'ведомость: заготовка с усадкой', tol: 1e-9);
       expectClose(summary.filmAreaByMaterialWithShrinkage[FilmMaterial.clearPvc]!,
-          4.224540635, 'ведомость: заготовка с усадкой по материалу',
+          4.24535118, 'ведомость: заготовка с усадкой по материалу',
           tol: 1e-9);
-      // Габарит без усадки остаётся справочным числом.
-      expectClose(summary.filmAreaM2, 4.1006, 'габарит без усадки 4,1006 м²');
+      // Габарит без усадки остаётся справочным числом: 2020 × 2040 = 4,1208 м².
+      expectClose(summary.filmAreaM2, 4.1208, 'габарит без усадки 4,1208 м²');
 
-      // Смета: позиция плёнки — площадь с усадкой, 4,224540635 × 950 =
-      // 4013,3136 → 4013,31 ₽; раскрой 4,224540635 × 250 = 1056,1352 → 1056,14.
+      // Смета: позиция плёнки — площадь с усадкой, 4,24535118 × 950 =
+      // 4033,0836 → 4033,08 ₽; раскрой 4,24535118 × 250 = 1061,3378 → 1061,34.
       final film = estimate.lines
           .firstWhere((line) => line.title.startsWith('Полотно'));
-      expectClose(film.quantity, 4.224540635, 'плёнка в смете с усадкой',
+      expectClose(film.quantity, 4.24535118, 'плёнка в смете с усадкой',
           tol: 1e-9);
-      expectClose(film.amount, 4013.31, '4,224540635 × 950');
+      expectClose(film.amount, 4033.08, '4,24535118 × 950');
       final cutting = estimate.lines
           .firstWhere((line) => line.title.startsWith('Раскрой'));
-      expectClose(cutting.quantity, 4.224540635,
+      expectClose(cutting.quantity, 4.24535118,
           'раскрой по площади с усадкой', tol: 1e-9);
-      expectClose(cutting.amount, 1056.14, '4,224540635 × 250');
-      expectClose(estimate.filmAreaM2, 4.224540635, 'площадь плёнки в смете');
+      expectClose(cutting.amount, 1061.34, '4,24535118 × 250');
+      expectClose(estimate.filmAreaM2, 4.24535118, 'площадь плёнки в смете');
     });
 
     test('трапеция: габарит заготовки (расход) больше площади полотна', () {
@@ -525,11 +547,12 @@ void _areaAudit() {
       final spec = WindowSpec.of(params);
 
       // Осознанно два разных числа, их и разводят подписи: filmCutAreaM2 —
-      // заготовка (габаритный прямоугольник 1919,10 × 950 мм = 1,823143 м²),
+      // заготовка (габаритный прямоугольник ≈ 1919,10 × 960 мм ≈ 1,842334 м²;
+      // высота включает авто +10 мм к высоте ПВХ),
       // она идёт в расход; filmAreaM2 — площадь самого полотна
       // (1,371893 м², справочно). Для непрямоугольного окна заготовка
       // кроится прямоугольником, поэтому расход — верхняя оценка.
-      expectClose(spec.filmCutAreaM2, 1.823143, 'заготовка (габарит) 1,823143',
+      expectClose(spec.filmCutAreaM2, 1.842334, 'заготовка (габарит) 1,842334',
           tol: 1e-6);
       expectClose(spec.filmAreaM2, 1.371893, 'площадь полотна 1,371893',
           tol: 1e-6);
@@ -613,12 +636,21 @@ void _estimateAudit() {
         discountPercent: 10,
         vatPercent: 20,
       );
-      final estimate = Estimate.ofWindow(_rect2000x2500, prices);
+      // Усадку включаем явно: по умолчанию она выключена. Тумблер
+      // авто-припуска ПВХ, наоборот, включён по умолчанию (+10 мм к высоте).
+      final estimate = Estimate.ofWindow(
+        _rect2000x2500.copyWith(
+          shrinkageEnabled: true,
+          shrinkagePercent: defaultShrinkagePercent,
+        ),
+        prices,
+      );
 
       // Вручную. Заготовка (габарит) без усадки: (2000−50) × (2500−50) =
-      // 1950 × 2450 = 4 777 500 мм² = 4,7775 м². С усадкой 1,5 % обе стороны
-      // растут: 1979,25 × 2486,75 = 4 921 899,9375 мм² = 4,9218999375 м² —
-      // именно эта площадь идёт в смету. Изделие: 2000 × 2500 = 5,0 м².
+      // 1950 × 2450 = 4 777 500 мм²; с авто +10 мм по высоте — 1950 × 2460.
+      // С усадкой 1,5 % обе стороны растут: 1979,25 × 2496,9 =
+      // 4 941 989,325 мм² = 4,941989325 м² — именно эта площадь идёт в смету.
+      // Изделие: 2000 × 2500 = 5,0 м².
       // Окантовка: 2 × (2000 + 2500) = 9000 мм = 9 м.
       // Люверсы: низ/верх ceil(1950/300)=7, право/лево ceil(2450/300)=9
       // → 7+9+7+9 = 32 шт.
@@ -626,15 +658,15 @@ void _estimateAudit() {
       expect(estimate.lines.length, 5,
           reason: 'плёнка, окантовка, люверсы, сварка, раскрой');
       expectClose(estimate.productAreaM2, 5.0, 'площадь изделия 5,0 м²');
-      expectClose(estimate.filmAreaM2, 4.9218999375,
-          'площадь заготовки с усадкой 4,9218999375 м²', tol: 1e-9);
+      expectClose(estimate.filmAreaM2, 4.941989325,
+          'площадь заготовки с усадкой 4,941989325 м²', tol: 1e-9);
 
       final film = estimate.lines
           .firstWhere((line) => line.title.startsWith('Полотно'));
-      // 4,9218999375 × 950 = 4675,8049 → 4675,80 (округление до копейки).
-      expectClose(film.quantity, 4.9218999375, 'плёнка с усадкой', tol: 1e-9);
+      // 4,941989325 × 950 = 4694,8899 → 4694,89 (округление до копейки).
+      expectClose(film.quantity, 4.941989325, 'плёнка с усадкой', tol: 1e-9);
       expectClose(film.unitPrice, 950, 'ПВХ прозрачный 950 ₽/м²');
-      expectClose(film.amount, 4675.80, '4,9218999375 × 950');
+      expectClose(film.amount, 4694.89, '4,941989325 × 950');
 
       final edge = estimate.lines
           .firstWhere((line) => line.title.startsWith('Окантовка'));
@@ -659,40 +691,40 @@ void _estimateAudit() {
 
       final cutting = estimate.lines
           .firstWhere((line) => line.title.startsWith('Раскрой'));
-      // 4,9218999375 × 250 = 1230,475 → 1230,47.
-      expectClose(cutting.quantity, 4.9218999375, 'раскрой с усадкой',
+      // 4,941989325 × 250 = 1235,4973 → 1235,50.
+      expectClose(cutting.quantity, 4.941989325, 'раскрой с усадкой',
           tol: 1e-9);
       expectClose(cutting.unitPrice, 250, 'раскрой 250 ₽/м²');
-      expectClose(cutting.amount, 1230.47, '4,9218999375 × 250');
+      expectClose(cutting.amount, 1235.50, '4,941989325 × 250');
 
       // --- Цепочка округлений (вручную, до копейки на каждом шаге) ---------
-      // материалы 4675,80 + 1260 = 5935,80
+      // материалы 4694,89 + 1260 = 5954,89
       // фурнитура 2880,00
-      // работы 3500 + 1230,47 = 4730,47
-      // подытог 5935,80 + 2880 + 4730,47 = 13546,27
-      expectClose(estimate.materialsSubtotal, 5935.80, 'материалы');
+      // работы 3500 + 1235,50 = 4735,50
+      // подытог 5954,89 + 2880 + 4735,50 = 13570,39
+      expectClose(estimate.materialsSubtotal, 5954.89, 'материалы');
       expectClose(estimate.hardwareSubtotal, 2880, 'фурнитура');
-      expectClose(estimate.workSubtotal, 4730.47, 'работы');
-      expectClose(estimate.subtotal, 13546.27, 'подытог');
-      // наценка 20 %: 13546,27 × 0,2 = 2709,254 → 2709,25
-      expectClose(estimate.markupAmount, 2709.25, 'наценка');
-      expectClose(estimate.afterMarkup, 16255.52, 'с наценкой');
-      // скидка 10 %: 16255,52 × 0,1 = 1625,552 → 1625,55
-      expectClose(estimate.discountAmount, 1625.55, 'скидка');
-      expectClose(estimate.taxableAmount, 14629.97, 'после скидки');
-      // НДС 20 %: 14629,97 × 0,2 = 2925,994 → 2925,99
-      expectClose(estimate.vatAmount, 2925.99, 'НДС');
-      expectClose(estimate.total, 17555.96, 'ИТОГО');
-      expectClose(estimate.pricePerWindow, 17555.96, 'цена за окно');
+      expectClose(estimate.workSubtotal, 4735.50, 'работы');
+      expectClose(estimate.subtotal, 13570.39, 'подытог');
+      // наценка 20 %: 13570,39 × 0,2 = 2714,078 → 2714,08
+      expectClose(estimate.markupAmount, 2714.08, 'наценка');
+      expectClose(estimate.afterMarkup, 16284.47, 'с наценкой');
+      // скидка 10 %: 16284,47 × 0,1 = 1628,447 → 1628,45
+      expectClose(estimate.discountAmount, 1628.45, 'скидка');
+      expectClose(estimate.taxableAmount, 14656.02, 'после скидки');
+      // НДС 20 %: 14656,02 × 0,2 = 2931,204 → 2931,20
+      expectClose(estimate.vatAmount, 2931.20, 'НДС');
+      expectClose(estimate.total, 17587.22, 'ИТОГО');
+      expectClose(estimate.pricePerWindow, 17587.22, 'цена за окно');
 
-      // Наивная формула: подытог × 1,2 × 0,9 × 1,2 = 17555,96592.
-      final naive = roundMoney(13546.27 * 1.2 * 0.9 * 1.2);
-      expectClose(naive, 17555.97, 'наивная формула');
+      // Наивная формула: подытог × 1,2 × 0,9 × 1,2 = 17587,22544.
+      final naive = roundMoney(13570.39 * 1.2 * 0.9 * 1.2);
+      expectClose(naive, 17587.23, 'наивная формула');
       expect(
         estimate.total,
         closeTo(naive, 0.011),
         reason: 'округление по позициям отличается от наивной формулы на '
-            'одну копейку (17555,96 против 17555,97) — это округление '
+            'одну копейку (17587,22 против 17587,23) — это округление '
             'наценки, скидки и НДС на каждом шаге',
       );
     });
@@ -706,14 +738,19 @@ void _edgePriceAudit() {
   group('8. Цена окантовки по ширине рулона', () {
     final prices = PriceList.defaults();
 
-    test('пресеты: 100 → 140, 200 → 230, 240 → 270 ₽/м', () {
+    test('пресеты: 80 → 120, 100 → 140, 120 → 165, 200 → 230, 240 → 270 ₽/м',
+        () {
+      expectClose(prices.edgePerMeterForWidth(80), 120, 'пресет 80');
       expectClose(prices.edgePerMeterForWidth(100), 140, 'пресет 100');
+      expectClose(prices.edgePerMeterForWidth(120), 165, 'пресет 120');
       expectClose(prices.edgePerMeterForWidth(200), 230, 'пресет 200');
       expectClose(prices.edgePerMeterForWidth(240), 270, 'пресет 240');
     });
 
-    test('150 мм — середина 100…200: (140 + 230) / 2 = 185 ₽/м', () {
-      expectClose(prices.edgePerMeterForWidth(150), 185, '185 ₽/м');
+    test('150 мм — между 120 и 200: 165 + 65 × 30/80 = 189,375 ₽/м', () {
+      // Вручную: наклон (230 − 165) / (200 − 120) = 0,8125 ₽/мм;
+      // 165 + (150 − 120) × 0,8125 = 189,375.
+      expectClose(prices.edgePerMeterForWidth(150), 189.375, '189,375 ₽/м');
     });
 
     test('300 мм — экстраполяция по отрезку 200…240: 230 + 1 × 100 = 330', () {
@@ -722,20 +759,22 @@ void _edgePriceAudit() {
       expectClose(prices.edgePerMeterForWidth(300), 330, '330 ₽/м');
     });
 
-    test('170 мм: 140 + 0,9 × 70 = 203 ₽/м', () {
-      // Вручную: наклон (230 − 140) / (200 − 100) = 0,9 ₽/мм.
-      expectClose(prices.edgePerMeterForWidth(170), 203, '203 ₽/м');
+    test('170 мм: 165 + 0,8125 × 50 = 205,625 ₽/м', () {
+      // Вручную: наклон (230 − 165) / (200 − 120) = 0,8125 ₽/мм.
+      expectClose(prices.edgePerMeterForWidth(170), 205.625, '205,625 ₽/м');
     });
 
-    test('50 мм — экстраполяция ниже 100: 140 − 0,9 × 50 = 95 ₽/м', () {
-      expectClose(prices.edgePerMeterForWidth(50), 95, '95 ₽/м');
+    test('50 мм — экстраполяция ниже 80: 120 − 1 × 30 = 90 ₽/м', () {
+      // Вручную: наклон (140 − 120) / (100 − 80) = 1 ₽/мм;
+      // 120 − (80 − 50) × 1 = 90.
+      expectClose(prices.edgePerMeterForWidth(50), 90, '90 ₽/м');
     });
 
     test('нечисловая ширина не роняет расчёт', () {
-      expectClose(prices.edgePerMeterForWidth(double.nan), 140,
-          'запасное значение — цена первого пресета');
-      expectClose(prices.edgePerMeterForWidth(double.infinity), 140,
-          'запасное значение — цена первого пресета');
+      expectClose(prices.edgePerMeterForWidth(double.nan), 120,
+          'запасное значение — цена первого пресета (80 мм)');
+      expectClose(prices.edgePerMeterForWidth(double.infinity), 120,
+          'запасное значение — цена первого пресета (80 мм)');
     });
   });
 }
@@ -760,9 +799,16 @@ void _rollLayoutAudit() {
       );
       final plan = buildRollPlans(project).single;
 
-      // Вручную: заготовка = (1000 − 50) × 1,015 = 964,25 мм.
-      expectClose(plan.layout.placements.single.width, 964.25,
-          'заготовка 964,25 мм');
+      // Вручную: заготовка 950 × 960 мм (высота — с авто +10 мм к высоте ПВХ);
+      // раскатка может повернуть заготовку, поэтому поперёк рулона идёт
+      // 960 мм, а узкая сторона остаётся 950 мм.
+      final placement = plan.layout.placements.single;
+      expectClose(placement.width, 960, 'заготовка 960 мм по рулону');
+      expectClose(
+        math.min(placement.width, placement.height),
+        950,
+        'узкая сторона заготовки 950 мм',
+      );
       expect(plan.rollWidth, 2000, reason: 'выбранный рулон 2000');
       expect(plan.layout.warnings, isEmpty, reason: 'заготовка уже рулона');
       for (final placement in plan.layout.placements) {
@@ -788,10 +834,12 @@ void _rollLayoutAudit() {
       final summary = CostsSummary(project);
       final plan = summary.rollPlans.single;
 
-      // Вручную: заготовка = (2000 − 50) × 1,015 = 1979,25 мм > 1400.
-      // Длина рулона = высота единственной заготовки = 1979,25 мм.
-      expectClose(plan.layout.placements.single.width, 1979.25, '1979,25 мм');
-      expectClose(plan.layout.requiredLength, 1979.25, 'длина 1979,25 мм');
+      // Вручную: заготовка 1950 × 1960 мм (высота с авто +10 мм ПВХ) > 1400,
+      // усадка выключена. В рулон не влезает ни одна ориентация, поэтому
+      // раскладка ставит повёрнутую (более низкую) заготовку: поперёк рулона
+      // 1960 мм, вдоль — 1950 мм.
+      expectClose(plan.layout.placements.single.width, 1960, '1960 мм');
+      expectClose(plan.layout.requiredLength, 1950, 'длина 1950 мм');
       expect(plan.layout.warnings, isNotEmpty,
           reason: 'признак проблемы: заготовка шире рулона');
       expect(plan.layout.warnings.first, contains('шире рулона'),
@@ -804,8 +852,8 @@ void _rollLayoutAudit() {
           reason: 'отход плана в пределах 0…100 %');
       expect(summary.rollWastePercent, inInclusiveRange(0, 100),
           reason: 'сводный отход в пределах 0…100 %');
-      // Площадь заготовки (1979,25²) больше площади рулона
-      // (1400 × 1979,25), поэтому отход зажат ровно в 0, а не в минус.
+      // Площадь заготовки (1950 × 1960) больше площади рулона
+      // (1400 × 1960), поэтому отход зажат ровно в 0, а не в минус.
       expectClose(plan.wastePercent, 0, 'отход зажат в 0, а не отрицательный');
     });
   });
@@ -861,10 +909,12 @@ void _materialsAudit() {
     });
 
     test('EdgeRoll: каждому пресету соответствует цена', () {
-      // Вручную: рулоны 100/200/240 мм, готовые полосы 50/100/120 мм,
-      // цены 140/230/270 ₽/м.
+      // Вручную: рулоны 80/100/120/200/240 мм, готовые полосы
+      // 40/50/60/100/120 мм, цены 120/140/165/230/270 ₽/м.
       const expected = <EdgeRoll, (double, double)>{
+        EdgeRoll.roll80: (80, 120),
         EdgeRoll.roll100: (100, 140),
+        EdgeRoll.roll120: (120, 165),
         EdgeRoll.roll200: (200, 230),
         EdgeRoll.roll240: (240, 270),
       };

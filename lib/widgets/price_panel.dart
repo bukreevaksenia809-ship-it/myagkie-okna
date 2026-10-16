@@ -109,9 +109,19 @@ class _PricePanelState extends State<PricePanel> {
             ]),
             _group('Окантовка, ₽/м', [
               _row(
+                'Тент 80 мм',
+                prices.edge(PriceField.edge80),
+                (value) => _set(prices.copyWith(edge80PerM: value)),
+              ),
+              _row(
                 'Тент 100 мм',
                 prices.edge(PriceField.edge100),
                 (value) => _set(prices.copyWith(edge100PerM: value)),
+              ),
+              _row(
+                'Тент 120 мм',
+                prices.edge(PriceField.edge120),
+                (value) => _set(prices.copyWith(edge120PerM: value)),
               ),
               _row(
                 'Тент 200 мм',

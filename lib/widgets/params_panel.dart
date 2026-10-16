@@ -376,6 +376,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
       _updateProject(widget.project.updateSelected(params));
 
   void _onNumberChanged(ParamField field, String raw) {
+    // Усадка — единственное процентное поле: 0 % допустим (включённый тумблер
+    // без запаса), поэтому у него своя проверка диапазона 0…5 %.
+    if (field == ParamField.shrinkagePercent) {
+      _onShrinkageChanged(raw);
+      return;
+    }
     final value = parseMm(raw);
     if (value == null) {
       setState(() => _errors[field] = 'Введите число, например 2500');
@@ -500,6 +506,48 @@ class _ParamsPanelState extends State<ParamsPanel> {
       _allowanceErrors[_AllowanceField.height] = null;
     });
     _updateWindow(_params.copyWith(allowanceWidthMm: 0, allowanceHeightMm: 0));
+  }
+
+  /// Тумблер «+10 мм к высоте по умолчанию (ПВХ)».
+  ///
+  /// Для скрина флаг не действует — у скрина авто-припуска нет никогда,
+  /// поэтому кнопку ему и не показываем.
+  void _setPvcHeightAllowance(bool value) {
+    _updateWindow(_params.copyWith(pvcHeightAllowanceEnabled: value));
+  }
+
+  /// Тумблер «Учитывать усадку ПВХ».
+  ///
+  /// При включении, если процент ещё не задан (0), подставляем типовое
+  /// значение [defaultShrinkagePercent] — 1,5 %.
+  void _setShrinkageEnabled(bool value) {
+    final percent = value && _params.shrinkagePercent == 0
+        ? defaultShrinkagePercent
+        : _params.shrinkagePercent;
+    setState(() => _errors[ParamField.shrinkagePercent] = null);
+    _updateWindow(
+      _params.copyWith(shrinkageEnabled: value, shrinkagePercent: percent),
+    );
+  }
+
+  /// Ввод усадки ПВХ: 0…5 %.
+  void _onShrinkageChanged(String raw) {
+    final value = parseMm(raw);
+    if (value == null) {
+      setState(
+        () => _errors[ParamField.shrinkagePercent] = 'Введите число, например 1,5',
+      );
+      return;
+    }
+    if (value < 0 || value > maxShrinkageFieldPercent) {
+      setState(
+        () => _errors[ParamField.shrinkagePercent] =
+            'Усадка 0…${formatMm(maxShrinkageFieldPercent)} %',
+      );
+      return;
+    }
+    setState(() => _errors[ParamField.shrinkagePercent] = null);
+    _updateWindow(_params.copyWith(shrinkagePercent: value));
   }
 
   /// Ввод запайки плёнки под окантовку: 5…60 мм.
@@ -772,6 +820,34 @@ class _ParamsPanelState extends State<ParamsPanel> {
             'не меняются.',
             style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
+          if (!params.isScreen) ...[
+            const SizedBox(height: 4),
+            SwitchListTile(
+              key: const Key('pvc-height-allowance-toggle'),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: const Text(
+                '+10 мм к высоте по умолчанию (ПВХ)',
+                style: TextStyle(fontSize: 13),
+              ),
+              subtitle: const Text(
+                'применяется только к окнам из ПВХ; для скрина не действует',
+                style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+              ),
+              value: params.pvcHeightAllowanceEnabled,
+              onChanged: _setPvcHeightAllowance,
+            ),
+          ],
+          const SizedBox(height: 6),
+          Text(
+            params.heightAllowanceBreakdownLabel,
+            key: const Key('height-allowance-total'),
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF0B62C4),
+            ),
+          ),
           const SizedBox(height: 10),
           _panelCard(
             child: Column(
@@ -797,7 +873,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     color: Color(0xFF66748A),
                   ),
                 ),
-                if (params.hasAllowance) ...[
+                if (params.hasManualAllowance) ...[
                   const SizedBox(height: 4),
                   Align(
                     alignment: Alignment.centerLeft,
@@ -1416,7 +1492,33 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 ),
                 const SizedBox(height: 12),
               ] else ...[
-                _numberField(ParamField.shrinkagePercent),
+                SwitchListTile(
+                  key: const Key('shrinkage-toggle'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Учитывать усадку ПВХ',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  subtitle: const Text(
+                    'включите, если партия плёнки даёт усадку',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                  ),
+                  value: params.shrinkageEnabled,
+                  onChanged: _setShrinkageEnabled,
+                ),
+                if (params.shrinkageEnabled) ...[
+                  Text(
+                    'Типовая усадка 1–2 %; поле принимает 0…'
+                    '${formatMm(maxShrinkageFieldPercent)} %.',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF66748A),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  _numberField(ParamField.shrinkagePercent),
+                ],
                 const SizedBox(height: 12),
               ],
               _CuttingCard(spec: spec),
@@ -2321,16 +2423,20 @@ class _CuttingCard extends StatelessWidget {
                 '${params.hemBySideShortLabel}'
                 '${params.hasAllowance ? ' и припуск' : ''}'
             : 'Заготовка с запайкой ${formatMm(params.weldOverlapMm)} мм'
-                '${params.hasAllowance ? ' и припуском' : ''}',
+                '${params.hasManualAllowance ? ' и припуском' : ''}'
+                '${params.hasAutoHeightAllowance ? ' и авто +'
+                    '${formatMm(params.autoHeightAllowanceMm)} мм к высоте' : ''}',
         '${formatMm(spec.filmCutWidthWithAllowance)} × '
             '${formatMm(spec.filmCutHeightWithAllowance)} мм',
       ),
       if (!params.isScreen)
-        (
-          'С усадкой ${formatPercent(params.effectiveShrinkagePercent)}',
-          '${formatMm(spec.filmCutWidthWithShrinkage)} × '
-              '${formatMm(spec.filmCutHeightWithShrinkage)} мм',
-        )
+        params.hasShrinkage
+            ? (
+                'С усадкой ${formatPercent(params.effectiveShrinkagePercent)}',
+                '${formatMm(spec.filmCutWidthWithShrinkage)} × '
+                    '${formatMm(spec.filmCutHeightWithShrinkage)} мм',
+              )
+            : ('Усадка', 'не учитывается')
       else
         ('Усадка', 'нет'),
       // Габарит заготовки и площадь полотна — разные числа: у трапеции
@@ -2397,12 +2503,15 @@ class _CuttingCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    row.$2,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF16324F),
+                  Flexible(
+                    child: Text(
+                      row.$2,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF16324F),
+                      ),
                     ),
                   ),
                 ],

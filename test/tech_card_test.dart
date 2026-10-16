@@ -148,7 +148,7 @@ void main() {
       expect(card.operations.last.control, contains('маркировка'));
     });
 
-    test('раскрой плёнки совпадает с раскроем модели (с усадкой)', () {
+    test('раскрой плёнки совпадает с раскроем модели (авто-припуск ПВХ)', () {
       final cutting = _op(card, TechOperationKind.cutting);
       expect(cutting.title, 'Раскрой плёнки');
 
@@ -158,11 +158,34 @@ void main() {
       expect(cutting.materials.first.size, expectedSize);
       expect(cutting.text, contains(formatMm(spec.filmCutWidthWithShrinkage)));
       expect(cutting.text, contains(formatMm(spec.filmCutHeightWithShrinkage)));
+      // Усадка по умолчанию выключена, зато виден авто-припуск +10 мм к
+      // высоте заготовки для ПВХ.
+      expect(cutting.description, isNot(contains('плюс усадка')));
       expect(
         cutting.description,
-        contains(formatPercent(_window.shrinkagePercent)),
+        contains('авто +${formatMm(pvcHeightAllowanceMm)} мм к высоте'),
       );
       expect(cutting.text, contains(formatMm(defaultWeldOverlapMm)));
+    });
+
+    test('включённая усадка видна в раскрое карты', () {
+      final params = _window.copyWith(
+        shrinkageEnabled: true,
+        shrinkagePercent: defaultShrinkagePercent,
+      );
+      final shrunkCard = TechCard.forWindow(params);
+      final cutting = _op(shrunkCard, TechOperationKind.cutting);
+      final shrunkSpec = WindowSpec.of(params);
+
+      expect(
+        cutting.description,
+        contains('плюс усадка ${formatPercent(defaultShrinkagePercent)}'),
+      );
+      expect(cutting.text, contains(formatMm(shrunkSpec.filmCutWidthWithShrinkage)));
+      expect(
+        cutting.text,
+        contains(formatMm(shrunkSpec.filmCutHeightWithShrinkage)),
+      );
     });
 
     test('напайка содержит режим сварки из примечаний приложения', () {

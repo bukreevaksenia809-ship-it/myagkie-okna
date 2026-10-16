@@ -65,8 +65,10 @@ class CostsSummary {
           // Шов полосы: работа по длине полосы (шов 3 мм по её краям).
           screenHemLengthMm += zipperLength;
         } else {
-          // Спайка — полоса тента 100 мм, сложенная пополам.
-          final bandRoll = WindowParams.edgePresets.first;
+          // Спайка — полоса тента 100 мм, сложенная пополам. Берём именно
+          // 100-й рулон (а не первый пресет): молния впаивается в полосу
+          // шириной 50 мм, которую даёт рулон 100 мм.
+          final bandRoll = EdgeRoll.roll100.rawWidth;
           edgeByRoll.update(
             bandRoll,
             (value) => value + zipperLength,
@@ -171,6 +173,13 @@ class CostsSummary {
 
   /// Всего дренажных отверстий, шт.
   int drainTotal = 0;
+
+  /// Есть ли в заказе окно с включённой усадкой — для подписей сметы.
+  bool get hasShrinkage => specs.any((spec) => spec.params.hasShrinkage);
+
+  /// Есть ли в заказе окно с авто-припуском +10 мм к высоте (ПВХ).
+  bool get hasAutoHeightAllowance =>
+      specs.any((spec) => spec.params.hasAutoHeightAllowance);
 
   /// Площадь заготовок на рулонах, м².
   double get rollPiecesArea =>

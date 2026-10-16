@@ -116,7 +116,12 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'pocketWidth': p.pocketWidth,
       'drainHoles': p.drainHoles,
       'drainCount': p.drainCount,
+      // Тумблер усадки и её процент: по умолчанию усадка выключена, поэтому
+      // старый заказ без флага читается как «включена, если процент > 0».
+      'shrinkageEnabled': p.shrinkageEnabled,
       'shrinkagePercent': p.shrinkagePercent,
+      // Тумблер авто-припуска +10 мм к высоте ПВХ (по умолчанию включён).
+      'pvcHeightAllowanceEnabled': p.pvcHeightAllowanceEnabled,
     };
 
 /// Окно ← JSON.
@@ -174,9 +179,28 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     pocketWidth: _double(json['pocketWidth'], fallback.pocketWidth),
     drainHoles: _bool(json['drainHoles'], fallback.drainHoles),
     drainCount: _double(json['drainCount'], fallback.drainCount),
+    shrinkageEnabled: _shrinkageEnabledFromJson(json),
     shrinkagePercent:
         _double(json['shrinkagePercent'], fallback.shrinkagePercent),
+    pvcHeightAllowanceEnabled: _bool(
+      json['pvcHeightAllowanceEnabled'],
+      fallback.pvcHeightAllowanceEnabled,
+    ),
   );
+}
+
+/// Тумблер усадки из JSON.
+///
+/// Новые заказы пишут флаг [shrinkageEnabled] явно. В старых заказах поля нет,
+/// а сама усадка тогда применялась всегда: читаем флаг как «процент > 0».
+/// Поэтому старый заказ с 1,5 % открывается как «усадка включена», а с 0 % —
+/// как выключенная. Обратная совместимость: размеры раскроя не «прыгают».
+bool _shrinkageEnabledFromJson(Map<String, dynamic> json) {
+  final flag = json['shrinkageEnabled'];
+  if (flag is bool) return flag;
+  final percent = json['shrinkagePercent'];
+  final value = percent is num ? percent.toDouble() : 0.0;
+  return value.isFinite && value > 0;
 }
 
 T _enumByName<T extends Enum>(List<T> values, Object? name, T fallback) {

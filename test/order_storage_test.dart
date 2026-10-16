@@ -157,7 +157,46 @@ void main() {
     expect(restored.allowanceWidthMm, 120);
     expect(restored.allowanceHeightMm, 80);
     expect(restored.effectiveBottomWidth, 2120);
-    expect(restored.effectiveLeftHeight, 2080);
+    // По высоте к ручным 80 мм добавлен авто-припуск +10 мм для ПВХ.
+    expect(restored.effectiveLeftHeight, 2090);
+    expect(restored.effectiveAllowanceHeightMm, 90);
+  });
+
+  test('окантовка 80 мм сохраняется и читается без потерь', () async {
+    const window = WindowParams(
+      projectName: 'Окантовка 80',
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2500,
+      rightHeight: 2500,
+      // Новый пресет 80 мм на все стороны.
+      rollBottom: 80,
+      rollTop: 80,
+      rollLeft: 80,
+      rollRight: 80,
+    );
+    final saved = await saveOrder(
+      const OrderProject(windows: [window]),
+      directoryPath: directory.path,
+      now: DateTime(2026, 10, 15, 9, 0),
+    );
+
+    final text = await File(saved.ref.id).readAsString();
+    expect(text, contains(RegExp(r'"rollBottom":\s*80')));
+
+    final loaded = await loadOrder(saved);
+    final restored = loaded.windows.single;
+    expect(restored.rollBottom, 80);
+    expect(restored.rollTop, 80);
+    expect(restored.rollLeft, 80);
+    expect(restored.rollRight, 80);
+    expect(restored.rollForSide(EdgeSide.bottom), 80);
+    expect(WindowParams.edgePresets, contains(80));
+
+    // Прямой round-trip JSON тоже без потерь.
+    final direct = windowFromJson(windowToJson(window));
+    expect(direct.rollBottom, 80);
+    expect(direct.rollRight, 80);
   });
 
   test('старый JSON с именем пресета читается как ширина в мм', () {

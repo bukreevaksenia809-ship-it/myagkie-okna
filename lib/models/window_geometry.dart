@@ -795,11 +795,14 @@ class WindowSpec {
   /// Заготовка плёнки к раскрою с припуском, без усадки, мм.
   ///
   /// Припуск на раскрой добавляется ТОЛЬКО к заготовке: изделие, чертёж,
-  /// окантовка и люверсы считаются по основным размерам.
+  /// окантовка и люверсы считаются по основным размерам. По высоте берётся
+  /// фактический припуск [WindowParams.effectiveAllowanceHeightMm]: ручной
+  /// плюс авто +10 мм для ПВХ ([pvcHeightAllowanceMm]); у скрина авто-части
+  /// нет, поэтому его высота считается как раньше.
   double get filmCutWidthWithAllowance =>
       filmCutWidth + params.allowanceWidthMm;
   double get filmCutHeightWithAllowance =>
-      filmCutHeight + params.allowanceHeightMm;
+      filmCutHeight + params.effectiveAllowanceHeightMm;
 
   /// Человеческий расчёт высоты заготовки скрина для панели:
   /// «Высота: 2000 + 2 × 60 (верх) = 2120 мм».
@@ -1110,13 +1113,17 @@ class WindowSpec {
       'Полотно ${params.isScreen ? 'скрина' : 'ПВХ 700 мкм'} в раскрое: '
           'заготовка ${formatMm(filmCutWidthWithAllowance)} × '
           '${formatMm(filmCutHeightWithAllowance)} мм'
-          '${params.isScreen ? '' : '; с усадкой '
+          '${params.isScreen ? '' : params.hasShrinkage ? '; с усадкой '
               '${formatPercent(params.effectiveShrinkagePercent)} — '
               '${formatMm(filmCutWidthWithShrinkage)} × '
-              '${formatMm(filmCutHeightWithShrinkage)} мм'}',
+              '${formatMm(filmCutHeightWithShrinkage)} мм'
+              : '; усадка не учитывается'}',
       if (params.hasAllowance)
         'Припуск на раскрой: ширина ${params.allowanceWidthLabel} мм, '
-            'высота ${params.allowanceHeightLabel} мм — '
+            'высота ${params.allowanceHeightLabel} мм'
+            '${params.hasAutoHeightAllowance ? ' (в том числе авто '
+                '${formatMm(params.autoHeightAllowanceMm)} мм к высоте для ПВХ)'
+                : ''} — '
             '${params.isScreen ? 'скрин кроится' : 'плёнка кроится'} '
             '${formatMm(filmCutWidthWithAllowance)} × '
             '${formatMm(filmCutHeightWithAllowance)} мм',
@@ -1341,8 +1348,13 @@ List<ParamIssue> validateParams(WindowParams params) {
     70,
     '0 мм (в углу) или до 70 мм',
   );
-  // У скрина усадки нет — поле не проверяем.
-  if (!params.isScreen) {
+  // Усадка: у скрина её нет, а при выключенном тумблере значение не
+  // применяется к раскрою — замечаний по нему не выдаём. При включённом
+  // тумблере подсказываем типовой диапазон 1–2 %; саму рамку ввода 0…5 %
+  // держит панель.
+  if (params.isPvcFilm &&
+      params.shrinkageEnabled &&
+      params.shrinkagePercent != 0) {
     checkRange(
       ParamField.shrinkagePercent,
       params.shrinkagePercent,

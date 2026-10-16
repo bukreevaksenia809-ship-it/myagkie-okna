@@ -375,23 +375,27 @@ void main() {
     final line = estimate.lines
         .firstWhere((candidate) => candidate.title.contains('Тент 150 мм'));
 
-    // Ожидание считаем от пресетов прайса: 150 мм — середина между 100 и 200.
-    final expected = (prices.edge100PerM + prices.edge200PerM) / 2;
+    // Ожидание считаем от пресетов прайса: 150 мм лежит между 120 и 200.
+    final expected = prices.edge120PerM +
+        (prices.edge200PerM - prices.edge120PerM) * (150 - 120) / (200 - 120);
+    expect(expected, closeTo(189.375, 1e-9));
     expect(prices.edgePerMeterForWidth(150), closeTo(expected, 1e-9));
     expect(line.unitPrice, closeTo(expected, 1e-9));
     expect(line.title, 'Окантовка Тент 150 мм');
     expect(line.note, contains('75'));
     expect(line.quantity, closeTo(1.5, 1e-9));
 
-    // Пресеты считаются по своим ценам.
+    // Пресеты считаются по своим ценам — включая новые 80 и 120 мм.
+    expect(prices.edgePerMeterForWidth(80), prices.edge80PerM);
     expect(prices.edgePerMeterForWidth(100), prices.edge100PerM);
+    expect(prices.edgePerMeterForWidth(120), prices.edge120PerM);
     expect(prices.edgePerMeterForWidth(200), prices.edge200PerM);
     expect(prices.edgePerMeterForWidth(240), prices.edge240PerM);
 
     // Вне диапазона — экстраполяция по ближайшему отрезку, без деления на ноль.
     final below = prices.edgePerMeterForWidth(50);
     expect(below.isFinite, isTrue);
-    expect(below, lessThan(prices.edge100PerM));
+    expect(below, lessThan(prices.edge80PerM));
     final above = prices.edgePerMeterForWidth(300);
     expect(above.isFinite, isTrue);
     expect(
@@ -412,7 +416,9 @@ void main() {
 
     expect(discounted.discountAmount,
         closeTo(discounted.afterMarkup * 0.1, 0.005));
-    expect(discounted.total, closeTo(full.total * 0.9, 0.01));
+    // Скидка считается от суммы после наценки, а та округлена до копейки,
+    // поэтому итог отличается от «× 0,9» на копейки — допускаем 2 копейки.
+    expect(discounted.total, closeTo(full.total * 0.9, 0.02));
   });
 
   test('наценка 20 % увеличивает подытог на 20 %', () {
@@ -489,7 +495,9 @@ void main() {
       filmClearPerM2: 1015.5,
       filmTintedPerM2: 1199,
       filmMeshPerM2: 455,
+      edge80PerM: 125.5,
       edge100PerM: 149.9,
+      edge120PerM: 172.25,
       edge200PerM: 249,
       edge240PerM: 289,
       eyeletPrice: 72,
@@ -513,6 +521,8 @@ void main() {
     expect(restored.filmClearPerM2, 1015.5);
     expect(restored.discountPercent, 7.5);
     expect(restored.vatPercent, 0);
+    expect(restored.edge80PerM, 125.5);
+    expect(restored.edge120PerM, 172.25);
 
     // Битые и выходящие за границы значения заменяются дефолтами.
     // Отрицательная цена — не цена: берём значение по умолчанию.
@@ -536,6 +546,36 @@ void main() {
     expect(model.parsePrice('−500'), 0);
     expect(model.parsePrice('abc'), isNull);
     expect(model.parsePrice(''), isNull);
+  });
+
+  test('прайс: цены 80 и 120 мм берутся из прайса, а не интерполяцией', () {
+    final prices = model.PriceList.defaults();
+
+    // Значения по умолчанию: 80 → 120 ₽/м, 120 → 165 ₽/м.
+    expect(prices.edge80PerM, model.defaultEdge80PerM);
+    expect(prices.edge120PerM, model.defaultEdge120PerM);
+    expect(prices.edge80PerM, 120);
+    expect(prices.edge120PerM, 165);
+    // Точное попадание в пресет — цена пресета, без интерполяции.
+    expect(prices.edgePerMeterForWidth(80), prices.edge80PerM);
+    expect(prices.edgePerMeterForWidth(120), prices.edge120PerM);
+
+    // Заданные в прайсе цены важнее любых опорных точек.
+    final custom = prices.copyWith(edge80PerM: 111, edge120PerM: 222);
+    expect(custom.edgePerMeterForWidth(80), 111);
+    expect(custom.edgePerMeterForWidth(120), 222);
+  });
+
+  test('прайс: старый JSON без цен 80/120 читается дефолтами', () {
+    final json = model.PriceList.defaults().toJson()
+      ..remove('edge80PerM')
+      ..remove('edge120PerM');
+    final restored = model.PriceList.fromJson(json);
+
+    expect(restored.edge80PerM, model.defaultEdge80PerM);
+    expect(restored.edge120PerM, model.defaultEdge120PerM);
+    expect(restored.edgePerMeterForWidth(80), model.defaultEdge80PerM);
+    expect(restored.edgePerMeterForWidth(120), model.defaultEdge120PerM);
   });
 
   test('форматирование денег', () {

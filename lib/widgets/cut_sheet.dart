@@ -691,10 +691,13 @@ class CutSheetPainter extends CustomPainter {
       color: _ink,
     );
     final parts = <String>[
-      if (params.hasAllowance)
-        'припуск ${params.allowanceWidthLabel}/${params.allowanceHeightLabel} мм',
-      if (params.shrinkagePercent != 0)
-        'с усадкой ${formatPercent(params.shrinkagePercent)}: '
+      if (params.hasManualAllowance)
+        'припуск ${params.allowanceWidthLabel}/'
+            '${params.manualAllowanceHeightLabel} мм',
+      if (params.hasAutoHeightAllowance)
+        'авто +${formatMm(params.autoHeightAllowanceMm)} мм к высоте (ПВХ)',
+      if (params.hasShrinkage)
+        'с усадкой ${formatPercent(params.effectiveShrinkagePercent)}: '
             '${formatMm(spec.filmCutWidthWithShrinkage)} × '
             '${formatMm(spec.filmCutHeightWithShrinkage)} мм',
     ];

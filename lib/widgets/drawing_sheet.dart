@@ -709,8 +709,10 @@ class _TitleBlock extends StatelessWidget {
                   child: _cell(
                     first.isScreen
                         ? 'Усадка'
-                        : 'С усадкой '
-                            '${formatPercent(first.effectiveShrinkagePercent)}',
+                        : first.hasShrinkage
+                            ? 'С усадкой '
+                                '${formatPercent(first.effectiveShrinkagePercent)}'
+                            : 'Без усадки',
                     windows.length == 1
                         ? (first.isScreen
                             ? 'нет'
@@ -1106,8 +1108,10 @@ class _SidePanel extends StatelessWidget {
             '${labels.map((entry) => '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см').join(', ')}',
       'Люверсы: всего $totalEyelets шт, шаг ${specs.first.eyeletStepLabel}',
       'Крепёж: ${specs.first.fastenerSummary.toLowerCase()}',
-      'Полотно: усадка '
-          '${formatPercent(first.effectiveShrinkagePercent)} учтена в раскрое',
+      first.hasShrinkage
+          ? 'Полотно: усадка '
+              '${formatPercent(first.effectiveShrinkagePercent)} учтена в раскрое'
+          : 'Полотно: усадка не учитывается',
       'Раскладка полотна на рулоне ($rollSummary) — на отдельном листе',
       'Полотно: ${materials.map((material) => '${material.label} (${material.thickness})').join('; ')}',
       'Доступные рулоны: '
