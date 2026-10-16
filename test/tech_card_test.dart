@@ -61,7 +61,7 @@ const _rich = WindowParams(
 );
 
 /// Скрин 2000 × 2000: подворот по сторонам (низ 40, право 50, верх 60,
-/// лево 40 мм), заготовка 2090 × 2100, без тента.
+/// лево 40 мм), заготовка 2100 × 2120, без тента.
 const _screen = WindowParams(
   projectName: 'Мягкое окно веранды',
   customer: 'Иванов И. И.',
@@ -481,12 +481,14 @@ void main() {
           isNot(contains('напайка')));
     });
 
-    test('заготовка 2090 × 2100 и подворот по сторонам', () {
+    test('заготовка 2100 × 2120 и подворот по сторонам', () {
       final cutting = _op(card, TechOperationKind.cutting);
       expect(cutting.title, 'Раскрой скрина');
-      // Низ 40, лево 40 → ширина 2090; низ 40, верх 60 → высота 2100.
-      expect(cutting.text, contains(formatMm(2090)));
+      // Прибавка по оси — удвоенный больший подворот этой оси:
+      // ширина 2000 + 2 × max(лево 40, право 50) = 2100;
+      // высота 2000 + 2 × max(низ 40, верх 60) = 2120.
       expect(cutting.text, contains(formatMm(2100)));
+      expect(cutting.text, contains(formatMm(2120)));
       expect(cutting.text, isNot(contains('усадка 1,5')));
 
       final hem = _op(card, TechOperationKind.hem);
@@ -508,11 +510,67 @@ void main() {
       expect(hem.source, contains('hemBottomMm'));
     });
 
-    test('люверсы ставятся по подвороту, крепёж только они', () {
+    test('люверсы ставятся по подвороту, крепёж — по низу и бокам', () {
       final eyelets = _op(card, TechOperationKind.eyelets);
-      expect(eyelets.text, contains('по линии подворота'));
-      expect(eyelets.text, contains('только люверсы'));
-      expect(eyelets.text, isNot(contains('французский')));
+      expect(eyelets.text, contains('по подвороту'));
+      expect(eyelets.text, contains('поворотные скобы'));
+      expect(eyelets.text, contains('Сверху саморезы'));
+      expect(eyelets.text, isNot(contains('только люверсы')));
+      // Верх остаётся на саморезах, низ и бока — на выбранном крепеже.
+      expect(
+        eyelets.materials
+            .any((material) => material.name.contains('Саморезы по верхнему ряду')),
+        isTrue,
+      );
+      final fastener = eyelets.materials.firstWhere(
+        (material) => material.name.contains('Крепёж низа и боков'),
+      );
+      expect(fastener.name, contains('поворотные скобы'));
+      expect(fastener.name, contains('по подвороту'));
+      expect(fastener.note, contains('подворот'));
+      expect(
+        fastener.quantity,
+        closeTo(card.spec.layers.movableSideEyelets.length.toDouble(), 1e-9),
+      );
+    });
+
+    test('крепёж скрина: замки, ремни и «только люверсы»', () {
+      TechOperation eyeletsFor(FastenerType type) => _op(
+            TechCard.forWindow(_screen.copyWith(fastenerType: type)),
+            TechOperationKind.eyelets,
+          );
+
+      final locks = eyeletsFor(FastenerType.frenchLocks);
+      expect(locks.text, contains('французский замок'));
+      expect(
+        locks.materials
+            .any((material) => material.name.contains('французский замок')),
+        isTrue,
+      );
+
+      final straps = eyeletsFor(FastenerType.straps);
+      expect(straps.text, contains('силиконовые ремни'));
+      expect(
+        straps.materials
+            .any((material) => material.name.contains('силиконовые ремни')),
+        isTrue,
+      );
+
+      final onlyEyelets = eyeletsFor(FastenerType.eyeletsOnly);
+      expect(onlyEyelets.text, contains('Только люверсы'));
+      expect(onlyEyelets.text, contains('по подвороту'));
+      // Отдельной строки крепежа нет: люверсы уже посчитаны выше.
+      expect(
+        onlyEyelets.materials
+            .any((material) => material.name.contains('Крепёж низа и боков')),
+        isFalse,
+      );
+      // Верх всё равно на саморезах.
+      expect(
+        onlyEyelets.materials
+            .any((material) => material.name.contains('Саморезы по верхнему ряду')),
+        isTrue,
+      );
     });
 
     test('верхний карман считается и подписан', () {

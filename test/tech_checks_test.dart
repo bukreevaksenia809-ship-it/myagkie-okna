@@ -313,6 +313,43 @@ void main() {
       expect(params.effectiveEyeletType, EyeletType.oval42x22);
     });
 
+    test('скрин с крепежом: правило «крепёж игнорируется» не срабатывает', () {
+      // Глухой скрин со скобами — противоречий нет: крепёж ставится по
+      // подвороту.
+      final screen = _correct.copyWith(
+        material: FilmMaterial.screen,
+        fastenerType: FastenerType.turnBuckles,
+      );
+      final checks = techChecksFor(screen);
+
+      expect(screen.isScreen, isTrue);
+      expect(screen.isLifting, isFalse);
+      expect(_check(checks, 'screen-fastener-ignored'), isNull);
+      expect(_check(checks, 'lifting-eyelets-only'), isNull);
+    });
+
+    test('подъёмный скрин с «только люверсы»: предупреждение остаётся', () {
+      final screen = _correct.copyWith(
+        material: FilmMaterial.screen,
+        windowType: WindowType.lifting,
+        fastenerType: FastenerType.eyeletsOnly,
+      );
+      final checks = techChecksFor(screen);
+
+      expect(_check(checks, 'lifting-eyelets-only')?.severity,
+          TechSeverity.warning);
+      // А со скобами предупреждения нет: поднимать есть чем.
+      final withBuckles = _correct.copyWith(
+        material: FilmMaterial.screen,
+        windowType: WindowType.lifting,
+        fastenerType: FastenerType.turnBuckles,
+      );
+      expect(
+        _check(techChecksFor(withBuckles), 'lifting-eyelets-only'),
+        isNull,
+      );
+    });
+
     test('верх без люверсов и не спаян — предупреждение «нечем крепить»', () {
       final params = _correct.copyWith(noEyeletsTop: true);
       final check = _check(techChecksFor(params), 'eyelet-top-unfastened');

@@ -108,7 +108,8 @@ const _mesh = WindowParams(
 );
 
 /// Скрин 2000 × 2000 с подворотом на каждую сторону: низ 40, право 50,
-/// верх 60, лево 40 мм. Заготовка 2090 × 2100 мм, тента нет.
+/// верх 60, лево 40 мм. Заготовка 2100 × 2120 мм (прибавка по оси — удвоенный
+/// больший подворот: 2 × 50 по ширине и 2 × 60 по высоте), тента нет.
 const _screen = WindowParams(
   projectName: 'Мягкое окно веранды',
   customer: 'Иванов И. И.',
@@ -123,6 +124,24 @@ const _screen = WindowParams(
   hemTopMm: 60,
   hemLeftMm: 40,
   pocketTop: true,
+);
+
+/// Главный пример заказчика: скрин 2000 × 2000, подворот низ 40, право 40,
+/// верх 60, лево 40 мм. Заготовка 2080 × 2120 мм: по высоте прибавляется
+/// 2 × 60 = 120 мм (а не 40 + 60 = 100), по ширине 2 × 40 = 80 мм.
+const _screenHem40x60 = WindowParams(
+  projectName: 'Мягкое окно веранды',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-024',
+  material: FilmMaterial.screen,
+  bottomWidth: 2000,
+  topWidth: 2000,
+  leftHeight: 2000,
+  rightHeight: 2000,
+  hemBottomMm: 40,
+  hemRightMm: 40,
+  hemTopMm: 60,
+  hemLeftMm: 40,
 );
 
 /// Окно со своими (нетиповыми) ширинами окантовки на каждую сторону:
@@ -256,6 +275,27 @@ void main() {
           labelFontFamily: testFontFamily,
         ),
       ),
+      // Главный пример заказчика по подвороту: низ 40, верх 60 → высота
+      // заготовки 2000 + 2 × 60 = 2120 мм (а не 2100), ширина +80 → 2080 мм.
+      'skrin-podvorot-niz-40-verh-60': (
+        viewport: a4Viewport,
+        build: (key) => DrawingSheet(
+          project: const OrderProject(windows: [_screenHem40x60]),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      // Крепёж скрина — французский замок: размер берётся от подворота.
+      'skrin-francuzskiy-zamok': (
+        viewport: a4Viewport,
+        build: (key) => DrawingSheet(
+          project: OrderProject(
+            windows: [_screen.copyWith(fastenerType: FastenerType.frenchLocks)],
+          ),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
       'svoi-shiriny': (
         viewport: a4Viewport,
         build: (key) => DrawingSheet(
@@ -346,6 +386,47 @@ void main() {
       expect(file.lengthSync(), greaterThan(5000));
       // ignore: avoid_print
       print('Превью записано: ${file.path} (${file.lengthSync()} байт)');
+    }
+  });
+
+  testWidgets('легенда скрина подписывает выбранный крепёж по подвороту', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(
+      DrawingSheet.a4Width + 40,
+      DrawingSheet.a4Height + 40,
+    );
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // Тип крепежа → подпись в «Условных обозначениях».
+    final cases = <FastenerType, String>{
+      FastenerType.turnBuckles: 'Поворотная скоба по подвороту',
+      FastenerType.frenchLocks: 'Французский замок по подвороту',
+      FastenerType.straps: 'Силиконовый ремень по подвороту',
+      FastenerType.eyeletsOnly: 'Саморезы по верхней кромке',
+    };
+
+    for (final entry in cases.entries) {
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: Scaffold(
+            body: DrawingSheet(
+              project: OrderProject(
+                windows: [_screen.copyWith(fastenerType: entry.key)],
+              ),
+              labelFontFamily: testFontFamily,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(entry.value), findsOneWidget,
+          reason: 'крепёж ${entry.key}');
+      expect(tester.takeException(), isNull);
     }
   });
 }

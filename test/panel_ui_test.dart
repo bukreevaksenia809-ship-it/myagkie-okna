@@ -164,9 +164,11 @@ void _screenAndWeldRules() {
     expect(params.material, FilmMaterial.screen);
     expect(params.isScreen, isTrue);
     expect(params.tech, WindowTech.screen);
-    // Окантовка и крепёж кроме люверсов спрятаны.
+    // Окантовка у скрина скрыта, а крепёж доступен любой: чипы на месте.
     expect(find.text('Окантовка'), findsNothing);
-    expect(find.text('Поворотные скобы'), findsNothing);
+    expect(find.text('Поворотные скобы'), findsOneWidget);
+    expect(find.text('Французский замок'), findsOneWidget);
+    expect(find.text('Силиконовые ремни'), findsOneWidget);
     // Подворот задаётся на каждую сторону: четыре поля и подпись заготовки.
     expect(find.byKey(const Key('hem-bottom-field')), findsOneWidget);
     expect(find.byKey(const Key('hem-right-field')), findsOneWidget);
@@ -200,7 +202,8 @@ void _screenAndWeldRules() {
     // Готовое окно панели 1500 × 2520 → заготовка 1620 × 2640 мм.
     expect(screenSpec.filmCutWidthWithAllowance, closeTo(1620, 1e-9));
     expect(screenSpec.filmCutHeightWithAllowance, closeTo(2640, 1e-9));
-    // Разные подвороты по сторонам дают разный прирост по осям.
+    // Разные подвороты по сторонам: по каждой оси — удвоенный больший
+    // подворот. Окно панели 1500 × 2520.
     await tester.enterText(find.byKey(const Key('hem-bottom-field')), '40');
     await tester.enterText(find.byKey(const Key('hem-top-field')), '60');
     await tester.enterText(find.byKey(const Key('hem-right-field')), '50');
@@ -208,10 +211,47 @@ void _screenAndWeldRules() {
     await tester.pumpAndSettle();
     params = hostKey.currentState!.project.selected;
     final mixedSpec = WindowSpec.of(params);
+    // Ширина: 1500 + 2 × max(лево 40, право 50) = 1600.
     expect(mixedSpec.filmCutWidthWithAllowance,
-        closeTo(params.bottomWidth + 40 + 50, 1e-9));
+        closeTo(params.bottomWidth + 2 * 50, 1e-9));
+    // Высота: 2520 + 2 × max(низ 40, верх 60) = 2640.
     expect(mixedSpec.filmCutHeightWithAllowance,
-        closeTo(params.leftHeight + 40 + 60, 1e-9));
+        closeTo(params.leftHeight + 2 * 60, 1e-9));
+    // Панель показывает человеческий расчёт по правилу.
+    expect(
+      find.text('Высота: ${formatMm(2520)} + 2 × ${formatMm(60)} (верх) = '
+          '${formatMm(2640)} мм'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Ширина: ${formatMm(1500)} + 2 × ${formatMm(50)} (право) = '
+          '${formatMm(1600)} мм'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    // --- Крепёж скрина: доступен любой тип, выбираем французский замок ---
+    final frenchLock = find.text('Французский замок');
+    await tester.ensureVisible(frenchLock);
+    await tester.tap(frenchLock);
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.isScreen, isTrue);
+    expect(params.fastenerType, FastenerType.frenchLocks);
+    final fastenerSpec = WindowSpec.of(params);
+    // Крепёж ставится по низу и бокам, в углах — круглые люверсы.
+    expect(fastenerSpec.layers.movableSideEyelets, isNotEmpty);
+    expect(
+      fastenerSpec.layers.movableSideEyelets.any((eyelet) => eyelet.isCorner),
+      isFalse,
+    );
+    expect(
+      fastenerSpec.layers.movableSideEyelets
+          .every((eyelet) => eyelet.side != WindowSide.top),
+      isTrue,
+    );
+    expect(fastenerSpec.fastenerSummary, contains('французский замок'));
+    expect(fastenerSpec.fastenerSummary, contains('по подвороту'));
     expect(tester.takeException(), isNull);
 
     // --- Карман сверху и снизу ---

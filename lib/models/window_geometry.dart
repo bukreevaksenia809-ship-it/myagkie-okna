@@ -219,8 +219,32 @@ class WindowLayers {
       : [for (final width in rolls) WindowParams.finishedEdgeWidth(width)];
 
   /// Подворот скрина по сторонам, мм (у ПВХ — нули).
+  ///
+  /// Это ФАКТИЧЕСКИЕ подвороты, которыми подписаны стороны и по которым
+  /// строится линия подворота. Для габарита заготовки они не суммируются:
+  /// там работает [hemOutsetWidths].
   List<double> get hemWidths =>
       isScreen ? List.of(params.hemWidths) : const [0, 0, 0, 0];
+
+  /// Расширение контура заготовки скрина по сторонам в порядке обхода
+  /// (низ, право, верх, лево), мм.
+  ///
+  /// Прибавка по каждой оси — УДВОЕННЫЙ БОЛЬШИЙ подворот этой оси
+  /// ([WindowParams.hemAxisBottomTopIncrease] и
+  /// [WindowParams.hemAxisLeftRightIncrease]). Поэтому на обе кромки оси
+  /// откладывается один и тот же запас — максимум из двух подворотов, — и
+  /// габарит заготовки растёт ровно на `2 × max(...)`: при подвороте
+  /// (низ 40, верх 60) и изделии 2000 мм высота заготовки 2120 мм, а не 2100.
+  /// Заказчик кроит именно так, хотя 40 + 60 = 100.
+  List<double> get hemOutsetWidths {
+    if (!isScreen) return const [0, 0, 0, 0];
+    // Половина прибавки по оси — это и есть больший подворот оси. Берём его
+    // из модели, чтобы правило «2 × максимум» жило в одном месте.
+    final maxBottomTop = params.hemAxisBottomTopIncrease / 2;
+    final maxLeftRight = params.hemAxisLeftRightIncrease / 2;
+    // Порядок обхода: низ, право, верх, лево.
+    return [maxBottomTop, maxLeftRight, maxBottomTop, maxLeftRight];
+  }
 
   /// Внутренняя граница окантовки: видимая граница плёнки.
   ///
@@ -233,12 +257,15 @@ class WindowLayers {
   ///
   /// ПВХ заходит под окантовку на [WindowParams.weldOverlapMm], поэтому его
   /// край ближе к наружному контуру, чем внутренняя граница окантовки.
-  /// Скрин, наоборот, кроится БОЛЬШЕ готового размера на подворот
-  /// [WindowParams.hemWidths] с каждой стороны: 2000 × 2000 при подвороте
-  /// 40 мм на все стороны даёт заготовку 2080 × 2080 мм; при разных сторонах
-  /// каждая сторона расширяется на своё значение.
+  /// Скрин, наоборот, кроится БОЛЬШЕ готового размера: прибавка по каждой оси
+  /// равна удвоенному большему подвороту этой оси ([hemOutsetWidths],
+  /// [WindowParams.hemAxisBottomTopIncrease] /
+  /// [WindowParams.hemAxisLeftRightIncrease]). Изделие 2000 × 2000 при подвороте
+  /// 40 мм на все стороны даёт заготовку 2080 × 2080 мм, а при (низ 40,
+  /// верх 60, лево 40, право 40) — 2080 × 2120 мм: по высоте запас считается
+  /// по большему подвороту (60), а не по сумме 40 + 60.
   late final List<Offset> filmEdge = isScreen
-      ? outsetPolygonPerSide(outer, hemWidths)
+      ? outsetPolygonPerSide(outer, hemOutsetWidths)
       : insetPolygonPerSide(
           outer,
           [
@@ -259,6 +286,12 @@ class WindowLayers {
         );
 
   /// Линия подворота скрина: на свой подворот внутрь от края заготовки.
+  ///
+  /// При одинаковых подворотах она совпадает с готовым контуром изделия. Если
+  /// подвороты оси разные, заготовка получает запас по большему из них
+  /// ([hemOutsetWidths]), и линия подворота ложится на своё расстояние от края
+  /// заготовки: у стороны с меньшим подворотом она оказывается чуть снаружи
+  /// готового контура — этот лишний материал и есть запас заказчика.
   late final List<Offset> screenHemLine =
       isScreen ? insetPolygonPerSide(filmEdge, hemWidths) : const [];
 
@@ -293,15 +326,18 @@ class WindowLayers {
       math.max(polygonArea(filmEdge).abs() - cutoutAreaMm2, 0) / 1000000;
 
   /// Люверсы, которые закрываются крепежом подвижных сторон:
-  /// у подъёмного и комбинированного окна — низ и бока, сверху саморезы.
-  /// Люверсы подвижных сторон, на которые ставится поворотный крепёж.
+  /// низ и бока, сверху саморезы или люверсы.
+  ///
+  /// Скрин — съёмное полотно: крепёж на нём ставится по тому же правилу, что
+  /// у подъёмного ПВХ-окна, и не зависит от типа окна. Поэтому глухой скрин
+  /// (WindowType.fixed) тоже получает скобы, замки или ремни по низу и бокам —
+  /// иначе выбранный в панели крепёж молча пропадал бы с чертежа.
   ///
   /// Углы исключены: в углу всегда простой круглый люверс, иначе на стыке
   /// двух сторон (например, верх-право) вместо круглого люверса оказывается
   /// прямоугольная скоба.
   List<EyeletPlacement> get movableSideEyelets {
-    // Скрин крепится только люверсами: скоб, замков и ремней у него нет.
-    if (params.windowType == WindowType.fixed || isScreen) return const [];
+    if (!isScreen && params.windowType == WindowType.fixed) return const [];
     return eyelets
         .where((eyelet) => eyelet.side != WindowSide.top && !eyelet.isCorner)
         .toList(growable: false);
@@ -472,8 +508,8 @@ class WindowLayers {
   ///
   /// У скрина видимый контур — готовое изделие (кромка подворота), поэтому
   /// полоса молнии целиком лежит внутри заготовки: заготовка больше готового
-  /// размера на подворот по сторонам. Положение зажато в границах видимого
-  /// контура (см. [_zipperOf]).
+  /// размера на удвоенный больший подворот каждой оси ([hemOutsetWidths]).
+  /// Положение зажато в границах видимого контура (см. [_zipperOf]).
   List<({Offset start, Offset end, double bandWidth})> get zippers => [
         for (final spec in params.zippers) _zipperOf(spec),
       ];
@@ -747,9 +783,12 @@ class WindowSpec {
   ///
   /// Для ПВХ: видимый размер плюс запайка [WindowParams.weldOverlapMm] с двух
   /// сторон — плёнка заходит под окантовку. Для скрина: готовый размер плюс
-  /// подворот [WindowParams.hemWidths] с каждой стороны (2000 × 2000 при
-  /// подвороте 40 мм на все стороны → 2080 × 2080 мм). Припуск на раскрой
-  /// здесь ещё не учтён.
+  /// прибавка по каждой оси, равная УДВОЕННОМУ БОЛЬШЕМУ подвороту этой оси
+  /// ([WindowParams.hemAxisBottomTopIncrease] /
+  /// [WindowParams.hemAxisLeftRightIncrease]). Изделие 2000 × 2000 при
+  /// подвороте 40 мм на все стороны даёт 2080 × 2080 мм, а при (низ 40,
+  /// верх 60, лево 40, право 40) — 2080 × 2120 мм. Припуск на раскрой здесь
+  /// ещё не учтён.
   double get filmCutWidth => layers.filmCutBounds.width;
   double get filmCutHeight => layers.filmCutBounds.height;
 
@@ -761,6 +800,43 @@ class WindowSpec {
       filmCutWidth + params.allowanceWidthMm;
   double get filmCutHeightWithAllowance =>
       filmCutHeight + params.allowanceHeightMm;
+
+  /// Человеческий расчёт высоты заготовки скрина для панели:
+  /// «Высота: 2000 + 2 × 60 (верх) = 2120 мм».
+  ///
+  /// Показывает ровно то правило, по которому считается заготовка: прибавка по
+  /// оси — удвоенный БОЛЬШИЙ подворот. В скобках подписывается сторона, чей
+  /// подворот победил (когда подвороты равны, скобки не нужны). Припуск на
+  /// раскрой, если он задан, идёт отдельным слагаемым.
+  String get screenBlankHeightFormulaLabel {
+    final bottom = params.hemBottomMm;
+    final top = params.hemTopMm;
+    final maxHem = math.max(bottom, top);
+    final side = bottom == top ? '' : (maxHem == top ? ' (верх)' : ' (низ)');
+    final allowance = params.hasAllowance
+        ? ' + припуск ${formatMm(params.allowanceHeightMm)}'
+        : '';
+    final base = filmCutHeight - params.hemAxisBottomTopIncrease;
+    return 'Высота: ${formatMm(base)} + 2 × ${formatMm(maxHem)}$side'
+        '$allowance = ${formatMm(filmCutHeightWithAllowance)} мм';
+  }
+
+  /// Человеческий расчёт ширины заготовки скрина для панели:
+  /// «Ширина: 2000 + 2 × 40 = 2080 мм».
+  ///
+  /// Смысл тот же, что у [screenBlankHeightFormulaLabel].
+  String get screenBlankWidthFormulaLabel {
+    final left = params.hemLeftMm;
+    final right = params.hemRightMm;
+    final maxHem = math.max(left, right);
+    final side = left == right ? '' : (maxHem == right ? ' (право)' : ' (лево)');
+    final allowance = params.hasAllowance
+        ? ' + припуск ${formatMm(params.allowanceWidthMm)}'
+        : '';
+    final base = filmCutWidth - params.hemAxisLeftRightIncrease;
+    return 'Ширина: ${formatMm(base)} + 2 × ${formatMm(maxHem)}$side'
+        '$allowance = ${formatMm(filmCutWidthWithAllowance)} мм';
+  }
 
   /// Заготовка полотна с припуском на раскрой и компенсацией усадки, мм.
   ///
@@ -845,20 +921,31 @@ class WindowSpec {
           '(низ/право/верх/лево), шов ${formatMm(screenSeamMm)} мм'
       : '${params.edgeColor.label.toLowerCase()}, ${params.edgeMaterial.label}';
 
+  /// Название выбранного крепежа подвижных сторон строчными: «поворотные
+  /// скобы». У скрина крепёж ставится по подвороту, у ПВХ — по окантовке.
+  String get movableFastenerLabel => switch (params.fastenerType) {
+        FastenerType.eyeletsOnly => 'только люверсы',
+        FastenerType.turnBuckles => 'поворотные скобы',
+        FastenerType.frenchLocks => 'французский замок',
+        FastenerType.straps => 'силиконовые ремни',
+      };
+
+  /// Подпись крепежа окна.
+  ///
+  /// У скрина выбранный тип крепежа действует так же, как у подъёмного
+  /// ПВХ-окна: скобы, замки и ремни ставятся по низу и бокам, сверху —
+  /// саморезы. Раньше у скрина всё это молча игнорировалось, теперь работает.
   String get fastenerSummary {
-    // Скрин крепится только люверсами: тип крепежа игнорируется.
     if (params.isScreen) {
-      return 'Только люверсы по подвороту (скрин)';
+      if (params.fastenerType == FastenerType.eyeletsOnly) {
+        return 'Только люверсы по подвороту, сверху саморезы (скрин)';
+      }
+      return 'Сверху саморезы, низ и бока — $movableFastenerLabel '
+          'по подвороту (скрин)';
     }
-    final movable = switch (params.fastenerType) {
-      FastenerType.eyeletsOnly => 'только люверсы',
-      FastenerType.turnBuckles => 'поворотные скобы',
-      FastenerType.frenchLocks => 'французский замок',
-      FastenerType.straps => 'силиконовые ремни',
-    };
     return switch (params.windowType) {
       WindowType.fixed => 'Саморезы по окантовке (глухое)',
-      WindowType.lifting => 'Сверху саморезы, низ и бока — $movable',
+      WindowType.lifting => 'Сверху саморезы, низ и бока — $movableFastenerLabel',
     };
   }
 
@@ -991,14 +1078,22 @@ class WindowSpec {
     return [
       if (params.isScreen) ...[
         'Скрин: технология без тента и окантовки — материал подворачивается '
-            'сам, крепёж только люверсы; молния ставится в полосу из скрина '
+            'сам; молния ставится в полосу из скрина '
             '(подворот или накладная полоса), шов '
             '${formatMm(screenSeamMm)} мм по краям полосы',
         'Подворот материала по сторонам — ${params.hemBySideLabel} '
             '(низ/право/верх/лево); шов сварки подворота '
             '${formatMm(screenSeamMm)} мм с каждой стороны',
-        'Заготовка скрина — готовый размер плюс подворот по сторонам: '
-            '${formatMm(filmCutWidthWithAllowance)} × '
+        'Заготовка скрина — готовый размер плюс прибавка по каждой оси, равная '
+            'УДВОЕННОМУ БОЛЬШЕМУ подвороту этой оси: по высоте '
+            '2 × max(низ ${formatMm(params.hemBottomMm)}, верх '
+            '${formatMm(params.hemTopMm)}) = '
+            '${formatMm(params.hemAxisBottomTopIncrease)} мм, по ширине '
+            '2 × max(лево ${formatMm(params.hemLeftMm)}, право '
+            '${formatMm(params.hemRightMm)}) = '
+            '${formatMm(params.hemAxisLeftRightIncrease)} мм '
+            '(заказчик так кроит: при (40, 60) прибавка 120 мм, а не 100)',
+        'Заготовка скрина: ${formatMm(filmCutWidthWithAllowance)} × '
             '${formatMm(filmCutHeightWithAllowance)} мм '
             '(${formatMm(filmCutWidth)} × ${formatMm(filmCutHeight)} мм '
             'до припуска); усадки нет',
@@ -1342,8 +1437,9 @@ List<ParamIssue> validateParams(WindowParams params) {
   }
 
   // Подворот скрина: 10…150 мм на каждую сторону, обычный диапазон 40–60 мм.
-  // Готовый размер плюс подвороты по сторонам даёт заготовку (2000 × 2000 при
-  // подвороте 40 мм на все стороны → 2080 × 2080 мм).
+  // Готовый размер плюс прибавка по каждой оси — удвоенный больший подворот
+  // этой оси — даёт заготовку: 2000 × 2000 при подвороте 40 мм на все стороны
+  // → 2080 × 2080 мм, при (низ 40, верх 60) → 2080 × 2120 мм.
   if (params.isScreen) {
     for (final side in EdgeSide.values) {
       final hem = params.hemForSide(side);

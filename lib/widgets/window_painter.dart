@@ -1328,26 +1328,55 @@ class WindowDrawingPainter extends CustomPainter {
   }
 
   void _paintFasteners(Canvas canvas) {
-    // Скрин крепится только люверсами: скобы, замки и ремни не рисуем.
-    if (params.isScreen) return;
+    // Скрин крепится по подвороту так же, как ПВХ по окантовке: тип крепежа
+    // действует, по низу и бокам рисуем выбранные скобы/замки/ремни.
     final eyelets = layers.movableSideEyelets;
     if (eyelets.isEmpty) return;
     if (params.fastenerType == FastenerType.eyeletsOnly) return;
 
     for (final eyelet in eyelets) {
-      final center = layout.toPxPoint(eyelet.center);
       final normal = _outwardNormal(eyelet);
+      // Размер крепежа считается по полосе своей стороны: у ПВХ это готовая
+      // окантовка, у скрина — подворот (у скрина finishedWidths нулевые).
+      final bandWidth = _fastenerBandWidth(eyelet.side);
+      final anchor = layout.toPxPoint(eyelet.center);
+      // У ПВХ люверс стоит на середине окантовки, и крепёж лежит на ленте.
+      // У скрина люверс — на линии подворота (готовый контур), а полоса
+      // подворота нарисована снаружи, поэтому крепёж сдвигаем наружу на
+      // половину подворота: он ложится на подворот и не заходит на полотно.
+      final center = params.isScreen
+          ? anchor + normal * layout.px(bandWidth / 2)
+          : anchor;
       switch (params.fastenerType) {
         case FastenerType.turnBuckles:
-          _drawTurnBuckle(canvas, center, normal);
+          _drawTurnBuckle(canvas, center, normal, bandWidth);
         case FastenerType.frenchLocks:
-          _drawFrenchLock(canvas, center, normal);
+          _drawFrenchLock(canvas, center, normal, bandWidth);
         case FastenerType.straps:
           _drawStrap(canvas, center, normal);
         case FastenerType.eyeletsOnly:
           break;
       }
     }
+  }
+
+  /// Ширина полосы, на которой стоит крепёж, мм.
+  ///
+  /// У ПВХ это готовая (сложенная пополам) окантовка, у скрина — подворот
+  /// соответствующей стороны: у скрина `finishedWidths` нулевые, и без этого
+  /// скоба/замок получали бы минимальный размер.
+  double _fastenerBandWidth(WindowSide side) {
+    if (!params.isScreen) {
+      return layers.finishedWidths.isEmpty
+          ? 50.0
+          : layers.finishedWidths.reduce(math.min);
+    }
+    return switch (side) {
+      WindowSide.bottom => params.hemBottomMm,
+      WindowSide.right => params.hemRightMm,
+      WindowSide.top => params.hemTopMm,
+      WindowSide.left => params.hemLeftMm,
+    };
   }
 
   /// Нормаль, направленная наружу фигуры, в экранных координатах.
@@ -1361,11 +1390,16 @@ class WindowDrawingPainter extends CustomPainter {
 
   /// Поворотная скоба: пластина на окантовке и проволочная петля,
   /// которая поворачивается и цепляется за ответную часть.
-  void _drawTurnBuckle(Canvas canvas, Offset center, Offset normal) {
+  ///
+  /// [bandWidth] — ширина полосы под крепежом (окантовка ПВХ или подворот
+  /// скрина), по ней считается размер пластины.
+  void _drawTurnBuckle(
+    Canvas canvas,
+    Offset center,
+    Offset normal,
+    double bandWidth,
+  ) {
     final angle = math.atan2(normal.dy, normal.dx);
-    final bandWidth = layers.finishedWidths.isEmpty
-        ? 50.0
-        : layers.finishedWidths.reduce(math.min);
     final size = (layout.px(bandWidth * 0.7)).clamp(9.0, 20.0);
 
     canvas.save();
@@ -1475,11 +1509,16 @@ class WindowDrawingPainter extends CustomPainter {
 
   /// Французский замок: металлическая планка с поворотным рычажком и
   /// стрелкой поворота на 90° (замок затягивается поворотом).
-  void _drawFrenchLock(Canvas canvas, Offset center, Offset normal) {
+  ///
+  /// [bandWidth] — ширина полосы под крепежом (окантовка ПВХ или подворот
+  /// скрина).
+  void _drawFrenchLock(
+    Canvas canvas,
+    Offset center,
+    Offset normal,
+    double bandWidth,
+  ) {
     final angle = math.atan2(normal.dy, normal.dx);
-    final bandWidth = layers.finishedWidths.isEmpty
-        ? 50.0
-        : layers.finishedWidths.reduce(math.min);
     final size = layout.px(bandWidth * 0.62).clamp(10.0, 20.0);
 
     canvas.save();
@@ -1781,12 +1820,16 @@ class WindowDrawingPainter extends CustomPainter {
     final widths = layers.finishedWidths;
 
     // Скрин: подворот подписан по каждой стороне — низ, право, верх, лево.
-    // Полоса подворота лежит между готовым контуром (outer) и краем заготовки
-    // (filmEdge), поэтому подпись ставим в середине этой полосы.
+    // Полоса подворота лежит между линией подворота (screenHemLine) и краем
+    // заготовки (filmEdge), поэтому подпись ставим в середине этой полосы.
+    // При одинаковых подворотах линия подворота совпадает с готовым контуром
+    // (outer); при разных — заготовка получает запас по большему подвороту
+    // оси, и подпись остаётся ровно в полосе своего подворота.
     if (params.isScreen) {
-      for (var i = 0; i < outer.length; i++) {
-        final a = outer[i];
-        final b = outer[(i + 1) % outer.length];
+      final hemLine = layers.screenHemLine;
+      for (var i = 0; i < hemLine.length; i++) {
+        final a = hemLine[i];
+        final b = hemLine[(i + 1) % hemLine.length];
         final cutA = filmEdge[i];
         final cutB = filmEdge[(i + 1) % filmEdge.length];
         final middle =

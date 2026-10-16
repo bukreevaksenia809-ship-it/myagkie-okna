@@ -1779,8 +1779,9 @@ void _screenRules() {
           WindowTech.pvcTent);
     });
 
-    test('подворот по сторонам 40/50/60/25: заготовка 2080 / 2100 / 2120', () {
-      // Одинаковый подворот на все стороны: заготовка = 2000 + 2 × подворот.
+    test('одинаковый подворот 40/50/60: заготовка 2080 / 2100 / 2120', () {
+      // Одинаковый подворот на все стороны: по оси берётся удвоенный больший,
+      // а подвороты равны — заготовка = 2000 + 2 × подворот.
       for (final (hem, blank) in [(40.0, 2080.0), (50.0, 2100.0), (60.0, 2120.0)]) {
         final spec = WindowSpec.of(screenWith(hem));
         expect(spec.filmCutWidth, closeTo(blank, 1e-9),
@@ -1795,17 +1796,103 @@ void _screenRules() {
     });
 
     test('контрольные числа: подворот бок 40, верх/низ 60 → 2080 × 2120', () {
-      // Скрин 2000 × 2000: ширина = 2000 + лево 40 + право 40 = 2080 мм;
-      // высота = 2000 + низ 60 + верх 60 = 2120 мм.
+      // Скрин 2000 × 2000: ширина = 2000 + 2 × max(лево 40, право 40) = 2080 мм;
+      // высота = 2000 + 2 × max(низ 60, верх 60) = 2120 мм.
       final spec = WindowSpec.of(screenWithSides(60, 40, 60, 40));
 
-      expect(spec.filmCutWidth, closeTo(2000 + 40 + 40, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2000 + 2 * 40, 1e-9));
       expect(spec.filmCutWidth, closeTo(2080, 1e-9));
-      expect(spec.filmCutHeight, closeTo(2000 + 60 + 60, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2000 + 2 * 60, 1e-9));
       expect(spec.filmCutHeight, closeTo(2120, 1e-9));
       // Готовое изделие не изменилось, запайки у скрина нет.
       expect(spec.productAreaM2, closeTo(4.0, 1e-9));
       expect(spec.edgeConsumption, isEmpty);
+    });
+
+    test('заказчик: (низ 40, верх 60, лево 40, право 40) → 2080 × 2120', () {
+      // Главное требование заказчика: 40 + 60 = 100, но к высоте
+      // прибавляется 120 мм — по удвоенному БОЛЬШЕМУ подвороту оси (верх 60).
+      final params = screenWithSides(40, 40, 60, 40);
+      final spec = WindowSpec.of(params);
+
+      expect(params.hemAxisBottomTopIncrease, closeTo(120, 1e-9));
+      expect(params.hemAxisLeftRightIncrease, closeTo(80, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2080, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2120, 1e-9));
+      expect(spec.filmCutWidthWithAllowance, closeTo(2080, 1e-9));
+      expect(spec.filmCutHeightWithAllowance, closeTo(2120, 1e-9));
+    });
+
+    test('(низ 60, верх 60) → высота 2120 — как в прежнем примере', () {
+      final spec = WindowSpec.of(screenWithSides(60, 40, 60, 40));
+      expect(spec.filmCutHeight, closeTo(2120, 1e-9));
+      expect(
+        spec.filmCutHeight - spec.params.hemAxisBottomTopIncrease,
+        closeTo(2000, 1e-9),
+      );
+    });
+
+    test('(низ 40, верх 40, лево 40, право 40) → 2080 × 2080', () {
+      final spec = WindowSpec.of(screenWithSides(40, 40, 40, 40));
+      expect(spec.filmCutWidth, closeTo(2080, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2080, 1e-9));
+    });
+
+    test('берётся максимум, а не верх: (низ 70, верх 50) → высота 2140', () {
+      final spec = WindowSpec.of(screenWithSides(70, 40, 50, 40));
+      // 2000 + 2 × max(70, 50) = 2000 + 140 = 2140.
+      expect(spec.filmCutHeight, closeTo(2000 + 140, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2140, 1e-9));
+    });
+
+    test('берётся максимум по ширине: (лево 30, право 90) → 2180', () {
+      final spec = WindowSpec.of(screenWithSides(40, 90, 40, 30));
+      // 2000 + 2 × max(30, 90) = 2000 + 180 = 2180.
+      expect(spec.filmCutWidth, closeTo(2000 + 180, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2180, 1e-9));
+    });
+
+    test('человеческие формулы заготовки: «2000 + 2 × 60 (верх) = 2120»', () {
+      final spec = WindowSpec.of(screenWithSides(40, 40, 60, 40));
+      expect(
+        spec.screenBlankHeightFormulaLabel,
+        'Высота: ${formatMm(2000)} + 2 × ${formatMm(60)} (верх) = '
+        '${formatMm(2120)} мм',
+      );
+      expect(
+        spec.screenBlankWidthFormulaLabel,
+        'Ширина: ${formatMm(2000)} + 2 × ${formatMm(40)} = '
+        '${formatMm(2080)} мм',
+      );
+      // Победившая сторона подписывается: по ширине больше право.
+      final right = WindowSpec.of(screenWithSides(40, 90, 40, 30));
+      expect(
+        right.screenBlankWidthFormulaLabel,
+        'Ширина: ${formatMm(2000)} + 2 × ${formatMm(90)} (право) = '
+        '${formatMm(2180)} мм',
+      );
+      // По высоте больше низ — подписывается низ.
+      final bottom = WindowSpec.of(screenWithSides(70, 40, 50, 40));
+      expect(
+        bottom.screenBlankHeightFormulaLabel,
+        'Высота: ${formatMm(2000)} + 2 × ${formatMm(70)} (низ) = '
+        '${formatMm(2140)} мм',
+      );
+      // Припуск на раскрой — отдельным слагаемым.
+      final withAllowance = WindowSpec.of(
+        screenWithSides(40, 40, 60, 40)
+            .copyWith(allowanceWidthMm: 20, allowanceHeightMm: 30),
+      );
+      expect(
+        withAllowance.screenBlankHeightFormulaLabel,
+        'Высота: ${formatMm(2000)} + 2 × ${formatMm(60)} (верх) + припуск '
+        '${formatMm(30)} = ${formatMm(2150)} мм',
+      );
+      expect(
+        withAllowance.screenBlankWidthFormulaLabel,
+        'Ширина: ${formatMm(2000)} + 2 × ${formatMm(40)} + припуск '
+        '${formatMm(20)} = ${formatMm(2100)} мм',
+      );
     });
 
     test('Подворот 25 мм на все стороны — заготовка 2050 × 2050', () {
@@ -1818,15 +1905,17 @@ void _screenRules() {
       expect(spec.filmCutHeight, closeTo(2050, 1e-9));
     });
 
-    test('смешанные подвороты: ширина — низ/лево, высота — низ/верх', () {
+    test('смешанные подвороты: по каждой оси — удвоенный максимум', () {
       // Низ 40, право 50, верх 60, лево 40 мм.
       final params = screenWithSides(40, 50, 60, 40);
       final spec = WindowSpec.of(params);
 
-      // Ширина заготовки = bottomWidth + лево + право.
-      expect(spec.filmCutWidth, closeTo(2000 + 40 + 50, 1e-9));
-      // Высота заготовки = leftHeight + низ + верх.
-      expect(spec.filmCutHeight, closeTo(2000 + 40 + 60, 1e-9));
+      // Ширина заготовки = bottomWidth + 2 × max(лево 40, право 50) = 2100 мм.
+      expect(spec.filmCutWidth, closeTo(2000 + 2 * 50, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2100, 1e-9));
+      // Высота заготовки = leftHeight + 2 × max(низ 40, верх 60) = 2120 мм.
+      expect(spec.filmCutHeight, closeTo(2000 + 2 * 60, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2120, 1e-9));
       expect(params.hemForSide(EdgeSide.bottom), 40);
       expect(params.hemForSide(EdgeSide.right), 50);
       expect(params.hemForSide(EdgeSide.top), 60);
@@ -1890,7 +1979,7 @@ void _screenRules() {
       expect(seam[1].dx, closeTo(2000 - screenSeamMm, 1e-6));
     });
 
-    test('люверсы ставятся по линии подворота, крепёж — только они', () {
+    test('люверсы ставятся по линии подворота, крепёж — по низу и бокам', () {
       final params = screenWith(40).copyWith(
         windowType: WindowType.lifting,
         fastenerType: FastenerType.frenchLocks,
@@ -1898,10 +1987,25 @@ void _screenRules() {
       );
       final spec = WindowSpec.of(params);
 
-      expect(spec.layers.movableSideEyelets, isEmpty);
+      // Скрин — съёмное полотно: крепёж ставится по низу и бокам, как у
+      // подъёмного ПВХ-окна, а не игнорируется.
+      expect(spec.layers.movableSideEyelets, isNotEmpty);
+      expect(
+        spec.layers.movableSideEyelets
+            .every((eyelet) => eyelet.side != WindowSide.top),
+        isTrue,
+        reason: 'верх остаётся на саморезах',
+      );
+      expect(
+        spec.layers.movableSideEyelets.any((eyelet) => eyelet.isCorner),
+        isFalse,
+        reason: 'в углах круглые люверсы, а не замок',
+      );
       expect(spec.layers.drainHoles, isEmpty);
       expect(spec.strapCount, 0);
-      expect(spec.fastenerSummary, contains('Только люверсы'));
+      expect(spec.fastenerSummary, contains('французский замок'));
+      expect(spec.fastenerSummary, contains('по подвороту'));
+      expect(spec.fastenerSummary, contains('Сверху саморезы'));
       expect(spec.eyeletCount, greaterThan(0));
       // Все люверсы лежат на линии подворота — на наружном контуре 2000 × 2000.
       for (final eyelet in spec.layers.eyelets) {
@@ -1910,6 +2014,66 @@ void _screenRules() {
             eyelet.center.dy.abs() < 1e-6 ||
             (eyelet.center.dy - 2000).abs() < 1e-6;
         expect(onOuter, isTrue, reason: 'люверс ${eyelet.center} не на подвороте');
+      }
+    });
+
+    test('скрин со скобами: крепёж по низу и бокам, в углах круглые люверсы', () {
+      final params = screenWith(40).copyWith(
+        fastenerType: FastenerType.turnBuckles,
+      );
+      final spec = WindowSpec.of(params);
+
+      // Тип окна не важен: глухой скрин тоже получает крепёж.
+      expect(params.windowType, WindowType.fixed);
+      expect(spec.layers.movableSideEyelets, isNotEmpty);
+      final sides = spec.layers.movableSideEyelets
+          .map((eyelet) => eyelet.side)
+          .toSet();
+      expect(sides, isNot(contains(WindowSide.top)));
+      expect(spec.layers.movableSideEyelets.any((eyelet) => eyelet.isCorner),
+          isFalse);
+      expect(spec.fastenerSummary, contains('поворотные скобы'));
+      expect(spec.fastenerSummary, contains('по подвороту'));
+      // Угловые люверсы остаются круглыми.
+      final corners =
+          spec.layers.eyelets.where((eyelet) => eyelet.isCorner).toList();
+      expect(corners, isNotEmpty);
+      for (final corner in corners) {
+        expect(spec.layers.typeFor(corner), EyeletType.round10);
+      }
+    });
+
+    test('скрин с ремнями и скрин «только люверсы»', () {
+      final straps = WindowSpec.of(
+        screenWith(40).copyWith(
+          fastenerType: FastenerType.straps,
+          windowType: WindowType.lifting,
+        ),
+      );
+      expect(straps.fastenerSummary, contains('силиконовые ремни'));
+      expect(straps.layers.movableSideEyelets, isNotEmpty);
+
+      final eyeletsOnly = WindowSpec.of(
+        screenWith(40).copyWith(fastenerType: FastenerType.eyeletsOnly),
+      );
+      expect(eyeletsOnly.fastenerSummary, contains('Только люверсы'));
+      expect(eyeletsOnly.fastenerSummary, contains('по подвороту'));
+      expect(eyeletsOnly.fastenerSummary,
+          isNot(contains('поворотные скобы')));
+    });
+
+    test('JSON хранит тип крепежа скрина и читает его обратно', () {
+      for (final type in FastenerType.values) {
+        final params = screenWithSides(40, 50, 60, 40)
+            .copyWith(fastenerType: type, windowType: WindowType.lifting);
+        final restored = windowFromJson(windowToJson(params));
+        expect(restored.fastenerType, type, reason: 'тип крепежа $type');
+        expect(restored.isScreen, isTrue);
+        final original = WindowSpec.of(params);
+        final restoredSpec = WindowSpec.of(restored);
+        expect(restoredSpec.fastenerSummary, original.fastenerSummary);
+        expect(restoredSpec.layers.movableSideEyelets.length,
+            original.layers.movableSideEyelets.length);
       }
     });
 

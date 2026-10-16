@@ -198,7 +198,8 @@ void main() {
   });
 
   test('смета скрина: смешанные подвороты меняют заготовку, но не периметр', () {
-    // Низ 40, право 50, верх 60, лево 40 → заготовка 2090 × 2100,
+    // Низ 40, право 50, верх 60, лево 40 → прибавка по оси — удвоенный больший
+    // подворот: ширина 2000 + 2 × 50 = 2100, высота 2000 + 2 × 60 = 2120,
     // периметр готового изделия остаётся 8000 мм.
     const screen = WindowParams(
       material: FilmMaterial.screen,
@@ -215,16 +216,52 @@ void main() {
     final summary = CostsSummary(project);
     final estimate = Estimate.of(project, PriceList.defaults());
 
-    expect(summary.filmAreaM2, closeTo(2.090 * 2.100, 1e-9));
+    expect(summary.filmAreaM2, closeTo(2.100 * 2.120, 1e-9));
     expect(summary.screenHemLengthMm, closeTo(8000, 1e-9));
     final filmLine = estimate.lines
         .firstWhere((line) => line.title.startsWith('Полотно'));
     // Площадь заготовки скрина идёт в смету, а не площадь изделия.
-    expect(filmLine.quantity, closeTo(4.389, 1e-3));
+    expect(filmLine.quantity, closeTo(4.452, 1e-3));
     expect(filmLine.quantity, isNot(closeTo(4.0, 1e-6)));
     final hemLine = estimate.lines
         .firstWhere((line) => line.title.startsWith('Подворот скрина'));
     expect(hemLine.quantity, closeTo(8.0, 1e-9));
+  });
+
+  test('смета скрина с крепежом: цена овального люверса под скобу', () {
+    // Скрин с французским замком: по низу и бокам ставится выбранный крепёж,
+    // под него идёт овальный люверс — цена берётся из прайса (цена + установка).
+    const screen = WindowParams(
+      material: FilmMaterial.screen,
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      hemBottomMm: 40,
+      hemRightMm: 40,
+      hemTopMm: 40,
+      hemLeftMm: 40,
+      windowType: WindowType.lifting,
+      fastenerType: FastenerType.frenchLocks,
+      eyeletType: EyeletType.oval42x22,
+    );
+    final prices = PriceList.defaults();
+    final estimate = Estimate.ofWindow(screen, prices);
+    final ovalLine = estimate.lines
+        .firstWhere((line) => line.title.contains(EyeletType.oval42x22.label));
+    final roundLine = estimate.lines
+        .firstWhere((line) => line.title.contains(EyeletType.round10.label));
+
+    // Цена выбранного крепежа/люверса — из прайса.
+    expect(ovalLine.unitPrice, prices.eyeletOvalPrice + prices.eyeletInstall);
+    expect(ovalLine.quantity, greaterThan(0));
+    // В углах всегда круглые люверсы — их ровно 4.
+    expect(roundLine.quantity, 4);
+    expect(roundLine.unitPrice, prices.eyeletPrice + prices.eyeletInstall);
+    // Строк про тент и окантовку у скрина нет.
+    final titles = estimate.lines.map((line) => line.title).join(' | ');
+    expect(titles, isNot(contains('Окантовка')));
+    expect(titles, isNot(contains('Тент')));
   });
 
   test('смета скрина с молнией: ткань скрина, молния и работа шва', () {

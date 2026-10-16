@@ -168,7 +168,8 @@ void _filamentBlankAudit() {
 // 2. Скрин: размер заготовки
 // ---------------------------------------------------------------------------
 void _screenBlankAudit() {
-  group('2. Скрин: заготовка = готовый размер + подворот своей стороны', () {
+  group('2. Скрин: заготовка = готовый размер + 2 × больший подворот по оси',
+      () {
     for (final hem in <double>[40, 50, 60]) {
       final expected = 2000 + 2 * hem;
       test('подворот ${hem.toStringAsFixed(0)} на все стороны → '
@@ -203,7 +204,7 @@ void _screenBlankAudit() {
     }
 
     test('смешанный подворот (низ 40, право 50, верх 60, лево 40) '
-        '→ 2090 × 2100', () {
+        '→ 2100 × 2120', () {
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 2000,
@@ -217,14 +218,19 @@ void _screenBlankAudit() {
       );
       final spec = WindowSpec.of(params);
 
-      // Вручную: ширина = 2000 + лево 40 + право 50 = 2090;
-      // высота = 2000 + низ 40 + верх 60 = 2100.
-      expectClose(spec.filmCutWidth, 2090, 'ширина 2090');
-      expectClose(spec.filmCutHeight, 2100, 'высота 2100');
+      // Вручную: прибавка по оси — удвоенный больший подворот этой оси.
+      // Ширина = 2000 + 2 × max(лево 40, право 50) = 2000 + 100 = 2100;
+      // высота = 2000 + 2 × max(низ 40, верх 60) = 2000 + 120 = 2120.
+      expectClose(spec.filmCutWidth, 2100, 'ширина 2100');
+      expectClose(spec.filmCutHeight, 2120, 'высота 2120');
+      expectClose(params.hemAxisLeftRightIncrease, 100,
+          'ширина: 2 × max(40, 50) = 100');
+      expectClose(params.hemAxisBottomTopIncrease, 120,
+          'высота: 2 × max(40, 60) = 120');
       expect(params.hasUniformHem, isFalse, reason: 'подвороты разные');
-      expectClose(spec.filmCutWidthWithShrinkage, 2090,
+      expectClose(spec.filmCutWidthWithShrinkage, 2100,
           'у скрина усадки нет (ширина)');
-      expectClose(spec.filmCutHeightWithShrinkage, 2100,
+      expectClose(spec.filmCutHeightWithShrinkage, 2120,
           'у скрина усадки нет (высота)');
     });
   });

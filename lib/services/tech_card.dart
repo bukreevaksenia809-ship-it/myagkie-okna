@@ -177,7 +177,7 @@ class TechCard {
           'люверсы: ${spec.eyeletCount} шт, интервал '
           '${formatMm(params.eyeletStep)} мм (факт. '
           '${spec.eyeletStepLabel}) · '
-          'крепёж: только люверсы'
+          'крепёж: ${spec.fastenerSummary.toLowerCase()}'
       : 'Окантовка: ${spec.edgeBySideSummary} · '
           'плёнка в раскрое с припуском и усадкой: '
           '${formatMm(spec.filmCutWidthWithShrinkage)} × '
@@ -279,8 +279,13 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       description:
           'Отрезать полотно скрина по заготовке: готовый размер '
           '${formatMm(geometry.spanX)} × ${formatMm(geometry.overallHeight)} мм '
-          'плюс подворот по сторонам — ${params.hemBySideLabel} '
-          '(низ/право/верх/лево) → '
+          'плюс прибавка по каждой оси — удвоенный больший подворот этой оси. '
+          'По высоте 2 × max(низ ${formatMm(params.hemBottomMm)}, верх '
+          '${formatMm(params.hemTopMm)}) = '
+          '${formatMm(params.hemAxisBottomTopIncrease)} мм, по ширине '
+          '2 × max(лево ${formatMm(params.hemLeftMm)}, право '
+          '${formatMm(params.hemRightMm)}) = '
+          '${formatMm(params.hemAxisLeftRightIncrease)} мм → '
           '${formatMm(spec.filmCutWidthWithAllowance)} × '
           '${formatMm(spec.filmCutHeightWithAllowance)} мм'
           '${params.hasAllowance ? ', плюс припуск на раскрой '
@@ -296,8 +301,10 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
               '${formatMm(spec.filmCutHeightWithAllowance)} мм',
           note:
               'готовый размер ${formatMm(geometry.spanX)} × '
-              '${formatMm(geometry.overallHeight)} мм плюс подворот по сторонам '
-              '${params.hemBySideShortLabel} (низ/право/верх/лево)',
+              '${formatMm(geometry.overallHeight)} мм плюс 2 × больший подворот '
+              'по оси: высота +${formatMm(params.hemAxisBottomTopIncrease)}, '
+              'ширина +${formatMm(params.hemAxisLeftRightIncrease)} мм '
+              '(подвороты ${params.hemBySideShortLabel}, низ/право/верх/лево)',
         ),
         TechMaterial(
           name: 'Площадь заготовки (габарит) в раскрое',
@@ -312,8 +319,9 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           'кромка ровная без задиров и волн',
       source:
           'WindowSpec.filmCutWidthWithAllowance / filmCutHeightWithAllowance '
-          '(готовый размер + подворот по сторонам: WindowParams.hemBottomMm / '
-          'hemRightMm / hemTopMm / hemLeftMm)',
+          '(готовый размер + 2 × больший подворот по оси: '
+          'WindowParams.hemAxisBottomTopIncrease / hemAxisLeftRightIncrease; '
+          'подвороты hemBottomMm / hemRightMm / hemTopMm / hemLeftMm)',
     );
   } else {
     add(
@@ -379,6 +387,12 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           '$hemBySide (низ/право/верх/лево), всего по периметру '
           '${formatMm(geometry.perimeter)} мм, и сварить горячим воздухом '
           'швом ${formatMm(screenSeamMm)} мм с каждой стороны. '
+          'Запас заготовки под подворот уже заложен по правилу «2 × больший '
+          'подворот по оси»: по высоте +'
+          '${formatMm(params.hemAxisBottomTopIncrease)} мм, по ширине +'
+          '${formatMm(params.hemAxisLeftRightIncrease)} мм — заготовка '
+          '${formatMm(spec.filmCutWidthWithAllowance)} × '
+          '${formatMm(spec.filmCutHeightWithAllowance)} мм. '
           'Скорость сварки $techWeldSpeedHint, режим уточнить пробным швом '
           'на обрезке. Тента и окантовки у скрина нет.',
       materials: [
@@ -404,7 +418,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           '${formatMm(screenSeamMm)} ± 0,5 мм; без прожогов, отслоений и '
           'пропусков; полотно не стянуто',
       source: 'WindowParams.hemBottomMm / hemRightMm / hemTopMm / hemLeftMm; '
-          'screenSeamMm = 3 мм',
+          'запас заготовки — WindowParams.hemAxisBottomTopIncrease / '
+          'hemAxisLeftRightIncrease; screenSeamMm = 3 мм',
     );
   } else {
     add(
@@ -544,6 +559,15 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       .where((eyelet) => layers.typeFor(eyelet).isRound)
       .length;
   final ovalCount = spec.eyeletCount - roundCount;
+  // Крепёж подвижных сторон. У скрина он ставится по подвороту, у ПВХ — по
+  // окантовке, но правило сторон одно: низ и бока, сверху саморезы или
+  // люверсы. Тип крепежа у скрина больше не игнорируется.
+  final fastenerNote = isScreen
+      ? '${spec.fastenerSummary}.'
+      : params.isLifting
+          ? '${spec.fastenerSummary}: сверху ряд люверсов под саморезы, '
+              'низ и бока — ${params.fastenerType.label.toLowerCase()}.'
+          : 'Крепёж: ${spec.fastenerSummary.toLowerCase()}.';
   add(
     kind: TechOperationKind.eyelets,
     title: 'Люверсы',
@@ -558,11 +582,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         '${params.hasEyeletlessSides ? 'Люверсы не ставятся на сторонах: '
             '${layers.eyeletlessSidesLabel} — сторона остаётся без крепежа '
             '(там спайка с соседним окном или крепление к стене). ' : ''}'
-        '${isScreen ? 'Люверсы ставятся по линии подворота; крепёж скрина — '
-                  'только люверсы, без скоб, замков и ремней.' : params.isLifting ? '${spec.fastenerSummary}: сверху ряд люверсов под '
-                  'саморезы, низ и бока — '
-                  '${params.fastenerType.label.toLowerCase()}.' : 'Крепёж: '
-                  '${spec.fastenerSummary.toLowerCase()}.'}',
+        '$fastenerNote',
     materials: [
       if (roundCount > 0)
         TechMaterial(
@@ -581,7 +601,10 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           unit: 'шт',
           note: 'кроме углов',
         ),
-      if (params.isLifting && !isScreen) ...[
+      // Скрин съёмный: саморезы по верху и выбранный крепёж по низу и бокам
+      // есть и у него. У «только люверсы» отдельной строки крепежа нет —
+      // люверсы уже посчитаны выше.
+      if (params.isLifting || isScreen) ...[
         // Саморезов нет, если верхняя сторона оставлена без люверсов.
         if (layers.topEyelets.isNotEmpty)
           TechMaterial(
@@ -591,15 +614,20 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
             unit: 'шт',
             note: 'верхняя кромка крепится к раме',
           ),
-        if (layers.movableSideEyelets.isNotEmpty)
+        if (layers.movableSideEyelets.isNotEmpty &&
+            (params.isLifting ||
+                (isScreen && params.fastenerType != FastenerType.eyeletsOnly)))
           TechMaterial(
             name:
                 'Крепёж низа и боков: '
-                '${params.fastenerType.label.toLowerCase()}',
+                '${params.fastenerType.label.toLowerCase()}'
+                '${isScreen ? ' (по подвороту)' : ''}',
             size: '${layers.movableSideEyelets.length} шт',
             quantity: layers.movableSideEyelets.length.toDouble(),
             unit: 'шт',
-            note: 'кроме углов — там круглые люверсы',
+            note: isScreen
+                ? 'кроме углов — там круглые люверсы; полоса крепежа — подворот'
+                : 'кроме углов — там круглые люверсы',
           ),
       ],
     ],

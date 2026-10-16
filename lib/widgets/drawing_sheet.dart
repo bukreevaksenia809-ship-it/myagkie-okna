@@ -810,8 +810,11 @@ class _SidePanel extends StatelessWidget {
     final windows = project.windows;
     final params = windows.first;
     final anyLifting = windows.any((window) => window.isLifting);
-    final anyMovable =
-        windows.any((window) => window.windowType != WindowType.fixed);
+    // Подвижный крепёж (скобы, замки, ремни) есть и у скрина — он ставится по
+    // подвороту независимо от типа окна.
+    final anyMovable = windows.any(
+      (window) => window.isScreen || window.windowType != WindowType.fixed,
+    );
     final anyZipper = windows.any((window) => window.hasZipper);
     final anyCutout = windows.any((window) => window.cutouts.isNotEmpty);
     final anyWeld = windows.any((window) => window.weldedSides.isNotEmpty);
@@ -845,12 +848,32 @@ class _SidePanel extends StatelessWidget {
             ? 'Люверс ${params.eyeletType.label.toLowerCase()} по подвороту'
             : 'Люверс ${params.eyeletType.label.toLowerCase()}'
       ),
-      if (anyMovable && !params.isScreen)
+      if (anyMovable)
         switch (params.fastenerType) {
-          FastenerType.turnBuckles => (LegendKind.buckle, 'Поворотная скоба'),
-          FastenerType.frenchLocks => (LegendKind.lock, 'Французский замок'),
-          FastenerType.straps => (LegendKind.strap, 'Силиконовый ремень'),
-          FastenerType.eyeletsOnly => (LegendKind.eyelet, 'Крепление саморезами'),
+          FastenerType.turnBuckles => (
+              LegendKind.buckle,
+              params.isScreen
+                  ? 'Поворотная скоба по подвороту'
+                  : 'Поворотная скоба'
+            ),
+          FastenerType.frenchLocks => (
+              LegendKind.lock,
+              params.isScreen
+                  ? 'Французский замок по подвороту'
+                  : 'Французский замок'
+            ),
+          FastenerType.straps => (
+              LegendKind.strap,
+              params.isScreen
+                  ? 'Силиконовый ремень по подвороту'
+                  : 'Силиконовый ремень'
+            ),
+          FastenerType.eyeletsOnly => (
+              LegendKind.eyelet,
+              params.isScreen
+                  ? 'Саморезы по верхней кромке'
+                  : 'Крепление саморезами'
+            ),
         },
       if (anyLifting) (LegendKind.liftStrap, 'Подъёмный ремень 50×500 мм'),
       if (anyZipper)
@@ -1070,7 +1093,11 @@ class _SidePanel extends StatelessWidget {
       if (first.isScreen)
         'Скрин: подворот по сторонам ${first.hemBySideLabel} '
             '(низ/право/верх/лево), шов '
-            '${formatMm(screenSeamMm)} мм; тента и окантовки нет'
+            '${formatMm(screenSeamMm)} мм; заготовка = готовый размер плюс '
+            '2 × больший подворот по каждой оси — '
+            '${formatMm(specs.first.filmCutWidthWithAllowance)} × '
+            '${formatMm(specs.first.filmCutHeightWithAllowance)} мм; '
+            'тента и окантовки нет'
       else
         'Окантовка складывается пополам, запайка плёнки под окантовку '
             '${formatMm(first.weldOverlapMm)} мм по всему периметру',

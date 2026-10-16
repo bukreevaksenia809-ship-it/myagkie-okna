@@ -605,7 +605,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
   ///
   /// У каждой стороны свои пресеты 40/50/60 и числовое поле (10…150 мм);
   /// панель узкая (420 px), поэтому строка собрана из подписи, компактных
-  /// чипов и поля. Внизу — итог: какой получится заготовка.
+  /// чипов и поля. Внизу — итог: какой получится заготовка и как она
+  /// посчитана по каждой оси (прибавка — удвоенный больший подворот).
   Widget _hemSection(WindowSpec spec) {
     final params = spec.params;
     return Column(
@@ -625,10 +626,29 @@ class _ParamsPanelState extends State<ParamsPanel> {
           'Заготовка будет '
           '${formatMm(spec.filmCutWidthWithAllowance)} × '
           '${formatMm(spec.filmCutHeightWithAllowance)} мм: готовый размер '
-          'плюс подворот по сторонам. Шов сварки '
-          '${formatMm(screenSeamMm)} мм.',
+          'плюс прибавка по оси — удвоенный больший подворот этой оси. Шов '
+          'сварки ${formatMm(screenSeamMm)} мм.',
           key: const Key('hem-blank-label'),
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          spec.screenBlankHeightFormulaLabel,
+          key: const Key('hem-height-formula'),
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF0B62C4),
+          ),
+        ),
+        Text(
+          spec.screenBlankWidthFormulaLabel,
+          key: const Key('hem-width-formula'),
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF0B62C4),
+          ),
         ),
       ],
     );
@@ -850,12 +870,14 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 ? 'Скрин — самостоятельная технология: серое полотно '
                     'подворачивается по периметру, подворот задаётся на каждую '
                     'сторону (низ, право, верх, лево — обычно 40/50/60 мм), шов '
-                    '${formatMm(screenSeamMm)} мм, крепёж — только люверсы по '
-                    'линии подворота. Молния ставится в полосу из скрина '
+                    '${formatMm(screenSeamMm)} мм, крепёж ложится по подвороту: '
+                    'люверсы, а по низу и бокам — скобы, замки или ремни '
+                    '(сверху саморезы). Молния ставится в полосу из скрина '
                     '(подворот или накладная полоса) со швом '
                     '${formatMm(screenSeamMm)} мм по краям. Тента и окантовки у '
-                    'скрина нет: заготовка равна готовому размеру плюс подворот '
-                    'по сторонам.'
+                    'скрина нет: заготовка равна готовому размеру плюс прибавка '
+                    'по каждой оси — удвоенный больший подворот этой оси '
+                    '(низ 40 и верх 60 дают по высоте +120 мм).'
                 : 'Каждое окно рисуется слоями: окантовка (складывается '
                     'пополам), запайка плёнки под окантовку, плёнка, люверсы и '
                     'крепёж. Номера окон подписываются на листе, раскладка '
@@ -1010,8 +1032,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 const SizedBox(height: 8),
                 Text(
                   'Усадки у скрина нет; нужен запас — добавьте припуск на '
-                  'раскрой в разделе выше. Подворот каждой стороны входит '
-                  'в заготовку своей стороны.',
+                  'раскрой в разделе выше. В заготовку идёт не сумма подворотов, '
+                  'а удвоенный больший подворот каждой оси — поэтому (низ 40, '
+                  'верх 60) даёт по высоте +120 мм.',
                   style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF66748A),
@@ -1218,37 +1241,40 @@ class _ParamsPanelState extends State<ParamsPanel> {
               const SizedBox(height: 6),
               Text(
                 params.isScreen
-                    ? 'Люверсы ставятся по линии подворота: у скрина других '
-                        'креплений нет.'
+                    ? 'Люверсы ставятся по линии подворота; по ней же ложится '
+                        'и выбранный крепёж скрина.'
                     : 'Люверсы ставятся от углов: при 0 мм первый люверс стоит в углу.',
                 style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
               ),
               const SizedBox(height: 12),
               _noEyeletsSection(params),
-              if (!params.isScreen) ...[
-                const SizedBox(height: 14),
-                Text(
-                  params.windowType == WindowType.fixed
-                      ? 'Крепление к каркасу'
-                      : 'Крепёж подвижных сторон (низ и бока)',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF5B6B80),
-                  ),
+              const SizedBox(height: 14),
+              Text(
+                params.isScreen
+                    ? 'Крепёж скрина (низ и бока, по подвороту)'
+                    : (params.windowType == WindowType.fixed
+                        ? 'Крепление к каркасу'
+                        : 'Крепёж подвижных сторон (низ и бока)'),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF5B6B80),
                 ),
+              ),
+              const SizedBox(height: 6),
+              _chips<FastenerType>(
+                values: FastenerType.values,
+                selected: params.fastenerType,
+                labelOf: (value) => value.label,
+                onSelected: (value) =>
+                    _updateWindow(params.copyWith(fastenerType: value)),
+              ),
+              if (params.isScreen) ...[
                 const SizedBox(height: 6),
-                _chips<FastenerType>(
-                  values: FastenerType.values,
-                  selected: params.fastenerType,
-                  labelOf: (value) => value.label,
-                  onSelected: (value) =>
-                      _updateWindow(params.copyWith(fastenerType: value)),
-                ),
-              ] else ...[
-                const SizedBox(height: 10),
                 const Text(
-                  'Крепёж скрина — только люверсы: поворотные скобы, '
-                  'французские замки и ремни не применяются.',
+                  'У скрина крепёж доступен любой: скобы, замки и ремни '
+                  'ставятся по подвороту — по низу и бокам, сверху саморезы '
+                  'или люверсы. В углах по-прежнему круглые люверсы; размер '
+                  'крепежа считается по ширине подворота своей стороны.',
                   style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
                 ),
               ],
@@ -1384,8 +1410,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
               if (params.isScreen) ...[
                 const Text(
                   'У скрина усадки нет: заготовка равна готовому размеру плюс '
-                  'подворот по сторонам. Нужен запас — добавьте припуск на '
-                  'раскрой.',
+                  'прибавка по каждой оси — удвоенный больший подворот этой оси. '
+                  'Нужен запас — добавьте припуск на раскрой.',
                   style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
                 ),
                 const SizedBox(height: 12),
@@ -2291,7 +2317,7 @@ class _CuttingCard extends StatelessWidget {
       ),
       (
         params.isScreen
-            ? 'Заготовка: готовый размер + подворот по сторонам '
+            ? 'Заготовка: готовый размер + 2 × больший подворот по оси '
                 '${params.hemBySideShortLabel}'
                 '${params.hasAllowance ? ' и припуск' : ''}'
             : 'Заготовка с запайкой ${formatMm(params.weldOverlapMm)} мм'
