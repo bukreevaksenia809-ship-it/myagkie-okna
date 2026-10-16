@@ -19,7 +19,7 @@ git-тег `myagkie-okna-1`, архивы исходников и веб-сбо�
 
 | Версия | Ссылка | Живёт до |
 |---|---|---|
-| **Мягкие окна Excl** (текущая) | https://myagkie-okna-excl--demo-ysodwqfm.web.app | 13 ноября 2026, 23:00 |
+| **Мягкие окна Excl** (текущая) | https://myagkie-okna-excl--demo-ysodwqfm.web.app | 15 ноября 2026, 22:18 |
 | **Мягкие окна 1** (зафиксирована) | https://okna-7dbf8--demo-yuif0q4a.web.app | 13 ноября 2026, 15:10 |
 
 Это временные preview-каналы Firebase Hosting: они исчезают сами. Как продлить
