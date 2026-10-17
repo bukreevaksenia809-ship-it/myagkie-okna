@@ -571,12 +571,31 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
   // Крепёж подвижных сторон. У скрина он ставится по подвороту, у ПВХ — по
   // окантовке, но правило сторон одно: низ и бока, сверху саморезы или
   // люверсы. Тип крепежа у скрина больше не игнорируется.
-  final fastenerNote = isScreen
-      ? '${spec.fastenerSummary}.'
-      : params.isLifting
-          ? '${spec.fastenerSummary}: сверху ряд люверсов под саморезы, '
-              'низ и бока — ${params.fastenerType.label.toLowerCase()}.'
-          : 'Крепёж: ${spec.fastenerSummary.toLowerCase()}.';
+  // Числа крепежа — те же, что в расходе и смете: точки низа и боков без
+  // углов плюс саморезы верхнего ряда.
+  final movableFastenerCount = layers.movableSideEyelets.length;
+  final topScrewCount = layers.topEyelets.length;
+  final String fastenerNote;
+  if (params.fastenerType == FastenerType.eyeletsOnly) {
+    fastenerNote = isScreen
+        ? '${spec.fastenerSummary}. Отдельного крепежа низа и боков нет — '
+            'только люверсы.'
+        : params.isLifting
+            ? '${spec.fastenerSummary}: сверху ряд люверсов под саморезы '
+                '($topScrewCount шт), отдельных скоб, замков и ремней нет.'
+            : 'Крепёж: ${spec.fastenerSummary.toLowerCase()}.';
+  } else {
+    fastenerNote = isScreen
+        ? '${spec.fastenerSummary}: сверху саморезы ($topScrewCount шт), '
+            'низ и бока — ${params.fastenerType.label.toLowerCase()} '
+            '($movableFastenerCount шт).'
+        : params.isLifting
+            ? '${spec.fastenerSummary}: сверху ряд люверсов под саморезы '
+                '($topScrewCount шт), низ и бока — '
+                '${params.fastenerType.label.toLowerCase()} '
+                '($movableFastenerCount шт).'
+            : 'Крепёж: ${spec.fastenerSummary.toLowerCase()}.';
+  }
   add(
     kind: TechOperationKind.eyelets,
     title: 'Люверсы',
@@ -623,9 +642,12 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
             unit: 'шт',
             note: 'верхняя кромка крепится к раме',
           ),
+        // Строка крепежа есть только у реального крепежа: у «только люверсы»
+        // её нет ни на ПВХ, ни на скрине — иначе техкарта разошлась бы с
+        // расходом (там fastenerCount для этого типа равен нулю).
         if (layers.movableSideEyelets.isNotEmpty &&
-            (params.isLifting ||
-                (isScreen && params.fastenerType != FastenerType.eyeletsOnly)))
+            params.fastenerType != FastenerType.eyeletsOnly &&
+            (params.isLifting || isScreen))
           TechMaterial(
             name:
                 'Крепёж низа и боков: '

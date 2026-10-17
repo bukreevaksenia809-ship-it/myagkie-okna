@@ -47,6 +47,28 @@ class CostsSummary {
         final type = spec.layers.typeFor(eyelet);
         eyeletsByType.update(type, (value) => value + 1, ifAbsent: () => 1);
       }
+      // Крепёж подвижных сторон: скоба, замок или ремень ставится в каждую
+      // точку низа и боков, кроме углов (в углу круглый люверс). Точек ровно
+      // столько, сколько люверсов в `movableSideEyelets`, — по ним же
+      // считаются строки сметы и материалы техкарты.
+      //
+      // «Только люверсы» отдельного крепежа не имеет: 0, люверс уже в расходе
+      // выше. Скрин считается по тому же правилу — его крепёж давно разрешён
+      // и ставится по подвороту.
+      final fastenerType = spec.params.fastenerType;
+      if (fastenerType != FastenerType.eyeletsOnly) {
+        final count = spec.layers.movableSideEyelets.length;
+        if (count > 0) {
+          fastenerCount.update(fastenerType, (value) => value + count,
+              ifAbsent: () => count);
+        }
+      }
+      // Саморезы верхнего ряда: у подъёмного окна и у скрина верх крепится
+      // к раме саморезами. У глухого ПВХ верхнего ряда нет — он весь на
+      // саморезах по окантовке, отдельной строкой не считается.
+      if (spec.params.isLifting || spec.params.isScreen) {
+        screwCount += spec.layers.topEyelets.length;
+      }
       // Молний в окне может быть две — считаем каждую полосу отдельно,
       // иначе смета на окно с двумя молниями занижается вдвое.
       //
@@ -137,6 +159,19 @@ class CostsSummary {
   final Map<double, double> edgeByRoll = {};
 
   final Map<EyeletType, int> eyeletsByType = {};
+
+  /// Крепёж подвижных сторон по типам (низ и бока, кроме углов).
+  ///
+  /// У «только люверсы» записи нет вовсе: люверсы считаются отдельно.
+  /// У скрина крепёж ставится по подвороту и попадает сюда же.
+  final Map<FastenerType, int> fastenerCount = {};
+
+  /// Всего крепежа подвижных сторон, шт.
+  int get fastenerTotal =>
+      fastenerCount.values.fold(0, (sum, value) => sum + value);
+
+  /// Саморезы верхнего ряда (подъёмные окна и скрин), шт.
+  int screwCount = 0;
 
   int get eyeletTotal =>
       eyeletsByType.values.fold(0, (sum, value) => sum + value);
@@ -233,6 +268,16 @@ class CostsSummary {
       ..sort((a, b) => b.value.compareTo(a.value));
     return [
       for (final entry in entries) '${entry.key.label} — ${entry.value} шт',
+    ];
+  }
+
+  /// Подписи крепежа по типам: «Французский замок — 12 шт».
+  List<String> get fastenerLabels {
+    final entries = fastenerCount.entries.toList()
+      ..sort((a, b) => a.key.index.compareTo(b.key.index));
+    return [
+      for (final entry in entries)
+        '${entry.key.itemTitle} — ${entry.value} шт',
     ];
   }
 

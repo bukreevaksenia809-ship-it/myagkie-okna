@@ -246,6 +246,15 @@ enum FastenerType {
   const FastenerType(this.label);
 
   final String label;
+
+  /// Название крепежа в единственном числе — для сметы и ведомости, где
+  /// строка считается за штуку: «Поворотная скоба — 12 шт».
+  String get itemTitle => switch (this) {
+        FastenerType.eyeletsOnly => 'Только люверсы',
+        FastenerType.turnBuckles => 'Поворотная скоба',
+        FastenerType.frenchLocks => 'Французский замок',
+        FastenerType.straps => 'Силиконовый ремень',
+      };
 }
 
 /// Как расположена верхняя кромка относительно нижней.

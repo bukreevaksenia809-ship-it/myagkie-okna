@@ -62,6 +62,12 @@ enum _AllowanceField {
 /// Разумный предел припуска на раскрой, мм.
 const double _maxAllowanceMm = 500;
 
+/// Шаг ползунков положения выреза, мм.
+///
+/// Вырез двигают мышью по видимой плёнке; шаг 10 мм совпадает с точностью
+/// замера и не даёт «дрожащих» дробных чисел в поле.
+const double _cutoutSliderStepMm = 10;
+
 class _ParamsPanelState extends State<ParamsPanel> {
   static const _windowFields = <ParamField>[
     ParamField.bottomWidth,
@@ -293,6 +299,17 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _CutoutField.height => cutout.height,
     _CutoutField.centerX => cutout.centerXMm,
     _CutoutField.centerY => cutout.centerYMm,
+  };
+
+  /// Суффикс ключа поля выреза: w/h/x/y.
+  ///
+  /// По нему тесты и панель находят поле и ползунок конкретной оси
+  /// (`cutout-0-x-field`, `cutout-0-x-slider`).
+  String _cutoutAxisName(_CutoutField field) => switch (field) {
+    _CutoutField.width => 'w',
+    _CutoutField.height => 'h',
+    _CutoutField.centerX => 'x',
+    _CutoutField.centerY => 'y',
   };
 
   /// Синхронизация полей «своя ширина, мм» окантовки: текст переписывается
@@ -1982,6 +1999,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
   Widget _cutoutCard(WindowParams params, int index) {
     final cutout = params.cutouts[index];
     final isCircle = cutout.shape == CutoutShape.circle;
+    // Границы хода выреза — видимая плёнка изделия (внутренняя граница
+    // окантовки/подворота). Берём готовые геттеры спецификации, чтобы не
+    // пересчитывать окантовку руками.
+    final spec = WindowSpec.of(params);
+    final maxX = spec.filmVisibleWidth;
+    final maxY = spec.filmVisibleHeight;
     return _panelCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2086,9 +2109,125 @@ class _ParamsPanelState extends State<ParamsPanel> {
               ),
             ],
           ),
+          // Ползунки двигают центр выреза мышью по видимой плёнке. Числовые
+          // поля выше остаются: мелкое значение удобнее ввести руками,
+          // а положение — подобрать ползунком.
+          const SizedBox(height: 6),
+          _cutoutSlider(
+            index: index,
+            field: _CutoutField.centerX,
+            value: cutout.centerXMm,
+            maxMm: maxX,
+          ),
+          _cutoutSlider(
+            index: index,
+            field: _CutoutField.centerY,
+            value: cutout.centerYMm,
+            maxMm: maxY,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'По видимой плёнке: 0…${formatMm(maxX)} мм по горизонтали, '
+            '0…${formatMm(maxY)} мм по вертикали, шаг '
+            '${formatMm(_cutoutSliderStepMm)} мм.',
+            style: const TextStyle(fontSize: 10.5, color: Color(0xFF66748A)),
+          ),
         ],
       ),
     );
+  }
+
+  /// Ползунок положения выреза по одной оси.
+  ///
+  /// Диапазон — видимая плёнка изделия, шаг [_cutoutSliderStepMm]. Значение
+  /// всегда берётся из модели, поэтому ползунок и числовое поле показывают
+  /// одно и то же: тянем ползунок — число переписывается через
+  /// [_syncController], вводим число — ползунок встаёт на место.
+  Widget _cutoutSlider({
+    required int index,
+    required _CutoutField field,
+    required double value,
+    required double maxMm,
+  }) {
+    final isX = field == _CutoutField.centerX;
+    final axis = _cutoutAxisName(field);
+    // Меньше шага двигать нечего: ползунок показываем, но выключаем.
+    final limit = maxMm.isFinite && maxMm > 0 ? maxMm : 0.0;
+    final enabled = limit >= _cutoutSliderStepMm;
+    // Число из поля может выйти за видимую плёнку (ввели руками) — ползунок
+    // показываем в пределах диапазона, иначе Slider упадёт на проверке.
+    final clamped = value.clamp(0.0, limit).toDouble();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                isX ? 'Положение по горизонтали' : 'Положение по вертикали',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  color: Color(0xFF5B6B80),
+                ),
+              ),
+            ),
+            Text(
+              '${isX ? 'по горизонтали' : 'по вертикали'}: '
+              '${formatMm(clamped)} мм',
+              key: Key('cutout-$index-$axis-value'),
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF0B62C4),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(
+          // Стандартные 48 px раздувают карточку, а панель узкая (420 px).
+          height: 34,
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              // Подпись значения стоит над ползунком — пузырёк не нужен.
+              showValueIndicator: ShowValueIndicator.never,
+            ),
+            child: Slider(
+              key: Key('cutout-$index-$axis-slider'),
+              min: 0,
+              max: enabled ? limit : _cutoutSliderStepMm,
+              divisions: enabled
+                  ? (limit / _cutoutSliderStepMm).round()
+                  : null,
+              value: enabled ? clamped : 0,
+              onChanged: enabled
+                  ? (raw) => _onCutoutSliderChanged(index, field, raw)
+                  : null,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Движение ползунка выреза: значение округляется до шага 10 мм.
+  ///
+  /// Ошибку числового поля снимаем — ползунок всегда даёт корректное число.
+  void _onCutoutSliderChanged(int index, _CutoutField field, double raw) {
+    final cutouts = _params.cutouts;
+    if (index < 0 || index >= cutouts.length) return;
+    if (field != _CutoutField.centerX && field != _CutoutField.centerY) {
+      return;
+    }
+    final snapped = (raw / _cutoutSliderStepMm).round() * _cutoutSliderStepMm;
+    final cutout = cutouts[index];
+    setState(() => _cutoutErrors[(index, field)] = null);
+    final updated = field == _CutoutField.centerX
+        ? cutout.copyWith(centerXMm: snapped)
+        : cutout.copyWith(centerYMm: snapped);
+    _updateWindow(_params.updateCutout(index, updated));
   }
 
   Widget _cutoutField({
@@ -2098,6 +2237,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     required String label,
   }) {
     return TextField(
+      key: Key('cutout-$index-${_cutoutAxisName(field)}-field'),
       controller: _cutoutControllers.putIfAbsent((
         index,
         field,

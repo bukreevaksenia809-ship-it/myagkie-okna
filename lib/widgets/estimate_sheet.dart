@@ -33,10 +33,17 @@ class EstimateSheet extends StatelessWidget {
   static Size? sheetSize(OrderProject project, Size viewport) {
     final paperWidth = math.max(viewport.width - 48, 1320.0);
     // Строк примерно: шапка, три раздела и позиции; на каждое окно заказа
-    // добавляются плёнка, окантовка, люверсы, спецэлементы и работы.
+    // добавляются плёнка, окантовка, люверсы, спецэлементы и работы, а также
+    // строки крепежа: тип крепежа низа и боков и саморезы верхнего ряда.
+    // Крепёж есть у подъёмного окна и у скрина; у глухого ПВХ строк нет.
     // Точное число позиций зависит от цен и набора спецэлементов, поэтому
     // берём запас — лучше чуть выше лист, чем обрезанный PDF.
-    final approxRows = 9 + project.windowCount * 6;
+    final fastenerRows = project.windows.fold<int>(0, (sum, window) {
+      if (!window.isLifting && !window.isScreen) return sum;
+      return sum +
+          (window.fastenerType == FastenerType.eyeletsOnly ? 1 : 2);
+    });
+    final approxRows = 9 + project.windowCount * 6 + fastenerRows;
     final contentHeight = _captionHeight +
         16 +
         approxRows * rowHeight +

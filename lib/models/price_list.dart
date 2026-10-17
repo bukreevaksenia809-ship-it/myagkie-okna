@@ -496,6 +496,18 @@ class PriceList {
       (type == EyeletType.round10 ? eyeletPrice : eyeletOvalPrice) +
       (isEnabled(PriceItemKeys.eyeletInstall) ? eyeletInstall : 0);
 
+  /// Цена крепежа подвижных сторон по типу, ₽/шт.
+  ///
+  /// У «только люверсы» своего крепежа нет — 0: люверс уже посчитан своей
+  /// строкой. Силиконовый ремень считается по цене ремня: это одна позиция
+  /// прайса на подъёмный и на силиконовый ремень.
+  double fastenerPerEach(FastenerType type) => switch (type) {
+        FastenerType.eyeletsOnly => 0,
+        FastenerType.turnBuckles => turnBucklePrice,
+        FastenerType.frenchLocks => frenchLockPrice,
+        FastenerType.straps => strapPrice,
+      };
+
   /// Цена позиции панели цен по её полю.
   ///
   /// Чужая группа возвращает 0 — панель не должна падать, если перепутает

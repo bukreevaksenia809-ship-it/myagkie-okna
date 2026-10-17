@@ -27,10 +27,13 @@ class CostsSheet extends StatelessWidget {
   /// Размер листа расхода. null — лист заполняет окно программы.
   static Size? sheetSize(OrderProject project, Size viewport) {
     final paperWidth = math.max(viewport.width - 48, 1320.0);
+    // Блоки итогов идут Wrap по 300 px: с блоком крепежа их стало на один
+    // больше, поэтому закладываем запас по высоте — лист не должен обрезать
+    // последний ряд блоков.
     final contentHeight = _captionHeight +
         150 +
         (project.windowCount + 1) * rowHeight +
-        250 +
+        330 +
         titleBlockHeight +
         _outerPadding * 2;
     if (contentHeight <= viewport.height) return null;
@@ -146,6 +149,14 @@ class CostsSheet extends StatelessWidget {
           'подворот ${spec.params.hemBySideShortLabel} + шов '
               '${formatMm(screenSeamMm)}',
         if (spec.strapCount > 0) 'ремни ${spec.strapCount}',
+        // Крепёж подвижных сторон — по числу точек низа и боков (без углов).
+        if (spec.params.fastenerType != FastenerType.eyeletsOnly &&
+            spec.layers.movableSideEyelets.isNotEmpty)
+          '${spec.params.fastenerType.itemTitle.toLowerCase()} '
+              '${spec.layers.movableSideEyelets.length}',
+        if ((spec.params.isLifting || spec.params.isScreen) &&
+            spec.layers.topEyelets.isNotEmpty)
+          'саморезы ${spec.layers.topEyelets.length}',
         if (spec.params.drainHoles && !spec.params.isScreen)
           'дренаж ${spec.params.drainCount.round()}',
       ];
@@ -283,6 +294,20 @@ class CostsSheet extends StatelessWidget {
         ...summary.eyeletLabels,
         'Всего: ${summary.eyeletTotal} шт',
       ]),
+      if (summary.fastenerTotal > 0 || summary.screwCount > 0)
+        ('Крепёж подвижных сторон', [
+          if (summary.fastenerLabels.isEmpty)
+            'Скобы, замки и ремни: —'
+          else
+            ...summary.fastenerLabels,
+          if (summary.fastenerTotal > 0)
+            'Всего крепежа: ${summary.fastenerTotal} шт',
+          if (summary.screwCount > 0)
+            'Саморезы верхнего ряда: ${summary.screwCount} шт',
+          if (summary.fastenerTotal > 0)
+            'Ставится по низу и бокам, в точках люверсов; в углах — круглый '
+                'люверс, отдельного крепежа там нет',
+        ]),
       ('Сопутствующие материалы', [
         if (summary.extraLabels.isEmpty) '—',
         ...summary.extraLabels,

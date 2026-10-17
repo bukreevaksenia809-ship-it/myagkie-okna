@@ -198,6 +198,44 @@ class Estimate {
       ));
     }
 
+    // --- Фурнитура: крепёж подвижных сторон по типам --------------------
+    // Скоба, замок и ремень ставятся в каждую точку низа и боков, кроме
+    // углов. Люверс под них — отдельная строка выше: замок ставится через
+    // люверс, и это две разные позиции прайса.
+    final fastenerEntries = summary.fastenerCount.entries.toList()
+      ..sort((a, b) => a.key.index.compareTo(b.key.index));
+    for (final entry in fastenerEntries) {
+      if (entry.value <= 0) continue;
+      final itemKey = _fastenerItemKey(entry.key);
+      if (!prices.isEnabled(itemKey)) continue;
+      final unitPrice = prices.fastenerPerEach(entry.key);
+      lines.add(EstimateLine(
+        title: entry.key.itemTitle,
+        note: '${entry.value} шт × ${_unitPriceLabel(unitPrice)} ₽/шт — '
+            'низ и бока, в точках люверсов (люверс — отдельной строкой)',
+        quantity: entry.value.toDouble(),
+        unit: 'шт',
+        unitPrice: unitPrice,
+        group: EstimateGroup.hardware,
+        itemKey: itemKey,
+      ));
+    }
+
+    // Саморезы верхнего ряда: у подъёмного окна и скрина верх идёт к раме.
+    if (summary.screwCount > 0 && prices.isEnabled(PriceItemKeys.screw)) {
+      lines.add(EstimateLine(
+        title: 'Саморезы верхнего ряда',
+        note: '${summary.screwCount} шт × '
+            '${_unitPriceLabel(prices.screwPrice)} ₽/шт — верхняя кромка '
+            'крепится к раме',
+        quantity: summary.screwCount.toDouble(),
+        unit: 'шт',
+        unitPrice: prices.screwPrice,
+        group: EstimateGroup.hardware,
+        itemKey: PriceItemKeys.screw,
+      ));
+    }
+
     if (summary.zipperCount > 0 &&
         summary.zipperBandLengthMm > 0 &&
         prices.isEnabled(PriceItemKeys.zipper)) {
@@ -399,6 +437,17 @@ class Estimate {
   /// Пустая ли смета (нет позиций).
   bool get isEmpty => lines.isEmpty;
 }
+
+/// Ключ позиции прайса для типа крепежа: скоба, замок, ремень.
+///
+/// У «только люверсы» своего крепежа нет, строки для него не бывает —
+/// возвращаем ключ ремня как безопасный запасной вариант.
+String _fastenerItemKey(FastenerType type) => switch (type) {
+      FastenerType.eyeletsOnly => PriceItemKeys.strap,
+      FastenerType.turnBuckles => PriceItemKeys.turnBuckle,
+      FastenerType.frenchLocks => PriceItemKeys.frenchLock,
+      FastenerType.straps => PriceItemKeys.strap,
+    };
 
 /// Сумма дренажных отверстий по заказу.
 ///
