@@ -19,7 +19,7 @@ git-тег `myagkie-okna-1`, архивы исходников и веб-сбо�
 
 | Версия | Ссылка | Живёт до |
 |---|---|---|
-| **Мягкие окна Excl** (текущая) | https://myagkie-okna-excl--demo-ysodwqfm.web.app | 15 ноября 2026, 22:18 |
+| **Мягкие окна Excl** (текущая) | https://myagkie-okna-excl--demo-ysodwqfm.web.app | 16 ноября 2026, 15:39 |
 | **Мягкие окна 1** (зафиксирована) | https://okna-7dbf8--demo-yuif0q4a.web.app | 13 ноября 2026, 15:10 |
 
 Это временные preview-каналы Firebase Hosting: они исчезают сами. Как продлить
@@ -672,7 +672,7 @@ flutter pub get
 flutter run -d macos          # r — горячая перезагрузка, q — выход
 
 flutter analyze               # статический анализ
-flutter test                  # 302 теста
+flutter test                  # 361 тест
 flutter test test/drawing_preview_test.dart   # превью в build/preview/
 flutter test test/four_tasks_preview_test.dart  # превью: скрин с молнией,
                               # окна без люверсов сверху/снизу
@@ -700,7 +700,7 @@ lib/
   widgets/costs_sheet.dart       ведомость расхода материалов
   widgets/orders_panel.dart      раздел «Заказы» в панели
   widgets/window_painter.dart    отрисовка слоёв окна
-test/                            302 теста + генераторы превью
+test/                            361 тест + генераторы превью
 docs/                            примеры готовых листов
 ```
 

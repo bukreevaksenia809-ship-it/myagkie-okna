@@ -2173,7 +2173,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
             ),
             Text(
               '${isX ? 'по горизонтали' : 'по вертикали'}: '
-              '${formatMm(clamped)} мм',
+              '${formatMm(value)} мм',
               key: Key('cutout-$index-$axis-value'),
               style: const TextStyle(
                 fontSize: 11.5,
