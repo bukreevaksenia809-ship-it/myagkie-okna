@@ -47,6 +47,9 @@ enum PriceField {
         PriceField.edge240 => 'Тент 240',
       };
 
+  /// Ключ позиции прайса: имя поля уже совпадает с [PriceItemKeys].
+  String get itemKey => name;
+
   /// Единица измерения цены.
   String get unit => switch (this) {
         PriceField.filmClear ||
@@ -56,6 +59,78 @@ enum PriceField {
           '₽/м²',
         _ => '₽/м',
       };
+}
+
+/// Ключи позиций прайса — одно место для модели, панели цен и сметы.
+///
+/// Ключ — стабильная строка: она лежит в JSON заказа, поэтому имена не
+/// переименовываются при рефакторинге. Ключи плёнки и окантовки совпадают с
+/// именами [PriceField] (`PriceField.filmClear.name == filmClear`), чтобы
+/// лист «Смета» мог показывать выключенные позиции без отдельной таблицы.
+///
+/// Позиция — это строка прайса с ценой за единицу. Проценты расчёта
+/// (наценка, скидка, НДС) — настройки, а не позиции: их не выключают, у них
+/// своё значение (0 % = не считать).
+class PriceItemKeys {
+  PriceItemKeys._();
+
+  // Полотно.
+  static const String filmClear = 'filmClear';
+  static const String filmTinted = 'filmTinted';
+  static const String filmMesh = 'filmMesh';
+  static const String filmScreen = 'filmScreen';
+
+  // Окантовка.
+  static const String edge80 = 'edge80';
+  static const String edge100 = 'edge100';
+  static const String edge120 = 'edge120';
+  static const String edge200 = 'edge200';
+  static const String edge240 = 'edge240';
+
+  // Фурнитура.
+  static const String eyeletRound = 'eyeletRound';
+  static const String eyeletOval = 'eyeletOval';
+
+  /// Установка люверса: отдельной строки в смете нет (она входит в цену
+  /// люверса), поэтому выключение убирает из цены люверса только установку.
+  static const String eyeletInstall = 'eyeletInstall';
+  static const String zipper = 'zipper';
+  static const String weld = 'weld';
+  static const String pocket = 'pocket';
+  static const String strap = 'strap';
+  static const String drain = 'drain';
+  static const String cutout = 'cutout';
+
+  // Работы.
+  static const String labor = 'labor';
+  static const String cutting = 'cutting';
+  static const String screenHem = 'screenHem';
+
+  /// Все известные ключи. Прайс из JSON фильтруется по этому набору:
+  /// неизвестный ключ (из будущей версии) не тащим в модель.
+  static const Set<String> all = {
+    filmClear,
+    filmTinted,
+    filmMesh,
+    filmScreen,
+    edge80,
+    edge100,
+    edge120,
+    edge200,
+    edge240,
+    eyeletRound,
+    eyeletOval,
+    eyeletInstall,
+    zipper,
+    weld,
+    pocket,
+    strap,
+    drain,
+    cutout,
+    labor,
+    cutting,
+    screenHem,
+  };
 }
 
 /// Цена прозрачного ПВХ 700 мкм, ₽/м².
@@ -188,6 +263,7 @@ class PriceList {
     this.discountPercent = defaultDiscountPercent,
     this.vatPercent = defaultVatPercent,
     this.currency = defaultCurrencySymbol,
+    this.disabledItems = const <String>{},
   });
 
   /// Цены «как в цехе» — те же, что и в конструкторе по умолчанию.
@@ -243,6 +319,59 @@ class PriceList {
 
   /// Символ валюты в подписях и смете.
   final String currency;
+
+  /// Выключенные позиции прайса (ключи из [PriceItemKeys]).
+  ///
+  /// Выключенная позиция — цена есть, но в смету она не идёт: строка просто
+  /// не появляется (см. `Estimate`). Так можно быстро прикинуть заказ без
+  /// каких-то работ или материалов, не теряя сами цены.
+  ///
+  /// Набор неизменяемый по договорённости: правится только через [withItem]
+  /// и [copyWith], иначе состояние панели и сохранённого заказа разъедется.
+  final Set<String> disabledItems;
+
+  /// Учитывать ли позицию [key] в смете. Неизвестный ключ считается
+  /// включённым — это безопасный ответ для старого или будущего прайса.
+  bool isEnabled(String key) => !disabledItems.contains(key);
+
+  /// Копия прайса с включённой или выключенной позицией [key].
+  PriceList withItem(String key, {required bool enabled}) {
+    final next = {...disabledItems};
+    if (enabled) {
+      next.remove(key);
+    } else {
+      next.add(key);
+    }
+    return copyWith(disabledItems: next);
+  }
+
+  /// Ключ позиции прайса для материала полотна.
+  static String filmItemKey(FilmMaterial material) => switch (material) {
+        FilmMaterial.clearPvc => PriceItemKeys.filmClear,
+        FilmMaterial.tintedPvc => PriceItemKeys.filmTinted,
+        FilmMaterial.mosquitoNet => PriceItemKeys.filmMesh,
+        FilmMaterial.screen => PriceItemKeys.filmScreen,
+      };
+
+  /// Ключ позиции прайса для ширины рулона окантовки.
+  ///
+  /// Своя ширина (например 150 мм) не имеет отдельной позиции в прайсе: её
+  /// цена интерполируется по пресетам, поэтому тумблеры пресетов на неё не
+  /// действуют и метод возвращает null — строка всегда считается.
+  static String? edgeItemKey(double rawWidthMm) {
+    for (final roll in EdgeRoll.values) {
+      if ((rawWidthMm - roll.rawWidth).abs() < 1e-9) {
+        return switch (roll) {
+          EdgeRoll.roll80 => PriceItemKeys.edge80,
+          EdgeRoll.roll100 => PriceItemKeys.edge100,
+          EdgeRoll.roll120 => PriceItemKeys.edge120,
+          EdgeRoll.roll200 => PriceItemKeys.edge200,
+          EdgeRoll.roll240 => PriceItemKeys.edge240,
+        };
+      }
+    }
+    return null;
+  }
 
   /// Цена плёнки по материалу, ₽/м².
   double filmPerM2(FilmMaterial material) => switch (material) {
@@ -310,9 +439,12 @@ class PriceList {
   }
 
   /// Цена люверса с установкой по типу, ₽/шт.
+  ///
+  /// Установка входит в цену люверса (отдельной строки в смете нет), поэтому
+  /// выключенная в прайсе установка убирает из цены только её надбавку.
   double eyeletPerEach(EyeletType type) =>
       (type == EyeletType.round10 ? eyeletPrice : eyeletOvalPrice) +
-      eyeletInstall;
+      (isEnabled(PriceItemKeys.eyeletInstall) ? eyeletInstall : 0);
 
   /// Цена позиции панели цен по её полю.
   ///
@@ -366,6 +498,7 @@ class PriceList {
     double? eyeletInstall,
     double? cuttingPerM2,
     String? currency,
+    Set<String>? disabledItems,
   }) {
     return PriceList(
       filmClearPerM2: filmClearPerM2 ?? this.filmClearPerM2,
@@ -393,6 +526,7 @@ class PriceList {
       discountPercent: discountPercent ?? this.discountPercent,
       vatPercent: vatPercent ?? this.vatPercent,
       currency: currency ?? this.currency,
+      disabledItems: disabledItems ?? this.disabledItems,
     );
   }
 
@@ -422,6 +556,10 @@ class PriceList {
         'discountPercent': discountPercent,
         'vatPercent': vatPercent,
         'currency': currency,
+        // Пустой набор не пишем: старый формат JSON остаётся прежним, а
+        // «нет поля» читается как «всё включено».
+        if (disabledItems.isNotEmpty)
+          'disabledItems': (disabledItems.toList()..sort()),
       };
 
   /// Прайс ← JSON. Разбор устойчивый: неизвестные и битые поля заменяются
@@ -463,6 +601,9 @@ class PriceList {
       currency: json['currency'] is String && (json['currency'] as String).isNotEmpty
           ? json['currency'] as String
           : fallback.currency,
+      // Старый прайс без поля — всё включено. Неизвестные ключи (из будущих
+      // версий) отбрасываем: модель не должна тащить мусор в панель и смету.
+      disabledItems: _disabledItems(json['disabledItems']),
     );
   }
 
@@ -476,6 +617,19 @@ class PriceList {
         if (discountPercent > 0) 'скидка ${_trim(discountPercent)} %',
         'валюта $currency',
       ].join(', ');
+}
+
+/// Выключенные позиции из JSON.
+///
+/// Старый прайс без поля — всё включено. Принимаем только известные ключи
+/// из [PriceItemKeys.all]; всё остальное (не список, числа, ключи будущих
+/// версий) игнорируем, чтобы модель не тащила мусор в панель и смету.
+Set<String> _disabledItems(Object? value) {
+  if (value is! List) return const <String>{};
+  return {
+    for (final key in value)
+      if (key is String && PriceItemKeys.all.contains(key)) key,
+  };
 }
 
 /// Цена из JSON: конечное неотрицательное число, иначе [fallback].

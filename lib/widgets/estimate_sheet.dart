@@ -311,7 +311,9 @@ class EstimateSheet extends StatelessWidget {
       ('Цены прайса', [
         for (final field in PriceField.values)
           '${field.shortLabel} — ${formatRubles(_priceOf(field))} '
-              '${field.unit}',
+              '${field.unit}'
+              // Выключенная позиция не идёт в смету — на листе это видно.
+              '${prices.isEnabled(field.itemKey) ? '' : ' · выключено'}',
         'Работа: сварка ${formatRubles(prices.laborPerM2)} ₽/м², '
             'раскрой ${formatRubles(prices.cuttingPerM2)} ₽/м²',
         'Подворот скрина и шов 3 мм — '
