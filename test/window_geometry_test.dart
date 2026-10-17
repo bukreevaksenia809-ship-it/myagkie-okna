@@ -1449,7 +1449,7 @@ void _allowanceRules() {
         greaterThan(shrunk.filmCutAreaM2 * factor),
       );
       // Площадь полотна и заготовка — разные числа: в подписях это
-      // «площадь полотна» против «заготовки (габарит)».
+      // «площадь полотна» против «заготовки по контуру».
       expect(shrunk.filmAreaM2, lessThan(shrunk.filmCutAreaWithShrinkageM2));
     });
 
@@ -2614,6 +2614,39 @@ void _pocketRules() {
           right.reduce((a, b) => a.center.dy > b.center.dy ? a : b);
       expect(lowest.center.dy, closeTo(75, 0.02));
       expect(highest.center.dy, closeTo(1500 - 75, 0.02));
+    });
+
+    test('скрин: фартук идёт по линии подворота, а не внутри контура', () {
+      const params = WindowParams(
+        material: FilmMaterial.screen,
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2000,
+        rightHeight: 2000,
+        hemBottomMm: 40,
+        hemRightMm: 40,
+        hemTopMm: 60,
+        hemLeftMm: 40,
+        pocket: true,
+        pocketTop: true,
+      );
+      final layers = WindowLayers(params, WindowGeometry.of(params));
+
+      final bottom = layers.pocketBand(WindowSide.bottom);
+      expect(bottom, hasLength(4));
+      final bottomYs = [for (final point in bottom) point.dy];
+      // Запас по оси — по большему подвороту (верх 60), поэтому край
+      // заготовки снизу на −60, а линия подворота — на −20:
+      // полоса идёт от линии подворота до края заготовки, её ширина 40.
+      expect(bottomYs.reduce(math.min), closeTo(-60, 0.01));
+      expect(bottomYs.reduce(math.max), closeTo(-20, 0.01));
+      expect(layers.pocketBandWidth(WindowSide.bottom), 40);
+
+      final top = layers.pocketBand(WindowSide.top);
+      final topYs = [for (final point in top) point.dy];
+      expect(topYs.reduce(math.min), closeTo(2000, 0.01));
+      expect(topYs.reduce(math.max), closeTo(2060, 0.01));
+      expect(layers.pocketBandWidth(WindowSide.top), 60);
     });
 
     test('расход и подписи: фартуки считаются оба', () {

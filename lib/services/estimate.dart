@@ -102,7 +102,7 @@ class Estimate {
   /// Суммарная площадь готовых изделий, м².
   final double productAreaM2;
 
-  /// Суммарная площадь заготовок (габарит) в раскрое С усадкой, м² — по ней
+  /// Суммарная площадь заготовок по контуру в раскрое С усадкой, м² — по ней
   /// считаются позиции плёнки и работы раскроя.
   final double filmAreaM2;
 
@@ -112,7 +112,7 @@ class Estimate {
     final lines = <EstimateLine>[];
 
     // --- Материалы: полотно по материалам --------------------------------
-    // Берём площадь заготовки (габарит) С усадкой: плёнка кроится по
+    // Берём площадь заготовки по контуру С усадкой: плёнка кроится по
     // усадочным габаритам, поэтому без усадки цена была бы занижена.
     final filmEntries = summary.filmAreaByMaterialWithShrinkage.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
@@ -131,12 +131,12 @@ class Estimate {
         // под них (материал тот же, скрин). Подпись показывает это человеку
         // прямо в смете.
         note: entry.key == FilmMaterial.screen
-            ? 'скрин: заготовка (габарит) ${formatMeters(entry.value)} м² × '
+            ? 'скрин: заготовка по контуру ${formatMeters(entry.value)} м² × '
                 '${_unitPriceLabel(pricePerM2)} ₽/м² — готовый размер плюс '
                 '2 × больший подворот по оси'
                 '${summary.screenZipperCount > 0 ? ', включая полосы молний '
                     '${formatMeters(summary.screenZipperBandAreaM2)} м²' : ''}'
-            : '${entry.key.thickness}; заготовка (габарит)'
+            : '${entry.key.thickness}; заготовка по контуру'
                 '${summary.hasShrinkage ? ' с компенсацией усадки' : ''}'
                 '${summary.hasAutoHeightAllowance
                     ? '${summary.hasShrinkage ? ' и' : ' с'} авто-припуском '
@@ -264,8 +264,8 @@ class Estimate {
         summary.pocketLengthMm > 0 &&
         prices.isEnabled(PriceItemKeys.pocket)) {
       lines.add(EstimateLine(
-        title: 'Карман под утяжитель',
-        note: 'нижний/верхний карман, ${summary.pocketCount} шт',
+        title: 'Фартук под утяжитель',
+        note: 'нижний/верхний фартук, ${summary.pocketCount} шт',
         quantity: summary.pocketLengthMm / 1000,
         unit: 'м',
         unitPrice: prices.pocketPerM,
@@ -327,7 +327,7 @@ class Estimate {
         prices.isEnabled(PriceItemKeys.cutting)) {
       lines.add(EstimateLine(
         title: 'Раскрой плёнки и разметка',
-        note: 'по площади заготовки (габарит) с усадкой',
+        note: 'по площади заготовки по контуру с усадкой',
         quantity: summary.filmAreaWithShrinkageM2,
         unit: 'м²',
         unitPrice: prices.cuttingPerM2,

@@ -119,7 +119,7 @@ void main() {
     expect(eyeletLine.unit, 'шт');
     expect(eyeletLine.quantity, closeTo(summary.eyeletTotal.toDouble(), 1e-9));
 
-    // Плёнка: площадь заготовки (габарит) с усадкой — та, по которой
+    // Плёнка: площадь заготовки по контуру с усадкой — та, по которой
     // реально кроится полотно.
     final filmLine = estimate.lines
         .firstWhere((line) => line.title.startsWith('Полотно'));

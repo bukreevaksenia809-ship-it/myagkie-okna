@@ -697,7 +697,7 @@ flutter pub get
 flutter run -d macos          # r — горячая перезагрузка, q — выход
 
 flutter analyze               # статический анализ
-flutter test                  # 372 теста
+flutter test                  # 373 теста
 flutter test test/drawing_preview_test.dart   # превью в build/preview/
 flutter test test/four_tasks_preview_test.dart  # превью: скрин с молнией,
                               # окна без люверсов сверху/снизу
@@ -725,7 +725,7 @@ lib/
   widgets/costs_sheet.dart       ведомость расхода материалов
   widgets/orders_panel.dart      раздел «Заказы» в панели
   widgets/window_painter.dart    отрисовка слоёв окна
-test/                            372 теста + генераторы превью
+test/                            373 теста + генераторы превью
 docs/                            примеры готовых листов
 ```
 

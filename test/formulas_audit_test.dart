@@ -599,14 +599,45 @@ void _areaAudit() {
         reason: 'заготовка выше полотна на авто-припуск +10 мм',
       );
     });
+
+    test('трапеция: смета считает площадь по контуру', () {
+      // Та же трапеция 2000/1000 × 1000 мм с запайкой 25 мм.
+      const params = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 1000,
+        leftHeight: 1000,
+        rightHeight: 1000,
+        weldOverlapMm: 25,
+      );
+      final estimate = Estimate.ofWindow(params, PriceList.defaults());
+      final film = estimate.lines
+          .firstWhere((line) => line.title.startsWith('Полотно'));
+      final cutting = estimate.lines
+          .firstWhere((line) => line.title.startsWith('Раскрой'));
+
+      // Площадь по контуру: 1,386334 м².
+      expectClose(film.quantity, 1.386334, 'плёнка в смете', tol: 1e-6);
+      expectClose(film.amount, 1317.02, '1,386334 × 950');
+      expectClose(cutting.quantity, 1.386334, 'раскрой в смете', tol: 1e-6);
+      expectClose(cutting.amount, 346.58, '1,386334 × 250');
+      // По старому габариту 1,842334 м² было бы 1750,22 + 460,58 = 2210,80,
+      // то есть на 547,20 ₽ больше до НДС.
+      expectClose(
+        (1750.22 + 460.58) - (film.amount + cutting.amount),
+        547.20,
+        'экономия против габарита до НДС 547,20 ₽',
+        tol: 0.01,
+      );
+      expectClose(estimate.total, 6187.98, 'итого с НДС 6187,98 ₽', tol: 0.01);
+    });
   });
 }
 
 // ---------------------------------------------------------------------------
-// 6. Фартукы
+// 6. Фартуки
 // ---------------------------------------------------------------------------
 void _pocketAudit() {
-  group('6. Фартукы: расход полосы и количество', () {
+  group('6. Фартуки: расход полосы и количество', () {
     test('один нижний фартук: 2000 мм, 1 шт', () {
       final params = _rect2000x1500.copyWith(pocket: true);
       final summary = CostsSummary(OrderProject(windows: [params]));

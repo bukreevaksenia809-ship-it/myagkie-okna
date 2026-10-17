@@ -2012,17 +2012,18 @@ class WindowDrawingPainter extends CustomPainter {
       );
     }
 
-    // Запайка (у скрина — шов подворота) на верхней стороне.
-    final seamOuter = (edgeInner[3] + edgeInner[2]) / 2;
-    final seamInner = (filmEdge[3] + filmEdge[2]) / 2;
-    _callout(
-      canvas,
-      layout.toPxPoint((seamOuter + seamInner) / 2),
-      layout.toPxPoint(seamOuter) + const Offset(10, -24),
-      params.isScreen
-          ? 'шов ${formatMm(screenSeamMm)} мм'
-          : 'запайка ${formatMm(params.weldOverlapMm)}',
-    );
+    // Запайка на верхней стороне. У скрина шов уже подписан на каждой
+    // стороне в _paintScreenHem — второй выноски не нужно.
+    if (!params.isScreen) {
+      final seamOuter = (edgeInner[3] + edgeInner[2]) / 2;
+      final seamInner = (filmEdge[3] + filmEdge[2]) / 2;
+      _callout(
+        canvas,
+        layout.toPxPoint((seamOuter + seamInner) / 2),
+        layout.toPxPoint(seamOuter) + const Offset(10, -24),
+        'запайка ${formatMm(params.weldOverlapMm)}',
+      );
+    }
   }
 
   /// Отдельная подпись заготовки скрина: размер полотна под подворот.

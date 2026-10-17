@@ -142,9 +142,9 @@ class CostsSheet extends StatelessWidget {
         if (spec.layers.weldLengthMm > 0)
           'спайка ${formatMm(spec.layers.weldLengthMm)}',
         if (spec.params.pocket)
-          'карман снизу ${formatMm(spec.params.pocketWidth)}',
+          'фартук снизу ${formatMm(spec.params.pocketWidth)}',
         if (spec.params.pocketTop)
-          'карман сверху ${formatMm(spec.params.pocketWidth)}',
+          'фартук сверху ${formatMm(spec.params.pocketWidth)}',
         if (spec.params.isScreen)
           'подворот ${spec.params.hemBySideShortLabel} + шов '
               '${formatMm(screenSeamMm)}',
@@ -171,7 +171,7 @@ class CostsSheet extends StatelessWidget {
         '${formatMm(spec.filmCutWidthWithShrinkage)} × '
             '${formatMm(spec.filmCutHeightWithShrinkage)}',
         formatMeters(spec.productAreaM2),
-        // Заготовка (габарит) к раскрою — фактическая, с усадкой.
+        // Заготовка по контуру к раскрою — фактическая, с усадкой.
         formatMeters(spec.filmCutAreaWithShrinkageM2),
         '${spec.eyeletCount}',
         spec.params.isScreen
@@ -188,7 +188,7 @@ class CostsSheet extends StatelessWidget {
       'Размеры полотна, мм',
       'Полотно в раскрое с усадкой, мм',
       'Площадь изделия, м²',
-      'Площадь заготовки (габарит), м²',
+      'Площадь заготовки по контуру, м²',
       'Люверсы, шт',
       'Окантовка / подворот',
       'Спецэлементы',
@@ -260,9 +260,9 @@ class CostsSheet extends StatelessWidget {
       ]),
       ('Полотно (плёнка)', [
         ...summary.filmByMaterialLabels,
-        'Итого заготовки (габарит): '
+        'Итого заготовки по контуру: '
             '${formatMeters(summary.filmAreaWithShrinkageM2)} м²',
-        'Заготовки (габарит) без усадки: '
+        'Заготовки по контуру без усадки: '
             '${formatMeters(summary.filmAreaM2)} м²',
         'Площадь полотна изделий (без припуска): '
             '${formatMeters(summary.filmNetAreaM2)} м²',
@@ -440,7 +440,7 @@ class _CostsTitleBlock extends StatelessWidget {
           ),
           Expanded(
             flex: 3,
-            child: _cell('Заготовки (габарит) с усадкой',
+            child: _cell('Заготовки по контуру с усадкой',
                 '${formatMeters(summary.filmAreaWithShrinkageM2)} м²'),
           ),
           Expanded(flex: 4, child: _cell('Рулоны (ширина × длина)', rolls)),

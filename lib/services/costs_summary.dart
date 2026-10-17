@@ -152,10 +152,10 @@ class CostsSummary {
   /// подписей «площадь полотна», в деньги не идёт.
   double filmNetAreaM2 = 0;
 
-  /// Площадь заготовок (габарит) без усадки по материалам, м².
+  /// Площадь заготовок по контуру без усадки по материалам, м².
   final Map<FilmMaterial, double> filmAreaByMaterial = {};
 
-  /// Площадь заготовок (габарит) с усадкой по материалам, м² — для сметы.
+  /// Площадь заготовок по контуру с усадкой по материалам, м² — для сметы.
   final Map<FilmMaterial, double> filmAreaByMaterialWithShrinkage = {};
 
   /// Расход окантовки по ширинам рулонов (мм → мм).
@@ -254,7 +254,7 @@ class CostsSummary {
     ];
   }
 
-  /// Подписи габарита заготовок без усадки по материалам:
+  /// Подписи площади заготовок по контуру без усадки по материалам:
   /// «Обычный ПВХ — 8,32 м²» (справочно, для сверки с чертежом).
   List<String> get filmByMaterialNoShrinkageLabels {
     final entries = filmAreaByMaterial.entries.toList()
