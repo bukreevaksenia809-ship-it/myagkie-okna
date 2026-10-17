@@ -14,7 +14,7 @@ import 'costs_summary.dart';
 
 // Удобные реэкспорты: смете нужен прайс, а деньги форматируются там же.
 export '../models/price_list.dart'
-    show PriceField, PriceList, formatRubles, parsePrice;
+    show PriceField, PriceItemKeys, PriceList, formatRubles, parsePrice;
 
 /// Раздел сметы — по нему позиции группируются в листе.
 enum EstimateGroup {

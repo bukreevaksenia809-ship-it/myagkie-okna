@@ -97,9 +97,17 @@ class PriceItemKeys {
   static const String zipper = 'zipper';
   static const String weld = 'weld';
   static const String pocket = 'pocket';
+
+  /// Ремень, ₽/шт: одна позиция прайса на подъёмный ремень и на силиконовый
+  /// ремень-крепёж — это один и тот же материал ленты.
   static const String strap = 'strap';
   static const String drain = 'drain';
   static const String cutout = 'cutout';
+
+  // Крепёж подвижных сторон: скоба, замок, саморез верхнего ряда.
+  static const String turnBuckle = 'turnBuckle';
+  static const String frenchLock = 'frenchLock';
+  static const String screw = 'screw';
 
   // Работы.
   static const String labor = 'labor';
@@ -127,6 +135,9 @@ class PriceItemKeys {
     strap,
     drain,
     cutout,
+    turnBuckle,
+    frenchLock,
+    screw,
     labor,
     cutting,
     screenHem,
@@ -197,7 +208,33 @@ const double defaultWeldPerM = 450;
 const double defaultPocketPerM = 380;
 
 /// Подъёмный ремень 50 × 500 мм, ₽/шт.
+///
+/// Эта же цена — для силиконового ремня-крепежа подвижных сторон
+/// ([FastenerType.straps]): материал ленты один, различаются длина и способ
+/// крепления к раме, а раскрой и установка в цехе одинаковые.
 const double defaultStrapPrice = 190;
+
+/// Поворотная скоба (оцинкованная, с шурупом 6×60), ₽/шт.
+///
+/// Ориентир 2026 года: 180–260 ₽/шт в рознице за скобу в сборе с крепежом.
+/// Берём 220 — середину: скоба примерно вдвое дороже овального люверса
+/// (110 ₽), через который она ставится, потому что это отдельная деталь
+/// с шурупом, а не кольцо.
+const double defaultTurnBucklePrice = 220;
+
+/// Французский замок (защёлка с ответной частью и шурупами), ₽/шт.
+///
+/// Ориентир: 320–500 ₽/шт. 400 — замок с прижимом и ответной планкой дороже
+/// скобы (220 ₽) почти вдвое: в комплекте две детали и пружина. Ставится так
+/// же через овальный люверс, поэтому люверс считается отдельной строкой.
+const double defaultFrenchLockPrice = 400;
+
+/// Саморез верхнего ряда (прессшайба 6×50), ₽/шт.
+///
+/// Ориентир: 12–30 ₽/шт за саморез с уплотнительной шайбой. 20 ₽ — верхний
+/// ряд крепится к раме с тем же шагом, что люверсы, но саморез дешевле
+/// люверса с установкой (65 + 25 ₽): это расходник, а не фурнитура.
+const double defaultScrewPrice = 20;
 
 /// Дренажное отверстие Ø6 мм в нижней окантовке, ₽/шт.
 const double defaultDrainPrice = 90;
@@ -255,6 +292,9 @@ class PriceList {
     this.weldPerM = defaultWeldPerM,
     this.pocketPerM = defaultPocketPerM,
     this.strapPrice = defaultStrapPrice,
+    this.turnBucklePrice = defaultTurnBucklePrice,
+    this.frenchLockPrice = defaultFrenchLockPrice,
+    this.screwPrice = defaultScrewPrice,
     this.drainPrice = defaultDrainPrice,
     this.cutoutPrice = defaultCutoutPrice,
     this.laborPerM2 = defaultLaborPerM2,
@@ -300,6 +340,16 @@ class PriceList {
   final double weldPerM;
   final double pocketPerM;
   final double strapPrice;
+
+  /// Поворотная скоба, ₽/шт.
+  final double turnBucklePrice;
+
+  /// Французский замок, ₽/шт.
+  final double frenchLockPrice;
+
+  /// Саморез верхнего ряда, ₽/шт.
+  final double screwPrice;
+
   final double drainPrice;
   final double cutoutPrice;
 
@@ -487,6 +537,9 @@ class PriceList {
     double? weldPerM,
     double? pocketPerM,
     double? strapPrice,
+    double? turnBucklePrice,
+    double? frenchLockPrice,
+    double? screwPrice,
     double? drainPrice,
     double? cutoutPrice,
     double? laborPerM2,
@@ -518,6 +571,9 @@ class PriceList {
       weldPerM: weldPerM ?? this.weldPerM,
       pocketPerM: pocketPerM ?? this.pocketPerM,
       strapPrice: strapPrice ?? this.strapPrice,
+      turnBucklePrice: turnBucklePrice ?? this.turnBucklePrice,
+      frenchLockPrice: frenchLockPrice ?? this.frenchLockPrice,
+      screwPrice: screwPrice ?? this.screwPrice,
       drainPrice: drainPrice ?? this.drainPrice,
       cutoutPrice: cutoutPrice ?? this.cutoutPrice,
       laborPerM2: laborPerM2 ?? this.laborPerM2,
@@ -548,6 +604,9 @@ class PriceList {
         'weldPerM': weldPerM,
         'pocketPerM': pocketPerM,
         'strapPrice': strapPrice,
+        'turnBucklePrice': turnBucklePrice,
+        'frenchLockPrice': frenchLockPrice,
+        'screwPrice': screwPrice,
         'drainPrice': drainPrice,
         'cutoutPrice': cutoutPrice,
         'laborPerM2': laborPerM2,
@@ -589,6 +648,13 @@ class PriceList {
       weldPerM: _price(json['weldPerM'], fallback.weldPerM),
       pocketPerM: _price(json['pocketPerM'], fallback.pocketPerM),
       strapPrice: _price(json['strapPrice'], fallback.strapPrice),
+      // Старый прайс без цен крепежа читается с дефолтами: строки крепежа
+      // в смете считаются, а не пропадают с нулём.
+      turnBucklePrice:
+          _price(json['turnBucklePrice'], fallback.turnBucklePrice),
+      frenchLockPrice:
+          _price(json['frenchLockPrice'], fallback.frenchLockPrice),
+      screwPrice: _price(json['screwPrice'], fallback.screwPrice),
       drainPrice: _price(json['drainPrice'], fallback.drainPrice),
       cutoutPrice: _price(json['cutoutPrice'], fallback.cutoutPrice),
       laborPerM2: _price(json['laborPerM2'], fallback.laborPerM2),

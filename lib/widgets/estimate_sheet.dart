@@ -318,6 +318,16 @@ class EstimateSheet extends StatelessWidget {
             'раскрой ${formatRubles(prices.cuttingPerM2)} ₽/м²',
         'Подворот скрина и шов 3 мм — '
             '${formatRubles(prices.screenHemPerM)} ₽/м',
+        // Крепёж подвижных сторон — за штуку: ставятся на низ и бока.
+        'Поворотная скоба — ${formatRubles(prices.turnBucklePrice)}/шт'
+            '${_disabledMark(PriceItemKeys.turnBuckle)}',
+        'Французский замок — ${formatRubles(prices.frenchLockPrice)}/шт'
+            '${_disabledMark(PriceItemKeys.frenchLock)}',
+        'Саморез верхнего ряда — ${formatRubles(prices.screwPrice)}/шт'
+            '${_disabledMark(PriceItemKeys.screw)}',
+        'Ремень: подъёмный и силиконовый — '
+            '${formatRubles(prices.strapPrice)}/шт'
+            '${_disabledMark(PriceItemKeys.strap)}',
       ]),
     ];
 
@@ -360,6 +370,11 @@ class EstimateSheet extends StatelessWidget {
       ],
     );
   }
+
+  /// Пометка выключенной позиции для блока «Цены прайса»:
+  /// « · выключено» или пустая строка.
+  String _disabledMark(String itemKey) =>
+      prices.isEnabled(itemKey) ? '' : ' · выключено';
 
   double _priceOf(PriceField field) => switch (field) {
         PriceField.filmClear ||

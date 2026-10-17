@@ -187,6 +187,25 @@ class _PricePanelState extends State<PricePanel> {
                 (value) => _set(prices.copyWith(strapPrice: value)),
                 itemKey: PriceItemKeys.strap,
               ),
+              // Крепёж подвижных сторон: все три типа — за штуку.
+              _row(
+                'Поворотная скоба, ₽/шт',
+                prices.turnBucklePrice,
+                (value) => _set(prices.copyWith(turnBucklePrice: value)),
+                itemKey: PriceItemKeys.turnBuckle,
+              ),
+              _row(
+                'Французский замок, ₽/шт',
+                prices.frenchLockPrice,
+                (value) => _set(prices.copyWith(frenchLockPrice: value)),
+                itemKey: PriceItemKeys.frenchLock,
+              ),
+              _row(
+                'Саморез верхнего ряда, ₽/шт',
+                prices.screwPrice,
+                (value) => _set(prices.copyWith(screwPrice: value)),
+                itemKey: PriceItemKeys.screw,
+              ),
               _row(
                 'Дренаж, ₽/шт',
                 prices.drainPrice,

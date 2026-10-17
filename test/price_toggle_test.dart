@@ -8,7 +8,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
-import 'package:soft_window_drawer/models/price_list.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/estimate.dart';
 import 'package:soft_window_drawer/widgets/price_panel.dart';
