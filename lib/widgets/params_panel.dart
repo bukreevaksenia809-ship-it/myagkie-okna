@@ -2119,6 +2119,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
             value: cutout.centerXMm,
             maxMm: maxX,
           ),
+          const SizedBox(height: 4),
           _cutoutSlider(
             index: index,
             field: _CutoutField.centerY,
