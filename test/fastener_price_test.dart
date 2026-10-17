@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
 import 'package:soft_window_drawer/models/price_list.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
+import 'package:soft_window_drawer/services/estimate.dart';
 import 'package:soft_window_drawer/widgets/estimate_sheet.dart';
 import 'package:soft_window_drawer/widgets/price_panel.dart';
 
@@ -19,6 +20,17 @@ const _window = WindowParams(
   topWidth: 1500,
   leftHeight: 2520,
   rightHeight: 2520,
+);
+
+/// То же окно, но подвижные стороны крепятся французским замком: в смете
+/// появляется строка PriceItemKeys.frenchLock.
+const _frenchWindow = WindowParams(
+  windowType: WindowType.lifting,
+  bottomWidth: 1500,
+  topWidth: 1500,
+  leftHeight: 2520,
+  rightHeight: 2520,
+  fastenerType: FastenerType.frenchLocks,
 );
 
 void main() {
@@ -80,6 +92,71 @@ void main() {
     expect(broken.screwPrice, defaultScrewPrice);
   });
 
+  test('цена французского замка меняет смету и выключается тумблером', () {
+    final prices = PriceList.defaults();
+    final full = Estimate.ofWindow(_frenchWindow, prices);
+    final lock = full.lines.singleWhere(
+      (line) => line.itemKey == PriceItemKeys.frenchLock,
+    );
+
+    // Замок посчитан по количеству крепежа подвижных сторон.
+    expect(lock.quantity, greaterThan(0));
+    expect(lock.unitPrice, defaultFrenchLockPrice);
+    expect(lock.amount, closeTo(lock.quantity * defaultFrenchLockPrice, 0.011));
+
+    // Правка строки прайса меняет сумму строки и весь итог.
+    final raised = Estimate.ofWindow(
+      _frenchWindow,
+      prices.copyWith(frenchLockPrice: 500),
+    );
+    final raisedLine = raised.lines.singleWhere(
+      (line) => line.itemKey == PriceItemKeys.frenchLock,
+    );
+    expect(raisedLine.unitPrice, 500);
+    expect(
+      raisedLine.amount - lock.amount,
+      closeTo(lock.quantity * 100, 0.011),
+    );
+    expect(raised.total, greaterThan(full.total));
+
+    // Тумблер «учитывать в смете» убирает и строку, и её сумму.
+    final without = Estimate.ofWindow(
+      _frenchWindow,
+      prices.withItem(PriceItemKeys.frenchLock, enabled: false),
+    );
+    expect(
+      without.lines.any((line) => line.itemKey == PriceItemKeys.frenchLock),
+      isFalse,
+    );
+    expect(without.subtotal, closeTo(full.subtotal - lock.amount, 0.011));
+    expect(without.total, lessThan(full.total));
+  });
+
+  test('тумблеры скобы и самореза работают как у остальных строк', () {
+    final prices = PriceList.defaults();
+    final full = Estimate.ofWindow(_window, prices);
+
+    for (final key in const [PriceItemKeys.turnBuckle, PriceItemKeys.screw]) {
+      final line = full.lines.singleWhere((line) => line.itemKey == key);
+      expect(line.amount, greaterThan(0), reason: 'строка $key не пустая');
+
+      final without = Estimate.ofWindow(
+        _window,
+        prices.withItem(key, enabled: false),
+      );
+      expect(
+        without.lines.any((line) => line.itemKey == key),
+        isFalse,
+        reason: 'выключенная позиция $key уходит из сметы',
+      );
+      expect(
+        without.subtotal,
+        closeTo(full.subtotal - line.amount, 0.011),
+        reason: 'уходит ровно сумма $key',
+      );
+    }
+  });
+
   testWidgets('панель прайса: строки крепежа есть, правятся и выключаются', (
     WidgetTester tester,
   ) async {
@@ -133,13 +210,25 @@ void main() {
     expect(edited.frenchLockPrice, 430);
     expect(edited.screwPrice, 18);
 
-    // Выключение позиции крепежа видно в модели.
+    // Правка строки панели сразу меняет смету окна с французским замком.
+    final lockLine = Estimate.ofWindow(_frenchWindow, edited).lines.singleWhere(
+      (line) => line.itemKey == PriceItemKeys.frenchLock,
+    );
+    expect(lockLine.unitPrice, 430);
+
+    // Выключение позиции крепежа видно в модели и убирает строку из сметы.
     final toggle = find.byKey(const ValueKey('price-toggle-frenchLock'));
     await tester.ensureVisible(toggle);
     await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(
       hostKey.currentState!.prices.isEnabled(PriceItemKeys.frenchLock),
+      isFalse,
+    );
+    expect(
+      Estimate.ofWindow(_frenchWindow, hostKey.currentState!.prices)
+          .lines
+          .any((line) => line.itemKey == PriceItemKeys.frenchLock),
       isFalse,
     );
     // Панель 420 px: переполнений нет.

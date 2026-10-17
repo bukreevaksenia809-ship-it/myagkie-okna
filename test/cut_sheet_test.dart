@@ -68,6 +68,22 @@ const _w2000Allowance = WindowParams(
   allowanceHeightMm: 100,
 );
 
+/// Косое окно-трапеция: низ 2000, верх 1000, высота 1000 мм.
+const _trapezoid = WindowParams(
+  projectName: 'Мягкое окно террасы',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-040',
+  bottomWidth: 2000,
+  topWidth: 1000,
+  leftHeight: 1000,
+  rightHeight: 1000,
+  weldOverlapMm: 25,
+);
+
+/// Порядок для превью: трапеция рядом с прямоугольником — видно, что лист
+/// рисует фактическую форму, а не габарит.
+const _trapezoidOrder = OrderProject(windows: [_trapezoid, _w2000]);
+
 /// Проверяет, что прямоугольники заготовок не пересекаются.
 void _expectNoOverlaps(CutLayout layout) {
   for (var i = 0; i < layout.placements.length; i++) {
@@ -121,8 +137,8 @@ void main() {
       for (var i = 0; i < specs.length; i++) {
         final placement = layout.placements[i];
         final spec = specs[i];
-        // Заготовка — прямоугольник по габаритам раскроя: припуск на раскрой
-        // и усадка уже внутри filmCut*WithShrinkage.
+        // Заготовка — габарит контура раскроя: припуск на раскрой и усадка
+        // уже внутри filmCut*WithShrinkage.
         expect(
           placement.widthMm,
           closeTo(spec.filmCutWidthWithShrinkage, 1e-9),
@@ -133,14 +149,59 @@ void main() {
           closeTo(spec.filmCutHeightWithShrinkage, 1e-9),
           reason: 'Окно №${i + 1}, высота',
         );
-        // Площадь заготовки — это площадь к раскрою (с припуском) с усадкой.
-        final factor = 1 + spec.params.shrinkagePercent / 100;
+        // Площадь в документе — фактическая, по контуру (у прямоугольника
+        // она совпадает с габаритной).
         expect(
-          placement.widthMm * placement.heightMm / 1000000,
-          closeTo(spec.filmCutAreaM2 * factor * factor, 1e-9),
-          reason: 'Окно №${i + 1}, площадь',
+          placement.piece.areaM2,
+          closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9),
+          reason: 'Окно №${i + 1}, площадь по контуру',
+        );
+        // Без вырезов площадь полигона совпадает с площадью в документах.
+        expect(
+          placement.piece.areaMm2 / 1000000,
+          closeTo(placement.piece.areaM2, 1e-9),
+          reason: 'Окно №${i + 1}, площадь полигона заготовки',
         );
       }
+    });
+
+    test('трапеция: заготовка — фактический контур, а не прямоугольник', () {
+      // Окно 2000/1000 × 1000 с запайкой 25 мм: заготовка — трапеция.
+      const params = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 1000,
+        leftHeight: 1000,
+        rightHeight: 1000,
+        weldOverlapMm: 25,
+      );
+      final spec = WindowSpec.of(params);
+      final piece = CutPiece.ofSpec(spec);
+
+      expect(piece.hasContour, isTrue);
+      expect(piece.outline, hasLength(4));
+      final sides = piece.sideLengths;
+      // По всем четырём сторонам свои длины: низ и верх разные.
+      expect(sides[0], isNot(closeTo(sides[2], 1)));
+      expect(sides[0], closeTo(1919.0983, 1e-3));
+      expect(sides[2], closeTo(969.0983, 1e-3));
+      // Площадь — по контуру и совпадает с моделью.
+      expect(
+        piece.areaMm2 / 1000000,
+        closeTo(spec.filmCutAreaM2, 1e-9),
+      );
+      expect(piece.areaM2, closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9));
+      // Меньше габаритного прямоугольника: пустые углы не считаются.
+      expect(piece.areaMm2, lessThan(piece.widthMm * piece.heightMm));
+      // Раскладка по-прежнему пакует по габариту — это упаковка.
+      final layout = CutLayout.place([piece], const Size(1632, 460));
+      expect(
+        layout.placements.single.rect.width,
+        closeTo(piece.widthMm * layout.scale, 1e-9),
+      );
+      expect(
+        layout.placements.single.rect.height,
+        closeTo(piece.heightMm * layout.scale, 1e-9),
+      );
     });
 
     test('крупная заготовка выглядит крупнее мелкой', () {
@@ -293,9 +354,9 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('ЗАГОТОВОК'), findsOneWidget);
-      // «Заготовки (габарит) с усадкой» есть и в итогах, и в штампе.
-      expect(find.text('ЗАГОТОВКИ (ГАБАРИТ) С УСАДКОЙ'), findsWidgets);
-      expect(find.text('БЕЗ УСАДКИ (ГАБАРИТ)'), findsOneWidget);
+      // «Площадь заготовок с усадкой» есть и в итогах, и в штампе.
+      expect(find.text('ПЛОЩАДЬ ЗАГОТОВОК С УСАДКОЙ'), findsWidgets);
+      expect(find.text('БЕЗ УСАДКИ (ПО КОНТУРУ)'), findsOneWidget);
     });
 
     testWidgets('не падает на пустом заказе', (tester) async {
@@ -359,6 +420,14 @@ void main() {
           viewport:
               CutSheet.sheetSize(many, const Size(1720, 1080)) ?? const Size(1720, 1080),
           project: many,
+        ),
+        // Трапеция рядом с прямоугольником: форма, все четыре стороны и
+        // фактическая площадь по контуру.
+        'raskroy-trapetsiya': (
+          viewport:
+              CutSheet.sheetSize(_trapezoidOrder, const Size(1720, 1080)) ??
+                  const Size(1720, 1080),
+          project: _trapezoidOrder,
         ),
       };
 

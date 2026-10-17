@@ -16,7 +16,7 @@ import 'package:soft_window_drawer/widgets/tech_card_sheet.dart';
 
 import 'test_fonts.dart';
 
-/// Окно 1500 × 2520 с молнией, карманом и люверсами по всему периметру.
+/// Окно 1500 × 2520 с молнией, фартуком и люверсами по всему периметру.
 const _window = WindowParams(
   projectName: 'Мягкое окно веранды',
   customer: 'Иванов И. И.',
@@ -29,7 +29,7 @@ const _window = WindowParams(
   pocket: true,
 );
 
-/// Богатое подъёмное окно: две молнии, вырезы, спайка, карман, дренаж.
+/// Богатое подъёмное окно: две молнии, вырезы, спайка, фартук, дренаж.
 const _rich = WindowParams(
   projectName: 'Мягкое окно веранды',
   customer: 'Иванов И. И.',
@@ -273,7 +273,7 @@ void main() {
       );
     });
 
-    test('карман: тент 200 мм складывается пополам до 100 мм', () {
+    test('фартук: тент 200 мм складывается пополам до 100 мм', () {
       final pocket = _op(card, TechOperationKind.pocket);
       expect(pocket.text, contains(formatMm(pocketRollWidth)));
       expect(pocket.text, contains(formatMm(_window.pocketWidth)));
@@ -596,7 +596,7 @@ void main() {
       );
     });
 
-    test('верхний карман считается и подписан', () {
+    test('верхний фартук считается и подписан', () {
       final pocket = _op(card, TechOperationKind.pocket);
       expect(pocket.title, contains('сверху'));
       expect(pocket.text, contains(formatMm(_screen.pocketWidth)));

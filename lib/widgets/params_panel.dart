@@ -1375,7 +1375,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
           const SizedBox(height: 12),
           _expansion(
-            title: 'Молния и карман',
+            title: 'Молния и фартук',
             subtitle: _specElementsSummary(params),
             children: [
               if (params.zippers.isEmpty)
@@ -1413,37 +1413,63 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 ),
               ],
               const SizedBox(height: 10),
-              SwitchListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Карман снизу (по нижней кромке)'),
-                value: params.pocket,
-                onChanged: (value) =>
-                    _updateWindow(params.copyWith(pocket: value)),
+              // Две явные кнопки-переключателя: выбранная подсвечена, повторный
+              // тап выключает флаг. В модели по-прежнему pocket / pocketTop.
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _apronToggle(
+                    key: const Key('apron-bottom-toggle'),
+                    label: 'Фартук снизу',
+                    icon: Icons.vertical_align_bottom,
+                    selected: params.pocket,
+                    onPressed: () =>
+                        _updateWindow(params.copyWith(pocket: !params.pocket)),
+                  ),
+                  _apronToggle(
+                    key: const Key('apron-top-toggle'),
+                    label: 'Фартук сверху',
+                    icon: Icons.vertical_align_top,
+                    selected: params.pocketTop,
+                    onPressed: () => _updateWindow(
+                      params.copyWith(pocketTop: !params.pocketTop),
+                    ),
+                  ),
+                ],
               ),
-              SwitchListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Карман сверху (по верхней кромке)'),
-                value: params.pocketTop,
-                onChanged: (value) =>
-                    _updateWindow(params.copyWith(pocketTop: value)),
+              const SizedBox(height: 8),
+              Text(
+                _apronStateLabel(params),
+                key: const Key('apron-state'),
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0B62C4),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _apronWidthField(),
+              const SizedBox(height: 6),
+              const Text(
+                'Фартук идёт от внутреннего края окантовки наружу и ниже кромки',
+                key: Key('apron-caption'),
+                style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
               ),
               if (params.pocket || params.pocketTop) ...[
-                _numberField(ParamField.pocketWidth),
                 const SizedBox(height: 6),
                 Text(
                   params.isScreen
-                      ? 'У скрина карман образуется подворотом материала '
+                      ? 'У скрина фартук образуется подворотом материала '
                           '${formatMm(params.pocketWidth)} мм. Угловые люверсы со '
-                          'стороны кармана не ставятся, крайние боковые смещаются '
+                          'стороны фартука не ставятся, крайние боковые смещаются '
                           'на ${formatMm(pocketCornerOffset)} мм — чтобы в полость '
-                          'кармана заводился утяжитель.'
-                      : 'Карман делается из тента 200 мм, складывается пополам — '
-                          'получается 100 мм. Угловые люверсы со стороны кармана '
-                          'не ставятся: они смещаются на '
+                          'фартука заводился утяжитель.'
+                      : 'Фартук делается из тента 200 мм, складывается пополам — '
+                          'получается ${formatMm(params.pocketWidth)} мм. Угловые '
+                          'люверсы со стороны фартука не ставятся: они смещаются на '
                           '${formatMm(pocketCornerOffset)} мм, чтобы в полость '
-                          'кармана заводился утяжитель.',
+                          'фартука заводился утяжитель.',
                   style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF66748A),
@@ -1714,7 +1740,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
               OutlinedButton.icon(
                 onPressed: () => _updateWindow(params.copyWith(pocket: true)),
                 icon: const Icon(Icons.inbox_outlined, size: 18),
-                label: const Text('Добавить карман'),
+                label: const Text('Добавить фартук'),
               ),
               TextButton.icon(
                 onPressed: widget.onReset,
@@ -1728,6 +1754,70 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
+  /// Кнопка-переключатель фартука: выбранное состояние подсвечено заливкой.
+  ///
+  /// Это не тумблер-переключатель, а явная кнопка: подпись называет сторону,
+  /// состояние видно по заливке и галочке, а повторный тап выключает флаг.
+  Widget _apronToggle({
+    required Key key,
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onPressed,
+  }) {
+    const accent = Color(0xFF0B62C4);
+    return OutlinedButton.icon(
+      key: key,
+      onPressed: onPressed,
+      icon: Icon(selected ? Icons.check_circle : icon, size: 18),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: selected ? Colors.white : accent,
+        backgroundColor: selected ? accent : Colors.white,
+        side: BorderSide(
+          color: selected ? accent : const Color(0xFFB9C6D8),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        textStyle: const TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+        ),
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+
+  /// Подпись состояния кнопок «Фартук снизу/сверху» — чтобы состояние было
+  /// видно и текстом, а не только подсветкой кнопки.
+  String _apronStateLabel(WindowParams params) {
+    if (params.pocket && params.pocketTop) {
+      return 'Сейчас: фартук снизу и сверху';
+    }
+    if (params.pocket) return 'Сейчас: фартук снизу';
+    if (params.pocketTop) return 'Сейчас: фартук сверху';
+    return 'Фартук не включён';
+  }
+
+  /// Поле «Ширина фартука, мм» — общее для нижнего и верхнего фартука.
+  Widget _apronWidthField() {
+    return TextField(
+      key: const Key('apron-width-field'),
+      controller: _controllers[ParamField.pocketWidth],
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        labelText: 'Ширина фартука, мм',
+        helperText: 'общая для нижнего и верхнего фартука; обычно '
+            '${formatMm(pocketFinishedWidth)} мм',
+        helperMaxLines: 2,
+        border: const OutlineInputBorder(),
+        isDense: true,
+        errorText: _errorFor(ParamField.pocketWidth),
+        errorMaxLines: 2,
+      ),
+      onChanged: (raw) => _onNumberChanged(ParamField.pocketWidth, raw),
+    );
+  }
+
   String _specElementsSummary(WindowParams params) {
     final zipperPart = switch (params.zippers.length) {
       0 => null,
@@ -1737,8 +1827,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
     final parts = <String>[
       ?zipperPart,
       if (params.cutouts.isNotEmpty) 'вырезов ${params.cutouts.length}',
-      if (params.pocket) 'карман снизу ${formatMm(params.pocketWidth)} мм',
-      if (params.pocketTop) 'карман сверху ${formatMm(params.pocketWidth)} мм',
+      if (params.pocket) 'фартук снизу ${formatMm(params.pocketWidth)} мм',
+      if (params.pocketTop) 'фартук сверху ${formatMm(params.pocketWidth)} мм',
       if (params.drainHoles && !params.isScreen)
         'дренаж ${params.drainCount.round()} шт',
     ];

@@ -133,10 +133,11 @@ class WindowGeometry {
   /// Смещение левого верхнего угла вправо от левого нижнего угла.
   final double topOffset;
 
-  /// Насколько карман опускается ниже нижнего тента, мм.
+  /// Насколько фартук (бывший карман) опускается ниже нижнего тента, мм.
   final double pocketDrop;
 
-  /// Насколько верхний карман поднимается выше верхней кромки, мм.
+  /// Насколько верхний фартук (бывший карман) поднимается выше верхней
+  /// кромки, мм.
   final double pocketTopRise;
 
   static double _positive(double value) =>
@@ -176,10 +177,10 @@ class WindowGeometry {
   double get minY => -pocketDrop;
   double get maxY => math.max(leftHeight, rightHeight);
 
-  /// Верхняя граница листа: изделие плюс верхний карман (если он есть).
+  /// Верхняя граница листа: изделие плюс верхний фартук (если он есть).
   ///
   /// [maxY] и [overallHeight] остаются габаритом ИЗДЕЛИЯ — по ним считаются
-  /// площадь и подписи, а карман лишь расширяет лист чертежа ([spanY]).
+  /// площадь и подписи, а фартук лишь расширяет лист чертежа ([spanY]).
   double get topBound => maxY + pocketTopRise;
 
   double get spanX => maxX - minX;
@@ -595,33 +596,90 @@ class WindowLayers {
   ({double left, double band, double right})? get zipperGaps =>
       zipperBands.isEmpty ? null : _gapsOf(zipperBands.first);
 
-  /// Карман — продолжение нижнего тента вниз: полоса тента 200 мм,
-  /// сложенная пополам (100 мм), по всей ширине окна.
+  /// Ширина полосы фартука (бывшего кармана) для стороны, мм.
   ///
-  /// У скрина эта же полоса образуется нижним подворотом: она рисуется
-  /// внутри готового контура, потому что отдельного тента нет.
+  /// У ПВХ это готовая ширина фартука [WindowParams.pocketWidth]
+  /// (рулон 200 мм, сложенный пополам). У скрина отдельного тента нет:
+  /// фартук образуется подворотом, поэтому его полоса равна подвороту
+  /// соответствующей стороны.
+  double pocketBandWidth(WindowSide side) => params.isScreen
+      ? switch (side) {
+          WindowSide.bottom => params.hemBottomMm,
+          WindowSide.right => params.hemRightMm,
+          WindowSide.top => params.hemTopMm,
+          WindowSide.left => params.hemLeftMm,
+        }
+      : params.pocketWidth;
+
+  /// Полоса фартука (бывшего кармана) по стороне — четырёхугольник по контуру.
+  ///
+  /// По описанию заказчика полоса идёт **от внутреннего края окантовки до
+  /// внешнего края и немного ниже (выше)**: то есть начинается на линии
+  /// внутреннего края тента (`edgeInner`, у скрина — на линии подворота
+  /// `screenHemLine`), закрывает всю полосу окантовки и уходит за внешний
+  /// край ещё на [WindowParams.pocketWidth].
+  ///
+  /// Четырёхугольник (а не прямоугольник) нужен для косого окна: верхняя
+  /// кромка трапеции наклонена, и полоса должна лежать параллельно ей.
+  /// Углы возвращаются в порядке обхода углов окна (низ, право, верх, лево).
+  List<Offset> pocketBand(WindowSide side) {
+    final enabled = switch (side) {
+      WindowSide.bottom => params.pocket,
+      WindowSide.top => params.pocketTop,
+      WindowSide.right || WindowSide.left => false,
+    };
+    if (!enabled) return const [];
+
+    final index = switch (side) {
+      WindowSide.bottom => 0,
+      WindowSide.right => 1,
+      WindowSide.top => 2,
+      WindowSide.left => 3,
+    };
+    final a = outer[index];
+    final b = outer[(index + 1) % outer.length];
+
+    // Внутренняя граница полосы: у ПВХ — внутренний край окантовки,
+    // у скрина — линия подворота (готовый контур изделия).
+    final innerA = isScreen ? screenHemLine[index] : edgeInner[index];
+    final innerB =
+        isScreen ? screenHemLine[(index + 1) % screenHemLine.length] : edgeInner[(index + 1) % edgeInner.length];
+
+    // Наружная граница: у ПВХ внешний край тента плюс ширина фартука,
+    // у скрина — край заготовки (полоса подворота уже лежит снаружи контура).
+    late final Offset outerA;
+    late final Offset outerB;
+    if (isScreen) {
+      outerA = filmEdge[index];
+      outerB = filmEdge[(index + 1) % filmEdge.length];
+    } else {
+      final direction = b - a;
+      final length = direction.distance;
+      if (length < 1e-9) return const [];
+      final unit = direction / length;
+      // Наружная нормаль при обходе против часовой стрелки — (dy, −dx).
+      final outward = Offset(unit.dy, -unit.dx);
+      final width = params.pocketWidth.isFinite && params.pocketWidth > 0
+          ? params.pocketWidth
+          : 0.0;
+      outerA = a + outward * width;
+      outerB = b + outward * width;
+    }
+
+    return [innerA, innerB, outerB, outerA];
+  }
+
+  /// Габарит нижнего фартука (для подписей и старых тестов).
+  ///
+  /// Полоса идёт от внутреннего края нижней окантовки (`finishedWidths[0]`)
+  /// до внешнего края и ниже на ширину фартука.
   Rect get pocketRect => params.pocket
-      ? (params.isScreen
-          ? Rect.fromLTRB(0, 0, geometry.bottomWidth, params.pocketWidth)
-          : Rect.fromLTRB(0, -params.pocketWidth, geometry.bottomWidth, 0))
+      ? boundsOf(pocketBand(WindowSide.bottom))
       : Rect.zero;
 
-  /// Верхний карман — зеркало нижнего: полоса тента/подворота у верхней
-  /// кромки (у скрина — внутри контура, по верхнему подвороту).
+  /// Габарит верхнего фартука — зеркало нижнего.
   Rect get pocketTopRect => params.pocketTop
-      ? (params.isScreen
-          ? Rect.fromLTRB(
-              geometry.topOffset,
-              geometry.maxY - params.pocketWidth,
-              geometry.topOffset + geometry.topWidth,
-              geometry.maxY,
-            )
-          : Rect.fromLTRB(
-              geometry.topOffset,
-              geometry.maxY,
-              geometry.topOffset + geometry.topWidth,
-              geometry.maxY + params.pocketWidth,
-            ))
+      ? boundsOf(pocketBand(WindowSide.top))
       : Rect.zero;
 
   _EyeletResult _computeEyelets() {
@@ -673,9 +731,9 @@ class WindowLayers {
       for (var k = 0; k <= intervals; k++) {
         var distance = offset + actual * k;
 
-        // Карман снизу: угловые люверсы внизу не ставим, а боковые поднимаем,
-        // чтобы в полость кармана заводился утяжитель. Карман сверху —
-        // зеркально: углы сверху убираем, боковые опускаем.
+        // Фартук (бывший карман) снизу: угловые люверсы внизу не ставим, а
+        // боковые поднимаем, чтобы в полость фартука заводился утяжитель.
+        // Фартук сверху — зеркально: углы сверху убираем, боковые опускаем.
         if (params.pocket) {
           if (side == WindowSide.bottom && (k == 0 || k == intervals)) {
             continue;
@@ -852,28 +910,69 @@ class WindowSpec {
       filmCutHeightWithAllowance *
       (1 + params.effectiveShrinkagePercent / 100);
 
-  /// Площадь ЗАГОТОВКИ (габарит) к раскрою: припуск, без усадки, минус
-  /// вырезы, м².
+  /// Контур заготовки к раскрою: [WindowLayers.filmEdge], растянутый на
+  /// припуск на раскрой.
   ///
-  /// Это габаритный прямоугольник заготовки, поэтому для трапеции он больше
-  /// площади полотна [filmAreaM2] — расход считается «с запасом», по верхней
-  /// оценке. Усадка здесь ещё не учтена: фактический расход и деньги идут по
-  /// [filmCutAreaWithShrinkageM2].
-  double get filmCutAreaM2 {
-    final blank = filmCutWidthWithAllowance * filmCutHeightWithAllowance;
-    return math.max(blank - layers.cutoutAreaMm2, 0) / 1000000;
+  /// Припуск по ширине и высоте — это прибавка к габариту, поэтому контур
+  /// растягивается относительно центра своего габарита: ширина становится
+  /// `filmCutWidth + allowanceWidthMm`, высота —
+  /// `filmCutHeight + effectiveAllowanceHeightMm`. Для прямоугольника это
+  /// ровно прежние `filmCutWidthWithAllowance × filmCutHeightWithAllowance`,
+  /// а для трапеции — её фактическая форма, а не описанный прямоугольник.
+  List<Offset> get filmCutPolygon {
+    final polygon = layers.filmEdge;
+    if (polygon.length < 3) return List.of(polygon);
+    final bounds = layers.filmCutBounds;
+    final width = bounds.width;
+    final height = bounds.height;
+    final sx = width > 1e-9
+        ? (width + params.allowanceWidthMm) / width
+        : 1.0;
+    final sy = height > 1e-9
+        ? (height + params.effectiveAllowanceHeightMm) / height
+        : 1.0;
+    return scalePolygonAroundCenter(
+      polygon,
+      sx.isFinite && sx > 0.05 ? sx : 1.0,
+      sy.isFinite && sy > 0.05 ? sy : 1.0,
+    );
   }
 
-  /// Площадь заготовки (габарит) к раскрою С учётом усадки, м².
+  /// Контур заготовки к раскрою с компенсацией усадки ПВХ.
   ///
-  /// Усадка компенсируется по ОБЕИМ сторонам заготовки, поэтому площадь
-  /// считается из уже усадочных линейных размеров, а не умножением площади
-  /// на (1 + s/100): при заготовке 2020 × 2030 мм и усадке 1,5 % плёнка
-  /// кроится 2050,3 × 2060,45 мм = 4,224541 м². Именно эта площадь идёт в
-  /// расход, смету и ведомость.
+  /// Усадка компенсируется по обеим осям, поэтому контур равномерно
+  /// растягивается в `1 + s/100` раз относительно центра габарита.
+  List<Offset> get filmCutPolygonWithShrinkage {
+    final polygon = filmCutPolygon;
+    final factor = 1 + params.effectiveShrinkagePercent / 100;
+    if (polygon.length < 3 || factor == 1) return List.of(polygon);
+    return scalePolygonAroundCenter(polygon, factor, factor);
+  }
+
+  /// Площадь ЗАГОТОВКИ к раскрою по ФАКТИЧЕСКОМУ контуру: припуск, без
+  /// усадки, минус вырезы, м².
+  ///
+  /// Считается по площади полигона [filmCutPolygon] (это `filmEdge` с
+  /// припуском), а не по габаритному прямоугольнику. Для трапеции или окна с
+  /// разными высотами сторон фактическая площадь меньше габаритной — именно
+  /// она идёт в ведомость и смету. Усадка здесь ещё не учтена: фактический
+  /// расход и деньги идут по [filmCutAreaWithShrinkageM2].
+  double get filmCutAreaM2 {
+    final area = polygonArea(filmCutPolygon).abs() - layers.cutoutAreaMm2;
+    return math.max(area, 0) / 1000000;
+  }
+
+  /// Площадь заготовки к раскрою по контуру С учётом усадки, м².
+  ///
+  /// Контур заготовки растягивается в `1 + s/100` раз по обеим осям, поэтому
+  /// площадь растёт в `(1 + s/100)²`, а не на процент. При прямоугольной
+  /// заготовке 2020 × 2030 мм и усадке 1,5 % получаются прежние
+  /// 2050,3 × 2060,45 мм = 4,224541 м²; у трапеции площадь считается по её
+  /// контуру. Именно эта площадь идёт в расход, смету и ведомость.
   double get filmCutAreaWithShrinkageM2 {
-    final blank = filmCutWidthWithShrinkage * filmCutHeightWithShrinkage;
-    return math.max(blank - layers.cutoutAreaMm2, 0) / 1000000;
+    final area =
+        polygonArea(filmCutPolygonWithShrinkage).abs() - layers.cutoutAreaMm2;
+    return math.max(area, 0) / 1000000;
   }
 
   /// Расход окантовки по ширинам рулонов.
@@ -1100,7 +1199,7 @@ class WindowSpec {
             '${formatMm(filmCutHeightWithAllowance)} мм '
             '(${formatMm(filmCutWidth)} × ${formatMm(filmCutHeight)} мм '
             'до припуска); усадки нет',
-        'Расход скрина — площадь заготовки (габарит) '
+        'Расход скрина — площадь заготовки по фактическому контуру '
             '${formatMeters(filmCutAreaWithShrinkageM2)} м²'
             '${screenZipperBandAreaM2 > 0 ? ' плюс полосы молний '
                 '${formatMeters(screenZipperBandAreaM2)} м²' : ''}',
@@ -1172,7 +1271,8 @@ class WindowSpec {
     ];
   }
 
-  /// Примечание о карманах: снизу, сверху или оба; у скрина — подворотом.
+  /// Примечание о фартуках (бывших карманах): снизу, сверху или оба;
+  /// у скрина — подворотом.
   String _pocketNote() {
     final where = switch ((params.pocket, params.pocketTop)) {
       (true, true) => 'снизу и сверху',
@@ -1181,13 +1281,13 @@ class WindowSpec {
       (false, false) => '',
     };
     if (params.isScreen) {
-      return 'Карман $where: подворот ${formatMm(params.pocketWidth)} мм, '
-          'угловой люверс со стороны кармана смещён на '
+      return 'Фартук $where: подворот ${formatMm(params.pocketWidth)} мм, '
+          'угловой люверс со стороны фартука смещён на '
           '${formatMm(pocketCornerOffset)} мм';
     }
-    return 'Карман $where: тент ${formatMm(pocketRollWidth)} мм сложен '
+    return 'Фартук $where: тент ${formatMm(pocketRollWidth)} мм сложен '
         'пополам → ${formatMm(params.pocketWidth)} мм; угловой люверс со '
-        'стороны кармана смещён на ${formatMm(pocketCornerOffset)} мм';
+        'стороны фартука смещён на ${formatMm(pocketCornerOffset)} мм';
   }
 }
 
@@ -1656,6 +1756,26 @@ Rect boundsOf(List<Offset> polygon) {
   }
   if (minX == double.infinity) return Rect.zero;
   return Rect.fromLTRB(minX, minY, maxX, maxY);
+}
+
+/// Растягивает многоугольник относительно центра его габарита.
+///
+/// Так припуск на раскрой и усадка применяются к фактической форме: габарит
+/// растёт ровно на заданные миллиметры, а трапеция остаётся трапецией.
+List<Offset> scalePolygonAroundCenter(
+  List<Offset> polygon,
+  double scaleX,
+  double scaleY,
+) {
+  if (polygon.isEmpty) return const [];
+  final center = boundsOf(polygon).center;
+  return [
+    for (final point in polygon)
+      Offset(
+        center.dx + (point.dx - center.dx) * scaleX,
+        center.dy + (point.dy - center.dy) * scaleY,
+      ),
+  ];
 }
 
 /// Смещает выпуклый многоугольник внутрь: своя величина для каждой стороны.

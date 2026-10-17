@@ -60,7 +60,7 @@ Future<String> loadRublesFont() async {
   return testFontFamily;
 }
 
-/// Окно для превью: подъёмное, с молнией, карманом и дренажом — в смете
+/// Окно для превью: подъёмное, с молнией, фартуком и дренажом — в смете
 /// видны все разделы.
 const _previewWindow = WindowParams(
   projectName: 'Мягкое окно веранды',

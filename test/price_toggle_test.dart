@@ -249,6 +249,14 @@ void main() {
     // У процентов расчёта тумблера нет — это условия, а не позиции.
     expect(find.byKey(const ValueKey('price-toggle-vatPercent')), findsNothing);
 
+    // Строка полосы переименована в «фартук», а ключ позиции остался pocket.
+    expect(find.text('Фартук, ₽/м'), findsOneWidget);
+    expect(find.text('Карман, ₽/м'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('price-toggle-${PriceItemKeys.pocket}')),
+      findsOneWidget,
+    );
+
     // По умолчанию всё включено и смета полная.
     final before =
         Estimate.ofWindow(_window, hostKey.currentState!.prices);

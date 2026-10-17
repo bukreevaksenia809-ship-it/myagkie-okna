@@ -380,22 +380,56 @@ void _screenAndWeldRules() {
     expect(fastenerSpec.fastenerSummary, contains('по подвороту'));
     expect(tester.takeException(), isNull);
 
-    // --- Карман сверху и снизу ---
-    final topPocket = find.text('Карман сверху (по верхней кромке)');
-    await tester.ensureVisible(topPocket);
-    await tester.tap(topPocket);
+    // --- Фартук сверху и снизу: явные кнопки-переключатели ---
+    // Раздел переименован: старых подписей «карман» в панели нет.
+    expect(find.text('Молния и фартук'), findsOneWidget);
+    expect(find.textContaining('Карман'), findsNothing);
+    expect(find.textContaining('карман'), findsNothing);
+
+    final topApron = find.byKey(const Key('apron-top-toggle'));
+    final bottomApron = find.byKey(const Key('apron-bottom-toggle'));
+    await tester.ensureVisible(topApron);
+    await tester.tap(topApron);
     await tester.pumpAndSettle();
     params = hostKey.currentState!.project.selected;
     expect(params.pocketTop, isTrue);
     expect(params.pocket, isFalse);
+    // Состояние видно и текстом, и галочкой на выбранной кнопке.
+    expect(find.text('Сейчас: фартук сверху'), findsOneWidget);
+    expect(
+      find.descendant(of: topApron, matching: find.byIcon(Icons.check_circle)),
+      findsOneWidget,
+    );
 
-    final bottomPocket = find.text('Карман снизу (по нижней кромке)');
-    await tester.ensureVisible(bottomPocket);
-    await tester.tap(bottomPocket);
+    await tester.ensureVisible(bottomApron);
+    await tester.tap(bottomApron);
     await tester.pumpAndSettle();
     params = hostKey.currentState!.project.selected;
     expect(params.pocket, isTrue);
     expect(params.pocketTop, isTrue);
+    expect(find.text('Сейчас: фартук снизу и сверху'), findsOneWidget);
+
+    // Повторный тап выключает ровно свой флаг.
+    await tester.tap(bottomApron);
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.pocket, isFalse);
+    expect(params.pocketTop, isTrue);
+    expect(
+      find.descendant(of: bottomApron, matching: find.byIcon(Icons.check_circle)),
+      findsNothing,
+    );
+
+    // Ширина фартука — общая для обеих сторон и уходит в модель.
+    expect(find.text('Ширина фартука, мм'), findsOneWidget);
+    expect(
+      find.text('Фартук идёт от внутреннего края окантовки наружу и ниже кромки'),
+      findsOneWidget,
+    );
+    await tester.enterText(find.byKey(const Key('apron-width-field')), '120');
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.pocketWidth, 120);
     expect(tester.takeException(), isNull);
 
     // --- Запайка под окантовку: возвращаемся на ПВХ и вводим 10 мм ---

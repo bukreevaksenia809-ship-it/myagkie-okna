@@ -22,7 +22,7 @@ import 'package:soft_window_drawer/widgets/roll_sheet.dart';
 import 'test_fonts.dart';
 
 /// Пример заказчика: 1500 × 2520 мм, окантовка 100 мм (50 мм готовых).
-/// Глухое окно с молнией и карманом.
+/// Глухое окно с молнией и фартуком.
 const _fixed = WindowParams(
   projectName: 'Мягкое окно веранды',
   customer: 'Иванов И. И.',
@@ -142,6 +142,33 @@ const _screenHem40x60 = WindowParams(
   hemRightMm: 40,
   hemTopMm: 60,
   hemLeftMm: 40,
+);
+
+/// Косое окно-трапеция: низ 2000, верх 1000, высота 1000 мм.
+const _trapezoid = WindowParams(
+  projectName: 'Мягкое окно веранды',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-040',
+  bottomWidth: 2000,
+  topWidth: 1000,
+  leftHeight: 1000,
+  rightHeight: 1000,
+  weldOverlapMm: 25,
+);
+
+/// Прямоугольное окно с фартуком снизу и сверху: видно, что полосы идут от
+/// внутреннего края окантовки до внешнего и немного дальше, не закрывая
+/// люверсы и размеры.
+const _aprons = WindowParams(
+  projectName: 'Мягкое окно веранды',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-041',
+  bottomWidth: 1500,
+  topWidth: 1500,
+  leftHeight: 2520,
+  rightHeight: 2520,
+  pocket: true,
+  pocketTop: true,
 );
 
 /// Окно со своими (нетиповыми) ширинами окантовки на каждую сторону:
@@ -300,6 +327,24 @@ void main() {
         viewport: a4Viewport,
         build: (key) => DrawingSheet(
           project: const OrderProject(windows: [_customEdges]),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      // Косое окно: трапеция, а не габаритный прямоугольник.
+      'trapetsiya': (
+        viewport: a4Viewport,
+        build: (key) => DrawingSheet(
+          project: const OrderProject(windows: [_trapezoid]),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      // Фартук снизу и сверху: полупрозрачные полосы поверх окантовки.
+      'fartuki': (
+        viewport: a4Viewport,
+        build: (key) => DrawingSheet(
+          project: const OrderProject(windows: [_aprons]),
           captureKey: key,
           labelFontFamily: testFontFamily,
         ),

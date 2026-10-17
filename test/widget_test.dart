@@ -27,12 +27,12 @@ void main() {
     expect(find.text('Глухое'), findsWidgets);
     expect(find.text('Подъёмное'), findsWidgets);
 
-    // Комбинированного типа больше нет: молния и карман — отдельные кнопки.
+    // Комбинированного типа больше нет: молния и фартук — отдельные кнопки.
     expect(find.text('Комбинированное'), findsNothing);
 
-    // Молния и карман — отдельные кнопки-пресеты.
+    // Молния и фартук — отдельные кнопки-пресеты.
     expect(find.text('Добавить молнию'), findsOneWidget);
-    expect(find.text('Добавить карман'), findsOneWidget);
+    expect(find.text('Добавить фартук'), findsOneWidget);
 
     // Раздел «Полотно»: материалы и доступные ширины рулонов.
     expect(find.text('Обычный ПВХ'), findsWidgets);

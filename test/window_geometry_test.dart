@@ -35,6 +35,7 @@ void main() {
   _costsSummaryRules();
   _weldedWindowRules();
   _allowanceRules();
+  _obliqueAreaRules();
   _shrinkageAndPvcAllowanceRules();
   _weldOverlapRules();
   _screenRules();
@@ -254,7 +255,7 @@ void main() {
       expect(fixedLayers.typeFor(cornerEyelet), EyeletType.round10);
     });
 
-    test('карман: угловые люверсы внизу убраны, боковые подняты на 50 мм', () {
+    test('фартук: угловые люверсы внизу убраны, боковые подняты на 50 мм', () {
       const withPocket = WindowParams(
         bottomWidth: 2000,
         topWidth: 2000,
@@ -286,7 +287,7 @@ void main() {
       expect(leftLowest.center.dy, closeTo(75, 0.02));
     });
 
-    test('карман — продолжение нижнего тента вниз', () {
+    test('фартук — от внутреннего края окантовки до внешнего и ниже', () {
       const withPocket = WindowParams(
         bottomWidth: 2000,
         topWidth: 2000,
@@ -297,13 +298,22 @@ void main() {
       final geometry = WindowGeometry.of(withPocket);
       final layers = WindowLayers(withPocket, geometry);
       final rect = layers.pocketRect;
+      // Окантовка рулона 100 мм складывается пополам → 50 мм.
+      const finishedEdge = 50.0;
 
       expect(rect.isEmpty, isFalse);
-      expect(rect.bottom, closeTo(0, 0.01), reason: 'накладка идёт от низа окна');
-      expect(rect.top, closeTo(-pocketFinishedWidth, 0.01));
-      expect(rect.height, closeTo(pocketFinishedWidth, 0.01));
+      // Полоса начинается на линии ВНУТРЕННЕГО края нижней окантовки
+      // (y = finishedEdge), закрывает окантовку и уходит ниже внешнего края
+      // (y = 0) на ширину фартука.
+      // Rect.top — это МИНИМАЛЬНЫЙ Y (наружная сторона), Rect.bottom —
+      // максимальный Y (внутренний край окантовки).
+      expect(rect.bottom, closeTo(finishedEdge, 0.01),
+          reason: 'верх полосы — внутренний край нижней окантовки');
+      expect(rect.top, closeTo(-pocketFinishedWidth, 0.01),
+          reason: 'низ полосы — на pocketWidth ниже внешнего края');
+      expect(rect.height, closeTo(finishedEdge + pocketFinishedWidth, 0.01));
       expect(rect.width, closeTo(2000, 0.01));
-      // Нижняя граница листа опускается под карман.
+      // Нижняя граница листа опускается под фартук.
       expect(geometry.minY, closeTo(-pocketFinishedWidth, 0.01));
       expect(geometry.spanY, closeTo(1500 + pocketFinishedWidth, 0.01));
     });
@@ -1191,7 +1201,7 @@ void _weldedWindowRules() {
       expect(welded.windows[1].weldedSides, [EdgeSide.left]);
 
       // Шаблон скопирован целиком: размеры, материал, окантовка, молнии,
-      // вырезы и карман.
+      // вырезы и фартук.
       final copy = welded.windows[1];
       expect(copy.bottomWidth, source.bottomWidth);
       expect(copy.topWidth, source.topWidth);
@@ -1689,6 +1699,129 @@ void _allowanceRules() {
     });
   });
 }
+
+// --- Площадь косого окна -----------------------------------------------------
+//
+// Заготовка косого окна считается по фактическому контуру, а не по габаритному
+// прямоугольнику: filmCutAreaM2 = площадь полигона filmCutPolygon (filmEdge с
+// припуском) минус вырезы. Габарит остаётся только для упаковки на рулоне.
+
+void _obliqueAreaRules() {
+  group('Площадь косого окна по контуру', () {
+    test('трапеция 2000/1000 × 1000: меньше габарита на 0,456 м²', () {
+      const params = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 1000,
+        leftHeight: 1000,
+        rightHeight: 1000,
+        weldOverlapMm: 25,
+      );
+      final spec = WindowSpec.of(params);
+
+      // Ручной расчёт filmEdge. Трапеция: A = 1 500 000 мм²,
+      // P = 2000 + 1000 + 2 × √(500² + 1000²) = 5 236,06798 мм,
+      // d = 50 − 25 = 25 мм. Для inward-offset:
+      // A(d) = A − d·P + d²·Σcot(θ/2) = 1 371 893,39 мм².
+      const d = 25.0;
+      final perimeter = 2000 + 1000 + 2 * math.sqrt(500 * 500 + 1000 * 1000);
+      const sumCot = 2 * (1.618033988749895 + 0.6180339887498949);
+      final edgeAreaMm2 = 1500000 - d * perimeter + d * d * sumCot;
+      // Заготовка: контур растянут на авто-припуск +10 мм к высоте.
+      final blankHeight = spec.filmCutHeight + pvcHeightAllowanceMm;
+      final expectedCutAreaM2 =
+          edgeAreaMm2 * blankHeight / spec.filmCutHeight / 1000000;
+
+      expect(spec.filmAreaM2, closeTo(edgeAreaMm2 / 1000000, 1e-6));
+      expect(spec.filmCutAreaM2, closeTo(expectedCutAreaM2, 1e-6));
+      expect(spec.filmCutAreaM2, closeTo(1.386334, 1e-6),
+          reason: '1 371 893,39 × 960 / 950 = 1 386 334,37 мм²');
+      // Совпадает с площадью полигона filmCutPolygon.
+      expect(
+        spec.filmCutAreaM2,
+        closeTo(polygonArea(spec.filmCutPolygon).abs() / 1000000, 1e-9),
+      );
+      // Меньше габаритного прямоугольника: 1919,0983 × 960 = 1,842334 м².
+      final boundingAreaM2 =
+          spec.filmCutWidthWithAllowance * spec.filmCutHeightWithAllowance /
+              1000000;
+      expect(spec.filmCutAreaM2, lessThan(boundingAreaM2));
+      // Ожидаемая разница вручную: 960 × (1919,0983 − 1444,0983) = 456 000 мм².
+      expect(boundingAreaM2 - spec.filmCutAreaM2, closeTo(0.456, 1e-6));
+      expect(spec.filmCutWidth, closeTo(1919.0983, 1e-3));
+      expect(spec.filmCutHeight, closeTo(950, 1e-9));
+    });
+
+    test('разные высоты слева и справа: площадь тоже по контуру', () {
+      const params = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 1000,
+        rightHeight: 1400,
+        weldOverlapMm: 25,
+      );
+      final spec = WindowSpec.of(params);
+
+      // Контур filmEdge — многоугольник, а не прямоугольник: площадь по
+      // формуле inward-offset. Внешний контур: A = 2 400 000 мм²,
+      // P = 2000 + 1400 + √(2000² + 400²) + 1000 = 6 439,60798 мм,
+      // d = 25 мм.
+      const d = 25.0;
+      final perimeter = 2000.0 +
+          1400.0 +
+          math.sqrt(2000.0 * 2000.0 + 400.0 * 400.0) +
+          1000.0;
+      final slopeAngle = math.atan(400 / 2000);
+      final sumCot = 2.0 +
+          _cot((math.pi / 2 - slopeAngle) / 2) +
+          _cot((math.pi / 2 + slopeAngle) / 2);
+      final edgeAreaMm2 = 2400000 - d * perimeter + d * d * sumCot;
+      final blankHeight = spec.filmCutHeight + pvcHeightAllowanceMm;
+      final expectedCutAreaM2 =
+          edgeAreaMm2 * blankHeight / spec.filmCutHeight / 1000000;
+
+      expect(spec.filmAreaM2, closeTo(edgeAreaMm2 / 1000000, 1e-6));
+      expect(spec.filmCutAreaM2, closeTo(expectedCutAreaM2, 1e-6));
+      expect(
+        spec.filmCutAreaM2,
+        closeTo(polygonArea(spec.filmCutPolygon).abs() / 1000000, 1e-9),
+      );
+      final boundingAreaM2 =
+          spec.filmCutWidthWithAllowance * spec.filmCutHeightWithAllowance /
+              1000000;
+      expect(spec.filmCutAreaM2, lessThan(boundingAreaM2),
+          reason: 'скошенный верх не должен списываться как прямоугольник');
+    });
+
+    test('прямоугольник: площадь не изменилась', () {
+      const params = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 1500,
+        rightHeight: 1500,
+        weldOverlapMm: 25,
+      );
+      final spec = WindowSpec.of(params);
+      // Для прямоугольника полигон и габарит совпадают.
+      expect(
+        spec.filmCutAreaM2,
+        closeTo(
+          spec.filmCutWidthWithAllowance *
+              spec.filmCutHeightWithAllowance /
+              1000000,
+          1e-9,
+        ),
+      );
+      expect(spec.filmCutPolygon, hasLength(4));
+      expect(
+        spec.filmCutAreaM2,
+        closeTo(polygonArea(spec.filmCutPolygon).abs() / 1000000, 1e-9),
+      );
+    });
+  });
+}
+
+/// Котангенс угла — для ручного расчёта inward-offset многоугольника.
+double _cot(double angle) => math.cos(angle) / math.sin(angle);
 
 // --- Усадка ПВХ и авто-припуск +10 мм к высоте ------------------------------
 
@@ -2403,10 +2536,10 @@ void _screenRules() {
   });
 }
 
-// --- Карман снизу и сверху ---------------------------------------------------
+// --- Фартук снизу и сверху ---------------------------------------------------
 
 void _pocketRules() {
-  group('Карманы снизу и сверху', () {
+  group('Фартуки снизу и сверху', () {
     const base = WindowParams(
       bottomWidth: 2000,
       topWidth: 2000,
@@ -2414,7 +2547,7 @@ void _pocketRules() {
       rightHeight: 1500,
     );
 
-    test('карман только снизу: подняты нижние угловые люверсы', () {
+    test('фартук только снизу: подняты нижние угловые люверсы', () {
       final params = base.copyWith(pocket: true, pocketWidth: 100);
       final layers = WindowLayers(params, WindowGeometry.of(params));
 
@@ -2430,17 +2563,20 @@ void _pocketRules() {
       expect(rightLowest.center.dy, closeTo(75, 0.02));
     });
 
-    test('карман только сверху: опущены верхние угловые люверсы', () {
+    test('фартук только сверху: опущены верхние угловые люверсы', () {
       final params = base.copyWith(pocketTop: true, pocketWidth: 100);
       final geometry = WindowGeometry.of(params);
       final layers = WindowLayers(params, geometry);
 
       expect(layers.pocketRect.isEmpty, isTrue);
       expect(layers.pocketTopRect.isEmpty, isFalse);
-      // Полоса идёт от верхней кромки изделия вверх: 1500 → 1600 мм.
-      expect(layers.pocketTopRect.top, closeTo(1500, 0.01));
+      // Полоса начинается на внутреннем крае верхней окантовки
+      // (1500 − 50 = 1450 мм), закрывает окантовку и уходит выше внешнего
+      // края на ширину фартука: 1500 → 1600 мм.
+      expect(layers.pocketTopRect.top, closeTo(1450, 0.01));
       expect(layers.pocketTopRect.bottom, closeTo(1600, 0.01));
-      // Верхний карман расширяет лист, но не габарит изделия.
+      expect(layers.pocketTopRect.height, closeTo(150, 0.01));
+      // Верхний фартук расширяет лист, но не габарит изделия.
       expect(geometry.pocketTopRise, 100);
       expect(geometry.spanY, closeTo(1600, 0.01));
       expect(geometry.overallHeight, closeTo(1500, 0.01));
@@ -2455,7 +2591,7 @@ void _pocketRules() {
       expect(rightHighest.center.dy, closeTo(1500 - 75, 0.02));
     });
 
-    test('оба кармана: симметрично убраны углы снизу и сверху', () {
+    test('оба фартука: симметрично убраны углы снизу и сверху', () {
       final params = base.copyWith(
         pocket: true,
         pocketTop: true,
@@ -2480,7 +2616,7 @@ void _pocketRules() {
       expect(highest.center.dy, closeTo(1500 - 75, 0.02));
     });
 
-    test('расход и подписи: карманы считаются оба', () {
+    test('расход и подписи: фартуки считаются оба', () {
       const project = OrderProject(windows: [
         WindowParams(
           bottomWidth: 2000,
@@ -2497,12 +2633,12 @@ void _pocketRules() {
       expect(summary.pocketCount, 2);
       expect(summary.pocketLengthMm, closeTo(4000, 1e-9));
       expect(
-        summary.extraLabels.any((label) => label.contains('Карман')),
+        summary.extraLabels.any((label) => label.contains('Фартук')),
         isTrue,
       );
       final notes = WindowSpec.of(project.windows.first).notes.join('\n');
       expect(notes, contains('снизу и сверху'));
-      // Верхний карман тоже попадает в расход материала.
+      // Верхний фартук тоже попадает в расход материала.
       expect(summary.filmAreaM2, greaterThan(0));
     });
   });

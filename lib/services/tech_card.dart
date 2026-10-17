@@ -21,7 +21,7 @@ enum TechOperationKind {
   eyelets('Люверсы'),
   zipper('Молнии'),
   cutouts('Вырезы'),
-  pocket('Карман'),
+  pocket('Фартук'),
   straps('Ремни'),
   drain('Дренаж'),
   control('Контроль');
@@ -309,15 +309,15 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
               '(подвороты ${params.hemBySideShortLabel}, низ/право/верх/лево)',
         ),
         TechMaterial(
-          name: 'Площадь заготовки (габарит) в раскрое',
+          name: 'Площадь заготовки по контуру в раскрое',
           size: '${formatMeters(spec.filmCutAreaWithShrinkageM2)} м²',
-          note: 'расход скрина считается по площади заготовки, без вырезов',
+          note: 'по фактическому контуру, без площади вырезов',
         ),
       ],
       tool: 'Раскроечный стол, дисковый нож, рулетка, угольник, маркер',
       control:
           'Габарит ${formatMm(spec.filmCutWidthWithAllowance)} × '
-          '${formatMm(spec.filmCutHeightWithAllowance)} мм (±5 мм), углы 90°, '
+          '${formatMm(spec.filmCutHeightWithAllowance)} мм (±5 мм), длины сторон и углы — по контуру чертежа, '
           'кромка ровная без задиров и волн',
       source:
           'WindowSpec.filmCutWidthWithAllowance / filmCutHeightWithAllowance '
@@ -355,18 +355,18 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         ),
         TechMaterial(
           name: params.hasShrinkage
-              ? 'Площадь заготовки (габарит) с усадкой'
-              : 'Площадь заготовки (габарит)',
+              ? 'Площадь заготовки по контуру с усадкой'
+              : 'Площадь заготовки по контуру',
           size: '${formatMeters(spec.filmCutAreaWithShrinkageM2)} м²',
           note: params.hasShrinkage
-              ? 'с припуском на раскрой и усадкой, без площади вырезов'
-              : 'с припуском на раскрой, без площади вырезов',
+              ? 'по фактическому контуру, с припуском и усадкой, без вырезов'
+              : 'по фактическому контуру, с припуском, без площади вырезов',
         ),
       ],
       tool: 'Раскроечный стол, дисковый нож, рулетка, угольник, маркер',
       control:
           'Габарит ${formatMm(spec.filmCutWidthWithShrinkage)} × '
-          '${formatMm(spec.filmCutHeightWithShrinkage)} мм (±5 мм), углы 90°, '
+          '${formatMm(spec.filmCutHeightWithShrinkage)} мм (±5 мм), длины сторон и углы — по контуру чертежа, '
           'кромка ровная без задиров и волн',
       source:
           'WindowSpec.filmCutWidthWithShrinkage / filmCutHeightWithShrinkage '
@@ -773,7 +773,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     );
   }
 
-  // ----------------------------------------------------------- 8. карман
+  // ------------------------------------------- 8. фартук (бывший карман)
   if (params.pocket || params.pocketTop) {
     final where = switch ((params.pocket, params.pocketTop)) {
       (true, true) => 'снизу и сверху',
@@ -799,23 +799,23 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     };
     add(
       kind: TechOperationKind.pocket,
-      title: 'Карман $where',
+      title: 'Фартук $where',
       description: isScreen
-          ? 'Карман $where образовать подворотом материала полосой '
+          ? 'Фартук $where образовать подворотом материала полосой '
               '${formatMm(params.pocketWidth)} мм на всю ширину '
               '${formatMm(pocketLength)} мм и приварить по кромке. '
-              'В полость кармана заводится утяжитель, поэтому $cornerHint.'
+              'В полость фартука заводится утяжитель, поэтому $cornerHint.'
           : 'Полосу тента ${formatMm(pocketRollWidth)} мм сложить пополам '
               'до ${formatMm(params.pocketWidth)} мм и '
               '${isWeldedEdge ? 'приварить' : 'пришить'} по кромке $where на '
-              'всю ширину ${formatMm(pocketLength)} мм. В полость кармана '
+              'всю ширину ${formatMm(pocketLength)} мм. В полость фартука '
               'заводится утяжитель, поэтому $cornerHint.',
       materials: [
         TechMaterial(
           name: isScreen
-              ? 'Подворот под карман $where '
+              ? 'Подворот под фартук $where '
                   '(${formatMm(params.pocketWidth)} мм)'
-              : 'Полоса тента под карман '
+              : 'Полоса тента под фартук '
                   '(${formatMm(pocketRollWidth)} мм → '
                   '${formatMm(params.pocketWidth)} мм)',
           size: '${formatMm(pocketLength)} мм',
@@ -824,7 +824,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       ],
       tool: 'Раскроечный стол, нож, линейка, фен-сварочник',
       control:
-          'Карман по всей ширине, полость свободно пропускает утяжитель, '
+          'Фартук по всей ширине, полость свободно пропускает утяжитель, '
           'шов без зазоров и перекосов',
       source: isScreen
           ? 'WindowParams.pocket / pocketTop / pocketWidth (подворот скрина)'

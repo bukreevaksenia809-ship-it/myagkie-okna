@@ -176,7 +176,7 @@ class _PricePanelState extends State<PricePanel> {
                 itemKey: PriceItemKeys.weld,
               ),
               _row(
-                'Карман, ₽/м',
+                'Фартук, ₽/м',
                 prices.pocketPerM,
                 (value) => _set(prices.copyWith(pocketPerM: value)),
                 itemKey: PriceItemKeys.pocket,

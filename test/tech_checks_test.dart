@@ -93,7 +93,7 @@ void main() {
       expect(check!.severity, TechSeverity.warning);
     });
 
-    test('молния в окне с карманом — предупреждение', () {
+    test('молния в окне с фартуком — предупреждение', () {
       final params = _correct.copyWith(
         pocket: true,
         zippers: const [ZipperSpec(centered: true)],
@@ -297,7 +297,7 @@ void main() {
       expect(params.liftStrapCount, 3);
     });
 
-    test('карман: угловые люверсы подняты автоматически', () {
+    test('фартук: угловые люверсы подняты автоматически', () {
       final params = _correct.copyWith(pocket: true, pocketWidth: 100);
       final checks = techChecksFor(params);
 

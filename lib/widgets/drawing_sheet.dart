@@ -574,8 +574,9 @@ class _TitleBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final windows = project.windows;
     final specs = [for (final params in windows) WindowSpec.of(params)];
-    // Плёнка на листе — заготовка (габарит) к раскрою: с припуском, а
-    // усадка показана отдельным числом (и учтена в totalFilmAreaWithShrinkage).
+    // Плёнка на листе — заготовка к раскрою по фактическому контуру: с
+    // припуском, а усадка показана отдельным числом (и учтена в
+    // totalFilmAreaWithShrinkage).
     final totalFilmArea =
         specs.fold<double>(0, (sum, spec) => sum + spec.filmCutAreaM2);
     final totalFilmAreaWithShrinkage = specs.fold<double>(
@@ -731,7 +732,7 @@ class _TitleBlock extends StatelessWidget {
                 Expanded(
                   flex: 2,
                   child: _cell(
-                    'Заготовки (габарит) с усадкой',
+                    'Площадь заготовок с усадкой',
                     '${formatMeters(totalFilmAreaWithShrinkage)} м²',
                   ),
                 ),
@@ -902,8 +903,8 @@ class _SidePanel extends StatelessWidget {
         (
           LegendKind.pocket,
           params.isScreen
-              ? 'Карман ${formatMm(params.pocketWidth)} мм (подворот)'
-              : 'Карман ${formatMm(params.pocketWidth)} мм (тент 200 мм ×2)'
+              ? 'Фартук ${formatMm(params.pocketWidth)} мм (подворот)'
+              : 'Фартук ${formatMm(params.pocketWidth)} мм (тент 200 мм ×2)'
         ),
       if (anyDrain) (LegendKind.drain, 'Дренаж Ø6 мм'),
     ];

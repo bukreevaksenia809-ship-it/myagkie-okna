@@ -9,9 +9,14 @@ import '../models/window_params.dart';
 /// Лист «Раскрой плёнки» — вырезанные заготовки мягких окон.
 ///
 /// В отличие от листа «Раскладка» (там заготовки уложены на рулон), здесь
-/// показаны сами заготовки: каждая — прямоугольник в ОДНОМ общем масштабе,
-/// с размерами по бокам, площадью внутри и подписью материала под ним.
-/// Заготовки идут в порядке окон, слева направо, с переносом на новый ряд.
+/// показаны сами заготовки: каждая — фактический контур (прямоугольник или
+/// трапеция) в ОДНОМ общем масштабе, с длинами всех четырёх сторон, площадью
+/// внутри и подписью материала под ним. Заготовки идут в порядке окон, слева
+/// направо, с переносом на новый ряд.
+///
+/// Раскладка на рулоне по-прежнему пакует заготовки по габаритному
+/// прямоугольнику — это упаковка. А в ведомости, смете и на этом листе идёт
+/// фактическая площадь по контуру: для косого окна она меньше габарита.
 class CutSheet extends StatelessWidget {
   const CutSheet({
     super.key,
@@ -173,28 +178,84 @@ class CutSheet extends StatelessWidget {
   }
 }
 
-/// Заготовка плёнки: габариты прямоугольника в миллиметрах.
+/// Заготовка плёнки: фактический контур в миллиметрах.
+///
+/// [widthMm] и [heightMm] — габарит контура (по нему упаковывается лист),
+/// [outline] — сам контур в миллиметрах с началом в левом нижнем углу
+/// габарита и осью Y вверх. Для прямоугольного окна контур не хранится
+/// (`outline` пуст) — это экономит память и сохраняет прежнее поведение.
 class CutPiece {
-  const CutPiece({required this.widthMm, required this.heightMm});
+  const CutPiece({
+    required this.widthMm,
+    required this.heightMm,
+    this.outline = const [],
+    this.areaM2 = 0,
+  });
 
-  /// Габарит заготовки к раскрою: плёнка с напайкой под окантовку, плюс
-  /// припуск на раскрой (см. [WindowSpec.filmCutWidthWithAllowance]) и
-  /// компенсация усадки ПВХ.
-  factory CutPiece.ofSpec(WindowSpec spec) => CutPiece(
+  /// Заготовка к раскрою: плёнка с напайкой под окантовку, припуском на
+  /// раскрой и компенсацией усадки ПВХ (см.
+  /// [WindowSpec.filmCutPolygonWithShrinkage]).
+  factory CutPiece.ofSpec(WindowSpec spec) {
+    final polygon = spec.filmCutPolygonWithShrinkage;
+    final areaM2 = spec.filmCutAreaWithShrinkageM2;
+    if (polygon.length < 3) {
+      return CutPiece(
         widthMm: _positive(spec.filmCutWidthWithShrinkage),
         heightMm: _positive(spec.filmCutHeightWithShrinkage),
+        areaM2: areaM2,
       );
+    }
+    final bounds = boundsOf(polygon);
+    final width = _positive(bounds.width);
+    final height = _positive(bounds.height);
+    if (bounds.width <= 0 || bounds.height <= 0) {
+      return CutPiece(widthMm: width, heightMm: height, areaM2: areaM2);
+    }
+    final outline = [
+      for (final point in polygon)
+        Offset(point.dx - bounds.left, point.dy - bounds.top),
+    ];
+    return CutPiece(
+      widthMm: width,
+      heightMm: height,
+      outline: outline,
+      areaM2: areaM2,
+    );
+  }
 
   final double widthMm;
   final double heightMm;
+
+  /// Контур заготовки, мм: начало в левом нижнем углу габарита, ось Y вверх.
+  /// Пустой список — заготовка прямоугольная.
+  final List<Offset> outline;
+
+  /// Площадь к раскрою по фактическому контуру, м² (с усадкой, минус вырезы).
+  /// Ноль — посчитать по габариту (для заготовок, созданных вручную).
+  final double areaM2;
 
   /// Некорректные размеры не роняют лист: считаем их минимальной заготовкой.
   static double _positive(double value) =>
       (!value.isFinite || value <= 0) ? 1 : value;
 
-  double get areaMm2 => widthMm * heightMm;
+  bool get hasContour => outline.length >= 3;
 
-  double get minSideMm => math.min(widthMm, heightMm);
+  /// Площадь фактического контура, мм² (без вычетов вырезов).
+  double get areaMm2 => hasContour
+      ? polygonArea(outline).abs()
+      : widthMm * heightMm;
+
+  /// Длины сторон по обходу углов: низ, право, верх, лево (мм).
+  List<double> get sideLengths {
+    if (!hasContour) return [widthMm, heightMm, widthMm, heightMm];
+    return [
+      for (var i = 0; i < outline.length; i++)
+        (outline[(i + 1) % outline.length] - outline[i]).distance,
+    ];
+  }
+
+  double get minSideMm =>
+      sideLengths.isEmpty ? math.min(widthMm, heightMm) : sideLengths.reduce(math.min);
 
   /// Отношение сторон заготовки (ширина / высота).
   double get aspect => heightMm <= 0 ? 1 : widthMm / heightMm;
@@ -517,30 +578,68 @@ class CutSheetPainter extends CustomPainter {
     CutPlacement placement,
   ) {
     final palette = CutPalette.of(spec.params.material);
+    final path = _piecePath(rect, placement.piece);
 
-    // Полупрозрачная плёнка, как на чертеже.
-    canvas.drawRect(rect, Paint()..color = palette.fill);
-    if (palette.mesh) _paintMesh(canvas, rect, palette.meshColor);
-    canvas.drawRect(
-      rect,
+    // Полупрозрачная плёнка, как на чертеже. Форма — фактический контур:
+    // прямоугольник, трапеция или четырёхугольник с разными высотами.
+    canvas.drawPath(path, Paint()..color = palette.fill);
+    if (palette.mesh) _paintMesh(canvas, path, rect, palette.meshColor);
+    canvas.drawPath(
+      path,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.6
         ..color = palette.edge,
     );
 
-    _paintArea(canvas, rect, spec);
+    _paintArea(canvas, rect, placement.piece);
     _paintDimensions(canvas, rect, placement);
     _paintCaption(canvas, rect, spec, placement.index);
   }
 
-  /// Мелкая клетка москитной сетки — только линии внутри прямоугольника.
-  void _paintMesh(Canvas canvas, Rect rect, Color color) {
+  /// Путь заготовки на листе: контур в мм переводится в точки листа.
+  ///
+  /// Ось Y модели направлена вверх, ось Y листа — вниз, поэтому Y зеркалится.
+  Path _piecePath(Rect rect, CutPiece piece) {
+    final path = Path();
+    if (!piece.hasContour) {
+      path.addRect(rect);
+      return path;
+    }
+    final points = _screenOutline(rect, piece);
+    if (points.isEmpty) {
+      path.addRect(rect);
+      return path;
+    }
+    path.moveTo(points.first.dx, points.first.dy);
+    for (final point in points.skip(1)) {
+      path.lineTo(point.dx, point.dy);
+    }
+    path.close();
+    return path;
+  }
+
+  /// Углы контура в координатах листа.
+  List<Offset> _screenOutline(Rect rect, CutPiece piece) {
+    if (!piece.hasContour) {
+      return [rect.bottomLeft, rect.bottomRight, rect.topRight, rect.topLeft];
+    }
+    return [
+      for (final point in piece.outline)
+        Offset(
+          rect.left + point.dx / piece.widthMm * rect.width,
+          rect.bottom - point.dy / piece.heightMm * rect.height,
+        ),
+    ];
+  }
+
+  /// Мелкая клетка москитной сетки — только линии внутри контура.
+  void _paintMesh(Canvas canvas, Path path, Rect rect, Color color) {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 1;
     canvas.save();
-    canvas.clipRect(rect);
+    canvas.clipPath(path);
     for (var x = rect.left + _meshStep; x < rect.right; x += _meshStep) {
       canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), paint);
     }
@@ -550,9 +649,13 @@ class CutSheetPainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// Площадь заготовки к раскрою крупно по центру прямоугольника.
-  void _paintArea(Canvas canvas, Rect rect, WindowSpec spec) {
-    final text = '${formatMeters(spec.filmCutAreaM2)} м²';
+  /// Площадь заготовки к раскрою крупно по центру контура.
+  ///
+  /// Площадь берётся фактическая (по контуру, с усадкой и без вырезов), а не
+  /// габаритная: для трапеции это то же число, что в ведомости и смете.
+  void _paintArea(Canvas canvas, Rect rect, CutPiece piece) {
+    final areaM2 = piece.areaM2 > 0 ? piece.areaM2 : piece.areaMm2 / 1000000;
+    final text = '${formatMeters(areaM2)} м²';
     var fontSize = math.min(21.0, rect.height * 0.34);
     if (fontSize < 8) return;
     var painter = _painter(text, fontSize: fontSize, bold: true);
@@ -579,89 +682,65 @@ class CutSheetPainter extends CustomPainter {
     );
   }
 
-  /// Размеры заготовки: ширина сверху и снизу, высота слева и справа.
+  /// Размеры заготовки по всем четырём сторонам фактического контура.
+  ///
+  /// Для прямоугольника это прежние «ширина сверху/снизу» и «высота
+  /// слева/справа». Для трапеции каждая сторона получает свою длину, а
+  /// наклонные стороны — наклонную размерную линию.
   void _paintDimensions(Canvas canvas, Rect rect, CutPlacement placement) {
-    _horizontalDimension(
-      canvas,
-      rect,
-      rect.top - 16,
-      formatMm(placement.piece.widthMm),
-      above: true,
-    );
-    _horizontalDimension(
-      canvas,
-      rect,
-      rect.bottom + 16,
-      formatMm(placement.piece.widthMm),
-      above: false,
-    );
-    _verticalDimension(
-      canvas,
-      rect,
-      rect.left - 16,
-      formatMm(placement.piece.heightMm),
-      left: true,
-    );
-    _verticalDimension(
-      canvas,
-      rect,
-      rect.right + 16,
-      formatMm(placement.piece.heightMm),
-      left: false,
-    );
-  }
+    final piece = placement.piece;
+    final points = _screenOutline(rect, piece);
+    final lengths = piece.sideLengths;
+    if (points.length < 3 || lengths.length != points.length) return;
 
-  void _horizontalDimension(
-    Canvas canvas,
-    Rect rect,
-    double y,
-    String text, {
-    required bool above,
-  }) {
     final paint = Paint()
       ..color = _ink
       ..strokeWidth = 1.1;
-    canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), paint);
-    _arrow(canvas, Offset(rect.left, y), const Offset(-1, 0));
-    _arrow(canvas, Offset(rect.right, y), const Offset(1, 0));
-    final edge = above ? rect.top : rect.bottom;
-    final tick = above ? -3.0 : 3.0;
-    canvas.drawLine(Offset(rect.left, edge), Offset(rect.left, y + tick), paint);
-    canvas.drawLine(Offset(rect.right, edge), Offset(rect.right, y + tick), paint);
-    _label(
-      canvas,
-      text,
-      Offset(rect.center.dx, y + (above ? -11 : 11)),
-      small: true,
-      color: _dim,
-    );
+    final center = rect.center;
+
+    for (var i = 0; i < points.length; i++) {
+      final a = points[i];
+      final b = points[(i + 1) % points.length];
+      final direction = b - a;
+      final lengthPx = direction.distance;
+      if (lengthPx < 1) continue;
+      final unit = direction / lengthPx;
+      var normal = Offset(-unit.dy, unit.dx);
+      final middle = (a + b) / 2;
+      // Нормаль наружу: от центра заготовки.
+      if ((middle + normal - center).distance <
+          (middle - normal - center).distance) {
+        normal = -normal;
+      }
+      final offset = normal * 16;
+      final a2 = a + offset;
+      final b2 = b + offset;
+
+      // Выносные линии и размерная линия со стрелками.
+      canvas.drawLine(a + normal * 3, a2 + normal * 6, paint);
+      canvas.drawLine(b + normal * 3, b2 + normal * 6, paint);
+      canvas.drawLine(a2, b2, paint);
+      _arrow(canvas, a2, -unit);
+      _arrow(canvas, b2, unit);
+
+      _label(
+        canvas,
+        formatMm(lengths[i]),
+        (a2 + b2) / 2 + normal * 11,
+        angle: _uprightAngle(direction),
+        small: true,
+        color: _dim,
+      );
+    }
   }
 
-  void _verticalDimension(
-    Canvas canvas,
-    Rect rect,
-    double x,
-    String text, {
-    required bool left,
-  }) {
-    final paint = Paint()
-      ..color = _ink
-      ..strokeWidth = 1.1;
-    canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), paint);
-    _arrow(canvas, Offset(x, rect.top), const Offset(0, -1));
-    _arrow(canvas, Offset(x, rect.bottom), const Offset(0, 1));
-    final edge = left ? rect.left : rect.right;
-    final tick = left ? -3.0 : 3.0;
-    canvas.drawLine(Offset(edge, rect.top), Offset(x + tick, rect.top), paint);
-    canvas.drawLine(Offset(edge, rect.bottom), Offset(x + tick, rect.bottom), paint);
-    _label(
-      canvas,
-      text,
-      Offset(x + (left ? -12 : 12), rect.center.dy),
-      angle: -math.pi / 2,
-      small: true,
-      color: _dim,
-    );
+  /// Угол подписи вдоль отрезка, повёрнутый так, чтобы текст читался слева
+  /// направо.
+  double _uprightAngle(Offset direction) {
+    var angle = math.atan2(direction.dy, direction.dx);
+    if (angle > math.pi / 2) angle -= math.pi;
+    if (angle < -math.pi / 2) angle += math.pi;
+    return angle;
   }
 
   void _arrow(Canvas canvas, Offset tip, Offset direction) {
@@ -772,8 +851,9 @@ class CutSheetPainter extends CustomPainter {
 class _CutTotals {
   _CutTotals(this.specs) {
     for (final spec in specs) {
-      // Плёнка в раскрое — заготовка (габарит): припуск уже внутри, усадка
-      // компенсируется в габаритах, поэтому в расход идёт площадь с усадкой.
+      // Плёнка в раскрое — заготовка по фактическому контуру: припуск и
+      // усадка уже внутри, вырезы вычтены. Для косого окна это меньше
+      // габаритного прямоугольника, по которому идёт только упаковка.
       filmAreaM2 += spec.filmCutAreaM2;
       filmAreaWithShrinkageM2 += spec.filmCutAreaWithShrinkageM2;
       productAreaM2 += spec.productAreaM2;
@@ -787,7 +867,7 @@ class _CutTotals {
 
   final List<WindowSpec> specs;
 
-  /// Площадь заготовок к раскрою (с припуском), м².
+  /// Площадь заготовок к раскрою по фактическому контуру (с припуском), м².
   double filmAreaM2 = 0;
   double filmAreaWithShrinkageM2 = 0;
   double productAreaM2 = 0;
@@ -853,14 +933,14 @@ class _CutTotalsBlock extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: _statTile(
-                  'Заготовки (габарит) с усадкой',
+                  'Площадь заготовок с усадкой',
                   '${formatMeters(totals.filmAreaWithShrinkageM2)} м²',
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _statTile(
-                  'Без усадки (габарит)',
+                  'Без усадки (по контуру)',
                   '${formatMeters(totals.filmAreaM2)} м²',
                 ),
               ),
@@ -962,7 +1042,7 @@ class _CutTitleBlock extends StatelessWidget {
           ),
           Expanded(
             flex: 3,
-            child: _cell('Заготовки (габарит) с усадкой',
+            child: _cell('Площадь заготовок с усадкой',
                 '${formatMeters(totals.filmAreaWithShrinkageM2)} м²'),
           ),
         ],

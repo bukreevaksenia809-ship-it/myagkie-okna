@@ -364,13 +364,13 @@ void _eyeletAudit() {
       expectClose(sorted[3], 290, 'шаг права/лева 1450/5');
     });
 
-    test('карман снизу: нижние углы убраны, боковые сдвинуты на 50 мм, '
+    test('фартук снизу: нижние углы убраны, боковые сдвинуты на 50 мм, '
         'всего 24', () {
       final params = _rect2000x1500.copyWith(pocket: true);
       final layers = WindowLayers(params, WindowGeometry.of(params));
 
       // Вручную. Базово 28 узлов, 4 из них — дубли углов → 24.
-      // Карман убирает 2 нижних угловых узла (28 → 26), но при этом углы
+      // Фартук убирает 2 нижних угловых узла (28 → 26), но при этом углы
       // низа больше не дублируются (боковые сдвинуты на 50 мм): 4 дубля
       // остаётся только 2 (верхние углы) → 26 − 2 = 24.
       expect(layers.eyeletCount, 24, reason: '26 узлов − 2 верхних дубля = 24');
@@ -536,7 +536,7 @@ void _areaAudit() {
       expectClose(estimate.filmAreaM2, 4.24535118, 'площадь плёнки в смете');
     });
 
-    test('трапеция: габарит заготовки (расход) больше площади полотна', () {
+    test('трапеция: площадь заготовки — по контуру, а не по габариту', () {
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 1000,
@@ -546,42 +546,77 @@ void _areaAudit() {
       );
       final spec = WindowSpec.of(params);
 
-      // Осознанно два разных числа, их и разводят подписи: filmCutAreaM2 —
-      // заготовка (габаритный прямоугольник ≈ 1919,10 × 960 мм ≈ 1,842334 м²;
-      // высота включает авто +10 мм к высоте ПВХ),
-      // она идёт в расход; filmAreaM2 — площадь самого полотна
-      // (1,371893 м², справочно). Для непрямоугольного окна заготовка
-      // кроится прямоугольником, поэтому расход — верхняя оценка.
-      expectClose(spec.filmCutAreaM2, 1.842334, 'заготовка (габарит) 1,842334',
-          tol: 1e-6);
+      // Ручной расчёт. Трапеция 2000/1000 × 1000: площадь 1,5 м²,
+      // периметр 2000 + 1000 + 2 × √(500² + 1000²) = 5 236,06798 мм.
+      // Запайка d = готовая окантовка 50 − запайка 25 = 25 мм.
+      // Для многоугольника, сдвинутого внутрь на d:
+      //   A(d) = A − d·P + d²·Σcot(θᵢ/2),
+      // где у трапеции два угла по 63,43495° (cot 1,618034) и два по
+      // 116,56505° (cot 0,618034), сумма = 4,47213596.
+      // A = 1 500 000 − 25 × 5 236,06798 + 625 × 4,47213596
+      //   = 1 371 893,39 мм² = 1,371893 м².
+      const edgeAreaMm2 = 1371893.3855;
       expectClose(spec.filmAreaM2, 1.371893, 'площадь полотна 1,371893',
           tol: 1e-6);
+
+      // Заготовка = контур полотна, растянутый на авто-припуск +10 мм к
+      // высоте: 1 371 893,39 × 960 / 950 = 1 386 334,37 мм².
+      expectClose(
+        spec.filmCutAreaM2,
+        1.386334,
+        'площадь заготовки по контуру 1,386334 м²',
+        tol: 1e-6,
+      );
+      // Она действительно равна площади полигона, а не прямоугольника.
+      expectClose(
+        spec.filmCutAreaM2,
+        polygonArea(spec.filmCutPolygon).abs() / 1000000,
+        'заготовка = площадь полигона filmCutPolygon',
+        tol: 1e-9,
+      );
+      // Габаритный прямоугольник той же заготовки — 1919,0983 × 960 мм =
+      // 1,842334 м². Разница 0,456000 м² — это «пустые» углы трапеции,
+      // которые раньше списывались в расход.
+      final boundingAreaM2 =
+          spec.filmCutWidthWithAllowance * spec.filmCutHeightWithAllowance /
+              1000000;
+      expectClose(boundingAreaM2, 1.842334, 'габарит заготовки 1,842334',
+          tol: 1e-6);
+      expectClose(
+        boundingAreaM2 - spec.filmCutAreaM2,
+        0.456,
+        'экономия против габарита 0,456 м²',
+        tol: 1e-6,
+      );
       expect(
         spec.filmCutAreaM2,
-        greaterThan(spec.filmAreaM2),
-        reason: 'заготовка (габарит) больше площади полотна, потому что '
-            'кроится прямоугольником; в подписях это «заготовка (габарит)» '
-            'против «площадь полотна»',
+        lessThan(boundingAreaM2),
+        reason: 'косое окно кроится по контуру: площадь меньше габарита',
+      );
+      expect(
+        spec.filmCutAreaM2,
+        greaterThan(edgeAreaMm2 / 1000000),
+        reason: 'заготовка выше полотна на авто-припуск +10 мм',
       );
     });
   });
 }
 
 // ---------------------------------------------------------------------------
-// 6. Карманы
+// 6. Фартукы
 // ---------------------------------------------------------------------------
 void _pocketAudit() {
-  group('6. Карманы: расход полосы и количество', () {
-    test('один нижний карман: 2000 мм, 1 шт', () {
+  group('6. Фартукы: расход полосы и количество', () {
+    test('один нижний фартук: 2000 мм, 1 шт', () {
       final params = _rect2000x1500.copyWith(pocket: true);
       final summary = CostsSummary(OrderProject(windows: [params]));
 
-      // Вручную: ширина полосы = ширина окна 2000, карманов 1.
+      // Вручную: ширина полосы = ширина окна 2000, фартуков 1.
       expect(summary.pocketCount, 1);
       expectClose(summary.pocketLengthMm, 2000, 'полоса 2000 мм');
     });
 
-    test('один верхний карман: 2000 мм, 1 шт', () {
+    test('один верхний фартук: 2000 мм, 1 шт', () {
       final params = _rect2000x1500.copyWith(pocketTop: true);
       final summary = CostsSummary(OrderProject(windows: [params]));
 
@@ -589,7 +624,7 @@ void _pocketAudit() {
       expectClose(summary.pocketLengthMm, 2000, 'полоса 2000 мм');
     });
 
-    test('два кармана: 2000 + 2000 = 4000 мм, 2 шт', () {
+    test('два фартука: 2000 + 2000 = 4000 мм, 2 шт', () {
       final params = _rect2000x1500.copyWith(pocket: true, pocketTop: true);
       final summary = CostsSummary(OrderProject(windows: [params]));
 
@@ -597,7 +632,7 @@ void _pocketAudit() {
       expectClose(summary.pocketLengthMm, 4000, '2000 + 2000 = 4000');
     });
 
-    test('верхний карман считается по ширине верха', () {
+    test('верхний фартук считается по ширине верха', () {
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 1500,
@@ -611,15 +646,17 @@ void _pocketAudit() {
       expect(summary.pocketCount, 1);
     });
 
-    test('в смете карман — погонные метры по цене 380 ₽/м', () {
+    test('в смете фартук — погонные метры по цене 380 ₽/м', () {
       final prices = PriceList.defaults();
       final params = _rect2000x1500.copyWith(pocket: true, pocketTop: true);
       final estimate = Estimate.ofWindow(params, prices);
       final line = estimate.lines
-          .firstWhere((candidate) => candidate.title.startsWith('Карман'));
+          .firstWhere(
+        (candidate) => candidate.itemKey == PriceItemKeys.pocket,
+      );
 
       expectClose(line.quantity, 4.0, '4000 мм = 4 м');
-      expectClose(line.unitPrice, 380, 'цена кармана 380 ₽/м');
+      expectClose(line.unitPrice, 380, 'цена фартука 380 ₽/м');
       expectClose(line.amount, 1520, '4 × 380 = 1520');
     });
   });
