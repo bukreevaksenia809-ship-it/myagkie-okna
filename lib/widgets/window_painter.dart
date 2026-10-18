@@ -378,31 +378,33 @@ class WindowDrawingPainter extends CustomPainter {
   /// Скрин: полоса подворота по периметру, линия сгиба, шов
   /// [screenSeamMm] мм по каждой стороне и косые складки в углах.
   ///
-  /// Коричневого тента нет — материал подворачивается сам. Чтобы человек,
-  /// не знающий продукта, понял чертёж, полоса подворота залита и заштрихована
-  /// между краем заготовки и линией сгиба, а шов подписан на каждой стороне.
+  /// Коричневого тента нет — материал подворачивается сам. Лист должен читаться
+  /// без пояснений, поэтому здесь только три акцента: светлая полоса подворота
+  /// с редкой штриховкой, сплошная линия сгиба и тонкий шов внутри неё. Все
+  /// мелкие подписи собраны в одном месте у своих сторон, а не разбросаны по
+  /// полотну.
   void _paintScreenHem(Canvas canvas) {
     final hem = layers.screenHemLine;
-    final seam = layers.screenSeamLine;
     final blank = layers.filmEdge;
-    if (hem.length < 3 || seam.length < 3 || blank.length != hem.length) return;
+    if (hem.length < 3 || blank.length != hem.length) return;
 
-    // 1. Полоса подворота: полупрозрачная заливка и редкая штриховка между
-    //    краем заготовки (filmEdge) и линией сгиба (screenHemLine).
+    // 1. Полоса подворота: полупрозрачная заливка и РЕДКАЯ штриховка между
+    //    краем заготовки (filmEdge) и линией сгиба (screenHemLine). Частую
+    //    сетку не делаем — она превращает полосу в шум.
     final band = Path()..fillType = PathFillType.evenOdd;
     _addPolygon(band, blank);
     _addPolygon(band, hem);
     canvas.drawPath(
       band,
-      Paint()..color = const Color(0xFF8C9298).withValues(alpha: 0.14),
+      Paint()..color = const Color(0xFF8C9298).withValues(alpha: 0.16),
     );
     canvas.save();
     canvas.clipPath(band);
     final bandBounds = band.getBounds();
     final hatch = Paint()
-      ..color = const Color(0xFF5B6B80).withValues(alpha: 0.28)
-      ..strokeWidth = 1;
-    final hatchStep = math.max(bandBounds.height * 0.35, 7.0);
+      ..color = const Color(0xFF5B6B80).withValues(alpha: 0.22)
+      ..strokeWidth = 0.8;
+    final hatchStep = math.max(bandBounds.height * 0.55, 16.0);
     for (var x = bandBounds.left - bandBounds.height;
         x < bandBounds.right;
         x += hatchStep) {
@@ -414,11 +416,12 @@ class WindowDrawingPainter extends CustomPainter {
     }
     canvas.restore();
 
-    // 2. Два контура: край заготовки — штриховой, линия сгиба — сплошная.
+    // 2. Край заготовки — штриховой, линия сгиба — сплошная и чуть толще:
+    //    это главный контур, по нему ставятся люверсы.
     final blankPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      ..color = const Color(0xFF5B6B80).withValues(alpha: 0.75);
+      ..strokeWidth = 1.1
+      ..color = const Color(0xFF5B6B80).withValues(alpha: 0.65);
     for (var i = 0; i < blank.length; i++) {
       _dashedLine(
         canvas,
@@ -426,92 +429,89 @@ class WindowDrawingPainter extends CustomPainter {
         layout.toPxPoint(blank[(i + 1) % blank.length]),
         blankPaint,
         dash: 6,
-        gap: 4,
+        gap: 5,
       );
     }
     canvas.drawPath(
       _polygonPath(hem),
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0
-        ..color = const Color(0xFF3E4C60),
+        ..strokeWidth = 1.8
+        ..color = const Color(0xFF33465E),
     );
 
-    // 3. Углы подворота: косые линии от линии сгиба к краю заготовки —
-    //    так видно, как материал загибается на изнанку в каждом углу.
+    // 3. Шов 3 мм: на честном масштабе он почти сливается с линией сгиба,
+    //    поэтому отступ снизу слегка утрируем (не меньше 2,4 px) — иначе шов
+    //    не видно на печати. Подпись «шов 3 мм» называет настоящее значение.
+    final seamOffset = math.max(screenSeamMm, 2.4 / layout.scale);
+    final seam = insetPolygonPerSide(hem, [
+      seamOffset,
+      seamOffset,
+      seamOffset,
+      seamOffset,
+    ]);
+    const seamColor = Color(0xFF2F6FA8);
+    canvas.drawPath(
+      _polygonPath(seam),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.2
+        ..color = seamColor.withValues(alpha: 0.16),
+    );
+    canvas.drawPath(
+      _polygonPath(seam),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.1
+        ..color = seamColor,
+    );
+
+    // 4. Углы подворота: короткие косые штрихи от линии сгиба к краю
+    //    заготовки — деликатно показывают, как материал уходит на изнанку.
     final cornerPaint = Paint()
-      ..color = const Color(0xFF5B6B80).withValues(alpha: 0.65)
-      ..strokeWidth = 1.2;
+      ..color = const Color(0xFF5B6B80).withValues(alpha: 0.5)
+      ..strokeWidth = 0.9;
     for (var i = 0; i < hem.length; i++) {
       _dashedLine(
         canvas,
-        layout.toPxPoint(hem[i]),
-        layout.toPxPoint(blank[i]),
+        layout.toPxPoint(Offset.lerp(hem[i], blank[i], 0.2)!),
+        layout.toPxPoint(Offset.lerp(hem[i], blank[i], 0.8)!),
         cornerPaint,
         dash: 4,
         gap: 3,
       );
     }
 
-    // 4. Шов 3 мм — две параллельные линии: широкий серый штрих и светлая
-    //    середина между ним, то есть видно обе кромки шва.
-    final seamWidth = math.max(layout.px(screenSeamMm), 1.6);
-    canvas.drawPath(
-      _polygonPath(seam),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = seamWidth
-        ..color = const Color(0xFF8C9298),
+    // 5. Подпись шва — одна, у верхней стороны и ближе к левому углу: там
+    //    полотно свободно от люверсов, подписи подворота и размеров.
+    final seamA = seam[2];
+    final seamB = seam[3];
+    final seamPoint = Offset.lerp(
+      layout.toPxPoint(seamA),
+      layout.toPxPoint(seamB),
+      0.28,
+    )!;
+    _label(
+      canvas,
+      'шов ${formatMm(screenSeamMm)} мм',
+      seamPoint + const Offset(0, 17),
+      small: true,
+      color: seamColor,
     );
-    canvas.drawPath(
-      _polygonPath(seam),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(seamWidth * 0.35, 0.6)
-        ..color = Colors.white.withValues(alpha: 0.85),
-    );
-
-    // 5. Подпись шва — на каждой стороне, чуть внутри полотна, чтобы не
-    //    закрывать саму линию шва и подпись подворота.
-    for (var i = 0; i < seam.length; i++) {
-      final a = layout.toPxPoint(seam[i]);
-      final b = layout.toPxPoint(seam[(i + 1) % seam.length]);
-      final inward = _inwardNormal(a, b);
-      final middle = Offset.lerp(a, b, 0.28)!;
-      _label(
-        canvas,
-        'шов ${formatMm(screenSeamMm)} мм',
-        middle + inward * 13,
-        angle: _uprightAngle(b - a),
-        small: true,
-        color: const Color(0xFF5B6B80),
-      );
-    }
 
     // 6. Линия сгиба — один раз, у левой стороны: это граница, по которой
-    //    материал уходит на изнанку.
+    //    материал уходит на изнанку. Подпись стоит внутри полотна, ближе к
+    //    нижнему углу, и не спорит с подписью подворота в середине стороны.
     final foldA = layout.toPxPoint(hem[3]);
     final foldB = layout.toPxPoint(hem[0]);
-    final foldMid = Offset.lerp(foldA, foldB, 0.72)!;
+    final foldMid = Offset.lerp(foldA, foldB, 0.74)!;
     _label(
       canvas,
       'линия сгиба',
-      foldMid + _inwardNormal(foldA, foldB) * 34,
+      foldMid + _inwardNormal(foldA, foldB) * 30,
       angle: _uprightAngle(foldB - foldA),
       small: true,
-      color: const Color(0xFF3E4C60),
-    );
-
-    // 7. Угол подворота — одна подпись у нижнего правого угла: там косая
-    //    складка видна лучше всего.
-    final cornerA = layout.toPxPoint(hem[1]);
-    final cornerB = layout.toPxPoint(blank[1]);
-    _label(
-      canvas,
-      'угол подворота',
-      Offset.lerp(cornerA, cornerB, 0.5)! + const Offset(14, 0),
-      small: true,
-      color: const Color(0xFF5B6B80),
+      color: const Color(0xFF33465E),
     );
   }
 
@@ -1282,30 +1282,15 @@ class WindowDrawingPainter extends CustomPainter {
   /// Фартук (бывший карман) — полоса от внутреннего края окантовки (у скрина
   /// от линии подворота) до внешнего края и немного ниже/выше.
   ///
-  /// Рисуется полупрозрачной накладкой с тонкой пунктирной кромкой, чтобы не
-  /// перекрывать ПВХ, люверсы и размеры, и подписывается «фартук снизу» /
-  /// «фартук сверху».
+  /// Рисуется только полупрозрачной накладкой с тонкой пунктирной кромкой:
+  /// текстовых подписей на самом чертеже нет — они перекрывали подписи
+  /// подворота и шва. Что это фартук, сказано в легенде и примечаниях листа.
   void _paintPocket(Canvas canvas) {
-    _paintPocketBand(
-      canvas,
-      layers.pocketBand(WindowSide.bottom),
-      'фартук снизу',
-      WindowSide.bottom,
-    );
-    _paintPocketBand(
-      canvas,
-      layers.pocketBand(WindowSide.top),
-      'фартук сверху',
-      WindowSide.top,
-    );
+    _paintPocketBand(canvas, layers.pocketBand(WindowSide.bottom));
+    _paintPocketBand(canvas, layers.pocketBand(WindowSide.top));
   }
 
-  void _paintPocketBand(
-    Canvas canvas,
-    List<Offset> polygon,
-    String label,
-    WindowSide side,
-  ) {
+  void _paintPocketBand(Canvas canvas, List<Offset> polygon) {
     if (polygon.length < 3) return;
     final path = _polygonPath(polygon);
 
@@ -1313,10 +1298,8 @@ class WindowDrawingPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = (params.isScreen
-                ? const Color(0xFF8C9298)
-                : _edgeColor)
-            .withValues(alpha: params.isScreen ? 0.22 : 0.26),
+        ..color = (params.isScreen ? const Color(0xFF8C9298) : _edgeColor)
+            .withValues(alpha: params.isScreen ? 0.10 : 0.26),
     );
 
     // Тонкая пунктирная кромка — фартук не спорит с контуром окантовки.
@@ -1334,22 +1317,6 @@ class WindowDrawingPainter extends CustomPainter {
         gap: 4,
       );
     }
-
-    final width = layers.pocketBandWidth(side);
-    final hint = params.isScreen
-        ? 'подворот'
-        : 'тент ${formatMm(pocketRollWidth)} ×2';
-    // Подпись ставим не по центру полосы, а со смещением к 78 % длины: по
-    // центру уже стоят подписи «окантовка», «запайка» и «подворот», и они
-    // бы налезали на подпись фартука.
-    final innerMid = Offset.lerp(polygon[0], polygon[1], 0.78)!;
-    final outerMid = Offset.lerp(polygon[3], polygon[2], 0.78)!;
-    _label(
-      canvas,
-      '$label ${formatMm(width)} ($hint)',
-      layout.toPxPoint((innerMid + outerMid) / 2),
-      small: true,
-    );
   }
 
   void _paintEyelets(Canvas canvas) {
@@ -1861,7 +1828,13 @@ class WindowDrawingPainter extends CustomPainter {
     canvas.drawLine(topLeft, leftHeightTop, extension);
     canvas.drawLine(topRight, rightHeightTop, extension);
 
-    if (options.showEdgeLengths) {
+    // У прямоугольного скрина длина кромки равна высоте стороны — подпись
+    // «кромка» дублировала бы размер и засоряла узкое поле. Оставляем её
+    // только там, где кромка действительно длиннее/короче (трапеция).
+    final screenEdgeEqualsHeight = params.isScreen &&
+        (geometry.leftEdgeLength - geometry.leftHeight).abs() < 0.5 &&
+        (geometry.rightEdgeLength - geometry.rightHeight).abs() < 0.5;
+    if (options.showEdgeLengths && !screenEdgeEqualsHeight) {
       _edgeLabel(
         canvas,
         bottomLeft,
@@ -1958,29 +1931,29 @@ class WindowDrawingPainter extends CustomPainter {
     final widths = layers.finishedWidths;
 
     // Скрин: подворот подписан по каждой стороне — низ, право, верх, лево.
-    // Полоса подворота лежит между линией подворота (screenHemLine) и краем
-    // заготовки (filmEdge), поэтому подпись ставим в середине этой полосы.
-    // При одинаковых подворотах линия подворота совпадает с готовым контуром
-    // (outer); при разных — заготовка получает запас по большему подвороту
-    // оси, и подпись остаётся ровно в полосе своего подворота.
+    // Подпись стоит в ПОЛЕ ЧЕРТЕЖА сразу за краем заготовки, между ним и
+    // размерной цепочкой: так она не налезает ни на штриховку подворота, ни на
+    // линию сгиба, ни на шов и не спорит с размерами. Слева и справа подпись
+    // развёрнута вдоль стороны — в узком поле она занимает меньше места.
     if (params.isScreen) {
       final hemLine = layers.screenHemLine;
+      final center = layout.toPxPoint(boundsOf(layers.outer).center);
+      const offset = 24.0;
       for (var i = 0; i < hemLine.length; i++) {
-        final a = hemLine[i];
-        final b = hemLine[(i + 1) % hemLine.length];
-        final cutA = filmEdge[i];
-        final cutB = filmEdge[(i + 1) % filmEdge.length];
-        final middle =
-            (Offset.lerp(a, b, 0.5)! + Offset.lerp(cutA, cutB, 0.5)!) / 2;
+        final a = layout.toPxPoint(hemLine[i]);
+        final b = layout.toPxPoint(hemLine[(i + 1) % hemLine.length]);
+        if ((b - a).distance < 1) continue;
+        final outward = _outwardOffset(a, b, center);
+        final vertical = outward.dx.abs() > outward.dy.abs();
         _label(
           canvas,
           'подворот ${formatMm(params.hemForEdge(i))}',
-          layout.toPxPoint(middle),
+          (a + b) / 2 + outward * offset,
+          angle: vertical ? _uprightAngle(b - a) : 0,
           small: true,
           color: const Color(0xFF5B6B80),
         );
       }
-
     }
 
     // Ширина окантовки — по каждой стороне, у середины стороны.

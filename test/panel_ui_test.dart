@@ -47,6 +47,7 @@ void main() {
   _eyeletIntervalPanelRules();
   _rollWidthsAndEyeletsPanelRules();
   _screenZipperBlankRules();
+  _equalizeButtonsRules();
   testWidgets('панель 420: спайка добавляет окно, припуски идут в модель', (
     WidgetTester tester,
   ) async {
@@ -305,7 +306,7 @@ void _screenAndWeldRules() {
     expect(find.byKey(const Key('hem-top-field')), findsOneWidget);
     expect(find.byKey(const Key('hem-left-field')), findsOneWidget);
     expect(find.byKey(const Key('hem-blank-label')), findsOneWidget);
-    // Подворот 60 мм на все стороны: заготовка = готовый размер + 2 × 60.
+    // Подворот 60 мм на все стороны: заготовка = готовый размер + 60 + 20.
     for (final key in const [
       'hem-bottom-field',
       'hem-right-field',
@@ -323,17 +324,17 @@ void _screenAndWeldRules() {
     final screenSpec = WindowSpec.of(params);
     expect(
       screenSpec.filmCutWidthWithAllowance,
-      closeTo(params.bottomWidth + 60 + 60, 1e-9),
+      closeTo(params.bottomWidth + 60 + 20, 1e-9),
     );
     expect(
       screenSpec.filmCutHeightWithAllowance,
-      closeTo(params.leftHeight + 60 + 60, 1e-9),
+      closeTo(params.leftHeight + 60 + 20, 1e-9),
     );
-    // Готовое окно панели 1500 × 2520 → заготовка 1620 × 2640 мм.
-    expect(screenSpec.filmCutWidthWithAllowance, closeTo(1620, 1e-9));
-    expect(screenSpec.filmCutHeightWithAllowance, closeTo(2640, 1e-9));
-    // Разные подвороты по сторонам: по каждой оси — удвоенный больший
-    // подворот. Окно панели 1500 × 2520.
+    // Готовое окно панели 1500 × 2520 → заготовка 1580 × 2600 мм.
+    expect(screenSpec.filmCutWidthWithAllowance, closeTo(1580, 1e-9));
+    expect(screenSpec.filmCutHeightWithAllowance, closeTo(2600, 1e-9));
+    // Разные подвороты по сторонам: по каждой оси — среднее двух подворотов
+    // плюс 20 мм. Окно панели 1500 × 2520.
     await tester.enterText(find.byKey(const Key('hem-bottom-field')), '40');
     await tester.enterText(find.byKey(const Key('hem-top-field')), '60');
     await tester.enterText(find.byKey(const Key('hem-right-field')), '50');
@@ -341,21 +342,25 @@ void _screenAndWeldRules() {
     await tester.pumpAndSettle();
     params = hostKey.currentState!.project.selected;
     final mixedSpec = WindowSpec.of(params);
-    // Ширина: 1500 + 2 × max(лево 40, право 50) = 1600.
+    // Ширина: 1500 + (40 + 50) / 2 + 20 = 1565.
     expect(mixedSpec.filmCutWidthWithAllowance,
-        closeTo(params.bottomWidth + 2 * 50, 1e-9));
-    // Высота: 2520 + 2 × max(низ 40, верх 60) = 2640.
+        closeTo(params.bottomWidth + 65, 1e-9));
+    // Высота: 2520 + (40 + 60) / 2 + 20 = 2590.
     expect(mixedSpec.filmCutHeightWithAllowance,
-        closeTo(params.leftHeight + 2 * 60, 1e-9));
+        closeTo(params.leftHeight + 70, 1e-9));
     // Панель показывает человеческий расчёт по правилу.
     expect(
-      find.text('Высота: ${formatMm(2520)} + 2 × ${formatMm(60)} (верх) = '
-          '${formatMm(2640)} мм'),
+      find.text('Высота: ${formatMm(2520)} + ${formatMm(70)} '
+          '(среднее (${formatMm(40)} + ${formatMm(60)}) / 2 + '
+          '${formatMm(screenHemAxisExtraMm)} = ${formatMm(70)}) = '
+          '${formatMm(2590)} мм'),
       findsOneWidget,
     );
     expect(
-      find.text('Ширина: ${formatMm(1500)} + 2 × ${formatMm(50)} (право) = '
-          '${formatMm(1600)} мм'),
+      find.text('Ширина: ${formatMm(1500)} + ${formatMm(65)} '
+          '(среднее (${formatMm(40)} + ${formatMm(50)}) / 2 + '
+          '${formatMm(screenHemAxisExtraMm)} = ${formatMm(65)}) = '
+          '${formatMm(1565)} мм'),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
@@ -672,6 +677,115 @@ void _pricePanelRules() {
   });
 }
 
+/// Кнопки выравнивания размеров: видны только при расхождении, одним тапом
+/// приравнивают сторону и сразу исчезают; геометрия пересчитывается.
+void _equalizeButtonsRules() {
+  testWidgets('панель 420: кнопки выравнивания высот и ширин', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 9000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // Скрин: у него заготовка зависит от размеров и подворотов, поэтому
+    // пересчёт геометрии после выравнивания видно прямо по WindowSpec.
+    const order = OrderProject(
+      windows: [
+        WindowParams(
+          material: FilmMaterial.screen,
+          bottomWidth: 1400,
+          topWidth: 1400,
+          leftHeight: 2000,
+          rightHeight: 2000,
+          hemBottomMm: 40,
+          hemRightMm: 40,
+          hemTopMm: 40,
+          hemLeftMm: 40,
+        ),
+      ],
+    );
+    final hostKey = GlobalKey<_PanelHostState>();
+    await tester.pumpWidget(_PanelHost(key: hostKey, initial: order));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    // У нового окна ширины и высоты равны — кнопок нет.
+    var params = hostKey.currentState!.project.selected;
+    expect(params.bottomWidth, params.topWidth);
+    expect(params.leftHeight, params.rightHeight);
+    expect(find.byKey(const Key('equalize-widths')), findsNothing);
+    expect(find.byKey(const Key('equalize-heights')), findsNothing);
+
+    // Развели ширины — появились обе кнопки, подписи по-русски.
+    await tester.enterText(find.byKey(const Key('bottomWidth-field')), '1500');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('topWidth-field')), '1600');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('equalize-widths')), findsOneWidget);
+    expect(find.byKey(const Key('equalize-widths-back')), findsOneWidget);
+    expect(find.text('верх = низ'), findsOneWidget);
+    expect(find.text('низ = верх'), findsOneWidget);
+    expect(find.byKey(const Key('equalize-heights')), findsNothing);
+
+    // «верх = низ»: верх становится 1500, кнопки исчезают.
+    await tester.tap(find.byKey(const Key('equalize-widths')));
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.bottomWidth, 1500);
+    expect(params.topWidth, 1500);
+    expect(find.byKey(const Key('equalize-widths')), findsNothing);
+    expect(find.byKey(const Key('equalize-widths-back')), findsNothing);
+    expect(WindowSpec.of(params).filmCutWidth, closeTo(1560, 1e-9));
+
+    // Обратное направление: «низ = верх».
+    await tester.enterText(find.byKey(const Key('topWidth-field')), '1700');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('equalize-widths-back')));
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.bottomWidth, 1700);
+    expect(params.topWidth, 1700);
+    expect(find.byKey(const Key('equalize-widths')), findsNothing);
+    final widthSpec = WindowSpec.of(params);
+    expect(widthSpec.filmCutWidth, closeTo(1760, 1e-9));
+    // Контур заготовки на чертеже — тоже новой ширины.
+    expect(boundsOf(widthSpec.layers.filmEdge).width, closeTo(1760, 1e-9));
+
+    // Теперь высоты: «правая = левая».
+    await tester.enterText(find.byKey(const Key('leftHeight-field')), '2000');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('rightHeight-field')), '2100');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('equalize-heights')), findsOneWidget);
+    expect(find.byKey(const Key('equalize-heights-back')), findsOneWidget);
+    expect(find.text('правая = левая'), findsOneWidget);
+    expect(find.text('левая = правая'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('equalize-heights')));
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.leftHeight, 2000);
+    expect(params.rightHeight, 2000);
+    expect(find.byKey(const Key('equalize-heights')), findsNothing);
+    expect(WindowSpec.of(params).filmCutHeight, closeTo(2060, 1e-9));
+
+    // Обратное направление: «левая = правая».
+    await tester.enterText(find.byKey(const Key('rightHeight-field')), '2200');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('equalize-heights-back')));
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.leftHeight, 2200);
+    expect(params.rightHeight, 2200);
+    expect(find.byKey(const Key('equalize-heights')), findsNothing);
+    final heightSpec = WindowSpec.of(params);
+    expect(heightSpec.filmCutHeight, closeTo(2260, 1e-9));
+    // Контур заготовки на чертеже — тоже новой высоты.
+    expect(boundsOf(heightSpec.layers.filmEdge).height, closeTo(2260, 1e-9));
+    expect(tester.takeException(), isNull);
+  });
+}
+
 /// Панель: молния у скрина сужает заготовку, подписи это показывают,
 /// а панель 420 px не переполняется.
 void _screenZipperBlankRules() {
@@ -685,7 +799,7 @@ void _screenZipperBlankRules() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     // Скрин 2000 × 2000, подворот 40 на все стороны, одна молния с полосой
-    // 50 мм: заготовка 2030 × 2080 мм вместо 2080 × 2080.
+    // 50 мм: заготовка 2010 × 2060 мм вместо 2060 × 2060.
     const order = OrderProject(windows: [
       WindowParams(
         material: FilmMaterial.screen,
@@ -706,25 +820,25 @@ void _screenZipperBlankRules() {
     expect(tester.takeException(), isNull);
 
     final spec = WindowSpec.of(order.selected);
-    expect(spec.filmCutWidthWithAllowance, closeTo(2030, 1e-9));
-    expect(spec.filmCutHeightWithAllowance, closeTo(2080, 1e-9));
+    expect(spec.filmCutWidthWithAllowance, closeTo(2010, 1e-9));
+    expect(spec.filmCutHeightWithAllowance, closeTo(2060, 1e-9));
 
     // Подпись подворотного блока: обе ширины и виновник — полоса молнии.
     final blankLabel =
         tester.widget<Text>(find.byKey(const Key('hem-blank-label'))).data!;
-    expect(blankLabel, contains(formatMm(2030)));
+    expect(blankLabel, contains(formatMm(2010)));
     expect(blankLabel, contains('полосу молнии 50'));
-    expect(blankLabel, contains('${formatMm(2080)} → ${formatMm(2030)}'));
+    expect(blankLabel, contains('${formatMm(2060)} → ${formatMm(2010)}'));
 
     // Формула по ширине показывает вычет отдельным слагаемым.
     final widthFormula =
         tester.widget<Text>(find.byKey(const Key('hem-width-formula'))).data!;
     expect(widthFormula, contains('− полоса молнии 50'));
-    expect(widthFormula, contains('= ${formatMm(2030)} мм'));
-    // Высота полосой не меняется: 2000 + 2 × 40 = 2080.
+    expect(widthFormula, contains('= ${formatMm(2010)} мм'));
+    // Высота полосой не меняется: 2000 + 40 + 20 = 2060.
     final heightFormula =
         tester.widget<Text>(find.byKey(const Key('hem-height-formula'))).data!;
-    expect(heightFormula, contains('= ${formatMm(2080)} мм'));
+    expect(heightFormula, contains('= ${formatMm(2060)} мм'));
     expect(tester.takeException(), isNull);
   });
 }

@@ -1879,10 +1879,10 @@ void _shrinkageAndPvcAllowanceRules() {
       expect(screen.isPvcFilm, isFalse);
       expect(screen.autoHeightAllowanceMm, 0);
       expect(screen.pvcHeightAllowanceEnabled, isTrue);
-      // Заготовка скрина — готовый размер плюс удвоенный больший подворот.
+      // Заготовка скрина — готовый размер плюс среднее подворотов + 20 мм.
       expect(
         spec.filmCutHeight,
-        closeTo(2500 + 2 * defaultScreenHemMm, 1e-9),
+        closeTo(2500 + defaultScreenHemMm + 20, 1e-9),
       );
       expect(spec.filmCutHeightWithAllowance, closeTo(spec.filmCutHeight, 1e-9));
     });
@@ -2154,10 +2154,10 @@ void _screenRules() {
           WindowTech.pvcTent);
     });
 
-    test('одинаковый подворот 40/50/60: заготовка 2080 / 2100 / 2120', () {
-      // Одинаковый подворот на все стороны: по оси берётся удвоенный больший,
-      // а подвороты равны — заготовка = 2000 + 2 × подворот.
-      for (final (hem, blank) in [(40.0, 2080.0), (50.0, 2100.0), (60.0, 2120.0)]) {
+    test('одинаковый подворот 40/50/60: заготовка 2060 / 2070 / 2080', () {
+      // Подвороты равны: прибавка по оси = (h + h) / 2 + 20 = h + 20,
+      // поэтому заготовка = 2000 + подворот + 20.
+      for (final (hem, blank) in [(40.0, 2060.0), (50.0, 2070.0), (60.0, 2080.0)]) {
         final spec = WindowSpec.of(screenWith(hem));
         expect(spec.filmCutWidth, closeTo(blank, 1e-9),
             reason: 'подворот $hem мм');
@@ -2168,90 +2168,137 @@ void _screenRules() {
       }
       expect(screenHemPresets, [40, 50, 60]);
       expect(screenSeamMm, 3);
+      expect(screenHemAxisExtraMm, 20);
     });
 
-    test('контрольные числа: подворот бок 40, верх/низ 60 → 2080 × 2120', () {
-      // Скрин 2000 × 2000: ширина = 2000 + 2 × max(лево 40, право 40) = 2080 мм;
-      // высота = 2000 + 2 × max(низ 60, верх 60) = 2120 мм.
+    test('заказчик: 120 и 120 → прибавка 140 мм, 2140 × 2140', () {
+      // Первое контрольное число заказчика: (120 + 120) / 2 + 20 = 140,
+      // а не 240 и не 120.
+      final params = screenWithSides(120, 120, 120, 120);
+      final spec = WindowSpec.of(params);
+      expect(params.hemAxisBottomTopIncrease, closeTo(140, 1e-9));
+      expect(params.hemAxisLeftRightIncrease, closeTo(140, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2140, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2140, 1e-9));
+    });
+
+    test('заказчик: 80 и 80 → прибавка 100 мм, 2100 × 2100', () {
+      // Второе контрольное число: (80 + 80) / 2 + 20 = 100.
+      final params = screenWithSides(80, 80, 80, 80);
+      final spec = WindowSpec.of(params);
+      expect(params.hemAxisBottomTopIncrease, closeTo(100, 1e-9));
+      expect(params.hemAxisLeftRightIncrease, closeTo(100, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2100, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2100, 1e-9));
+    });
+
+    test('заказчик: 80 и 120 → прибавка 120 мм, 2120 × 2120', () {
+      // Третье контрольное число: (80 + 120) / 2 + 20 = 120.
+      final params = screenWithSides(80, 80, 120, 120);
+      final spec = WindowSpec.of(params);
+      expect(params.hemAxisBottomTopIncrease, closeTo(120, 1e-9));
+      expect(params.hemAxisLeftRightIncrease, closeTo(120, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2120, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2120, 1e-9));
+    });
+
+    test('заказчик: 40 и 40 → прибавка 60 мм, 2060 × 2060', () {
+      // Следствие формулы: (40 + 40) / 2 + 20 = 60.
+      final params = screenWithSides(40, 40, 40, 40);
+      final spec = WindowSpec.of(params);
+      expect(params.hemAxisBottomTopIncrease, closeTo(60, 1e-9));
+      expect(params.hemAxisLeftRightIncrease, closeTo(60, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2060, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2060, 1e-9));
+    });
+
+    test('заказчик: 60 и 60 → прибавка 80 мм, 2080 × 2080', () {
+      final params = screenWithSides(60, 60, 60, 60);
+      final spec = WindowSpec.of(params);
+      expect(params.hemAxisBottomTopIncrease, closeTo(80, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2080, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2080, 1e-9));
+    });
+
+    test('контрольные числа: бок 40, верх/низ 60 → 2060 × 2080', () {
+      // Скрин 2000 × 2000: ширина = 2000 + (40 + 40) / 2 + 20 = 2060 мм;
+      // высота = 2000 + (60 + 60) / 2 + 20 = 2080 мм.
       final spec = WindowSpec.of(screenWithSides(60, 40, 60, 40));
 
-      expect(spec.filmCutWidth, closeTo(2000 + 2 * 40, 1e-9));
-      expect(spec.filmCutWidth, closeTo(2080, 1e-9));
-      expect(spec.filmCutHeight, closeTo(2000 + 2 * 60, 1e-9));
-      expect(spec.filmCutHeight, closeTo(2120, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2000 + 60, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2060, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2000 + 80, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2080, 1e-9));
       // Готовое изделие не изменилось, запайки у скрина нет.
       expect(spec.productAreaM2, closeTo(4.0, 1e-9));
       expect(spec.edgeConsumption, isEmpty);
     });
 
-    test('заказчик: (низ 40, верх 60, лево 40, право 40) → 2080 × 2120', () {
-      // Главное требование заказчика: 40 + 60 = 100, но к высоте
-      // прибавляется 120 мм — по удвоенному БОЛЬШЕМУ подвороту оси (верх 60).
+    test('заказчик: (низ 40, верх 60, лево 40, право 40) → 2060 × 2070', () {
+      // Прибавка по высоте: (40 + 60) / 2 + 20 = 70, а не 120 и не 100.
       final params = screenWithSides(40, 40, 60, 40);
       final spec = WindowSpec.of(params);
 
-      expect(params.hemAxisBottomTopIncrease, closeTo(120, 1e-9));
-      expect(params.hemAxisLeftRightIncrease, closeTo(80, 1e-9));
-      expect(spec.filmCutWidth, closeTo(2080, 1e-9));
-      expect(spec.filmCutHeight, closeTo(2120, 1e-9));
-      expect(spec.filmCutWidthWithAllowance, closeTo(2080, 1e-9));
-      expect(spec.filmCutHeightWithAllowance, closeTo(2120, 1e-9));
+      expect(params.hemAxisBottomTopIncrease, closeTo(70, 1e-9));
+      expect(params.hemAxisLeftRightIncrease, closeTo(60, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2060, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2070, 1e-9));
+      expect(spec.filmCutWidthWithAllowance, closeTo(2060, 1e-9));
+      expect(spec.filmCutHeightWithAllowance, closeTo(2070, 1e-9));
     });
 
-    test('(низ 60, верх 60) → высота 2120 — как в прежнем примере', () {
+    test('(низ 60, верх 60) → высота 2080', () {
       final spec = WindowSpec.of(screenWithSides(60, 40, 60, 40));
-      expect(spec.filmCutHeight, closeTo(2120, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2080, 1e-9));
       expect(
         spec.filmCutHeight - spec.params.hemAxisBottomTopIncrease,
         closeTo(2000, 1e-9),
       );
     });
 
-    test('(низ 40, верх 40, лево 40, право 40) → 2080 × 2080', () {
+    test('(низ 40, верх 40, лево 40, право 40) → 2060 × 2060', () {
       final spec = WindowSpec.of(screenWithSides(40, 40, 40, 40));
-      expect(spec.filmCutWidth, closeTo(2080, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2060, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2060, 1e-9));
+    });
+
+    test('среднее, а не максимум: (низ 70, верх 50) → высота 2080', () {
+      final spec = WindowSpec.of(screenWithSides(70, 40, 50, 40));
+      // 2000 + (70 + 50) / 2 + 20 = 2000 + 80 = 2080.
+      expect(spec.filmCutHeight, closeTo(2000 + 80, 1e-9));
       expect(spec.filmCutHeight, closeTo(2080, 1e-9));
     });
 
-    test('берётся максимум, а не верх: (низ 70, верх 50) → высота 2140', () {
-      final spec = WindowSpec.of(screenWithSides(70, 40, 50, 40));
-      // 2000 + 2 × max(70, 50) = 2000 + 140 = 2140.
-      expect(spec.filmCutHeight, closeTo(2000 + 140, 1e-9));
-      expect(spec.filmCutHeight, closeTo(2140, 1e-9));
-    });
-
-    test('берётся максимум по ширине: (лево 30, право 90) → 2180', () {
+    test('среднее по ширине: (лево 30, право 90) → 2080', () {
       final spec = WindowSpec.of(screenWithSides(40, 90, 40, 30));
-      // 2000 + 2 × max(30, 90) = 2000 + 180 = 2180.
-      expect(spec.filmCutWidth, closeTo(2000 + 180, 1e-9));
-      expect(spec.filmCutWidth, closeTo(2180, 1e-9));
+      // 2000 + (30 + 90) / 2 + 20 = 2000 + 80 = 2080.
+      expect(spec.filmCutWidth, closeTo(2000 + 80, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2080, 1e-9));
     });
 
-    test('человеческие формулы заготовки: «2000 + 2 × 60 (верх) = 2120»', () {
+    test('формулы заготовки: «2 000 + 70 = 2 070 мм», среднее в скобках', () {
       final spec = WindowSpec.of(screenWithSides(40, 40, 60, 40));
       expect(
         spec.screenBlankHeightFormulaLabel,
-        'Высота: ${formatMm(2000)} + 2 × ${formatMm(60)} (верх) = '
-        '${formatMm(2120)} мм',
+        'Высота: ${formatMm(2000)} + ${formatMm(70)} '
+        '(среднее (${formatMm(40)} + ${formatMm(60)}) / 2 + '
+        '${formatMm(screenHemAxisExtraMm)} = ${formatMm(70)}) = '
+        '${formatMm(2070)} мм',
       );
+      // При равных подворотах формула короткая, как в примере заказчика.
       expect(
         spec.screenBlankWidthFormulaLabel,
-        'Ширина: ${formatMm(2000)} + 2 × ${formatMm(40)} = '
-        '${formatMm(2080)} мм',
+        'Ширина: ${formatMm(2000)} + ${formatMm(60)} = '
+        '${formatMm(2060)} мм',
       );
-      // Победившая сторона подписывается: по ширине больше право.
+      // Разные подвороты по ширине: среднее расшифровано прямо в формуле.
       final right = WindowSpec.of(screenWithSides(40, 90, 40, 30));
       expect(
         right.screenBlankWidthFormulaLabel,
-        'Ширина: ${formatMm(2000)} + 2 × ${formatMm(90)} (право) = '
-        '${formatMm(2180)} мм',
-      );
-      // По высоте больше низ — подписывается низ.
-      final bottom = WindowSpec.of(screenWithSides(70, 40, 50, 40));
-      expect(
-        bottom.screenBlankHeightFormulaLabel,
-        'Высота: ${formatMm(2000)} + 2 × ${formatMm(70)} (низ) = '
-        '${formatMm(2140)} мм',
+        'Ширина: ${formatMm(2000)} + ${formatMm(80)} '
+        '(среднее (${formatMm(30)} + ${formatMm(90)}) / 2 + '
+        '${formatMm(screenHemAxisExtraMm)} = ${formatMm(80)}) = '
+        '${formatMm(2080)} мм',
       );
       // Припуск на раскрой — отдельным слагаемым.
       final withAllowance = WindowSpec.of(
@@ -2260,37 +2307,39 @@ void _screenRules() {
       );
       expect(
         withAllowance.screenBlankHeightFormulaLabel,
-        'Высота: ${formatMm(2000)} + 2 × ${formatMm(60)} (верх) + припуск '
-        '${formatMm(30)} = ${formatMm(2150)} мм',
+        'Высота: ${formatMm(2000)} + ${formatMm(70)} '
+        '(среднее (${formatMm(40)} + ${formatMm(60)}) / 2 + '
+        '${formatMm(screenHemAxisExtraMm)} = ${formatMm(70)}) + припуск '
+        '${formatMm(30)} = ${formatMm(2100)} мм',
       );
       expect(
         withAllowance.screenBlankWidthFormulaLabel,
-        'Ширина: ${formatMm(2000)} + 2 × ${formatMm(40)} + припуск '
-        '${formatMm(20)} = ${formatMm(2100)} мм',
+        'Ширина: ${formatMm(2000)} + ${formatMm(60)} + припуск '
+        '${formatMm(20)} = ${formatMm(2080)} мм',
       );
     });
 
-    test('Подворот 25 мм на все стороны — заготовка 2050 × 2050', () {
+    test('Подворот 25 мм на все стороны — заготовка 2045 × 2045', () {
       final params = screenWithSides(25, 25, 25, 25);
       final spec = WindowSpec.of(params);
       expect(params.hemWidths, [25, 25, 25, 25]);
       expect(params.hemTotalMm, closeTo(100, 1e-9));
       expect(params.hasUniformHem, isTrue);
-      expect(spec.filmCutWidth, closeTo(2050, 1e-9));
-      expect(spec.filmCutHeight, closeTo(2050, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2045, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2045, 1e-9));
     });
 
-    test('смешанные подвороты: по каждой оси — удвоенный максимум', () {
+    test('смешанные подвороты: по каждой оси — среднее + 20 мм', () {
       // Низ 40, право 50, верх 60, лево 40 мм.
       final params = screenWithSides(40, 50, 60, 40);
       final spec = WindowSpec.of(params);
 
-      // Ширина заготовки = bottomWidth + 2 × max(лево 40, право 50) = 2100 мм.
-      expect(spec.filmCutWidth, closeTo(2000 + 2 * 50, 1e-9));
-      expect(spec.filmCutWidth, closeTo(2100, 1e-9));
-      // Высота заготовки = leftHeight + 2 × max(низ 40, верх 60) = 2120 мм.
-      expect(spec.filmCutHeight, closeTo(2000 + 2 * 60, 1e-9));
-      expect(spec.filmCutHeight, closeTo(2120, 1e-9));
+      // Ширина заготовки = 2000 + (40 + 50) / 2 + 20 = 2065 мм.
+      expect(spec.filmCutWidth, closeTo(2000 + 65, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2065, 1e-9));
+      // Высота заготовки = 2000 + (40 + 60) / 2 + 20 = 2070 мм.
+      expect(spec.filmCutHeight, closeTo(2000 + 70, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2070, 1e-9));
       expect(params.hemForSide(EdgeSide.bottom), 40);
       expect(params.hemForSide(EdgeSide.right), 50);
       expect(params.hemForSide(EdgeSide.top), 60);
@@ -2318,15 +2367,15 @@ void _screenRules() {
       expect(params.hemBySideShortLabel, '40/50/60/40 мм');
     });
 
-    test('у скрина нет усадки и нет авто-припуска: 2080 × 2080', () {
+    test('у скрина нет усадки и нет авто-припуска: 2060 × 2060', () {
       final spec = WindowSpec.of(screenWith(40));
       // Скрин — не ПВХ: ни усадки, ни авто-припуска +10 мм к высоте.
       expect(spec.params.isPvcFilm, isFalse);
       expect(spec.params.effectiveShrinkagePercent, 0);
       expect(spec.params.autoHeightAllowanceMm, 0);
-      expect(spec.filmCutWidthWithShrinkage, closeTo(2080, 1e-9));
-      expect(spec.filmCutHeightWithShrinkage, closeTo(2080, 1e-9));
-      expect(spec.filmCutAreaM2, closeTo(4.3264, 1e-9));
+      expect(spec.filmCutWidthWithShrinkage, closeTo(2060, 1e-9));
+      expect(spec.filmCutHeightWithShrinkage, closeTo(2060, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(4.2436, 1e-9));
     });
 
     test('усадка скрину не задаётся даже при включённом тумблере', () {
@@ -2336,7 +2385,7 @@ void _screenRules() {
       );
       final spec = WindowSpec.of(params);
       expect(spec.params.effectiveShrinkagePercent, 0);
-      expect(spec.filmCutHeightWithShrinkage, closeTo(2080, 1e-9));
+      expect(spec.filmCutHeightWithShrinkage, closeTo(2060, 1e-9));
     });
 
     test('окантовки нет: расход нулевой, готовая полоса нулевая', () {
@@ -2364,6 +2413,35 @@ void _screenRules() {
       expect(seam[0].dx, closeTo(screenSeamMm, 1e-6));
       expect(seam[0].dy, closeTo(screenSeamMm, 1e-6));
       expect(seam[1].dx, closeTo(2000 - screenSeamMm, 1e-6));
+    });
+
+    test('при разных подворотах линия сгиба всё равно на контуре изделия', () {
+      // Полоса на чертеже — половина прибавки по оси (60 мм при 80/120),
+      // поэтому линия сгиба ложится на готовый контур 2000 × 2000.
+      final spec = WindowSpec.of(screenWithSides(120, 80, 120, 80));
+      final hem = spec.layers.screenHemLine;
+      // По ширине подвороты 80 и 80 → +100; по высоте 120 и 120 → +140.
+      expect(spec.params.hemAxisBottomTopIncrease, closeTo(140, 1e-9));
+      expect(spec.params.hemAxisLeftRightIncrease, closeTo(100, 1e-9));
+      expect(hem[0].dx, closeTo(0, 1e-6));
+      expect(hem[0].dy, closeTo(0, 1e-6));
+      expect(hem[1].dx, closeTo(2000, 1e-6));
+      expect(hem[2].dy, closeTo(2000, 1e-6));
+      expect(hem[3].dx, closeTo(0, 1e-6));
+      // Заготовка: 2000 + 100 по ширине и 2000 + 140 по высоте.
+      expect(spec.filmCutWidth, closeTo(2100, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2140, 1e-9));
+    });
+
+    test('прибавка округляется до 1 мм: (41 + 42) / 2 + 20 = 61,5 → 62', () {
+      // Формула считается как double, затем round: в документах не бывает
+      // дробных миллиметров, а контрольные числа 140/100/120 остаются ровными.
+      final params = screenWithSides(41, 42, 42, 41);
+      expect(params.hemAxisBottomTopIncrease, closeTo(62, 1e-9));
+      expect(params.hemAxisLeftRightIncrease, closeTo(62, 1e-9));
+      final spec = WindowSpec.of(params);
+      expect(spec.filmCutWidth, closeTo(2062, 1e-9));
+      expect(spec.filmCutHeight, closeTo(2062, 1e-9));
     });
 
     test('люверсы ставятся по линии подворота, крепёж — по низу и бокам', () {
@@ -2636,17 +2714,16 @@ void _pocketRules() {
       final bottom = layers.pocketBand(WindowSide.bottom);
       expect(bottom, hasLength(4));
       final bottomYs = [for (final point in bottom) point.dy];
-      // Запас по оси — по большему подвороту (верх 60), поэтому край
-      // заготовки снизу на −60, а линия подворота — на −20:
-      // полоса идёт от линии подворота до края заготовки, её ширина 40.
-      expect(bottomYs.reduce(math.min), closeTo(-60, 0.01));
-      expect(bottomYs.reduce(math.max), closeTo(-20, 0.01));
+      // Прибавка по высоте (40 + 60) / 2 + 20 = 70, по 35 мм на кромку:
+      // край заготовки снизу на −35, линия подворота — на 0 (контур изделия).
+      expect(bottomYs.reduce(math.min), closeTo(-35, 0.01));
+      expect(bottomYs.reduce(math.max), closeTo(0, 0.01));
       expect(layers.pocketBandWidth(WindowSide.bottom), 40);
 
       final top = layers.pocketBand(WindowSide.top);
       final topYs = [for (final point in top) point.dy];
       expect(topYs.reduce(math.min), closeTo(2000, 0.01));
-      expect(topYs.reduce(math.max), closeTo(2060, 0.01));
+      expect(topYs.reduce(math.max), closeTo(2035, 0.01));
       expect(layers.pocketBandWidth(WindowSide.top), 60);
     });
 
@@ -2728,7 +2805,7 @@ void _rollWidthRules() {
     });
 
     test('раскладка на рулоне пользуется новой шириной', () {
-      // Скрин 4000 × 2000: заготовка 4080 × 2080 шире рулона 2000 мм.
+      // Скрин 4000 × 2000: заготовка 4060 × 2060 шире рулона 2000 мм.
       const screen = WindowParams(
         material: FilmMaterial.screen,
         bottomWidth: 4000,
@@ -2745,7 +2822,7 @@ void _rollWidthRules() {
       final narrow = CostsSummary(project).rollPlans.single;
       expect(narrow.rollWidth, 2000);
       expect(narrow.layout.warnings, isNotEmpty,
-          reason: 'заготовка 4080 мм шире рулона 2000 мм');
+          reason: 'заготовка 4060 мм шире рулона 2000 мм');
 
       final wide =
           CostsSummary(project.setRollWidth(FilmMaterial.screen, 5000))
@@ -2992,13 +3069,13 @@ void _screenZipperRules() {
       final summary = CostsSummary(OrderProject(windows: [screen()]));
       final spec = WindowSpec.of(screen());
 
-      // Заготовка сужена на полосу: (2080 − 50) × 2080 = 4,2224 м².
+      // Заготовка сужена на полосу: (2060 − 50) × 2060 = 4,1406 м².
       // Площадь полосы 50 × 2000 = 0,1 м² — справочная: в расход она не
       // добавляется, иначе полоса посчиталась бы дважды.
       expect(spec.screenZipperBandAreaM2, closeTo(0.1, 1e-9));
-      expect(spec.filmCutWidth, closeTo(2030, 1e-9));
-      expect(summary.filmAreaM2, closeTo(4.2224, 1e-9));
-      expect(summary.filmAreaWithShrinkageM2, closeTo(4.2224, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2010, 1e-9));
+      expect(summary.filmAreaM2, closeTo(4.1406, 1e-9));
+      expect(summary.filmAreaWithShrinkageM2, closeTo(4.1406, 1e-9));
       expect(summary.screenZipperBandAreaM2, closeTo(0.1, 1e-9));
       expect(summary.screenZipperBandWidthMm, closeTo(50, 1e-9));
       expect(summary.screenZipperCount, 1);
@@ -3025,11 +3102,11 @@ void _screenZipperRules() {
       expect(summary.screenZipperCount, 2);
       expect(summary.zipperBandLengthMm, closeTo(4000, 1e-9));
       expect(summary.screenHemLengthMm, closeTo(12000, 1e-9));
-      // Две полосы по 50 мм: ширина 2080 − 100 = 1980 мм,
-      // площадь 1980 × 2080 = 4,1184 м².
+      // Две полосы по 50 мм: ширина 2060 − 100 = 1960 мм,
+      // площадь 1960 × 2060 = 4,0376 м².
       expect(spec.zipperBandTotalMm, closeTo(100, 1e-9));
-      expect(spec.filmCutWidth, closeTo(1980, 1e-9));
-      expect(summary.filmAreaM2, closeTo(4.1184, 1e-9));
+      expect(spec.filmCutWidth, closeTo(1960, 1e-9));
+      expect(summary.filmAreaM2, closeTo(4.0376, 1e-9));
       expect(spec.zippersSummary, contains('2 шт'));
       expect(spec.zippersSummary, contains('полоса скрина'));
       // Полосы разнесены по ширине и не пересекаются.
@@ -3113,39 +3190,39 @@ void _screenZipperWidthRules() {
           zippers: zippers,
         );
 
-    test('базовый кейс: 2000 × 2000, подворот 40 → 2080, молния 50 → 2030', () {
+    test('базовый кейс: 2000 × 2000, подворот 40 → 2060, молния 50 → 2010', () {
       final without = WindowSpec.of(screen(width: 2000, height: 2000));
-      // Без молнии ширина заготовки — прежние 2080 мм (2000 + 2 × 40).
-      expect(without.filmCutWidthBeforeZipper, closeTo(2080, 1e-9));
-      expect(without.filmCutWidth, closeTo(2080, 1e-9));
+      // Без молнии ширина заготовки — 2060 мм: 2000 + (40 + 40) / 2 + 20.
+      expect(without.filmCutWidthBeforeZipper, closeTo(2060, 1e-9));
+      expect(without.filmCutWidth, closeTo(2060, 1e-9));
       expect(without.zipperBandTotalMm, 0);
-      expect(without.filmCutHeight, closeTo(2080, 1e-9));
-      expect(without.filmCutAreaM2, closeTo(4.3264, 1e-9));
+      expect(without.filmCutHeight, closeTo(2060, 1e-9));
+      expect(without.filmCutAreaM2, closeTo(4.2436, 1e-9));
 
       final withZipper = WindowSpec.of(screen(
         width: 2000,
         height: 2000,
         zippers: const [ZipperSpec(centered: true)],
       ));
-      // Одна молния с полосой 50 мм: 2080 − 50 = 2030 мм.
+      // Одна молния с полосой 50 мм: 2060 − 50 = 2010 мм.
       expect(withZipper.zipperBandTotalMm, closeTo(50, 1e-9));
-      expect(withZipper.filmCutWidthBeforeZipper, closeTo(2080, 1e-9));
-      expect(withZipper.filmCutWidth, closeTo(2030, 1e-9));
+      expect(withZipper.filmCutWidthBeforeZipper, closeTo(2060, 1e-9));
+      expect(withZipper.filmCutWidth, closeTo(2010, 1e-9));
       // Высота полосой не меняется: она идёт по всей высоте полотна.
-      expect(withZipper.filmCutHeight, closeTo(2080, 1e-9));
-      expect(withZipper.filmCutHeightWithAllowance, closeTo(2080, 1e-9));
-      // Площадь — от новой ширины и ровно на 50 × 2080 = 0,104 м² меньше.
-      expect(withZipper.filmCutAreaM2, closeTo(4.2224, 1e-9));
+      expect(withZipper.filmCutHeight, closeTo(2060, 1e-9));
+      expect(withZipper.filmCutHeightWithAllowance, closeTo(2060, 1e-9));
+      // Площадь — от новой ширины и ровно на 50 × 2060 = 0,103 м² меньше.
+      expect(withZipper.filmCutAreaM2, closeTo(4.1406, 1e-9));
       expect(
         without.filmCutAreaM2 - withZipper.filmCutAreaM2,
-        closeTo(50 * 2080 / 1000000, 1e-9),
+        closeTo(50 * 2060 / 1000000, 1e-9),
       );
       // Формула для панели показывает вычет теми же числами.
       expect(withZipper.screenBlankWidthFormulaLabel,
-          contains('2 × 40 − полоса молнии 50'));
+          contains('+ ${formatMm(60)} − полоса молнии 50'));
       expect(
         withZipper.screenBlankWidthFormulaLabel,
-        contains('= ${formatMm(2030)} мм'),
+        contains('= ${formatMm(2010)} мм'),
       );
       // Заготовка с припуском: припуск прибавляется ПОСЛЕ вычета полосы.
       final withAllowance = WindowSpec.of(screen(
@@ -3154,40 +3231,40 @@ void _screenZipperWidthRules() {
         zippers: const [ZipperSpec(centered: true)],
         allowanceWidth: 30,
       ));
-      expect(withAllowance.filmCutWidthWithAllowance, closeTo(2060, 1e-9));
+      expect(withAllowance.filmCutWidthWithAllowance, closeTo(2040, 1e-9));
     });
 
-    test('кейс заказчика: заготовка 2 530 → 2 480 мм с полосой 50 мм', () {
-      // 2 530 мм получаются из готовой ширины 2 450 мм плюс 2 × подворот 40 мм:
-      // 2 450 + 80 = 2 530. Высота 2 000 мм, подворот 40 мм — заготовка
-      // 2 530 × 2 080 мм.
+    test('кейс заказчика: заготовка 2 510 → 2 460 мм с полосой 50 мм', () {
+      // 2 510 мм получаются из готовой ширины 2 450 мм плюс прибавка по оси
+      // (40 + 40) / 2 + 20 = 60 мм: 2 450 + 60 = 2 510. Высота 2 000 мм,
+      // подворот 40 мм — заготовка 2 510 × 2 060 мм.
       final params = screen(width: 2450, height: 2000);
       final without = WindowSpec.of(params);
-      expect(without.filmCutWidth, closeTo(2530, 1e-9));
-      expect(without.filmCutHeight, closeTo(2080, 1e-9));
-      expect(without.filmCutAreaM2, closeTo(2530 * 2080 / 1000000, 1e-9));
+      expect(without.filmCutWidth, closeTo(2510, 1e-9));
+      expect(without.filmCutHeight, closeTo(2060, 1e-9));
+      expect(without.filmCutAreaM2, closeTo(2510 * 2060 / 1000000, 1e-9));
 
-      // Добавили молнию с полосой 50 мм — ширина кроя 2 480 мм.
+      // Добавили молнию с полосой 50 мм — ширина кроя 2 460 мм.
       final withZipper = WindowSpec.of(params.copyWith(
         zippers: const [ZipperSpec(centered: true)],
       ));
-      expect(withZipper.filmCutWidth, closeTo(2480, 1e-9));
-      expect(withZipper.filmCutHeight, closeTo(2080, 1e-9));
-      expect(withZipper.filmCutAreaM2, closeTo(2480 * 2080 / 1000000, 1e-9));
+      expect(withZipper.filmCutWidth, closeTo(2460, 1e-9));
+      expect(withZipper.filmCutHeight, closeTo(2060, 1e-9));
+      expect(withZipper.filmCutAreaM2, closeTo(2460 * 2060 / 1000000, 1e-9));
       expect(
         without.filmCutAreaM2 - withZipper.filmCutAreaM2,
-        closeTo(0.104, 1e-9),
+        closeTo(0.103, 1e-9),
       );
       // Смета и расход подхватывают новую ширину через WindowSpec.
       final summary = CostsSummary(OrderProject(windows: [
         params.copyWith(zippers: const [ZipperSpec(centered: true)]),
       ]));
-      expect(summary.filmAreaM2, closeTo(5.1584, 1e-9));
-      expect(summary.specs.single.filmCutWidth, closeTo(2480, 1e-9));
+      expect(summary.filmAreaM2, closeTo(5.0676, 1e-9));
+      expect(summary.specs.single.filmCutWidth, closeTo(2460, 1e-9));
       // Раскладка на рулон тоже берёт суженную заготовку.
       final rollPiece = summary.rollPlans.single.layout.placements.single.piece;
-      expect(rollPiece.width, closeTo(2480, 1e-9));
-      expect(rollPiece.height, closeTo(2080, 1e-9));
+      expect(rollPiece.width, closeTo(2460, 1e-9));
+      expect(rollPiece.height, closeTo(2060, 1e-9));
     });
 
     test('две молнии по 50 → минус 100 мм, полоса 100 → минус 100 мм', () {
@@ -3200,8 +3277,8 @@ void _screenZipperWidthRules() {
         ],
       ));
       expect(two.zipperBandTotalMm, closeTo(100, 1e-9));
-      expect(two.filmCutWidth, closeTo(1980, 1e-9));
-      expect(two.filmCutAreaM2, closeTo(1980 * 2080 / 1000000, 1e-9));
+      expect(two.filmCutWidth, closeTo(1960, 1e-9));
+      expect(two.filmCutAreaM2, closeTo(1960 * 2060 / 1000000, 1e-9));
 
       // Одна молния с широкой полосой 100 мм даёт тот же вычет.
       final wide = WindowSpec.of(screen(
@@ -3210,7 +3287,7 @@ void _screenZipperWidthRules() {
         zippers: const [ZipperSpec(centered: true, bandWidth: 100)],
       ));
       expect(wide.zipperBandTotalMm, closeTo(100, 1e-9));
-      expect(wide.filmCutWidth, closeTo(1980, 1e-9));
+      expect(wide.filmCutWidth, closeTo(1960, 1e-9));
       expect(wide.filmCutAreaM2, closeTo(two.filmCutAreaM2, 1e-9));
     });
 

@@ -163,16 +163,16 @@ void main() {
     expect(allTitles, isNot(contains('напайк')));
     expect(allTitles, isNot(contains('Напайк')));
     expect(allTitles, isNot(contains('Молния')));
-    // Полотно скрина: площадь заготовки 2080 × 2080 = 4,33 м².
+    // Полотно скрина: площадь заготовки 2060 × 2060 = 4,24 м².
     final filmLine = estimate.lines
         .firstWhere((line) => line.title.startsWith('Полотно'));
     expect(filmLine.title, contains('Скрин'));
-    expect(filmLine.quantity, closeTo(4.3264, 1e-9));
+    expect(filmLine.quantity, closeTo(4.2436, 1e-9));
     // Цена — из прайса скрина, подпись объясняет площадь заготовки.
     final prices = PriceList.defaults();
     expect(filmLine.unitPrice, prices.filmScreenPerM2);
     expect(filmLine.note, contains('заготовка'));
-    expect(filmLine.note, contains('4,33'));
+    expect(filmLine.note, contains('4,24'));
     expect(filmLine.note, contains('${prices.filmScreenPerM2.toStringAsFixed(0)} ₽/м²'));
     // Работа: подворот по периметру 4 × 2 м и шов 3 мм.
     final hemLine = estimate.lines
@@ -198,8 +198,8 @@ void main() {
   });
 
   test('смета скрина: смешанные подвороты меняют заготовку, но не периметр', () {
-    // Низ 40, право 50, верх 60, лево 40 → прибавка по оси — удвоенный больший
-    // подворот: ширина 2000 + 2 × 50 = 2100, высота 2000 + 2 × 60 = 2120,
+    // Низ 40, право 50, верх 60, лево 40 → прибавка по оси — среднее двух
+    // подворотов + 20: ширина 2000 + 65 = 2065, высота 2000 + 70 = 2070,
     // периметр готового изделия остаётся 8000 мм.
     const screen = WindowParams(
       material: FilmMaterial.screen,
@@ -216,12 +216,12 @@ void main() {
     final summary = CostsSummary(project);
     final estimate = Estimate.of(project, PriceList.defaults());
 
-    expect(summary.filmAreaM2, closeTo(2.100 * 2.120, 1e-9));
+    expect(summary.filmAreaM2, closeTo(2.065 * 2.070, 1e-9));
     expect(summary.screenHemLengthMm, closeTo(8000, 1e-9));
     final filmLine = estimate.lines
         .firstWhere((line) => line.title.startsWith('Полотно'));
     // Площадь заготовки скрина идёт в смету, а не площадь изделия.
-    expect(filmLine.quantity, closeTo(4.452, 1e-3));
+    expect(filmLine.quantity, closeTo(4.27455, 1e-3));
     expect(filmLine.quantity, isNot(closeTo(4.0, 1e-6)));
     final hemLine = estimate.lines
         .firstWhere((line) => line.title.startsWith('Подворот скрина'));
@@ -288,13 +288,13 @@ void main() {
     expect(titles, contains('Подворот скрина'));
     expect(titles, isNot(contains('Окантовка')));
 
-    // Полоса молнии сузила заготовку: (2080 − 50) × 2080 = 4,2224 м².
+    // Полоса молнии сузила заготовку: (2060 − 50) × 2060 = 4,1406 м².
     // Площадь самой полосы (0,1 м²) справочная и в расход не добавляется.
     expect(summary.screenZipperBandAreaM2, closeTo(0.1, 1e-9));
-    expect(summary.filmAreaWithShrinkageM2, closeTo(4.2224, 1e-9));
+    expect(summary.filmAreaWithShrinkageM2, closeTo(4.1406, 1e-9));
     final filmLine = estimate.lines
         .firstWhere((line) => line.title.startsWith('Полотно'));
-    expect(filmLine.quantity, closeTo(4.2224, 1e-9));
+    expect(filmLine.quantity, closeTo(4.1406, 1e-9));
     expect(filmLine.unitPrice, prices.filmScreenPerM2);
     expect(filmLine.note, contains('полосу молнии 50 мм'));
 
@@ -333,15 +333,15 @@ void main() {
     final a = Estimate.ofWindow(withoutZipper, prices);
     final b = Estimate.ofWindow(withZipper, prices);
 
-    // Заготовка без молнии 2080 × 2080 = 4,3264 м², с полосой 50 мм —
-    // 2030 × 2080 = 4,2224 м²: ровно на 50 × 2080 = 0,104 м² меньше.
+    // Заготовка без молнии 2060 × 2060 = 4,2436 м², с полосой 50 мм —
+    // 2010 × 2060 = 4,1406 м²: ровно на 50 × 2060 = 0,103 м² меньше.
     final filmA =
         a.lines.firstWhere((line) => line.title.startsWith('Полотно'));
     final filmB =
         b.lines.firstWhere((line) => line.title.startsWith('Полотно'));
-    expect(filmA.quantity, closeTo(4.3264, 1e-9));
-    expect(filmB.quantity, closeTo(4.2224, 1e-9));
-    expect(filmA.quantity - filmB.quantity, closeTo(0.104, 1e-9));
+    expect(filmA.quantity, closeTo(4.2436, 1e-9));
+    expect(filmB.quantity, closeTo(4.1406, 1e-9));
+    expect(filmA.quantity - filmB.quantity, closeTo(0.103, 1e-9));
     expect(filmB.note, contains('полосу молнии 50 мм'));
 
     // Раскрой считается по той же площади заготовки — тоже дешевле.
@@ -349,22 +349,22 @@ void main() {
         a.lines.firstWhere((line) => line.title.startsWith('Раскрой'));
     final cutB =
         b.lines.firstWhere((line) => line.title.startsWith('Раскрой'));
-    expect(cutA.quantity - cutB.quantity, closeTo(0.104, 1e-9));
+    expect(cutA.quantity - cutB.quantity, closeTo(0.103, 1e-9));
 
     // Деньги: полотно и раскрой уменьшились на площадь полосы по своим
     // ценам; строка молнии и шов по её длине добавились отдельно.
     expect(
       filmA.amount - filmB.amount,
-      closeTo(0.104 * prices.filmScreenPerM2, 0.02),
+      closeTo(0.103 * prices.filmScreenPerM2, 0.02),
     );
     expect(
       cutA.amount - cutB.amount,
-      closeTo(0.104 * prices.cuttingPerM2, 0.02),
+      closeTo(0.103 * prices.cuttingPerM2, 0.02),
     );
     // Материалы скрина (полотно) стали дешевле ровно на полосу.
     expect(
       a.materialsSubtotal - b.materialsSubtotal,
-      closeTo(0.104 * prices.filmScreenPerM2, 0.02),
+      closeTo(0.103 * prices.filmScreenPerM2, 0.02),
     );
     final zipperLine = b.lines
         .firstWhere((line) => line.title.startsWith('Молния'));

@@ -181,10 +181,10 @@ void _filamentBlankAudit() {
 // 2. Скрин: размер заготовки
 // ---------------------------------------------------------------------------
 void _screenBlankAudit() {
-  group('2. Скрин: заготовка = готовый размер + 2 × больший подворот по оси',
+  group('2. Скрин: заготовка = готовый размер + среднее подворотов + 20 мм',
       () {
     for (final hem in <double>[40, 50, 60]) {
-      final expected = 2000 + 2 * hem;
+      final expected = 2000 + hem + 20;
       test('подворот ${hem.toStringAsFixed(0)} на все стороны → '
           '${expected.toStringAsFixed(0)} × ${expected.toStringAsFixed(0)}', () {
         final params = WindowParams(
@@ -200,7 +200,7 @@ void _screenBlankAudit() {
         );
         final spec = WindowSpec.of(params);
 
-        // Вручную: 2000 + 2 × подворот.
+        // Вручную: 2000 + (подворот + подворот) / 2 + 20 = 2000 + подворот + 20.
         expectClose(spec.filmCutWidth, expected, 'заготовка по ширине');
         expectClose(spec.filmCutHeight, expected, 'заготовка по высоте');
         // Шов 3 мм на сторону не входит в габарит заготовки, усадки у скрина
@@ -217,7 +217,7 @@ void _screenBlankAudit() {
     }
 
     test('смешанный подворот (низ 40, право 50, верх 60, лево 40) '
-        '→ 2100 × 2120', () {
+        '→ 2065 × 2070', () {
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 2000,
@@ -231,19 +231,19 @@ void _screenBlankAudit() {
       );
       final spec = WindowSpec.of(params);
 
-      // Вручную: прибавка по оси — удвоенный больший подворот этой оси.
-      // Ширина = 2000 + 2 × max(лево 40, право 50) = 2000 + 100 = 2100;
-      // высота = 2000 + 2 × max(низ 40, верх 60) = 2000 + 120 = 2120.
-      expectClose(spec.filmCutWidth, 2100, 'ширина 2100');
-      expectClose(spec.filmCutHeight, 2120, 'высота 2120');
-      expectClose(params.hemAxisLeftRightIncrease, 100,
-          'ширина: 2 × max(40, 50) = 100');
-      expectClose(params.hemAxisBottomTopIncrease, 120,
-          'высота: 2 × max(40, 60) = 120');
+      // Вручную: прибавка по оси — среднее двух подворотов плюс 20 мм.
+      // Ширина = 2000 + (40 + 50) / 2 + 20 = 2000 + 65 = 2065;
+      // высота = 2000 + (40 + 60) / 2 + 20 = 2000 + 70 = 2070.
+      expectClose(spec.filmCutWidth, 2065, 'ширина 2065');
+      expectClose(spec.filmCutHeight, 2070, 'высота 2070');
+      expectClose(params.hemAxisLeftRightIncrease, 65,
+          'ширина: (40 + 50) / 2 + 20 = 65');
+      expectClose(params.hemAxisBottomTopIncrease, 70,
+          'высота: (40 + 60) / 2 + 20 = 70');
       expect(params.hasUniformHem, isFalse, reason: 'подвороты разные');
-      expectClose(spec.filmCutWidthWithShrinkage, 2100,
+      expectClose(spec.filmCutWidthWithShrinkage, 2065,
           'у скрина усадки нет (ширина)');
-      expectClose(spec.filmCutHeightWithShrinkage, 2120,
+      expectClose(spec.filmCutHeightWithShrinkage, 2070,
           'у скрина усадки нет (высота)');
     });
   });
@@ -429,7 +429,7 @@ void _areaAudit() {
       expectClose(spec.filmCutAreaM2, 3.198, 'площадь с припуском 3,198 м²');
     });
 
-    test('скрин 2000 × 2000, подворот 40: заготовка 2080 × 2080 = 4,3264 м²',
+    test('скрин 2000 × 2000, подворот 40: заготовка 2060 × 2060 = 4,2436 м²',
         () {
       const params = WindowParams(
         bottomWidth: 2000,
@@ -444,8 +444,8 @@ void _areaAudit() {
       );
       final spec = WindowSpec.of(params);
 
-      // Вручную: 2080 × 2080 = 4 326 400 мм² = 4,3264 м².
-      expectClose(spec.filmCutAreaM2, 4.3264, 'площадь заготовки скрина');
+      // Вручную: 2060 × 2060 = 4 243 600 мм² = 4,2436 м².
+      expectClose(spec.filmCutAreaM2, 4.2436, 'площадь заготовки скрина');
     });
 
     test('вырезы: прямоугольник 300 × 300 = 0,09 м², круг Ø300 = 0,070686 м²',

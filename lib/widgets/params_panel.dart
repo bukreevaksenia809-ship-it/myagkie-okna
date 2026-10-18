@@ -666,12 +666,83 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
+  /// Компактная строка выравнивания размеров: подпись и две маленькие кнопки
+  /// («верх = низ» и «низ = верх», «правая = левая» и «левая = правая»).
+  ///
+  /// Показывается только когда значения реально различаются — в панели 420 px
+  /// лишние кнопки не должны занимать место. Панель будет нажимать одну из
+  /// них, значение приравнивается, и строка исчезает сама.
+  Widget _equalizeRow({
+    required String title,
+    required Key forwardKey,
+    required String forwardLabel,
+    required String forwardTip,
+    required Key backKey,
+    required String backLabel,
+    required String backTip,
+    required VoidCallback onForward,
+    required VoidCallback onBack,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 2,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 10.5, color: Color(0xFF66748A)),
+          ),
+          _equalizeButton(
+            key: forwardKey,
+            label: forwardLabel,
+            tooltip: forwardTip,
+            onPressed: onForward,
+          ),
+          _equalizeButton(
+            key: backKey,
+            label: backLabel,
+            tooltip: backTip,
+            onPressed: onBack,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Маленькая кнопка выравнивания: влезает в узкую панель и не спорит с
+  /// числовыми полями.
+  Widget _equalizeButton({
+    required Key key,
+    required String label,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: OutlinedButton(
+        key: key,
+        style: OutlinedButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          minimumSize: const Size(0, 28),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+          side: const BorderSide(color: Color(0xFFB9C8DC)),
+          foregroundColor: const Color(0xFF0B62C4),
+        ),
+        onPressed: onPressed,
+        child: Text(label, style: const TextStyle(fontSize: 11)),
+      ),
+    );
+  }
+
   /// Блок «Подворот, мм»: четыре строки — низ, право, верх, лево.
   ///
   /// У каждой стороны свои пресеты 40/50/60 и числовое поле (10…150 мм);
   /// панель узкая (420 px), поэтому строка собрана из подписи, компактных
   /// чипов и поля. Внизу — итог: какой получится заготовка и как она
-  /// посчитана по каждой оси (прибавка — удвоенный больший подворот).
+  /// посчитана по каждой оси (прибавка — среднее двух подворотов + 20 мм).
   Widget _hemSection(WindowSpec spec) {
     final params = spec.params;
     return Column(
@@ -691,7 +762,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
           'Заготовка будет '
           '${formatMm(spec.filmCutWidthWithAllowance)} × '
           '${formatMm(spec.filmCutHeightWithAllowance)} мм: готовый размер '
-          'плюс прибавка по оси — удвоенный больший подворот этой оси. Шов '
+          'плюс прибавка по оси — среднее двух подворотов + '
+          '${formatMm(screenHemAxisExtraMm)} мм на шов и запас. Шов '
           'сварки ${formatMm(screenSeamMm)} мм.'
           // Полоса молнии сужает именно заготовку, а не подворот: подвороты
           // остаются своими, но итоговая ширина кроя меньше на полосу.
@@ -976,8 +1048,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     '(подворот или накладная полоса) со швом '
                     '${formatMm(screenSeamMm)} мм по краям. Тента и окантовки у '
                     'скрина нет: заготовка равна готовому размеру плюс прибавка '
-                    'по каждой оси — удвоенный больший подворот этой оси '
-                    '(низ 40 и верх 60 дают по высоте +120 мм).'
+                    'по каждой оси — среднее двух подворотов + '
+                    '${formatMm(screenHemAxisExtraMm)} мм (низ 40 и верх 60 '
+                    'дают по высоте +70 мм).'
                 : 'Каждое окно рисуется слоями: окантовка (складывается '
                     'пополам), запайка плёнки под окантовку, плёнка, люверсы и '
                     'крепёж. Номера окон подписываются на листе, раскладка '
@@ -1051,6 +1124,24 @@ class _ParamsPanelState extends State<ParamsPanel> {
               Expanded(child: _numberField(ParamField.topWidth)),
             ],
           ),
+          // Ширины низа и верха разошлись — пара компактных кнопок рядом:
+          // одной тапом приравниваем верх к низу, другой — наоборот.
+          if (params.bottomWidth != params.topWidth)
+            _equalizeRow(
+              title: 'Выровнять ширины:',
+              forwardKey: const Key('equalize-widths'),
+              forwardLabel: 'верх = низ',
+              forwardTip: 'Приравнять ширину верха к ширине низа',
+              backKey: const Key('equalize-widths-back'),
+              backLabel: 'низ = верх',
+              backTip: 'Приравнять ширину низа к ширине верха',
+              onForward: () => _updateWindow(
+                params.copyWith(topWidth: params.bottomWidth),
+              ),
+              onBack: () => _updateWindow(
+                params.copyWith(bottomWidth: params.topWidth),
+              ),
+            ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -1059,6 +1150,23 @@ class _ParamsPanelState extends State<ParamsPanel> {
               Expanded(child: _numberField(ParamField.rightHeight)),
             ],
           ),
+          // То же для высот: кнопки видны только при расхождении значений.
+          if (params.leftHeight != params.rightHeight)
+            _equalizeRow(
+              title: 'Выровнять высоты:',
+              forwardKey: const Key('equalize-heights'),
+              forwardLabel: 'правая = левая',
+              forwardTip: 'Приравнять высоту справа к высоте слева',
+              backKey: const Key('equalize-heights-back'),
+              backLabel: 'левая = правая',
+              backTip: 'Приравнять высоту слева к высоте справа',
+              onForward: () => _updateWindow(
+                params.copyWith(rightHeight: params.leftHeight),
+              ),
+              onBack: () => _updateWindow(
+                params.copyWith(leftHeight: params.rightHeight),
+              ),
+            ),
           const SizedBox(height: 12),
           const Text(
             'Верхняя кромка',
@@ -1133,8 +1241,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 Text(
                   'Усадки у скрина нет; нужен запас — добавьте припуск на '
                   'раскрой в разделе выше. В заготовку идёт не сумма подворотов, '
-                  'а удвоенный больший подворот каждой оси — поэтому (низ 40, '
-                  'верх 60) даёт по высоте +120 мм.',
+                  'а среднее двух подворотов оси плюс '
+                  '${formatMm(screenHemAxisExtraMm)} мм — поэтому (низ 40, '
+                  'верх 60) даёт по высоте +70 мм.',
                   style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF66748A),
@@ -1534,11 +1643,15 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 '${formatMm(spec.filmCutHeightWithAllowance)} мм',
             children: [
               if (params.isScreen) ...[
-                const Text(
+                Text(
                   'У скрина усадки нет: заготовка равна готовому размеру плюс '
-                  'прибавка по каждой оси — удвоенный больший подворот этой оси. '
+                  'прибавка по каждой оси — среднее двух подворотов + '
+                  '${formatMm(screenHemAxisExtraMm)} мм на шов и запас. '
                   'Нужен запас — добавьте припуск на раскрой.',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF66748A),
+                  ),
                 ),
                 const SizedBox(height: 12),
               ] else ...[
@@ -2628,6 +2741,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   Widget _numberField(ParamField field) {
     return TextField(
+      key: Key('${field.name}-field'),
       controller: _controllers[field],
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
@@ -2660,7 +2774,7 @@ class _CuttingCard extends StatelessWidget {
       ),
       (
         params.isScreen
-            ? 'Заготовка: готовый размер + 2 × больший подворот по оси '
+            ? 'Заготовка: готовый размер + среднее подворотов по оси + 20 мм '
                 '${params.hemBySideShortLabel}'
                 '${params.hasAllowance ? ' и припуск' : ''}'
             : 'Заготовка с запайкой ${formatMm(params.weldOverlapMm)} мм'

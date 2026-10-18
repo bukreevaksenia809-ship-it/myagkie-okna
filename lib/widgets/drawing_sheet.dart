@@ -1097,7 +1097,7 @@ class _SidePanel extends StatelessWidget {
         'Скрин: подворот по сторонам ${first.hemBySideLabel} '
             '(низ/право/верх/лево), шов '
             '${formatMm(screenSeamMm)} мм; заготовка = готовый размер плюс '
-            '2 × больший подворот по каждой оси'
+            'среднее подворотов по каждой оси + ${formatMm(screenHemAxisExtraMm)} мм'
             '${specs.first.zipperBandTotalMm > 0 ? ' минус полоса молнии '
                 '${formatMm(specs.first.zipperBandTotalMm)} мм' : ''} — '
             '${formatMm(specs.first.filmCutWidthWithAllowance)} × '

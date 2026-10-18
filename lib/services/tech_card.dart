@@ -281,12 +281,15 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       description:
           'Отрезать полотно скрина по заготовке: готовый размер '
           '${formatMm(geometry.spanX)} × ${formatMm(geometry.overallHeight)} мм '
-          'плюс прибавка по каждой оси — удвоенный больший подворот этой оси. '
-          'По высоте 2 × max(низ ${formatMm(params.hemBottomMm)}, верх '
-          '${formatMm(params.hemTopMm)}) = '
+          'плюс прибавка по каждой оси — среднее двух подворотов оси плюс '
+          '${formatMm(screenHemAxisExtraMm)} мм на шов и запас. '
+          'По высоте (низ ${formatMm(params.hemBottomMm)} + верх '
+          '${formatMm(params.hemTopMm)}) / 2 + '
+          '${formatMm(screenHemAxisExtraMm)} = '
           '${formatMm(params.hemAxisBottomTopIncrease)} мм, по ширине '
-          '2 × max(лево ${formatMm(params.hemLeftMm)}, право '
-          '${formatMm(params.hemRightMm)}) = '
+          '(лево ${formatMm(params.hemLeftMm)} + право '
+          '${formatMm(params.hemRightMm)}) / 2 + '
+          '${formatMm(screenHemAxisExtraMm)} = '
           '${formatMm(params.hemAxisLeftRightIncrease)} мм'
           '${spec.zipperBandTotalMm > 0 ? ', минус ширина полосы молнии '
                     '${formatMm(spec.zipperBandTotalMm)} мм' : ''} → '
@@ -305,8 +308,9 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
               '${formatMm(spec.filmCutHeightWithAllowance)} мм',
           note:
               'готовый размер ${formatMm(geometry.spanX)} × '
-              '${formatMm(geometry.overallHeight)} мм плюс 2 × больший подворот '
-              'по оси: высота +${formatMm(params.hemAxisBottomTopIncrease)}, '
+              '${formatMm(geometry.overallHeight)} мм плюс среднее подворотов '
+              'по оси + ${formatMm(screenHemAxisExtraMm)} мм: высота '
+              '+${formatMm(params.hemAxisBottomTopIncrease)}, '
               'ширина +${formatMm(params.hemAxisLeftRightIncrease)} мм '
               '(подвороты ${params.hemBySideShortLabel}, низ/право/верх/лево)'
               '${spec.zipperBandTotalMm > 0 ? '; ширина кроя уменьшена на '
@@ -327,7 +331,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           'кромка ровная без задиров и волн',
       source:
           'WindowSpec.filmCutWidthWithAllowance / filmCutHeightWithAllowance '
-          '(готовый размер + 2 × больший подворот по оси: '
+          '(готовый размер + среднее подворотов по оси + '
+          '${formatMm(screenHemAxisExtraMm)} мм: '
           'WindowParams.hemAxisBottomTopIncrease / hemAxisLeftRightIncrease; '
           'подвороты hemBottomMm / hemRightMm / hemTopMm / hemLeftMm; '
           'у скрина с молнией ширина кроя минус WindowLayers.zipperBandTotalMm)',
@@ -403,8 +408,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           '$hemBySide (низ/право/верх/лево), всего по периметру '
           '${formatMm(geometry.perimeter)} мм, и сварить горячим воздухом '
           'швом ${formatMm(screenSeamMm)} мм с каждой стороны. '
-          'Запас заготовки под подворот уже заложен по правилу «2 × больший '
-          'подворот по оси»: по высоте +'
+          'Запас заготовки под подворот уже заложен по правилу «среднее двух '
+          'подворотов оси + ${formatMm(screenHemAxisExtraMm)} мм»: по высоте +'
           '${formatMm(params.hemAxisBottomTopIncrease)} мм, по ширине +'
           '${formatMm(params.hemAxisLeftRightIncrease)} мм'
           '${spec.zipperBandTotalMm > 0 ? ' минус полоса молнии '
