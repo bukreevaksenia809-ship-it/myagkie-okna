@@ -12,14 +12,17 @@ import 'package:soft_window_drawer/widgets/price_panel.dart';
 
 /// Панель шириной 420 px с живым состоянием: правки уходят в проект.
 class _PanelHost extends StatefulWidget {
-  const _PanelHost({super.key});
+  const _PanelHost({super.key, this.initial});
+
+  /// Стартовый заказ: тесты скрина подставляют готовое окно сразу.
+  final OrderProject? initial;
 
   @override
   State<_PanelHost> createState() => _PanelHostState();
 }
 
 class _PanelHostState extends State<_PanelHost> {
-  OrderProject project = const OrderProject();
+  late OrderProject project = widget.initial ?? const OrderProject();
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +46,7 @@ void main() {
   _screenAndWeldRules();
   _eyeletIntervalPanelRules();
   _rollWidthsAndEyeletsPanelRules();
+  _screenZipperBlankRules();
   testWidgets('панель 420: спайка добавляет окно, припуски идут в модель', (
     WidgetTester tester,
   ) async {
@@ -664,6 +668,63 @@ void _pricePanelRules() {
     expect(hostKey.currentState!.prices.screenHemPerM, 210);
     expect(hostKey.currentState!.prices.edge80PerM, 130);
     expect(hostKey.currentState!.prices.edge120PerM, 175);
+    expect(tester.takeException(), isNull);
+  });
+}
+
+/// Панель: молния у скрина сужает заготовку, подписи это показывают,
+/// а панель 420 px не переполняется.
+void _screenZipperBlankRules() {
+  testWidgets('панель 420: молния скрина сужает заготовку в подписях', (
+    WidgetTester tester,
+  ) async {
+    // Высокое окно, чтобы все разделы панели построились целиком.
+    tester.view.physicalSize = const Size(420, 9000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // Скрин 2000 × 2000, подворот 40 на все стороны, одна молния с полосой
+    // 50 мм: заготовка 2030 × 2080 мм вместо 2080 × 2080.
+    const order = OrderProject(windows: [
+      WindowParams(
+        material: FilmMaterial.screen,
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2000,
+        rightHeight: 2000,
+        hemBottomMm: 40,
+        hemRightMm: 40,
+        hemTopMm: 40,
+        hemLeftMm: 40,
+        zippers: [ZipperSpec(centered: true)],
+      ),
+    ]);
+    final hostKey = GlobalKey<_PanelHostState>();
+    await tester.pumpWidget(_PanelHost(key: hostKey, initial: order));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    final spec = WindowSpec.of(order.selected);
+    expect(spec.filmCutWidthWithAllowance, closeTo(2030, 1e-9));
+    expect(spec.filmCutHeightWithAllowance, closeTo(2080, 1e-9));
+
+    // Подпись подворотного блока: обе ширины и виновник — полоса молнии.
+    final blankLabel =
+        tester.widget<Text>(find.byKey(const Key('hem-blank-label'))).data!;
+    expect(blankLabel, contains(formatMm(2030)));
+    expect(blankLabel, contains('полосу молнии 50'));
+    expect(blankLabel, contains('${formatMm(2080)} → ${formatMm(2030)}'));
+
+    // Формула по ширине показывает вычет отдельным слагаемым.
+    final widthFormula =
+        tester.widget<Text>(find.byKey(const Key('hem-width-formula'))).data!;
+    expect(widthFormula, contains('− полоса молнии 50'));
+    expect(widthFormula, contains('= ${formatMm(2030)} мм'));
+    // Высота полосой не меняется: 2000 + 2 × 40 = 2080.
+    final heightFormula =
+        tester.widget<Text>(find.byKey(const Key('hem-height-formula'))).data!;
+    expect(heightFormula, contains('= ${formatMm(2080)} мм'));
     expect(tester.takeException(), isNull);
   });
 }

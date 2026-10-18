@@ -692,7 +692,14 @@ class _ParamsPanelState extends State<ParamsPanel> {
           '${formatMm(spec.filmCutWidthWithAllowance)} × '
           '${formatMm(spec.filmCutHeightWithAllowance)} мм: готовый размер '
           'плюс прибавка по оси — удвоенный больший подворот этой оси. Шов '
-          'сварки ${formatMm(screenSeamMm)} мм.',
+          'сварки ${formatMm(screenSeamMm)} мм.'
+          // Полоса молнии сужает именно заготовку, а не подворот: подвороты
+          // остаются своими, но итоговая ширина кроя меньше на полосу.
+          '${spec.zipperBandTotalMm > 0 ? ' Ширина кроя уменьшена на полосу '
+              'молнии ${formatMm(spec.zipperBandTotalMm)} мм: '
+              '${formatMm(spec.filmCutWidthBeforeZipper + params.allowanceWidthMm)}'
+              ' → ${formatMm(spec.filmCutWidthWithAllowance)} мм — полоса '
+              'кроится из того же полотна.' : ''}',
           key: const Key('hem-blank-label'),
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
@@ -1989,7 +1996,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
             params.isScreen
                 ? 'Полоса шириной ${formatMm(zipper.bandWidth)} мм из скрина '
                     '(подворот или накладная полоса): молния идёт по её '
-                    'середине, шов ${formatMm(screenSeamMm)} мм по краям полосы.'
+                    'середине, шов ${formatMm(screenSeamMm)} мм по краям полосы. '
+                    'Ширина заготовки уменьшается на полосу: '
+                    '${formatMm(spec.filmCutWidthBeforeZipper + params.allowanceWidthMm)}'
+                    ' → ${formatMm(spec.filmCutWidthWithAllowance)} мм.'
                 : 'Спайка шириной ${formatMm(zipper.bandWidth)} мм: молния '
                     'впаивается в полосу тента и идёт по её середине.',
             style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
@@ -2660,6 +2670,17 @@ class _CuttingCard extends StatelessWidget {
         '${formatMm(spec.filmCutWidthWithAllowance)} × '
             '${formatMm(spec.filmCutHeightWithAllowance)} мм',
       ),
+      // Скрин с молнией: ширина заготовки меньше на полосу молнии. Строка
+      // стоит отдельно, чтобы человек видел, почему ширина не равна
+      // «готовый размер + 2 × подворот».
+      if (params.isScreen && spec.zipperBandTotalMm > 0)
+        (
+          'Минус полоса молнии на ширину кроя '
+              '(${spec.params.zippers.length} шт)',
+          '−${formatMm(spec.zipperBandTotalMm)} мм: '
+              '${formatMm(spec.filmCutWidthBeforeZipper + params.allowanceWidthMm)}'
+              ' → ${formatMm(spec.filmCutWidthWithAllowance)} мм',
+        ),
       if (!params.isScreen)
         params.hasShrinkage
             ? (

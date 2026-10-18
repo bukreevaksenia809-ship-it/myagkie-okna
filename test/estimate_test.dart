@@ -288,14 +288,15 @@ void main() {
     expect(titles, contains('Подворот скрина'));
     expect(titles, isNot(contains('Окантовка')));
 
-    // Полоса молнии — материал скрина: 50 × 2000 = 0,1 м² поверх заготовки.
+    // Полоса молнии сузила заготовку: (2080 − 50) × 2080 = 4,2224 м².
+    // Площадь самой полосы (0,1 м²) справочная и в расход не добавляется.
     expect(summary.screenZipperBandAreaM2, closeTo(0.1, 1e-9));
-    expect(summary.filmAreaWithShrinkageM2, closeTo(4.3264 + 0.1, 1e-9));
+    expect(summary.filmAreaWithShrinkageM2, closeTo(4.2224, 1e-9));
     final filmLine = estimate.lines
         .firstWhere((line) => line.title.startsWith('Полотно'));
-    expect(filmLine.quantity, closeTo(4.4264, 1e-9));
+    expect(filmLine.quantity, closeTo(4.2224, 1e-9));
     expect(filmLine.unitPrice, prices.filmScreenPerM2);
-    expect(filmLine.note, contains('полосы молний'));
+    expect(filmLine.note, contains('полосу молнии 50 мм'));
 
     // Работа: периметр 8 м плюс шов полосы 2 м — по цене подворота скрина.
     final hemLine = estimate.lines
@@ -312,6 +313,64 @@ void main() {
     expect(zipperLine.note, contains('скрина'));
     // Полосы тента (окантовки) у скрина в расходе нет.
     expect(summary.edgeByRoll, isEmpty);
+  });
+
+  test('смета скрина: молния сужает заготовку — полотно и раскрой дешевле', () {
+    const withZipper = WindowParams(
+      material: FilmMaterial.screen,
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      hemBottomMm: 40,
+      hemRightMm: 40,
+      hemTopMm: 40,
+      hemLeftMm: 40,
+      zippers: [ZipperSpec(centered: true)],
+    );
+    final withoutZipper = withZipper.clearZippers();
+    final prices = PriceList.defaults();
+    final a = Estimate.ofWindow(withoutZipper, prices);
+    final b = Estimate.ofWindow(withZipper, prices);
+
+    // Заготовка без молнии 2080 × 2080 = 4,3264 м², с полосой 50 мм —
+    // 2030 × 2080 = 4,2224 м²: ровно на 50 × 2080 = 0,104 м² меньше.
+    final filmA =
+        a.lines.firstWhere((line) => line.title.startsWith('Полотно'));
+    final filmB =
+        b.lines.firstWhere((line) => line.title.startsWith('Полотно'));
+    expect(filmA.quantity, closeTo(4.3264, 1e-9));
+    expect(filmB.quantity, closeTo(4.2224, 1e-9));
+    expect(filmA.quantity - filmB.quantity, closeTo(0.104, 1e-9));
+    expect(filmB.note, contains('полосу молнии 50 мм'));
+
+    // Раскрой считается по той же площади заготовки — тоже дешевле.
+    final cutA =
+        a.lines.firstWhere((line) => line.title.startsWith('Раскрой'));
+    final cutB =
+        b.lines.firstWhere((line) => line.title.startsWith('Раскрой'));
+    expect(cutA.quantity - cutB.quantity, closeTo(0.104, 1e-9));
+
+    // Деньги: полотно и раскрой уменьшились на площадь полосы по своим
+    // ценам; строка молнии и шов по её длине добавились отдельно.
+    expect(
+      filmA.amount - filmB.amount,
+      closeTo(0.104 * prices.filmScreenPerM2, 0.02),
+    );
+    expect(
+      cutA.amount - cutB.amount,
+      closeTo(0.104 * prices.cuttingPerM2, 0.02),
+    );
+    // Материалы скрина (полотно) стали дешевле ровно на полосу.
+    expect(
+      a.materialsSubtotal - b.materialsSubtotal,
+      closeTo(0.104 * prices.filmScreenPerM2, 0.02),
+    );
+    final zipperLine = b.lines
+        .firstWhere((line) => line.title.startsWith('Молния'));
+    expect(zipperLine.quantity, closeTo(2.0, 1e-9));
+    // Готовая площадь изделия не меняется: молния не уменьшает само окно.
+    expect(b.productAreaM2, closeTo(a.productAreaM2, 1e-9));
   });
 
   test('смета: сторона без люверсов уменьшает строку люверсов', () {

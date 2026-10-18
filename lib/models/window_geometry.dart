@@ -322,6 +322,40 @@ class WindowLayers {
   /// Габариты плёнки в раскрое (с напайкой под окантовку).
   late final Rect filmCutBounds = boundsOf(filmEdge);
 
+  /// Суммарная ширина полос всех молний окна, мм.
+  ///
+  /// Это ровно та величина, на которую заказчик уменьшает ширину заготовки
+  /// скрина: полоса молнии кроится из того же полотна, поэтому из ширины
+  /// полотна на вкладке «Раскрой» она вычитается. Заготовка 2 530 мм с молнией
+  /// и полосой 50 мм кроится 2 480 мм; две молнии по 50 мм дают 2 430 мм.
+  ///
+  /// У ПВХ вычета нет: там полоса — спайка тента (она идёт в расход
+  /// окантовки), ширина полотна не меняется.
+  ///
+  /// Ширина берётся из параметров как есть (в панели допустимо 40…120 мм),
+  /// без «минимальных 20 мм», которые нужны только для читаемости чертежа:
+  /// вычитаться должно ровно то число, которое человек ввёл.
+  double get zipperBandTotalMm {
+    if (!isScreen) return 0;
+    var total = 0.0;
+    for (final zipper in params.zippers) {
+      final width = zipper.bandWidth;
+      if (width.isFinite && width > 0) total += width;
+    }
+    return total;
+  }
+
+  /// Ширина заготовки без припуска на раскрой, уже с вычетом полос молний, мм.
+  ///
+  /// Ширина не может стать отрицательной: заготовка 100 мм с полосой 120 мм
+  /// (такое бывает только на вырожденных размерах) остаётся хотя бы 1 мм,
+  /// чтобы раскрой и раскладка не делили на ноль.
+  double get blankWidth =>
+      math.max(filmCutBounds.width - zipperBandTotalMm, 1.0);
+
+  /// Высота заготовки без припуска на раскрой, мм (полоса её не меняет).
+  double get blankHeight => filmCutBounds.height;
+
   /// Площадь полотна изделия в раскрое (с напайкой, без припуска), м².
   double get filmAreaM2 =>
       math.max(polygonArea(filmEdge).abs() - cutoutAreaMm2, 0) / 1000000;
@@ -840,15 +874,30 @@ class WindowSpec {
   /// Раскрой полотна.
   ///
   /// Для ПВХ: видимый размер плюс запайка [WindowParams.weldOverlapMm] с двух
-  /// сторон — плёнка заходит под окантовку. Для скрина: готовый размер плюс
-  /// прибавка по каждой оси, равная УДВОЕННОМУ БОЛЬШЕМУ подвороту этой оси
+  /// сторон — плёнка заходит под окантовку.
+  ///
+  /// Для скрина: готовый размер плюс прибавка по каждой оси, равная УДВОЕННОМУ
+  /// БОЛЬШЕМУ подвороту этой оси
   /// ([WindowParams.hemAxisBottomTopIncrease] /
   /// [WindowParams.hemAxisLeftRightIncrease]). Изделие 2000 × 2000 при
   /// подвороте 40 мм на все стороны даёт 2080 × 2080 мм, а при (низ 40,
-  /// верх 60, лево 40, право 40) — 2080 × 2120 мм. Припуск на раскрой здесь
-  /// ещё не учтён.
-  double get filmCutWidth => layers.filmCutBounds.width;
-  double get filmCutHeight => layers.filmCutBounds.height;
+  /// верх 60, лево 40, право 40) — 2080 × 2120 мм.
+  ///
+  /// Если у скрина есть молнии, из ширины ВЫЧИТАЕТСЯ суммарная ширина их полос
+  /// ([zipperBandTotalMm]): заказчик кроит полотно уже на полосу, потому что
+  /// полоса молнии выкраивается из того же полотна. 2080 мм с полосой
+  /// 50 мм дают 2030 мм, две полосы по 50 мм — 1980 мм. Высота не меняется:
+  /// полоса идёт по всей высоте полотна. У ПВХ полоса — спайка тента, ширина
+  /// полотна при молнии не меняется.
+  ///
+  /// Припуск на раскрой здесь ещё не учтён.
+  double get filmCutWidth => layers.blankWidth;
+  double get filmCutHeight => layers.blankHeight;
+
+  /// Ширина заготовки ДО вычета полос молний, мм (без припуска).
+  ///
+  /// Нужна для честной формулы в панели: «2000 + 2 × 40 − полоса 50».
+  double get filmCutWidthBeforeZipper => layers.filmCutBounds.width;
 
   /// Заготовка плёнки к раскрою с припуском, без усадки, мм.
   ///
@@ -885,7 +934,9 @@ class WindowSpec {
   /// Человеческий расчёт ширины заготовки скрина для панели:
   /// «Ширина: 2000 + 2 × 40 = 2080 мм».
   ///
-  /// Смысл тот же, что у [screenBlankHeightFormulaLabel].
+  /// Смысл тот же, что у [screenBlankHeightFormulaLabel]. Если у скрина есть
+  /// молнии, из ширины вычитается суммарная ширина их полос — это видно прямо
+  /// в формуле: «Ширина: 2000 + 2 × 40 − полоса молнии 50 = 2030 мм».
   String get screenBlankWidthFormulaLabel {
     final left = params.hemLeftMm;
     final right = params.hemRightMm;
@@ -894,10 +945,20 @@ class WindowSpec {
     final allowance = params.hasAllowance
         ? ' + припуск ${formatMm(params.allowanceWidthMm)}'
         : '';
-    final base = filmCutWidth - params.hemAxisLeftRightIncrease;
-    return 'Ширина: ${formatMm(base)} + 2 × ${formatMm(maxHem)}$side'
+    final zipper = zipperBandTotalMm > 0
+        ? ' − полоса молнии ${formatMm(zipperBandTotalMm)}'
+        : '';
+    final base =
+        filmCutWidthBeforeZipper - params.hemAxisLeftRightIncrease;
+    return 'Ширина: ${formatMm(base)} + 2 × ${formatMm(maxHem)}$side$zipper'
         '$allowance = ${formatMm(filmCutWidthWithAllowance)} мм';
   }
+
+  /// Суммарная ширина полос всех молний окна, мм (у ПВХ — 0).
+  ///
+  /// См. [WindowLayers.zipperBandTotalMm]: именно на эту величину сужена
+  /// заготовка скрина.
+  double get zipperBandTotalMm => layers.zipperBandTotalMm;
 
   /// Заготовка полотна с припуском на раскрой и компенсацией усадки, мм.
   ///
@@ -919,15 +980,24 @@ class WindowSpec {
   /// `filmCutHeight + effectiveAllowanceHeightMm`. Для прямоугольника это
   /// ровно прежние `filmCutWidthWithAllowance × filmCutHeightWithAllowance`,
   /// а для трапеции — её фактическая форма, а не описанный прямоугольник.
+  ///
+  /// Полоса молнии уже учтена в [filmCutWidth]: до припуска контур сжимается
+  /// по ширине на [zipperBandTotalMm] (для скрина). Прямоугольник при этом
+  /// просто становится уже на полосу, а трапеция сжимается по X относительно
+  /// центра габарита — так габаритная ширина уменьшается ровно на полосу,
+  /// углы остаются теми же (наклон боковых сторон меняется незначительно:
+  /// 50 мм на 2080 мм ширины — это 2,4 %), а площадь уменьшается
+  /// пропорционально ширине. Пропорции верхней и нижней кромок сохраняются,
+  /// поэтому трапеция не превращается в прямоугольник.
   List<Offset> get filmCutPolygon {
     final polygon = layers.filmEdge;
     if (polygon.length < 3) return List.of(polygon);
     final bounds = layers.filmCutBounds;
     final width = bounds.width;
     final height = bounds.height;
-    final sx = width > 1e-9
-        ? (width + params.allowanceWidthMm) / width
-        : 1.0;
+    // Целевая ширина: заготовка уже без полос молний, плюс припуск на раскрой.
+    final targetWidth = filmCutWidth + params.allowanceWidthMm;
+    final sx = width > 1e-9 ? targetWidth / width : 1.0;
     final sy = height > 1e-9
         ? (height + params.effectiveAllowanceHeightMm) / height
         : 1.0;
@@ -955,8 +1025,11 @@ class WindowSpec {
   /// Считается по площади полигона [filmCutPolygon] (это `filmEdge` с
   /// припуском), а не по габаритному прямоугольнику. Для трапеции или окна с
   /// разными высотами сторон фактическая площадь меньше габаритной — именно
-  /// она идёт в ведомость и смету. Усадка здесь ещё не учтена: фактический
-  /// расход и деньги идут по [filmCutAreaWithShrinkageM2].
+  /// она идёт в ведомость и смету. У скрина контур уже сужен на полосу молнии,
+  /// поэтому площадь считается от новой ширины: 2080 × 2080 = 4,3264 м² без
+  /// молнии и 2030 × 2080 = 4,2224 м² с полосой 50 мм (ровно на 50 × 2080 =
+  /// 0,104 м² меньше). Усадка здесь ещё не учтена: фактический расход и деньги
+  /// идут по [filmCutAreaWithShrinkageM2].
   double get filmCutAreaM2 {
     final area = polygonArea(filmCutPolygon).abs() - layers.cutoutAreaMm2;
     return math.max(area, 0) / 1000000;
@@ -1070,8 +1143,11 @@ class WindowSpec {
 
   /// Площадь полос молний у скрина, м² (0 у ПВХ: там полоса из тента).
   ///
-  /// Полоса молнии скрина — отдельная деталь из того же материала, поэтому она
-  /// входит в расход скрина: ширина полосы × высота полотна на каждую молнию.
+  /// Справочное число для подписей: ширина полосы × высота полотна на каждую
+  /// молнию. В расход и смету отдельным слагаемым она НЕ входит: по правилу
+  /// заказчика ширина кроя заранее уменьшена на полосу
+  /// ([zipperBandTotalMm], см. [filmCutWidth]), поэтому расход идёт по площади
+  /// суженной заготовки. Иначе площадь полосы посчиталась бы дважды.
   double get screenZipperBandAreaM2 {
     if (!params.isScreen) return 0;
     final height = layers.filmVisibleBounds.height;
@@ -1201,8 +1277,8 @@ class WindowSpec {
             'до припуска); усадки нет',
         'Расход скрина — площадь заготовки по фактическому контуру '
             '${formatMeters(filmCutAreaWithShrinkageM2)} м²'
-            '${screenZipperBandAreaM2 > 0 ? ' плюс полосы молний '
-                '${formatMeters(screenZipperBandAreaM2)} м²' : ''}',
+            '${zipperBandTotalMm > 0 ? ' (ширина уже без полосы молнии '
+                '${formatMm(zipperBandTotalMm)} мм)' : ''}',
       ] else ...[
         'Окантовка складывается пополам; запайка плёнки под окантовку '
             '${formatMm(params.weldOverlapMm)} мм по всему периметру',
@@ -1251,10 +1327,12 @@ class WindowSpec {
             : 'Спайка молнии ${formatMm(params.zipperBandWidth)} мм; от спайки '
                 'до кромок плёнки: слева ${formatMm(layers.zipperGaps!.left)} мм, '
                 'справа ${formatMm(layers.zipperGaps!.right)} мм',
-      if (params.isScreen && screenZipperBandAreaM2 > 0)
-        'Расход скрина на полосы молний: '
-            '${formatMeters(screenZipperBandAreaM2)} м² (ширина полосы × высота '
-            'полотна, поверх площади заготовки)',
+      if (params.isScreen && zipperBandTotalMm > 0)
+        'Ширина кроя скрина уменьшена на полосу молнии '
+            '${formatMm(zipperBandTotalMm)} мм: '
+            '${formatMm(filmCutWidthBeforeZipper)} → '
+            '${formatMm(filmCutWidth)} мм (площадь полосы '
+            '${formatMeters(screenZipperBandAreaM2)} м² отдельно не считается)',
       if (params.cutouts.isNotEmpty) 'Вырезы: $cutoutsSummary',
       if (params.weldedSides.isNotEmpty) 'Спайка окон: $weldSummary',
       if (params.drainHoles && !params.isScreen)

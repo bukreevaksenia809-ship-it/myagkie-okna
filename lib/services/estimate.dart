@@ -127,15 +127,16 @@ class Estimate {
         title: 'Полотно: ${entry.key.label}',
         // У скрина полотно считается по площади заготовки: готовый размер
         // плюс прибавка по каждой оси — удвоенный больший подворот этой оси,
-        // а если стоят молнии — ещё и полосы
-        // под них (материал тот же, скрин). Подпись показывает это человеку
+        // а если стоят молнии — ширина заготовки уже уменьшена на полосы под
+        // них (материал тот же, скрин). Подпись показывает это человеку
         // прямо в смете.
         note: entry.key == FilmMaterial.screen
             ? 'скрин: заготовка по контуру ${formatMeters(entry.value)} м² × '
                 '${_unitPriceLabel(pricePerM2)} ₽/м² — готовый размер плюс '
                 '2 × больший подворот по оси'
-                '${summary.screenZipperCount > 0 ? ', включая полосы молний '
-                    '${formatMeters(summary.screenZipperBandAreaM2)} м²' : ''}'
+                '${summary.screenZipperCount > 0 ? ', ширина кроя уменьшена на '
+                    'полосу молнии '
+                    '${formatMm(summary.screenZipperBandWidthMm)} мм' : ''}'
             : '${entry.key.thickness}; заготовка по контуру'
                 '${summary.hasShrinkage ? ' с компенсацией усадки' : ''}'
                 '${summary.hasAutoHeightAllowance

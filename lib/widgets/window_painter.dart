@@ -2030,15 +2030,23 @@ class WindowDrawingPainter extends CustomPainter {
   ///
   /// Стоит в верхнем поле листа, поэтому не перекрывает ни чертёж, ни
   /// размерные цепочки, ни подписи подворота и шва.
+  ///
+  /// Если у скрина есть молния, ширина заготовки уменьшена на ширину её полосы
+  /// (см. [WindowSpec.filmCutWidth]) — об этом прямо сказано в подписи, сам
+  /// чертёж при этом не меняется: полотно и молния рисуются как раньше.
   void _paintScreenBlankNote(Canvas canvas, Size size) {
-    final cutBounds = layers.filmCutBounds;
-    final blankWidth = cutBounds.width + params.allowanceWidthMm;
-    final blankHeight =
-        cutBounds.height + params.effectiveAllowanceHeightMm;
+    final blankWidth = layers.blankWidth + params.allowanceWidthMm;
+    final blankHeight = layers.blankHeight + params.effectiveAllowanceHeightMm;
+    final zipperBand = layers.zipperBandTotalMm;
+    final zipperNote = zipperBand > 0
+        ? ' · ширина −${formatMm(zipperBand)} мм на полосу молнии '
+            '(${formatMm(layers.filmCutBounds.width + params.allowanceWidthMm)}'
+            ' → ${formatMm(blankWidth)})'
+        : '';
     _label(
       canvas,
       'заготовка ${formatMm(blankWidth)} × ${formatMm(blankHeight)} мм '
-      '(пунктир — край заготовки)',
+      '(пунктир — край заготовки)$zipperNote',
       Offset(size.width / 2, size.height - 10),
       small: true,
       color: const Color(0xFF3E4C60),

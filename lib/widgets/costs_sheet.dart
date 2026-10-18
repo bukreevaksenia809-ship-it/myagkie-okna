@@ -288,7 +288,9 @@ class CostsSheet extends StatelessWidget {
                   '${formatCm(summary.screenHemLengthMm)} см',
           'Расход скрина — по площади заготовок в раскрое (готовый размер '
               'плюс 2 × больший подворот по оси'
-              '${summary.screenZipperCount > 0 ? ' и полосы молний' : ''})',
+              '${summary.screenZipperCount > 0 ? ', ширина кроя уменьшена на '
+                  'полосу молнии '
+                  '${formatMm(summary.screenZipperBandWidthMm)} мм' : ''})',
         ]),
       ('Люверсы', [
         ...summary.eyeletLabels,

@@ -592,7 +592,7 @@ class CutSheetPainter extends CustomPainter {
         ..color = palette.edge,
     );
 
-    _paintArea(canvas, rect, placement.piece);
+    _paintArea(canvas, rect, placement.piece, spec);
     _paintDimensions(canvas, rect, placement);
     _paintCaption(canvas, rect, spec, placement.index);
   }
@@ -653,7 +653,11 @@ class CutSheetPainter extends CustomPainter {
   ///
   /// Площадь берётся фактическая (по контуру, с усадкой и без вырезов), а не
   /// габаритная: для трапеции это то же число, что в ведомости и смете.
-  void _paintArea(Canvas canvas, Rect rect, CutPiece piece) {
+  ///
+  /// У скрина с молнией под площадью стоит строка «− полоса молнии 50 мм»:
+  /// заготовка уже сужена на полосу, и человек должен видеть, почему ширина
+  /// меньше готового размера с подворотами.
+  void _paintArea(Canvas canvas, Rect rect, CutPiece piece, WindowSpec spec) {
     final areaM2 = piece.areaM2 > 0 ? piece.areaM2 : piece.areaMm2 / 1000000;
     final text = '${formatMeters(areaM2)} м²';
     var fontSize = math.min(21.0, rect.height * 0.34);
@@ -679,6 +683,31 @@ class CutSheetPainter extends CustomPainter {
     painter.paint(
       canvas,
       rect.center - Offset(painter.width / 2, painter.height / 2),
+    );
+
+    final zipperBand = spec.zipperBandTotalMm;
+    if (zipperBand <= 0) return;
+    final note = '− полоса молнии ${formatMm(zipperBand)} мм';
+    final notePainter = _painter(note, color: _dim, small: true);
+    // Строка не должна вылезать за заготовку: на мелких заготовках она
+    // останется только в подписи под ними.
+    if (notePainter.width > rect.width - 12) return;
+    final noteTop = rect.center.dy + painter.height / 2 + 4;
+    if (noteTop + notePainter.height > rect.bottom - 4) return;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(rect.center.dx, noteTop + notePainter.height / 2),
+          width: notePainter.width + 10,
+          height: notePainter.height + 4,
+        ),
+        const Radius.circular(3),
+      ),
+      Paint()..color = Colors.white.withValues(alpha: 0.88),
+    );
+    notePainter.paint(
+      canvas,
+      Offset(rect.center.dx - notePainter.width / 2, noteTop),
     );
   }
 
@@ -770,6 +799,14 @@ class CutSheetPainter extends CustomPainter {
       color: _ink,
     );
     final parts = <String>[
+      // Скрин с молнией кроится уже: ширина заготовки уменьшена на полосу
+      // молнии. Показываем оба числа, чтобы подпись не расходилась с готовым
+      // размером и подворотами (2 530 → 2 480 мм при полосе 50 мм).
+      if (spec.zipperBandTotalMm > 0)
+        'ширина заготовки '
+            '${formatMm(spec.filmCutWidthBeforeZipper + params.allowanceWidthMm)}'
+            ' → ${formatMm(spec.filmCutWidthWithAllowance)} мм '
+            '(полоса молнии ${formatMm(spec.zipperBandTotalMm)} мм)',
       if (params.hasManualAllowance)
         'припуск ${params.allowanceWidthLabel}/'
             '${params.manualAllowanceHeightLabel} мм',

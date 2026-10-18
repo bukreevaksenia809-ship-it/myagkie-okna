@@ -80,6 +80,44 @@ const _trapezoid = WindowParams(
   weldOverlapMm: 25,
 );
 
+/// Скрин 2000 × 2000 с подворотом 40 и молнией: заготовка на листе «Раскрой»
+/// должна быть 2030 × 2080 мм — уже на полосу молнии 50 мм.
+const _screenZipper = WindowParams(
+  projectName: 'Мягкое окно террасы',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-050',
+  material: FilmMaterial.screen,
+  bottomWidth: 2000,
+  topWidth: 2000,
+  leftHeight: 2000,
+  rightHeight: 2000,
+  hemBottomMm: 40,
+  hemRightMm: 40,
+  hemTopMm: 40,
+  hemLeftMm: 40,
+  zippers: [ZipperSpec(centered: true)],
+);
+
+/// Заказ заказчика: скрин без молнии и с молнией — видно, что заготовка
+/// справа уже на полосу (2 080 → 2 030 мм).
+const _screenZipperOrder = OrderProject(windows: [
+  WindowParams(
+    projectName: 'Мягкое окно террасы',
+    customer: 'Иванов И. И.',
+    drawingNumber: 'МО-051',
+    material: FilmMaterial.screen,
+    bottomWidth: 2000,
+    topWidth: 2000,
+    leftHeight: 2000,
+    rightHeight: 2000,
+    hemBottomMm: 40,
+    hemRightMm: 40,
+    hemTopMm: 40,
+    hemLeftMm: 40,
+  ),
+  _screenZipper,
+]);
+
 /// Порядок для превью: трапеция рядом с прямоугольником — видно, что лист
 /// рисует фактическую форму, а не габарит.
 const _trapezoidOrder = OrderProject(windows: [_trapezoid, _w2000]);
@@ -286,6 +324,89 @@ void main() {
     });
   });
 
+  group('CutPiece: полоса молнии сужает заготовку скрина', () {
+    // Скрин 2000 × 2000, подворот 40 на все стороны: заготовка 2080 × 2080.
+    const screen2000 = WindowParams(
+      material: FilmMaterial.screen,
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      hemBottomMm: 40,
+      hemRightMm: 40,
+      hemTopMm: 40,
+      hemLeftMm: 40,
+    );
+
+    test('прямоугольник: ширина 2030 мм и площадь 4,2224 м²', () {
+      final without = CutPiece.ofSpec(WindowSpec.of(screen2000));
+      expect(without.widthMm, closeTo(2080, 1e-9));
+      expect(without.heightMm, closeTo(2080, 1e-9));
+      expect(without.areaM2, closeTo(4.3264, 1e-9));
+
+      final spec = WindowSpec.of(screen2000.copyWith(
+        zippers: const [ZipperSpec(centered: true)],
+      ));
+      final piece = CutPiece.ofSpec(spec);
+
+      // Заготовка на листе «Раскрой» уже на полосу: 2080 − 50 = 2030 мм.
+      expect(piece.widthMm, closeTo(2030, 1e-9));
+      expect(piece.widthMm, closeTo(spec.filmCutWidthWithShrinkage, 1e-9));
+      expect(piece.heightMm, closeTo(2080, 1e-9));
+      // Площадь пересчитана от новой ширины: 2030 × 2080 = 4,2224 м².
+      expect(piece.areaM2, closeTo(4.2224, 1e-9));
+      expect(
+        without.areaM2 - piece.areaM2,
+        closeTo(50 * 2080 / 1000000, 1e-9),
+      );
+      expect(piece.areaMm2 / 1000000, closeTo(piece.areaM2, 1e-9));
+    });
+
+    test('трапеция: ширина меньше на полосу, площадь по контуру', () {
+      // Трапеция: низ 2000, верх 1000, высота 1000, подворот 40.
+      const trapezoid = WindowParams(
+        material: FilmMaterial.screen,
+        bottomWidth: 2000,
+        topWidth: 1000,
+        leftHeight: 1000,
+        rightHeight: 1000,
+        hemBottomMm: 40,
+        hemRightMm: 40,
+        hemTopMm: 40,
+        hemLeftMm: 40,
+      );
+      final withoutSpec = WindowSpec.of(trapezoid);
+      final without = CutPiece.ofSpec(withoutSpec);
+      final spec = WindowSpec.of(trapezoid.copyWith(
+        zippers: const [ZipperSpec(centered: true)],
+      ));
+      final piece = CutPiece.ofSpec(spec);
+
+      expect(without.hasContour, isTrue);
+      expect(piece.hasContour, isTrue);
+      // Габаритная ширина заготовки уменьшена ровно на полосу молнии: 50 мм.
+      expect(
+        without.widthMm - piece.widthMm,
+        closeTo(50, 1e-9),
+      );
+      expect(piece.widthMm, closeTo(spec.filmCutWidthWithShrinkage, 1e-9));
+      expect(piece.heightMm, closeTo(without.heightMm, 1e-9));
+      // Площадь трапеции пересчитана: контур сжат по ширине пропорционально,
+      // поэтому площадь уменьшилась в (W − 50) / W раз.
+      expect(
+        piece.areaM2,
+        closeTo(without.areaM2 * (without.widthMm - 50) / without.widthMm, 1e-9),
+      );
+      expect(piece.areaM2, closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9));
+      // Раскладка по-прежнему пакует по габариту, но уже узкому.
+      final layout = CutLayout.place([piece], const Size(1632, 460));
+      expect(
+        layout.placements.single.rect.width,
+        closeTo(piece.widthMm * layout.scale, 1e-9),
+      );
+    });
+  });
+
   group('CutSheet.sheetSize', () {
     test('одно окно: null или непустой размер', () {
       const single = OrderProject(windows: [_w2000]);
@@ -428,6 +549,14 @@ void main() {
               CutSheet.sheetSize(_trapezoidOrder, const Size(1720, 1080)) ??
                   const Size(1720, 1080),
           project: _trapezoidOrder,
+        ),
+        // Скрин с молнией: заготовка уже на полосу — 2030 × 2080 мм, под
+        // площадью и под заготовкой подписано «полоса молнии 50 мм».
+        'raskroy-skrin-molniya': (
+          viewport:
+              CutSheet.sheetSize(_screenZipperOrder, const Size(1720, 1080)) ??
+                  const Size(1720, 1080),
+          project: _screenZipperOrder,
         ),
       };
 
