@@ -47,6 +47,7 @@ void main() {
   _eyeletIntervalPanelRules();
   _rollWidthsAndEyeletsPanelRules();
   _screenZipperBlankRules();
+  _screenHemPresetsRules();
   _equalizeButtonsRules();
   testWidgets('панель 420: спайка добавляет окно, припуски идут в модель', (
     WidgetTester tester,
@@ -841,4 +842,145 @@ void _screenZipperBlankRules() {
     expect(heightFormula, contains('= ${formatMm(2060)} мм'));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('панель 420: молния ПВХ тоже сужает заготовку в подписях', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 9000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // ПВХ 2000 × 2000, окантовка 100 (готовая 50), запайка 5:
+    // ширина 1910 мм, с полосой 50 мм — 1860 мм.
+    const order = OrderProject(windows: [
+      WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2000,
+        rightHeight: 2000,
+        zippers: [ZipperSpec(centered: true)],
+      ),
+    ]);
+    final hostKey = GlobalKey<_PanelHostState>();
+    await tester.pumpWidget(_PanelHost(key: hostKey, initial: order));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    final spec = WindowSpec.of(order.selected);
+    expect(spec.filmCutWidth, closeTo(1860, 1e-9));
+    expect(spec.filmCutWidthBeforeZipper, closeTo(1910, 1e-9));
+
+    // Карточка раскроя: отдельная строка про вычет полосы — как у скрина.
+    expect(
+      find.text('Минус полоса молнии на ширину кроя (1 шт)'),
+      findsOneWidget,
+    );
+    final reduction = '−${formatMm(50)} мм: '
+        '${formatMm(1910)} → ${formatMm(1860)} мм до припуска';
+    expect(find.text(reduction), findsOneWidget);
+
+    // Подпись у поля молнии объясняет, что ширина уменьшена так же.
+    expect(
+      find.textContaining(
+        'Ширина заготовки уменьшается на полосу так же, как у скрина',
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }
+
+/// Панель: пресеты подворота скрина 80/100/120 — кнопки, модель и формула
+/// «среднее + 20» на узкой панели 420 px.
+void _screenHemPresetsRules() {
+  testWidgets('панель 420: пресеты 80/100/120 меняют модель и заготовку', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 9000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // Скрин 2000 × 2000, подворот 40 на все стороны — стартовое значение.
+    const order = OrderProject(windows: [
+      WindowParams(
+        material: FilmMaterial.screen,
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2000,
+        rightHeight: 2000,
+        hemBottomMm: 40,
+        hemRightMm: 40,
+        hemTopMm: 40,
+        hemLeftMm: 40,
+      ),
+    ]);
+    final hostKey = GlobalKey<_PanelHostState>();
+    await tester.pumpWidget(_PanelHost(key: hostKey, initial: order));
+    await tester.pumpAndSettle();
+
+    // Кнопки 80/100/120 стоят на каждой стороне (низ/право/верх/лево).
+    for (final side in EdgeSide.values) {
+      for (final preset in const [80, 100, 120]) {
+        expect(
+          find.byKey(Key('hem-preset-hem${_sideName(side)}-$preset')),
+          findsOneWidget,
+          reason: 'пресет $preset на стороне ${side.label}',
+        );
+      }
+    }
+    expect(tester.takeException(), isNull);
+
+    // Выбор 120 на низу попадает в модель. По высоте прибавка —
+    // (низ 120 + верх 40) / 2 + 20 = 100 → 2000 + 100 = 2100 мм;
+    // ширина считается по лево/право = 40 и остаётся 2060 мм.
+    await tester.tap(find.byKey(const Key('hem-preset-hemBottom-120')));
+    await tester.pumpAndSettle();
+    final afterBottom = hostKey.currentState!.project.selected;
+    expect(afterBottom.hemBottomMm, 120);
+    final bottomSpec = WindowSpec.of(afterBottom);
+    expect(bottomSpec.filmCutWidth, closeTo(2060, 1e-9));
+    expect(bottomSpec.filmCutHeight, closeTo(2100, 1e-9));
+    expect(tester.takeException(), isNull);
+
+    // Выбор 120 на верху: среднее (120 + 120) / 2 + 20 = 140 → высота 2140.
+    await tester.tap(find.byKey(const Key('hem-preset-hemTop-120')));
+    await tester.pumpAndSettle();
+    final afterTop = hostKey.currentState!.project.selected;
+    expect(afterTop.hemTopMm, 120);
+    final topSpec = WindowSpec.of(afterTop);
+    expect(topSpec.filmCutWidth, closeTo(2060, 1e-9));
+    expect(topSpec.filmCutHeight, closeTo(2140, 1e-9));
+    expect(
+      topSpec.screenBlankHeightFormulaLabel,
+      contains('= ${formatMm(2140)} мм'),
+    );
+    expect(tester.takeException(), isNull);
+
+    // Правый и левый бока 120: ширина тоже становится 2140 мм.
+    await tester.tap(find.byKey(const Key('hem-preset-hemRight-120')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('hem-preset-hemLeft-120')));
+    await tester.pumpAndSettle();
+    final all = hostKey.currentState!.project.selected;
+    expect(all.hemRightMm, 120);
+    expect(all.hemLeftMm, 120);
+    final allSpec = WindowSpec.of(all);
+    expect(allSpec.filmCutWidth, closeTo(2140, 1e-9));
+    expect(allSpec.filmCutHeight, closeTo(2140, 1e-9));
+    expect(
+      allSpec.screenBlankWidthFormulaLabel,
+      contains('= ${formatMm(2140)} мм'),
+    );
+    expect(tester.takeException(), isNull);
+  });
+}
+
+/// Имя поля подворота в ключе кнопки: hemBottom/hemRight/hemTop/hemLeft.
+String _sideName(EdgeSide side) => switch (side) {
+      EdgeSide.bottom => 'Bottom',
+      EdgeSide.right => 'Right',
+      EdgeSide.top => 'Top',
+      EdgeSide.left => 'Left',
+    };

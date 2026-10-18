@@ -654,9 +654,10 @@ class CutSheetPainter extends CustomPainter {
   /// Площадь берётся фактическая (по контуру, с усадкой и без вырезов), а не
   /// габаритная: для трапеции это то же число, что в ведомости и смете.
   ///
-  /// У скрина с молнией под площадью стоит строка «− полоса молнии 50 мм»:
-  /// заготовка уже сужена на полосу, и человек должен видеть, почему ширина
-  /// меньше готового размера с подворотами.
+  /// У окна с молнией под площадью стоит строка «− полоса молнии 50 мм»:
+  /// заготовка уже сужена на полосу (у ПВХ и у скрина одинаково), и человек
+  /// должен видеть, почему ширина меньше готового размера с подворотами или
+  /// видимого размера плёнки с запайкой.
   void _paintArea(Canvas canvas, Rect rect, CutPiece piece, WindowSpec spec) {
     final areaM2 = piece.areaM2 > 0 ? piece.areaM2 : piece.areaMm2 / 1000000;
     final text = '${formatMeters(areaM2)} м²';
@@ -799,14 +800,15 @@ class CutSheetPainter extends CustomPainter {
       color: _ink,
     );
     final parts = <String>[
-      // Скрин с молнией кроится уже: ширина заготовки уменьшена на полосу
-      // молнии. Показываем оба числа, чтобы подпись не расходилась с готовым
-      // размером и подворотами (2 530 → 2 480 мм при полосе 50 мм).
+      // Окно с молнией кроится уже: ширина заготовки уменьшена на полосу
+      // молнии у всех материалов. Показываем оба числа, чтобы подпись не
+      // расходилась с готовым размером и подворотами/запайкой
+      // (2 530 → 2 480 мм при полосе 50 мм).
       if (spec.zipperBandTotalMm > 0)
         'ширина заготовки '
-            '${formatMm(spec.filmCutWidthBeforeZipper + params.allowanceWidthMm)}'
-            ' → ${formatMm(spec.filmCutWidthWithAllowance)} мм '
-            '(полоса молнии ${formatMm(spec.zipperBandTotalMm)} мм)',
+            '${formatMm(spec.filmCutWidthBeforeZipper)}'
+            ' → ${formatMm(spec.filmCutWidth)} мм, '
+            'минус полоса молнии ${formatMm(spec.zipperBandTotalMm)} мм',
       if (params.hasManualAllowance)
         'припуск ${params.allowanceWidthLabel}/'
             '${params.manualAllowanceHeightLabel} мм',

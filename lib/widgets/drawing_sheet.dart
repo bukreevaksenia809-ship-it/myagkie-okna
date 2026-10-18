@@ -697,8 +697,14 @@ class _TitleBlock extends StatelessWidget {
                     first.isScreen
                         ? 'Скрин: заготовка с подворотом '
                             '${first.hemBySideShortLabel} (низ/право/верх/лево)'
+                            '${specs.first.zipperBandTotalMm > 0 ? ', минус '
+                                'полоса молнии '
+                                '${formatMm(specs.first.zipperBandTotalMm)} мм' : ''}'
                         : 'Полотно: раскрой с запайкой '
-                            '${formatMm(first.weldOverlapMm)} мм',
+                            '${formatMm(first.weldOverlapMm)} мм'
+                            '${specs.first.zipperBandTotalMm > 0 ? ', минус '
+                                'полоса молнии '
+                                '${formatMm(specs.first.zipperBandTotalMm)} мм' : ''}',
                     windows.length == 1
                         ? '${formatMm(specs.first.filmCutWidthWithAllowance)} × '
                             '${formatMm(specs.first.filmCutHeightWithAllowance)}'
@@ -1090,6 +1096,14 @@ class _SidePanel extends StatelessWidget {
             '${material.label.toLowerCase()} — рулон '
             '${formatMm(project.rollWidthFor(material))} мм')
         .join('; ');
+    // Вычет полосы молнии из ширины кроя у ПВХ: та же формула, что у скрина,
+    // поэтому в примечаниях заказа показываем её по каждому окну.
+    final pvcZipperNotes = [
+      for (var i = 0; i < specs.length; i++)
+        if (!specs[i].params.isScreen &&
+            specs[i].zipperWidthReductionLabel != null)
+          '№${i + 1}: ${specs[i].zipperWidthReductionLabel}',
+    ];
 
     return [
       'Окон в заказе: ${project.windows.length}; номера окон указаны под каждым чертежом',
@@ -1106,6 +1120,9 @@ class _SidePanel extends StatelessWidget {
       else
         'Окантовка складывается пополам, запайка плёнки под окантовку '
             '${formatMm(first.weldOverlapMm)} мм по всему периметру',
+      if (pvcZipperNotes.isNotEmpty)
+        'Молния: ширина кроя плёнки уменьшена на полосу (спайку) — '
+            '${pvcZipperNotes.join('; ')}',
       if (!first.isScreen)
         'Расход окантовки: '
             '${labels.map((entry) => '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см').join(', ')}',

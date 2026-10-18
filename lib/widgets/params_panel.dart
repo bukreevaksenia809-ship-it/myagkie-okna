@@ -597,7 +597,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _updateWindow(_params.withField(field, value));
   }
 
-  /// Ввод подворота скрина: 10…150 мм на каждую сторону.
+  /// Ввод подворота скрина: 10…200 мм на каждую сторону.
   ///
   /// Сторона приходит полем [ParamField], поэтому ошибка адресуется ровно
   /// той строке блока «Подворот, мм», где её ввели.
@@ -739,7 +739,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   /// Блок «Подворот, мм»: четыре строки — низ, право, верх, лево.
   ///
-  /// У каждой стороны свои пресеты 40/50/60 и числовое поле (10…150 мм);
+  /// У каждой стороны свои пресеты 40/50/60/80/100/120 и числовое поле
+  /// (10…200 мм);
   /// панель узкая (420 px), поэтому строка собрана из подписи, компактных
   /// чипов и поля. Внизу — итог: какой получится заготовка и как она
   /// посчитана по каждой оси (прибавка — среднее двух подворотов + 20 мм).
@@ -759,18 +760,23 @@ class _ParamsPanelState extends State<ParamsPanel> {
         ],
         const SizedBox(height: 8),
         Text(
-          'Заготовка будет '
+          'Габарит заготовки будет '
           '${formatMm(spec.filmCutWidthWithAllowance)} × '
-          '${formatMm(spec.filmCutHeightWithAllowance)} мм: готовый размер '
+          '${formatMm(spec.filmCutHeightWithAllowance)} мм: габарит изделия '
           'плюс прибавка по оси — среднее двух подворотов + '
           '${formatMm(screenHemAxisExtraMm)} мм на шов и запас. Шов '
           'сварки ${formatMm(screenSeamMm)} мм.'
+          // У трапеции и окна с разными высотами наклон сторон добавляет к
+          // габариту ещё немного — это видно отдельным слагаемым в формулах.
+          '${spec.widthSlopeExtraMm.abs() >= 0.5 || spec.heightSlopeExtraMm.abs() >= 0.5 ? ' Наклон сторон добавляет к габариту: по ширине '
+              '${formatSignedMm(spec.widthSlopeExtraMm)} мм, по высоте '
+              '${formatSignedMm(spec.heightSlopeExtraMm)} мм.' : ''}'
           // Полоса молнии сужает именно заготовку, а не подворот: подвороты
           // остаются своими, но итоговая ширина кроя меньше на полосу.
           '${spec.zipperBandTotalMm > 0 ? ' Ширина кроя уменьшена на полосу '
               'молнии ${formatMm(spec.zipperBandTotalMm)} мм: '
-              '${formatMm(spec.filmCutWidthBeforeZipper + params.allowanceWidthMm)}'
-              ' → ${formatMm(spec.filmCutWidthWithAllowance)} мм — полоса '
+              '${formatMm(spec.filmCutWidthBeforeZipper)}'
+              ' → ${formatMm(spec.filmCutWidth)} мм до припуска — полоса '
               'кроится из того же полотна.' : ''}',
           key: const Key('hem-blank-label'),
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
@@ -798,7 +804,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
-  /// Одна строка подворота: сторона, пресеты 40/50/60 и своё число.
+  /// Одна строка подворота: сторона, пресеты 40/50/60/80/100/120 и своё число.
   Widget _hemRow(WindowParams params, EdgeSide side) {
     final field = hemFieldForSide(side);
     final value = params.hemForSide(side);
@@ -819,6 +825,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
             children: [
               for (final preset in screenHemPresets)
                 ChoiceChip(
+                  key: Key('hem-preset-${field.name}-${preset.round()}'),
                   label: Text(
                     formatMm(preset),
                     style: const TextStyle(fontSize: 11),
@@ -2111,10 +2118,13 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     '(подворот или накладная полоса): молния идёт по её '
                     'середине, шов ${formatMm(screenSeamMm)} мм по краям полосы. '
                     'Ширина заготовки уменьшается на полосу: '
-                    '${formatMm(spec.filmCutWidthBeforeZipper + params.allowanceWidthMm)}'
-                    ' → ${formatMm(spec.filmCutWidthWithAllowance)} мм.'
+                    '${formatMm(spec.filmCutWidthBeforeZipper)}'
+                    ' → ${formatMm(spec.filmCutWidth)} мм до припуска.'
                 : 'Спайка шириной ${formatMm(zipper.bandWidth)} мм: молния '
-                    'впаивается в полосу тента и идёт по её середине.',
+                    'впаивается в полосу тента и идёт по её середине. Ширина '
+                    'заготовки уменьшается на полосу так же, как у скрина: '
+                    '${formatMm(spec.filmCutWidthBeforeZipper)}'
+                    ' → ${formatMm(spec.filmCutWidth)} мм до припуска.',
             style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
         ],
@@ -2784,16 +2794,16 @@ class _CuttingCard extends StatelessWidget {
         '${formatMm(spec.filmCutWidthWithAllowance)} × '
             '${formatMm(spec.filmCutHeightWithAllowance)} мм',
       ),
-      // Скрин с молнией: ширина заготовки меньше на полосу молнии. Строка
-      // стоит отдельно, чтобы человек видел, почему ширина не равна
-      // «готовый размер + 2 × подворот».
-      if (params.isScreen && spec.zipperBandTotalMm > 0)
+      // Молния сужает ширину заготовки у всех материалов. Строка стоит
+      // отдельно, чтобы человек видел, почему ширина не равна «готовый
+      // размер + 2 × подворот» (или «видимый размер + 2 × запайка»).
+      if (spec.zipperBandTotalMm > 0)
         (
           'Минус полоса молнии на ширину кроя '
               '(${spec.params.zippers.length} шт)',
           '−${formatMm(spec.zipperBandTotalMm)} мм: '
-              '${formatMm(spec.filmCutWidthBeforeZipper + params.allowanceWidthMm)}'
-              ' → ${formatMm(spec.filmCutWidthWithAllowance)} мм',
+              '${formatMm(spec.filmCutWidthBeforeZipper)}'
+              ' → ${formatMm(spec.filmCutWidth)} мм до припуска',
         ),
       if (!params.isScreen)
         params.hasShrinkage

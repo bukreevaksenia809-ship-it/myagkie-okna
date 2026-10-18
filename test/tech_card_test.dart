@@ -271,6 +271,21 @@ void main() {
         ),
         isTrue,
       );
+      // У ПВХ полоса (спайка) тоже вычитается из ширины кроя — это видно
+      // и в операции «Молнии», и в операции «Раскрой плёнки».
+      expect(zipper.text, contains('Ширина заготовки уменьшена на полосу'));
+      expect(
+        zipper.text,
+        contains('${formatMm(spec.filmCutWidthBeforeZipper)} → '
+            '${formatMm(spec.filmCutWidthWithAllowance)} мм'),
+      );
+      final cutting = _op(card, TechOperationKind.cutting);
+      expect(
+        cutting.text,
+        contains('минус полоса молнии '
+            '${formatMm(_window.zipperBandWidth)} мм'),
+      );
+      expect(cutting.materials.first.note, contains('ширина кроя уменьшена'));
     });
 
     test('фартук: тент 200 мм складывается пополам до 100 мм', () {

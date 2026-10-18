@@ -359,12 +359,15 @@ const double minScreenZipperHemMm = 100;
 ///
 /// Подворот задаётся отдельно на каждую сторону ([WindowParams.hemBottomMm]
 /// и соседние), потому что на трапеции и на окне со спайкой стороны бывают
-/// разными. Пресеты панели — [screenHemPresets], значение по умолчанию
-/// [defaultScreenHemMm].
+/// разными. Пресеты панели — [screenHemPresets] (40/50/60 и крупные
+/// 80/100/120), значение по умолчанию [defaultScreenHemMm].
 const double defaultScreenHemMm = 40;
 const double minScreenHemMm = 10;
-const double maxScreenHemMm = 150;
-const List<double> screenHemPresets = [40, 50, 60];
+
+/// Верхняя граница подворота, мм. Поднята до 200, чтобы пресеты 80/100/120
+/// проходили с запасом и технолог мог ввести крупный подворот руками.
+const double maxScreenHemMm = 200;
+const List<double> screenHemPresets = [40, 50, 60, 80, 100, 120];
 
 /// Разумный предел припуска на раскрой, мм: больше — почти наверняка опечатка.
 const double maxAllowanceMm = 500;

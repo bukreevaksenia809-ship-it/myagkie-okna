@@ -362,6 +362,42 @@ void main() {
       expect(piece.areaMm2 / 1000000, closeTo(piece.areaM2, 1e-9));
     });
 
+    test('ПВХ: полоса 50 мм сужает 1910 → 1860 мм, высота не меняется', () {
+      // ПВХ 2000 × 2000, окантовка 100 (готовая 50), запайка 5:
+      // ширина 1910, высота 1910 + авто +10 = 1920.
+      const pvc = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2000,
+        rightHeight: 2000,
+      );
+      final plainSpec = WindowSpec.of(pvc);
+      final plain = CutPiece.ofSpec(plainSpec);
+      expect(plain.widthMm, closeTo(1910, 1e-9));
+      expect(plain.heightMm, closeTo(1920, 1e-9));
+      expect(plain.areaM2, closeTo(1910 * 1920 / 1e6, 1e-9));
+
+      final spec = WindowSpec.of(pvc.copyWith(
+        zippers: const [ZipperSpec(centered: true)],
+      ));
+      final piece = CutPiece.ofSpec(spec);
+      // На листе «Раскрой» ширина уже без полосы молнии.
+      expect(spec.zipperBandTotalMm, closeTo(50, 1e-9));
+      expect(piece.widthMm, closeTo(1860, 1e-9));
+      expect(piece.widthMm, closeTo(spec.filmCutWidthWithShrinkage, 1e-9));
+      expect(piece.heightMm, closeTo(1920, 1e-9));
+      expect(piece.areaM2, closeTo(1860 * 1920 / 1e6, 1e-9));
+      expect(
+        plain.areaM2 - piece.areaM2,
+        closeTo(50 * 1920 / 1000000, 1e-9),
+      );
+      // Та же подпись вычета, что у скрина, — её печатает лист «Раскрой».
+      expect(
+        spec.zipperWidthReductionLabel,
+        contains('минус полоса молнии ${formatMm(50)} мм'),
+      );
+    });
+
     test('трапеция: ширина меньше на полосу, площадь по контуру', () {
       // Трапеция: низ 2000, верх 1000, высота 1000, подворот 40.
       const trapezoid = WindowParams(

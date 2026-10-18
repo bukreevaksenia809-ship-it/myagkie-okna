@@ -2166,7 +2166,9 @@ void _screenRules() {
         expect(spec.productAreaM2, closeTo(4.0, 1e-9));
         expect(spec.filmVisibleWidth, closeTo(2000, 1e-9));
       }
-      expect(screenHemPresets, [40, 50, 60]);
+      expect(screenHemPresets, [40, 50, 60, 80, 100, 120]);
+      // Крупный пресет 120 проходит с запасом: верхняя граница поднята до 200.
+      expect(maxScreenHemMm, 200);
       expect(screenSeamMm, 3);
       expect(screenHemAxisExtraMm, 20);
     });
@@ -2200,6 +2202,30 @@ void _screenRules() {
       expect(params.hemAxisLeftRightIncrease, closeTo(120, 1e-9));
       expect(spec.filmCutWidth, closeTo(2120, 1e-9));
       expect(spec.filmCutHeight, closeTo(2120, 1e-9));
+    });
+
+    test('пресеты 80/100/120: «среднее + 20» и валидация не мешает', () {
+      // Пресеты панели добавляют крупный подворот на каждую сторону.
+      for (final hem in [80.0, 100.0, 120.0]) {
+        final params = screenWithSides(hem, hem, hem, hem);
+        final spec = WindowSpec.of(params);
+        // (hem + hem) / 2 + 20 = hem + 20.
+        expect(params.hemAxisBottomTopIncrease, closeTo(hem + 20, 1e-9),
+            reason: 'низ/верх $hem');
+        expect(params.hemAxisLeftRightIncrease, closeTo(hem + 20, 1e-9),
+            reason: 'лево/право $hem');
+        expect(spec.filmCutWidth, closeTo(2000 + hem + 20, 1e-9),
+            reason: 'подворот $hem');
+        expect(spec.filmCutHeight, closeTo(2000 + hem + 20, 1e-9));
+        // Ограничение maxScreenHemMm поднято до 200 — 80/100/120 проходят.
+        expect(hem, lessThanOrEqualTo(maxScreenHemMm));
+        expect(hasBlockingIssues(validateParams(params)), isFalse,
+            reason: 'подворот $hem не должен быть ошибкой');
+        expect(
+          spec.screenBlankWidthFormulaLabel,
+          contains('= ${formatMm(2000 + hem + 20)} мм'),
+        );
+      }
     });
 
     test('заказчик: 40 и 40 → прибавка 60 мм, 2060 × 2060', () {
@@ -3291,7 +3317,7 @@ void _screenZipperWidthRules() {
       expect(wide.filmCutAreaM2, closeTo(two.filmCutAreaM2, 1e-9));
     });
 
-    test('ПВХ с молнией: ширина заготовки не меняется', () {
+    test('ПВХ с молнией: ширина заготовки уменьшается на полосу', () {
       // ПВХ-окно: заготовка 2000 − 2 × 50 (окантовка) + 2 × 25 (запайка).
       const pvc = WindowParams(
         bottomWidth: 2000,
@@ -3306,20 +3332,74 @@ void _screenZipperWidthRules() {
       ));
 
       expect(plain.filmCutWidth, closeTo(1950, 1e-9));
-      expect(withZipper.zipperBandTotalMm, 0);
-      expect(withZipper.filmCutWidth, closeTo(1950, 1e-9));
-      expect(withZipper.filmCutWidthWithAllowance, closeTo(1950, 1e-9));
+      expect(withZipper.zipperBandTotalMm, closeTo(50, 1e-9));
+      // Полоса 50 мм вычитается из ширины так же, как у скрина: 1950 − 50.
+      expect(withZipper.filmCutWidthBeforeZipper, closeTo(1950, 1e-9));
+      expect(withZipper.filmCutWidth, closeTo(1900, 1e-9));
+      expect(withZipper.filmCutWidthWithAllowance, closeTo(1900, 1e-9));
+      // Высота не меняется, площадь — по суженной ширине.
+      expect(withZipper.filmCutHeight, closeTo(plain.filmCutHeight, 1e-9));
+      expect(withZipper.filmCutAreaM2, closeTo(1900 * 1960 / 1e6, 1e-9));
       expect(
-        withZipper.filmCutAreaM2,
-        closeTo(plain.filmCutAreaM2, 1e-9),
+        plain.filmCutAreaM2 - withZipper.filmCutAreaM2,
+        closeTo(50 * 1960 / 1e6, 1e-9),
       );
-      // Полоса тента по-прежнему идёт в расход окантовки, а не в ширину.
+      // Полоса тента по-прежнему идёт в расход окантовки.
       final summary = CostsSummary(OrderProject(windows: [
         pvc.copyWith(zippers: const [ZipperSpec(centered: true)]),
       ]));
       expect(summary.screenZipperCount, 0);
-      expect(summary.filmAreaM2, closeTo(plain.filmCutAreaM2, 1e-9));
+      expect(summary.pvcZipperCount, 1);
+      expect(summary.pvcZipperBandWidthMm, closeTo(50, 1e-9));
+      expect(summary.filmAreaM2, closeTo(withZipper.filmCutAreaM2, 1e-9));
       expect(summary.edgeByRoll.containsKey(EdgeRoll.roll100.rawWidth), isTrue);
+    });
+
+    test('ПВХ 2000 × 2000, окантовка 100, запайка 5: 1910 / 1860 / 1810', () {
+      // Контрольный пример заказчика. Готовая окантовка 100 / 2 = 50 мм,
+      // запайка 5 мм заходит под неё, поэтому плёнка 2000 − 2 × 45 = 1910.
+      const pvc = WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2000,
+        rightHeight: 2000,
+        weldOverlapMm: 5,
+      );
+      final plain = WindowSpec.of(pvc);
+      expect(plain.zipperBandTotalMm, 0);
+      expect(plain.filmCutWidth, closeTo(1910, 1e-9));
+      expect(plain.filmCutHeight, closeTo(1910, 1e-9));
+
+      final one = WindowSpec.of(pvc.copyWith(
+        zippers: const [ZipperSpec(centered: true)],
+      ));
+      expect(one.zipperBandTotalMm, closeTo(50, 1e-9));
+      expect(one.filmCutWidth, closeTo(1860, 1e-9));
+      // Высота не меняется — ни до припуска, ни с авто +10 мм.
+      expect(one.filmCutHeight, closeTo(1910, 1e-9));
+      expect(one.filmCutHeightWithAllowance, closeTo(1920, 1e-9));
+
+      final two = WindowSpec.of(pvc.copyWith(
+        zippers: const [
+          ZipperSpec(centered: false, offsetMm: 600),
+          ZipperSpec(centered: false, offsetMm: 1300),
+        ],
+      ));
+      expect(two.zipperBandTotalMm, closeTo(100, 1e-9));
+      expect(two.filmCutWidth, closeTo(1810, 1e-9));
+      expect(two.filmCutHeight, closeTo(1910, 1e-9));
+      // Вычет идёт ДО припуска на раскрой: 1910 − 50 + 30 = 1890.
+      final withAllowance = WindowSpec.of(pvc.copyWith(
+        allowanceWidthMm: 30,
+        zippers: const [ZipperSpec(centered: true)],
+      ));
+      expect(withAllowance.filmCutWidthWithAllowance, closeTo(1890, 1e-9));
+      // Подпись вычета — та же формулировка, что у скрина.
+      expect(
+        one.zipperWidthReductionLabel,
+        'ширина ${formatMm(1910)} → ${formatMm(1860)} мм, '
+        'минус полоса молнии ${formatMm(50)} мм',
+      );
     });
   });
 }

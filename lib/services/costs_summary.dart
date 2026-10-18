@@ -74,9 +74,10 @@ class CostsSummary {
       //
       // У ПВХ полоса впаивается в тент: это спайка шириной 50 мм из рулона
       // 100 мм (идёт в расход окантовки). У скрина полоса — подвёрнутая ткань
-      // (накладная полоса из скрина): её ширина вычтена из ширины заготовки
-      // ([WindowSpec.filmCutWidth]), а работа подворота/шва считается по длине
-      // полосы.
+      // (накладная полоса из скрина). У ВСЕХ материалов ширина полосы вычтена
+      // из ширины заготовки ([WindowSpec.filmCutWidth]) — см.
+      // [WindowLayers.zipperBandTotalMm]; у скрина дополнительно считается
+      // работа подворота/шва по длине полосы.
       final zipperLength = spec.layers.filmVisibleBounds.height;
       for (final band in spec.layers.zipperBands) {
         zipperCount += 1;
@@ -89,6 +90,8 @@ class CostsSummary {
           // Шов полосы: работа по длине полосы (шов 3 мм по её краям).
           screenHemLengthMm += zipperLength;
         } else {
+          pvcZipperCount += 1;
+          pvcZipperBandWidthMm += band.width;
           // Спайка — полоса тента 100 мм, сложенная пополам. Берём именно
           // 100-й рулон (а не первый пресет): молния впаивается в полосу
           // шириной 50 мм, которую даёт рулон 100 мм.
@@ -197,6 +200,13 @@ class CostsSummary {
   /// Суммарная ширина полос молний скрина, мм — на неё сужена заготовка.
   double screenZipperBandWidthMm = 0;
 
+  /// Молнии ПВХ: сколько штук и суммарная ширина их полос (спаек), мм.
+  ///
+  /// Сама полоса идёт в расход окантовки (рулон 100 мм), но её ширина
+  /// вычитается из ширины кроя полотна — как у скрина.
+  int pvcZipperCount = 0;
+  double pvcZipperBandWidthMm = 0;
+
   /// Суммарная длина полос молний скрина, мм (шов по длине полосы).
   double screenZipperBandLengthMm = 0;
 
@@ -302,7 +312,9 @@ class CostsSummary {
         if (zipperCount - screenZipperCount > 0)
           'Спайка молнии: тент ${formatMm(100)} мм × '
               '${formatMm(zipperBandLengthMm - screenZipperBandLengthMm)} мм — '
-              '${zipperCount - screenZipperCount} шт',
+              '${zipperCount - screenZipperCount} шт; ширина кроя полотна '
+              'уменьшена на полосу (спайку) '
+              '${formatMm(pvcZipperBandWidthMm)} мм',
         if (screenZipperCount > 0)
           'Полоса молнии из скрина: $screenZipperCount шт, '
               '${formatMm(screenZipperBandWidthMm)} мм в сумме — ширина кроя '

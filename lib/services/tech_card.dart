@@ -291,8 +291,12 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           '${formatMm(params.hemRightMm)}) / 2 + '
           '${formatMm(screenHemAxisExtraMm)} = '
           '${formatMm(params.hemAxisLeftRightIncrease)} мм'
+          '${spec.widthSlopeExtraMm.abs() >= 0.5 || spec.heightSlopeExtraMm.abs() >= 0.5 ? ', плюс наклон сторон (по ширине '
+                    '${formatSignedMm(spec.widthSlopeExtraMm)}, по высоте '
+                    '${formatSignedMm(spec.heightSlopeExtraMm)} мм)' : ''}'
           '${spec.zipperBandTotalMm > 0 ? ', минус ширина полосы молнии '
                     '${formatMm(spec.zipperBandTotalMm)} мм' : ''} → '
+          'габарит заготовки '
           '${formatMm(spec.filmCutWidthWithAllowance)} × '
           '${formatMm(spec.filmCutHeightWithAllowance)} мм'
           '${params.hasAllowance ? ', плюс припуск на раскрой '
@@ -307,12 +311,15 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
               '${formatMm(spec.filmCutWidthWithAllowance)} × '
               '${formatMm(spec.filmCutHeightWithAllowance)} мм',
           note:
-              'готовый размер ${formatMm(geometry.spanX)} × '
+              'готовый габарит ${formatMm(geometry.spanX)} × '
               '${formatMm(geometry.overallHeight)} мм плюс среднее подворотов '
               'по оси + ${formatMm(screenHemAxisExtraMm)} мм: высота '
               '+${formatMm(params.hemAxisBottomTopIncrease)}, '
               'ширина +${formatMm(params.hemAxisLeftRightIncrease)} мм '
               '(подвороты ${params.hemBySideShortLabel}, низ/право/верх/лево)'
+              '${spec.widthSlopeExtraMm.abs() >= 0.5 || spec.heightSlopeExtraMm.abs() >= 0.5 ? '; наклон сторон: по ширине '
+                  '${formatSignedMm(spec.widthSlopeExtraMm)}, по высоте '
+                  '${formatSignedMm(spec.heightSlopeExtraMm)} мм' : ''}'
               '${spec.zipperBandTotalMm > 0 ? '; ширина кроя уменьшена на '
                   'полосу молнии ${formatMm(spec.zipperBandTotalMm)} мм '
                   '(${formatMm(spec.filmCutWidthBeforeZipper)} → '
@@ -335,7 +342,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           '${formatMm(screenHemAxisExtraMm)} мм: '
           'WindowParams.hemAxisBottomTopIncrease / hemAxisLeftRightIncrease; '
           'подвороты hemBottomMm / hemRightMm / hemTopMm / hemLeftMm; '
-          'у скрина с молнией ширина кроя минус WindowLayers.zipperBandTotalMm)',
+          'у окна с молнией ширина кроя минус WindowLayers.zipperBandTotalMm)',
     );
   } else {
     add(
@@ -345,6 +352,10 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           'Отрезать полотно по раскрою: видимый размер '
           '${formatMm(visible.width)} × ${formatMm(visible.height)} мм, плюс '
           'запайка ${formatMm(params.weldOverlapMm)} мм с каждой стороны'
+          '${spec.zipperBandTotalMm > 0 ? ', минус полоса молнии '
+                    '${formatMm(spec.zipperBandTotalMm)} мм (ширина '
+                    '${formatMm(spec.filmCutWidthBeforeZipper)}'
+                    ' → ${formatMm(spec.filmCutWidth)} мм до припуска)' : ''}'
           '${params.hasManualAllowance ? ', плюс припуск на раскрой '
                     '${params.allowanceWidthLabel} по ширине и '
                     '${params.manualAllowanceHeightLabel} по высоте' : ''}'
@@ -363,7 +374,11 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           note:
               'до усадки ${formatMm(spec.filmCutWidthWithAllowance)} × '
               '${formatMm(spec.filmCutHeightWithAllowance)} мм'
-              '${params.hasAllowance ? ' (с припуском на раскрой)' : ''}',
+              '${params.hasAllowance ? ' (с припуском на раскрой)' : ''}'
+              '${spec.zipperBandTotalMm > 0 ? '; ширина кроя уменьшена на '
+                  'полосу молнии ${formatMm(spec.zipperBandTotalMm)} мм '
+                  '(${formatMm(spec.filmCutWidthBeforeZipper)}'
+                  ' → ${formatMm(spec.filmCutWidth)} мм до припуска)' : ''}',
         ),
         TechMaterial(
           name: params.hasShrinkage
@@ -382,7 +397,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           'кромка ровная без задиров и волн',
       source:
           'WindowSpec.filmCutWidthWithShrinkage / filmCutHeightWithShrinkage '
-          '(припуск на раскрой + усадка)',
+          '(видимый размер + запайка − полоса молнии + припуск на раскрой + '
+          'усадка)',
     );
   }
 
@@ -456,7 +472,10 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           '(${formatMm(geometry.perimeter)} мм). '
           'Соединение: ${params.edgeMaterial.joining}. '
           '${isWeldedEdge ? 'Скорость сварки $techWeldSpeedHint, режим уточнить '
-                    'пробным швом на обрезке.' : 'Шов ровный, без посадки полотна.'}',
+                    'пробным швом на обрезке.' : 'Шов ровный, без посадки полотна.'}'
+          '${spec.zipperBandTotalMm > 0 ? ' Ширина заготовки уже уменьшена на '
+                    'полосу молнии ${formatMm(spec.zipperBandTotalMm)} мм — '
+                    'напайка идёт по кромке суженного полотна.' : ''}',
       materials: [
         TechMaterial(
           name: 'Припуск плёнки под окантовку (запайка)',
@@ -714,7 +733,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
                 ? 'шов ${formatMm(screenSeamMm)} мм по краям полосы; подворот '
                     'или накладная полоса из скрина; ширина кроя полотна '
                     'уменьшена на ${formatMm(band.width)} мм'
-                : 'спайка ${formatMm(band.width)} мм',
+                : 'спайка ${formatMm(band.width)} мм; ширина кроя полотна '
+                    'уменьшена на ${formatMm(band.width)} мм',
           ),
         );
     }
@@ -735,7 +755,10 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
               '${formatMm(spec.filmCutWidth)} мм.'
           : '${params.zippers.length == 1 ? 'Впаять молнию' : 'Впаять молнии'}: '
               '${spec.zippersSummary}. Полосу тента с молнией сварить с '
-              'полотном по всей высоте, шов ровный, полотно без волны.',
+              'полотном по всей высоте, шов ровный, полотно без волны. '
+              'Ширина заготовки уменьшена на полосу (спайку): '
+              '${formatMm(spec.filmCutWidthBeforeZipper)}'
+              ' → ${formatMm(spec.filmCutWidth)} мм до припуска.',
       materials: zipperMaterials,
       tool: isScreen || isWeldedEdge
           ? 'Фен-сварочник, прижимной ролик, шаблон для ровной укладки'
@@ -750,7 +773,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       source: isScreen
           ? 'WindowLayers.zipperBands / WindowSpec.zippersSummary; '
               'screenSeamMm = 3 мм'
-          : 'WindowLayers.zipperBands / WindowSpec.zippersSummary',
+          : 'WindowLayers.zipperBands / WindowSpec.zippersSummary / '
+              'zipperBandTotalMm (вычет полосы из ширины кроя)',
     );
   }
 

@@ -88,7 +88,7 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'edgeColor': p.edgeColor.name,
       // Запайка плёнки под окантовку (5…60 мм) — вводится руками.
       'weldOverlapMm': p.weldOverlapMm,
-      // Подворот скрина по сторонам (10…150 мм на каждую сторону).
+      // Подворот скрина по сторонам (10…200 мм на каждую сторону).
       'hemBottomMm': p.hemBottomMm,
       'hemRightMm': p.hemRightMm,
       'hemTopMm': p.hemTopMm,

@@ -160,8 +160,9 @@ class WindowDrawingPainter extends CustomPainter {
     _paintDrains(canvas);
     if (options.showDimensions) _paintDimensions(canvas);
     if (options.showCallouts) _paintCallouts(canvas);
-    if (options.showCallouts && params.isScreen) {
-      _paintScreenBlankNote(canvas, size);
+    if (options.showCallouts &&
+        (params.isScreen || layers.zipperBandTotalMm > 0)) {
+      _paintBlankNote(canvas, size);
     }
     if (showScaleBar) _paintScaleBar(canvas, size);
   }
@@ -1794,6 +1795,13 @@ class WindowDrawingPainter extends CustomPainter {
     final leftHeightTop = layout.toPx(0, geometry.leftHeight);
     final rightHeightTop =
         layout.toPx(geometry.bottomWidth, geometry.rightHeight);
+    // Верхняя кромка горизонтальна только при равных высотах слева/справа.
+    // «Ширина верх» — это горизонтальный размер между верхними углами,
+    // поэтому при разных высотах его нельзя вести вдоль наклонной кромки:
+    // там длина стороны (например 1 265 мм), а не ширина (1 200 мм).
+    final topWidthY = math.max(geometry.leftHeight, geometry.rightHeight);
+    final topWidthLeft = layout.toPx(geometry.topLeft.dx, topWidthY);
+    final topWidthRight = layout.toPx(geometry.topRight.dx, topWidthY);
 
     _dimension(
       canvas,
@@ -1804,8 +1812,8 @@ class WindowDrawingPainter extends CustomPainter {
     );
     _dimension(
       canvas,
-      topLeft,
-      topRight,
+      topWidthLeft,
+      topWidthRight,
       const Offset(0, -52),
       'Ширина верх ${formatMm(geometry.topWidth)}',
     );
@@ -1825,6 +1833,10 @@ class WindowDrawingPainter extends CustomPainter {
     );
 
     final extension = _extensionPaint();
+    // Выносные линии ширины верха — от actual верхних углов к горизонтальной
+    // размерной линии (при разных высотах один угол ниже другого).
+    canvas.drawLine(topLeft, topWidthLeft, extension);
+    canvas.drawLine(topRight, topWidthRight, extension);
     canvas.drawLine(topLeft, leftHeightTop, extension);
     canvas.drawLine(topRight, rightHeightTop, extension);
 
@@ -1999,27 +2011,30 @@ class WindowDrawingPainter extends CustomPainter {
     }
   }
 
-  /// Отдельная подпись заготовки скрина: размер полотна под подворот.
+  /// Подпись заготовки: размер полотна в раскрое и вычет полосы молнии.
   ///
-  /// Стоит в верхнем поле листа, поэтому не перекрывает ни чертёж, ни
+  /// Стоит в нижнем поле листа, поэтому не перекрывает ни чертёж, ни
   /// размерные цепочки, ни подписи подворота и шва.
   ///
-  /// Если у скрина есть молния, ширина заготовки уменьшена на ширину её полосы
-  /// (см. [WindowSpec.filmCutWidth]) — об этом прямо сказано в подписи, сам
-  /// чертёж при этом не меняется: полотно и молния рисуются как раньше.
-  void _paintScreenBlankNote(Canvas canvas, Size size) {
+  /// Если у окна есть молния, ширина заготовки уменьшена на ширину её полосы
+  /// (см. [WindowSpec.filmCutWidth]) — и у скрина, и у ПВХ. Об этом прямо
+  /// сказано в подписи («ширина 1 910 → 1 860 мм, минус полоса молнии
+  /// 50 мм»), сам чертёж при этом не меняется: полотно и молния рисуются как
+  /// раньше.
+  void _paintBlankNote(Canvas canvas, Size size) {
     final blankWidth = layers.blankWidth + params.allowanceWidthMm;
     final blankHeight = layers.blankHeight + params.effectiveAllowanceHeightMm;
     final zipperBand = layers.zipperBandTotalMm;
     final zipperNote = zipperBand > 0
-        ? ' · ширина −${formatMm(zipperBand)} мм на полосу молнии '
-            '(${formatMm(layers.filmCutBounds.width + params.allowanceWidthMm)}'
-            ' → ${formatMm(blankWidth)})'
+        ? ' · ширина ${formatMm(layers.filmCutBounds.width)}'
+            ' → ${formatMm(layers.blankWidth)} мм, минус полоса молнии '
+            '${formatMm(zipperBand)} мм'
         : '';
+    final edgeHint = params.isScreen ? ' (пунктир — край заготовки)' : '';
     _label(
       canvas,
-      'заготовка ${formatMm(blankWidth)} × ${formatMm(blankHeight)} мм '
-      '(пунктир — край заготовки)$zipperNote',
+      'заготовка ${formatMm(blankWidth)} × ${formatMm(blankHeight)} мм'
+      '$edgeHint$zipperNote',
       Offset(size.width / 2, size.height - 10),
       small: true,
       color: const Color(0xFF3E4C60),
