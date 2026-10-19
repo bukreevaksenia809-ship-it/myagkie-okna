@@ -1,10 +1,12 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../models/order_project.dart';
 import '../models/window_geometry.dart';
 import '../models/window_params.dart';
+import '../services/fastener_artwork.dart';
 import 'window_painter.dart';
 
 /// Лист чертежа: одно окно подробно или несколько окон заказа с нумерацией.
@@ -92,6 +94,18 @@ class DrawingSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Фото французского замка догружается один раз. Как только оно готово,
+    // ValueListenableBuilder перерисует лист — и в снимок для печати/PDF
+    // замок попадёт уже картинкой.
+    FastenerArtwork.ensureFrenchLock();
+    return ValueListenableBuilder<ui.Image?>(
+      valueListenable: FastenerArtwork.frenchLock,
+      builder: (context, fastenerImage, _) => _buildSheet(fastenerImage),
+    );
+  }
+
+  /// Лист чертежа с уже загруженной (или ещё нет) картинкой крепежа.
+  Widget _buildSheet(ui.Image? fastenerImage) {
     final pages = a4PageCount(project);
     final paper = RepaintBoundary(
       key: captureKey,
@@ -114,7 +128,9 @@ class DrawingSheet extends StatelessWidget {
         foregroundDecoration: BoxDecoration(
           border: Border.all(color: const Color(0xFFC3CCDA)),
         ),
-        child: _showGrid ? _buildGridPages(pages) : _buildSingle(),
+        child: _showGrid
+            ? _buildGridPages(pages, fastenerImage)
+            : _buildSingle(fastenerImage),
       ),
     );
 
@@ -224,6 +240,7 @@ class DrawingSheet extends StatelessWidget {
     required WindowSpec spec,
     double paintScale = _paintScale,
     double labelScale = 1,
+    ui.Image? fastenerImage,
   }) {
     final paintSize = frame / paintScale;
     return SizedBox(
@@ -254,6 +271,7 @@ class DrawingSheet extends StatelessWidget {
                     labelFontFamily: labelFontFamily,
                     showScaleBar: false,
                     labelScale: labelScale,
+                    fastenerImage: fastenerImage,
                   ),
                   size: Size.infinite,
                 ),
@@ -266,7 +284,7 @@ class DrawingSheet extends StatelessWidget {
   }
 
   /// Лист одного окна (или одного выбранного окна заказа): одна страница A4.
-  Widget _buildSingle() {
+  Widget _buildSingle(ui.Image? fastenerImage) {
     final params = project.selected;
     final spec = WindowSpec.of(params);
     final area = Size(
@@ -302,6 +320,7 @@ class DrawingSheet extends StatelessWidget {
                           layout: layout,
                           params: params,
                           spec: spec,
+                          fastenerImage: fastenerImage,
                         ),
                       ),
                     ),
@@ -338,7 +357,7 @@ class DrawingSheet extends StatelessWidget {
   /// Каждая страница самодостаточна — со своей рамкой, легендой и штампом,
   /// поэтому её можно напечатать отдельно, а PDF режется ровно по границам
   /// страниц ([safeBreakFractions]).
-  Widget _buildGridPages(int pages) {
+  Widget _buildGridPages(int pages, ui.Image? fastenerImage) {
     final columns = project.gridColumns == 0
         ? _columnsFor(project.windowCount)
         : project.gridColumns;
@@ -354,7 +373,7 @@ class DrawingSheet extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(child: _buildGridRow(page, columns)),
+                      Expanded(child: _buildGridRow(page, columns, fastenerImage)),
                       const VerticalDivider(
                         width: 1,
                         thickness: 1,
@@ -386,7 +405,7 @@ class DrawingSheet extends StatelessWidget {
   }
 
   /// Ряд окон одной страницы A4.
-  Widget _buildGridRow(int page, int columns) {
+  Widget _buildGridRow(int page, int columns, ui.Image? fastenerImage) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 4, 4),
       child: LayoutBuilder(
@@ -401,6 +420,7 @@ class DrawingSheet extends StatelessWidget {
                   child: _buildCell(
                     page * columns + column,
                     Size(cellWidth, cellHeight),
+                    fastenerImage,
                   ),
                 ),
             ],
@@ -418,7 +438,11 @@ class DrawingSheet extends StatelessWidget {
     return 4;
   }
 
-  Widget _buildCell(int index, Size cellSize) {
+  Widget _buildCell(
+    int index,
+    Size cellSize,
+    ui.Image? fastenerImage,
+  ) {
     if (index >= project.windows.length) return const SizedBox.shrink();
     final params = project.windows[index];
     final spec = WindowSpec.of(params);
@@ -464,6 +488,7 @@ class DrawingSheet extends StatelessWidget {
                 paintScale: 1,
                 // Подробный режим: подписи крупные, в ячейке они чуть мельче.
                 labelScale: 0.9,
+                fastenerImage: fastenerImage,
               ),
             ),
           ),

@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -122,6 +123,7 @@ class WindowDrawingPainter extends CustomPainter {
     this.labelFontFamily,
     this.showScaleBar = true,
     this.labelScale = 1,
+    this.fastenerImage,
   });
 
   final WindowParams params;
@@ -137,6 +139,10 @@ class WindowDrawingPainter extends CustomPainter {
 
   /// Множитель размера подписей: в мелких ячейках подписи делаем мельче.
   final double labelScale;
+
+  /// Фото французского замка (декодированное). Пока null — рисуется
+  /// прежний векторный замок, чтобы на листе не было пустого места.
+  final ui.Image? fastenerImage;
 
   // Цвета по ТЗ: размеры чёрные, плёнка голубая полупрозрачная,
   // окантовка — цвет материала, люверсы — серый металл.
@@ -201,7 +207,10 @@ class WindowDrawingPainter extends CustomPainter {
       oldDelegate.layout.scale != layout.scale ||
       oldDelegate.labelFontFamily != labelFontFamily ||
       oldDelegate.showScaleBar != showScaleBar ||
-      oldDelegate.labelScale != labelScale;
+      oldDelegate.labelScale != labelScale ||
+      // Картинка крепежа догружается после первой сборки листа — по этому
+      // сравнению лист один раз перерисуется уже с фотографией.
+      oldDelegate.fastenerImage != fastenerImage;
 
   // ---------------------------------------------------------------- геометрия
 
@@ -2209,6 +2218,37 @@ class WindowDrawingPainter extends CustomPainter {
   ) {
     final angle = math.atan2(normal.dy, normal.dx);
     final size = layout.px(bandWidth * 0.62).clamp(10.0, 20.0);
+    final bandPx = layout.px(bandWidth);
+    final image = fastenerImage;
+
+    // Фото заказчика: металлическая овальная пластина с коричневым
+    // ремешком. Длинная ось пластины ложится ПОПЕРЁК канта (это и есть
+    // ширина полосы), ремешок идёт вдоль кромки, поэтому картинка
+    // поворачивается вместе со стороной — так же, как раньше рисовался
+    // векторный замок. Размер ограничен полосой: за окантовку не вылезаем.
+    final across = math.min(bandPx * 0.92, 20.0);
+    if (image != null && image.height > 0 && across >= 6) {
+      final along = across * image.width / image.height;
+      final destination = Rect.fromCenter(
+        center: Offset.zero,
+        width: along,
+        height: across,
+      );
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(angle);
+      // У фото белые углы — обрезаем их по овалу пластины, чтобы на полосе
+      // окантовки не появлялся белый прямоугольник.
+      canvas.clipPath(Path()..addOval(destination.inflate(0.4)));
+      canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+        destination,
+        Paint()..filterQuality = FilterQuality.medium,
+      );
+      canvas.restore();
+      return;
+    }
 
     canvas.save();
     canvas.translate(center.dx, center.dy);

@@ -10,6 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/window_params.dart';
+import 'fastener_artwork.dart';
 import 'file_saver.dart';
 import 'image_slice.dart';
 
@@ -118,7 +119,13 @@ Future<int> renderSheetPagesEach({
   if (context == null) {
     throw StateError('Лист чертежа ещё не построен');
   }
-  final renderObject = context.findRenderObject();
+
+  // Перед снимком убеждаемся, что фото крепежа декодировано: иначе на листе
+  // останется векторный fallback, а заказчик ждёт фотографию замка. Лист
+  // перерисовывается сам, когда картинка готова (см. DrawingSheet).
+  await FastenerArtwork.ensureFrenchLock();
+
+  final renderObject = captureKey.currentContext?.findRenderObject();
   if (renderObject is! RenderRepaintBoundary) {
     throw StateError('Не найдена область листа чертежа');
   }
