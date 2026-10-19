@@ -370,7 +370,8 @@ class WindowLayers {
   ///
   /// Углы исключены: в углу всегда простой круглый люверс, иначе на стыке
   /// двух сторон (например, верх-право) вместо круглого люверса оказывается
-  /// прямоугольная скоба.
+  /// прямоугольная скоба. Если тумблер «Круглые люверсы в углах» выключен,
+  /// угловых точек в [eyelets] нет вовсе, и список крепежа не меняется.
   List<EyeletPlacement> get movableSideEyelets {
     if (!isScreen && params.windowType == WindowType.fixed) return const [];
     return eyelets
@@ -380,6 +381,20 @@ class WindowLayers {
 
   List<EyeletPlacement> get topEyelets =>
       eyelets.where((eyelet) => eyelet.side == WindowSide.top).toList();
+
+  /// Угловые (круглые) люверсы — по одному на угол, если тумблер включён.
+  List<EyeletPlacement> get cornerEyelets =>
+      eyelets.where((eyelet) => eyelet.isCorner).toList(growable: false);
+
+  /// Сколько круглых люверсов реально ставится (углы).
+  ///
+  /// Число берётся из фактических точек, а не из «4 угла»: при выключенном
+  /// тумблере, спайке стороны или сторонах без люверсов углов может не быть.
+  int get roundEyeletCount =>
+      eyelets.where((eyelet) => typeFor(eyelet).isRound).length;
+
+  /// Включён ли тумблер «Круглые люверсы в углах».
+  bool get roundEyeletsEnabled => params.roundEyeletsEnabled;
 
   /// Стороны, на которых люверсы не ставятся (кнопки «не ставить сверху/снизу»).
   ///
@@ -404,11 +419,16 @@ class WindowLayers {
         WindowSide.left || WindowSide.right => true,
       };
 
-  /// Тип люверса в конкретной точке: в углах всегда круглый (угол тянет
+  /// Тип люверса в конкретной точке: в углах круглый (угол тянет
   /// по диагонали, овальный там не держит), по сторонам — выбранный
   /// пользователем тип. Глухое окно больше не заменяет тип принудительно.
+  ///
+  /// Если тумблер «Круглые люверсы в углах» выключен, угловых точек в
+  /// [eyelets] нет, и круглый тип не подставляется нигде.
   EyeletType typeFor(EyeletPlacement eyelet) =>
-      eyelet.isCorner ? EyeletType.round10 : params.effectiveEyeletType;
+      eyelet.isCorner && params.roundEyeletsEnabled
+          ? EyeletType.round10
+          : params.effectiveEyeletType;
 
   /// Тип люверса, который ставится по сторонам окна.
   EyeletType get eyeletType => params.effectiveEyeletType;
@@ -763,7 +783,25 @@ class WindowLayers {
       if (sideHasEyelets(side)) steps.add(actual);
 
       for (var k = 0; k <= intervals; k++) {
+        // Точки стороны идут строго с равным шагом [actual] от отступа
+        // [offset]: k = 0 — начало стороны, k = intervals — её конец. Никаких
+        // дополнительных «угловых» точек сверх этой последовательности нет,
+        // поэтому расстановка детерминирована: при одном и том же отступе
+        // люверсы всегда в одних и тех же координатах.
         var distance = offset + actual * k;
+        // Угол — это точка, стоящая в самом углу полотна. При отступе
+        // [eyeletCornerOffset] > 0 концы стороны сдвинуты внутрь и углами уже
+        // не являются: иначе при отступе 50 мм на чертеже появлялись бы
+        // «лишние» круглые люверсы у каждого угла (по два на угол).
+        final isCornerIndex = offset < 0.5 && (k == 0 || k == intervals);
+
+        // Тумблер «Круглые люверсы в углах» выключен: угловая точка не
+        // ставится вовсе — ни на чертеже, ни в расходе, ни в смете.
+        // Точки, сдвинутые от угла на [offset] > 0, — обычные точки стороны,
+        // их выключение не трогает: там уже не угол.
+        if (!params.roundEyeletsEnabled && isCornerIndex && offset < 0.5) {
+          continue;
+        }
 
         // Фартук (бывший карман) снизу: угловые люверсы внизу не ставим, а
         // боковые поднимаем, чтобы в полость фартука заводился утяжитель.
@@ -799,7 +837,7 @@ class WindowLayers {
           center: a + unit * distance,
           side: side,
           angle: angle,
-          isCorner: k == 0 || k == intervals,
+          isCorner: isCornerIndex,
           positionInEdge: distance / length,
         ));
       }
@@ -1374,6 +1412,8 @@ class WindowSpec {
           '${formatMm(params.eyeletStep)} мм, факт $eyeletStepLabel по '
           'сторонам, от угла ${formatMm(params.eyeletCornerOffset)} мм, '
           'всего $eyeletCount шт'
+          '${params.roundEyeletsEnabled ? '' : '; круглые люверсы в углах '
+              'отключены — угловых точек нет'}'
           '${params.hasEyeletlessSides ? '; без люверсов: '
               '${layers.eyeletlessSidesLabel} (сторона остаётся без крепежа)' : ''}',
       'Крепёж: ${fastenerSummary.toLowerCase()}',

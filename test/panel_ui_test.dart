@@ -45,6 +45,7 @@ class _PanelHostState extends State<_PanelHost> {
 void main() {
   _screenAndWeldRules();
   _eyeletIntervalPanelRules();
+  _roundEyeletTogglePanelRules();
   _rollWidthsAndEyeletsPanelRules();
   _screenZipperBlankRules();
   _screenHemPresetsRules();
@@ -984,3 +985,49 @@ String _sideName(EdgeSide side) => switch (side) {
       EdgeSide.top => 'Top',
       EdgeSide.left => 'Left',
     };
+
+// --- Круглые люверсы в углах -----------------------------------------------
+
+/// Тумблер в панели: выключение убирает угловые точки из модели.
+void _roundEyeletTogglePanelRules() {
+  testWidgets('панель: тумблер «Круглые люверсы в углах» по умолчанию включён',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(420, 6000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final hostKey = GlobalKey<_PanelHostState>();
+    await tester.pumpWidget(_PanelHost(key: hostKey));
+    await tester.pumpAndSettle();
+
+    final toggle = find.byKey(const Key('round-eyelets-corners'));
+    await tester.ensureVisible(toggle);
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.widget<SwitchListTile>(toggle).value,
+      isTrue,
+      reason: 'по умолчанию круглые люверсы в углах включены',
+    );
+    expect(
+      hostKey.currentState!.project.selected.roundEyeletsEnabled,
+      isTrue,
+    );
+
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+
+    final params = hostKey.currentState!.project.selected;
+    expect(params.roundEyeletsEnabled, isFalse);
+    // Тип по сторонам может быть любым (по умолчанию круглый), но угловых
+    // точек нет: именно их убирает тумблер.
+    expect(WindowSpec.of(params).layers.cornerEyelets, isEmpty);
+    expect(
+      find.text(
+        'Круглых люверсов нет: углы остаются без крепёжных точек.',
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+}

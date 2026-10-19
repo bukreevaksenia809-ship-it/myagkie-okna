@@ -12,8 +12,8 @@ enum WindowType {
 
   String get hint => switch (this) {
         WindowType.fixed =>
-          'Люверсы по периметру (любого типа, в углах круглые). '
-              'Молния и фартук — по желанию',
+          'Люверсы по периметру (любого типа; в углах круглые, если включён '
+              'тумблер «Круглые люверсы в углах»). Молния и фартук — по желанию',
         WindowType.lifting =>
           'Сверху ряд люверсов, ниже скобы; сверху висят подъёмные ремни',
       };
@@ -543,6 +543,7 @@ class WindowParams {
     this.hemLeftMm = defaultScreenHemMm,
     this.eyeletStep = 300,
     this.eyeletCornerOffset = 0,
+    this.roundEyeletsEnabled = true,
     this.fastenerType = FastenerType.turnBuckles,
     this.zippers = const [],
     this.cutouts = const [],
@@ -656,6 +657,18 @@ class WindowParams {
 
   /// Отступ первого люверса от угла; 0 — люверс стоит в углу.
   final double eyeletCornerOffset;
+
+  /// Ставить ли круглые люверсы в углах полотна.
+  ///
+  /// Включено по умолчанию: угол тянет по диагонали, поэтому именно там
+  /// ставится круглый Ø10 мм, даже если по сторонам выбран овальный люверс.
+  /// Выключение убирает угловую точку **полностью** — не только с чертежа,
+  /// но и из расхода и сметы: заказчик получает окно без единого круглого
+  /// люверса (например, когда всё крепление — французские замки или скобы).
+  ///
+  /// Флаг не влияет на люверсы, сдвинутые от угла на
+  /// [eyeletCornerOffset]: это обычные точки стороны, а не угловые.
+  final bool roundEyeletsEnabled;
 
   /// Чем крепятся подвижные стороны (низ и бока).
   final FastenerType fastenerType;
@@ -999,6 +1012,7 @@ class WindowParams {
     EyeletType? eyeletType,
     double? eyeletStep,
     double? eyeletCornerOffset,
+    bool? roundEyeletsEnabled,
     FastenerType? fastenerType,
     List<ZipperSpec>? zippers,
     List<Cutout>? cutouts,
@@ -1043,6 +1057,7 @@ class WindowParams {
       eyeletType: eyeletType ?? this.eyeletType,
       eyeletStep: eyeletStep ?? this.eyeletStep,
       eyeletCornerOffset: eyeletCornerOffset ?? this.eyeletCornerOffset,
+      roundEyeletsEnabled: roundEyeletsEnabled ?? this.roundEyeletsEnabled,
       fastenerType: fastenerType ?? this.fastenerType,
       zippers: zippers ?? this.zippers,
       cutouts: cutouts ?? this.cutouts,
@@ -1208,6 +1223,7 @@ class WindowParams {
         eyeletType.name,
         eyeletStep,
         eyeletCornerOffset,
+        roundEyeletsEnabled,
         material.name,
         hemBottomMm,
         hemRightMm,

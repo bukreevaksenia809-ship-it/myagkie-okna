@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/models/order_json.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
-import 'package:soft_window_drawer/models/price_list.dart';
 import 'package:soft_window_drawer/models/window_geometry.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/costs_summary.dart';
+import 'package:soft_window_drawer/services/estimate.dart';
 import 'package:soft_window_drawer/widgets/cut_sheet.dart';
 import 'package:soft_window_drawer/widgets/drawing_sheet.dart';
 
@@ -32,6 +32,7 @@ const _rect = WindowParams(
 void main() {
   _eyeletRules();
   _freeEyeletStepRules();
+  _roundEyeletToggleRules();
   _costsSummaryRules();
   _weldedWindowRules();
   _allowanceRules();
@@ -3399,6 +3400,206 @@ void _screenZipperWidthRules() {
         one.zipperWidthReductionLabel,
         'ширина ${formatMm(1910)} → ${formatMm(1860)} мм, '
         'минус полоса молнии ${formatMm(50)} мм',
+      );
+    });
+  });
+}
+
+// --- Круглые люверсы в углах и детерминизм расстановки ----------------------
+
+/// Тумблер «Круглые люверсы в углах» и предсказуемая расстановка.
+///
+/// Окно 2000 × 1500, окантовка 100 мм (линия люверсов 1950 × 1450), интервал
+/// 300 мм, крепёж «французский замок». Числа ниже посчитаны вручную:
+/// число интервалов по стороне = ceil(длина / 300), округление вверх.
+void _roundEyeletToggleRules() {
+  WindowParams window({double offset = 0, bool round = true}) => WindowParams(
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 1500,
+        rightHeight: 1500,
+        eyeletStep: 300,
+        eyeletCornerOffset: offset,
+        roundEyeletsEnabled: round,
+        fastenerType: FastenerType.frenchLocks,
+        eyeletType: EyeletType.oval42x22,
+      );
+
+  WindowSpec specOf({double offset = 0, bool round = true}) =>
+      WindowSpec.of(window(offset: offset, round: round));
+
+  group('Круглые люверсы в углах: тумблер и детерминизм', () {
+    test('французский замок, тумблер выключен: круглых ноль, числа по отступу',
+        () {
+      // Линия люверсов 1950 × 1450. Отступ 0: по стороне 7 и 5 интервалов,
+      // угловые точки не ставятся → (7−1) + (5−1) + (7−1) + (5−1) = 20.
+      // Отступ 50: отрезок 1850/1350 → 7 и 5 интервалов, углов нет вовсе →
+      // (7+1) + (5+1) + (7+1) + (5+1) = 28.
+      // Отступ 100: 1750/1250 → 6 и 5 интервалов → 7 + 6 + 7 + 6 = 26.
+      // Отступ 150: 1650/1150 → 6 и 4 интервала → 7 + 5 + 7 + 5 = 24.
+      const expected = <(double, int)>[
+        (0, 20),
+        (50, 28),
+        (100, 26),
+        (150, 24),
+      ];
+      for (final (offset, count) in expected) {
+        final spec = specOf(offset: offset, round: false);
+        expect(
+          spec.layers.eyeletCount,
+          count,
+          reason: 'отступ $offset мм',
+        );
+        expect(spec.layers.roundEyeletCount, 0);
+        expect(spec.eyeletCount, count);
+        for (final eyelet in spec.layers.eyelets) {
+          expect(eyelet.isCorner, isFalse);
+          expect(spec.layers.typeFor(eyelet), EyeletType.oval42x22);
+        }
+      }
+    });
+
+    test('тумблер включён: при отступе 0 ровно 4 круглых, по одному в углу',
+        () {
+      final spec = specOf(offset: 0);
+      // 8 + 6 + 8 + 6 − 4 общих угла = 24, из них 4 круглых.
+      expect(spec.eyeletCount, 24);
+      expect(spec.layers.roundEyeletCount, 4);
+      expect(spec.layers.roundEyeletsEnabled, isTrue);
+
+      final corners = spec.layers.cornerEyelets;
+      expect(corners, hasLength(4));
+      // Углы линии люверсов: окантовка 100 мм → отступ 25 мм с каждой стороны.
+      expect(
+        corners.map((eyelet) => eyelet.center).toSet(),
+        {
+          const Offset(25, 25),
+          const Offset(1975, 25),
+          const Offset(1975, 1475),
+          const Offset(25, 1475),
+        },
+      );
+      for (final corner in corners) {
+        expect(spec.layers.typeFor(corner), EyeletType.round10);
+      }
+    });
+
+    test('тумблер включён, отступ больше нуля: углов нет, круглых ноль', () {
+      for (final offset in const [50.0, 100.0, 150.0]) {
+        final spec = specOf(offset: offset);
+        expect(spec.layers.roundEyeletCount, 0);
+        expect(spec.layers.cornerEyelets, isEmpty);
+      }
+    });
+
+    test('координаты детерминированы, дублей нет, шаг по стороне равный', () {
+      for (final offset in const [0.0, 50.0, 100.0, 150.0]) {
+        for (final round in const [true, false]) {
+          final first = specOf(offset: offset, round: round);
+          final second = specOf(offset: offset, round: round);
+          final firstCenters =
+              first.layers.eyelets.map((eyelet) => eyelet.center).toList();
+          final secondCenters =
+              second.layers.eyelets.map((eyelet) => eyelet.center).toList();
+          expect(firstCenters, secondCenters,
+              reason: 'расстановка не должна зависеть от порядка вызовов');
+
+          final unique = firstCenters.toSet();
+          expect(unique.length, firstCenters.length,
+              reason: 'дублей координат быть не должно');
+
+          // На каждой стороне соседние точки отстоят на один и тот же шаг.
+          for (final side in WindowSide.values) {
+            final points = first.layers.eyelets
+                .where((eyelet) => eyelet.side == side)
+                .toList()
+              ..sort((a, b) => a.positionInEdge.compareTo(b.positionInEdge));
+            for (var i = 1; i < points.length; i++) {
+              final step = (points[i].center - points[i - 1].center).distance;
+              final expected = first.layers.eyeletSteps[side.index];
+              expect(step, greaterThan(0));
+              // Все шаги стороны равны фактическому интервалу этой стороны.
+              expect(step, closeTo(expected, 1e-6));
+            }
+          }
+        }
+      }
+    });
+
+    test('рост отступа не увеличивает число интервалов ни на одной стороне',
+        () {
+      final offsets = [0.0, 50.0, 100.0, 150.0];
+      final intervalsByOffset = <double, List<int>>{};
+      for (final offset in offsets) {
+        final spec = specOf(offset: offset, round: false);
+        // Число интервалов = длина линии люверсов / фактический шаг.
+        final line = spec.layers.eyeletLine;
+        final lengths = [
+          for (var i = 0; i < line.length; i++)
+            (line[(i + 1) % line.length] - line[i]).distance,
+        ];
+        final steps = spec.layers.eyeletSteps;
+        intervalsByOffset[offset] = [
+          for (var i = 0; i < lengths.length; i++)
+            ((lengths[i] - 2 * offset) / steps[i]).round(),
+        ];
+      }
+      // Отступ «съедает» по 2 × offset с каждой стороны: интервалов не больше,
+      // и «хвоста» у угла не появляется. Для 1950/1450:
+      // 0 мм → [7,5,7,5], 50 → [7,5,7,5], 100 → [6,5,6,5], 150 → [6,4,6,4].
+      expect(intervalsByOffset[0], [7, 5, 7, 5]);
+      expect(intervalsByOffset[50], [7, 5, 7, 5]);
+      expect(intervalsByOffset[100], [6, 5, 6, 5]);
+      expect(intervalsByOffset[150], [6, 4, 6, 4]);
+      for (var i = 1; i < offsets.length; i++) {
+        final previous = intervalsByOffset[offsets[i - 1]]!;
+        final current = intervalsByOffset[offsets[i]]!;
+        for (var side = 0; side < previous.length; side++) {
+          expect(current[side], lessThanOrEqualTo(previous[side]));
+        }
+      }
+    });
+
+    test('чертёж, расход и смета согласованы по круглым люверсам', () {
+      final prices = PriceList.defaults();
+      for (final round in const [true, false]) {
+        final params = window(offset: 0, round: round);
+        final spec = WindowSpec.of(params);
+        final summary = CostsSummary(OrderProject(windows: [params]));
+        final estimate = Estimate.ofWindow(params, prices);
+
+        expect(
+          summary.eyeletsByType[EyeletType.round10] ?? 0,
+          spec.layers.roundEyeletCount,
+          reason: 'расход должен совпасть с чертежом',
+        );
+        final roundLines = estimate.lines.where(
+          (line) => line.title.contains(EyeletType.round10.label),
+        );
+        final roundQuantity = roundLines.fold<double>(
+          0,
+          (sum, line) => sum + line.quantity,
+        );
+        expect(roundQuantity, spec.layers.roundEyeletCount.toDouble(),
+            reason: 'смета должна совпасть с чертежом');
+      }
+    });
+
+    test('флаг переживает JSON round-trip', () {
+      final params = window(round: false);
+      final json = windowToJson(params);
+      expect(json['roundEyeletsEnabled'], isFalse);
+      expect(windowFromJson(json).roundEyeletsEnabled, isFalse);
+
+      final project = orderFromJson(
+        orderToJson(OrderProject(windows: [params])),
+      );
+      expect(project.windows.first.roundEyeletsEnabled, isFalse);
+
+      // Старый заказ без поля читается как «включено» — прежнее поведение.
+      expect(
+        windowFromJson(const <String, dynamic>{}).roundEyeletsEnabled,
+        isTrue,
       );
     });
   });

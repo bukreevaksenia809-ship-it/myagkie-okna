@@ -99,6 +99,8 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'eyeletType': p.eyeletType.name,
       'eyeletStep': p.eyeletStep,
       'eyeletCornerOffset': p.eyeletCornerOffset,
+      // Тумблер «Круглые люверсы в углах» (по умолчанию включён).
+      'roundEyeletsEnabled': p.roundEyeletsEnabled,
       'fastenerType': p.fastenerType.name,
       'zippers': [for (final zipper in p.zippers) zipper.toJson()],
       'cutouts': [for (final cutout in p.cutouts) cutout.toJson()],
@@ -167,6 +169,8 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     eyeletStep: _eyeletStepFromJson(json['eyeletStep'], fallback.eyeletStep),
     eyeletCornerOffset:
         _double(json['eyeletCornerOffset'], fallback.eyeletCornerOffset),
+    roundEyeletsEnabled:
+        _bool(json['roundEyeletsEnabled'], fallback.roundEyeletsEnabled),
     fastenerType: _enumByName(
         FastenerType.values, json['fastenerType'], fallback.fastenerType),
     zippers: _zippersFromJson(json),

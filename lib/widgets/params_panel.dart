@@ -1444,11 +1444,11 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     _updateWindow(params.copyWith(eyeletType: value)),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Тип люверса доступен на любом окне, включая глухое. '
-                'В углах всегда круглый Ø10 мм: угол тянет по диагонали, '
-                'а овальный люверс развёрнут вдоль одной стороны.',
-                style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                '${params.roundEyeletsEnabled ? 'В углах круглый Ø10 мм: угол тянет по диагонали, '
+                    'а овальный люверс развёрнут вдоль одной стороны.' : 'Круглые люверсы в углах отключены: угловых точек нет.'}',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
               ),
               const SizedBox(height: 12),
               _eyeletStepField(spec),
@@ -1462,6 +1462,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     : 'Люверсы ставятся от углов: при 0 мм первый люверс стоит в углу.',
                 style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
               ),
+              const SizedBox(height: 12),
+              _roundEyeletsSection(spec),
               const SizedBox(height: 12),
               _noEyeletsSection(params),
               const SizedBox(height: 14),
@@ -1489,8 +1491,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 const Text(
                   'У скрина крепёж доступен любой: скобы, замки и ремни '
                   'ставятся по подвороту — по низу и бокам, сверху саморезы '
-                  'или люверсы. В углах по-прежнему круглые люверсы; размер '
-                  'крепежа считается по ширине подворота своей стороны.',
+                  'или люверсы. Круглые люверсы в углах включаются тумблером '
+                  'выше; размер крепежа считается по ширине подворота своей '
+                  'стороны.',
                   style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
                 ),
               ],
@@ -1984,6 +1987,49 @@ class _ParamsPanelState extends State<ParamsPanel> {
         border: Border.all(color: const Color(0xFFD9E0EA)),
       ),
       child: Material(type: MaterialType.transparency, child: child),
+    );
+  }
+
+  /// Переключатель «Круглые люверсы в углах».
+  ///
+  /// Включён по умолчанию: в углу ставится круглый Ø10 мм, потому что угол
+  /// тянет по диагонали и овальный люверс там не держит. Выключение убирает
+  /// угловую точку целиком — с чертежа, из расхода и из сметы: например, когда
+  /// всё крепление — французские замки, скобы или ремни и круглых люверсов
+  /// не нужно ни одного.
+  Widget _roundEyeletsSection(WindowSpec spec) {
+    return _panelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SwitchListTile(
+            key: const Key('round-eyelets-corners'),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            value: spec.params.roundEyeletsEnabled,
+            title: const Text(
+              'Круглые люверсы в углах',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text(
+              'Угол тянет по диагонали, поэтому в нём ставится круглый '
+              'люверс Ø10 мм. Выключите, если круглых люверсов не нужно '
+              'ни одного: угловая точка уйдёт с чертежа, из расхода и сметы.',
+              style: TextStyle(fontSize: 11),
+            ),
+            onChanged: (value) => _updateWindow(
+              spec.params.copyWith(roundEyeletsEnabled: value),
+            ),
+          ),
+          Text(
+            spec.params.roundEyeletsEnabled
+                ? 'Круглых люверсов в углах: '
+                    '${spec.layers.cornerEyelets.length} шт'
+                : 'Круглых люверсов нет: углы остаются без крепёжных точек.',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+        ],
+      ),
     );
   }
 

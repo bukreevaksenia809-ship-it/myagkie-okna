@@ -1322,7 +1322,8 @@ class WindowDrawingPainter extends CustomPainter {
 
   void _paintEyelets(Canvas canvas) {
     for (final eyelet in layers.eyelets) {
-      // В углах всегда круглый люверс: угол тянет по диагонали.
+      // В углах круглый люверс (если тумблер включён): угол тянет по
+      // диагонали, овальный там не держит.
       final type = layers.typeFor(eyelet);
       _drawEyelet(
         canvas,
