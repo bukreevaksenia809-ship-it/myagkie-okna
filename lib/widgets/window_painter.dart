@@ -42,9 +42,9 @@ class DrawingLayout {
   late final double scale;
 
   Offset toPx(double x, double y) => Offset(
-        padLeft + (x - geometry.minX) * scale,
-        size.height - padBottom - (y - geometry.minY) * scale,
-      );
+    padLeft + (x - geometry.minX) * scale,
+    size.height - padBottom - (y - geometry.minY) * scale,
+  );
 
   Offset toPxPoint(Offset point) => toPx(point.dx, point.dy);
 
@@ -54,8 +54,22 @@ class DrawingLayout {
 }
 
 const List<double> _niceScales = [
-  1.0, 2.0, 2.5, 5.0, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 200.0,
-  250.0, 500.0, 1000.0,
+  1.0,
+  2.0,
+  2.5,
+  5.0,
+  10.0,
+  15.0,
+  20.0,
+  25.0,
+  50.0,
+  75.0,
+  100.0,
+  150.0,
+  200.0,
+  250.0,
+  500.0,
+  1000.0,
 ];
 
 /// Подгоняет пиксельный масштаб к стандартному ряду 1:10, 1:15, 1:20 …
@@ -123,7 +137,6 @@ class WindowDrawingPainter extends CustomPainter {
   /// Множитель размера подписей: в мелких ячейках подписи делаем мельче.
   final double labelScale;
 
-
   // Цвета по ТЗ: размеры чёрные, плёнка голубая полупрозрачная,
   // окантовка — цвет материала, люверсы — серый металл.
   static const Color _ink = Color(0xFF1B1F27);
@@ -145,6 +158,13 @@ class WindowDrawingPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (options.showGrid) _paintGrid(canvas, size);
+    // Т-образное окно рисуется своей веткой: у него не четыре вершины, а
+    // 6–8, и подписи/размеры относятся к двум частям.
+    if (params.windowType == WindowType.tShape) {
+      _paintTShape(canvas, size);
+      if (showScaleBar) _paintScaleBar(canvas, size);
+      return;
+    }
     _paintFilm(canvas);
     _paintEdgeBand(canvas);
     if (params.isScreen) _paintScreenHem(canvas);
@@ -181,8 +201,7 @@ class WindowDrawingPainter extends CustomPainter {
 
   Color get _edgeColor => Color(params.edgeColor.value);
 
-  Color get _edgeDark =>
-      Color.lerp(_edgeColor, const Color(0xFF15181C), 0.55)!;
+  Color get _edgeDark => Color.lerp(_edgeColor, const Color(0xFF15181C), 0.55)!;
 
   void _addPolygon(Path path, List<Offset> points) {
     final px = points.map(layout.toPxPoint).toList();
@@ -192,6 +211,309 @@ class WindowDrawingPainter extends CustomPainter {
       path.lineTo(point.dx, point.dy);
     }
     path.close();
+  }
+
+  // ------------------------------------------------------- Т-образное окно
+
+  /// Отрисовка Т-образного окна: фактический контур из двух частей,
+  /// окантовка только по внешним сторонам, шов по общей стороне.
+  void _paintTShape(Canvas canvas, Size size) {
+    final t = layers.tLayout;
+    if (t == null) return;
+
+    // 1. Полотно: у Т-окна без спайки это два контура, со спайкой — один.
+    //    Вырезы — настоящие отверстия, как у обычного окна.
+    final film = Path()..fillType = PathFillType.evenOdd;
+    for (final polygon in layers.filmPolygons) {
+      _addPolygon(film, polygon);
+    }
+    for (final cutout in layers.cutouts) {
+      _addCutout(film, cutout);
+    }
+    final bounds = film.getBounds();
+    if (bounds.isEmpty) return;
+    canvas.drawPath(
+      film,
+      Paint()
+        ..shader = _filmGradient(bounds)
+        ..isAntiAlias = true,
+    );
+
+    // 2. Окантовка/подворот — только по внешнему контуру.
+    if (params.isScreen) {
+      _paintTShapeHem(canvas);
+    } else {
+      final widths = [
+        for (var i = 0; i < layers.outer.length; i++)
+          math.max(
+            layers.finishedWidthFor(layers.sideOfEdge(layers.outer, i)),
+            _minBandPx / layout.scale,
+          ),
+      ];
+      final inner = insetPolygonPerSide(layers.outer, widths);
+      for (var i = 0; i < layers.outer.length; i++) {
+        final side = layers.sideOfEdge(layers.outer, i);
+        if (params.isWelded(WindowLayers.edgeSideOf(side))) {
+          continue;
+        }
+        _paintTentBand(canvas, i, layers.outer, inner, widths);
+      }
+      canvas.drawPath(
+        _polygonPath(layers.outer),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.4
+          ..strokeJoin = StrokeJoin.miter
+          ..color = _ink,
+      );
+    }
+
+    // 3. Общая сторона: шов спайки или пометка «два отдельных окна».
+    _paintTShapeSeam(canvas, t);
+
+    // 4. Видимая кромка полотна, вырезы, молния, фартук, люверсы, крепёж.
+    _paintCutouts(canvas);
+    for (final polygon in layers.edgeInnerPolygons) {
+      canvas.drawPath(
+        _polygonPath(polygon),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4
+          ..color = _filmStrokeColor,
+      );
+    }
+    _paintZipper(canvas);
+    _paintPocket(canvas);
+    _paintEyelets(canvas);
+    _paintFasteners(canvas);
+    _paintDrains(canvas);
+
+    // 5. Размеры обеих частей, смещение и площадь.
+    if (options.showDimensions) _paintTShapeDimensions(canvas);
+    if (options.showCallouts) _paintTShapeCallouts(canvas);
+  }
+
+  /// Подворот скрина по внешним сторонам Т-окна.
+  void _paintTShapeHem(Canvas canvas) {
+    final band = Path()..fillType = PathFillType.evenOdd;
+    for (final polygon in layers.filmPolygons) {
+      _addPolygon(band, polygon);
+    }
+    for (final polygon in layers.screenHemPolygons) {
+      _addPolygon(band, polygon);
+    }
+    canvas.drawPath(
+      band,
+      Paint()..color = const Color(0xFF8C9298).withValues(alpha: 0.16),
+    );
+
+    final blankPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..color = const Color(0xFF5B6B80).withValues(alpha: 0.65);
+    for (final polygon in layers.filmPolygons) {
+      for (var i = 0; i < polygon.length; i++) {
+        _dashedLine(
+          canvas,
+          layout.toPxPoint(polygon[i]),
+          layout.toPxPoint(polygon[(i + 1) % polygon.length]),
+          blankPaint,
+          dash: 6,
+          gap: 5,
+        );
+      }
+    }
+    for (final polygon in layers.screenHemPolygons) {
+      canvas.drawPath(
+        _polygonPath(polygon),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.8
+          ..color = const Color(0xFF33465E),
+      );
+    }
+    for (final polygon in layers.screenSeamPolygons) {
+      canvas.drawPath(
+        _polygonPath(polygon),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.1
+          ..color = const Color(0xFF2F6FA8),
+      );
+    }
+  }
+
+  /// Шов по общей стороне Т-окна (или пометка, что части не спаяны).
+  void _paintTShapeSeam(Canvas canvas, TShapeLayout t) {
+    final a = layout.toPxPoint(t.sharedStart);
+    final b = layout.toPxPoint(t.sharedEnd);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = t.welded ? 4.2 : 2.0
+      ..color = t.welded ? _special.withValues(alpha: 0.85) : _metalDark;
+    _dashedLine(canvas, a, b, paint, dash: 9, gap: 5);
+    final middle = (a + b) / 2;
+    final normal = _uprightNormal(a, b);
+    _label(
+      canvas,
+      t.welded
+          ? 'спайка ${formatMm(t.sharedLength)} мм'
+          : 'не спаяно — два окна',
+      middle + normal * 18,
+      angle: _uprightAngle(b - a),
+      small: true,
+      color: t.welded ? _special : _metalDark,
+    );
+  }
+
+  /// Единичная нормаль к отрезку (для подписи шва).
+  Offset _uprightNormal(Offset a, Offset b) {
+    final direction = b - a;
+    final length = direction.distance;
+    if (length < 0.01) return const Offset(0, 1);
+    final unit = direction / length;
+    return Offset(unit.dy, -unit.dx);
+  }
+
+  /// Размеры Т-окна: обе части, смещение приставки и площадь полотна.
+  void _paintTShapeDimensions(Canvas canvas) {
+    final t = layers.tLayout;
+    if (t == null) return;
+    final main = t.mainRect;
+    final annex = t.annexRect;
+    final width = main.width;
+    final height = main.height;
+
+    // Основное полотно: ширина и высота.
+    final widthY = t.side == TShapeSide.bottom ? height : 0.0;
+    _dimension(
+      canvas,
+      layout.toPx(width, widthY),
+      layout.toPx(0, widthY),
+      Offset(0, t.side == TShapeSide.bottom ? -34 : 34),
+      'Основное ${formatMm(width)}',
+    );
+    _dimension(
+      canvas,
+      layout.toPx(0, 0),
+      layout.toPx(0, height),
+      const Offset(-42, 0),
+      formatMm(height),
+    );
+
+    // Приставка: ширина и высота.
+    final annexBottom = annex.top;
+    final annexTop = annex.bottom;
+    final annexLeft = annex.left;
+    final annexRight = annex.right;
+    final widthOffset = t.side == TShapeSide.top
+        ? const Offset(0, -32)
+        : const Offset(0, 32);
+    _dimension(
+      canvas,
+      layout.toPx(annexLeft, t.side == TShapeSide.top ? annexTop : annexBottom),
+      layout.toPx(
+        annexRight,
+        t.side == TShapeSide.top ? annexTop : annexBottom,
+      ),
+      widthOffset,
+      'Приставка ${formatMm(annex.width)}',
+    );
+    final heightOffset = t.side == TShapeSide.left
+        ? const Offset(-36, 0)
+        : const Offset(36, 0);
+    _dimension(
+      canvas,
+      layout.toPx(
+        t.side == TShapeSide.left ? annexLeft : annexRight,
+        annexBottom,
+      ),
+      layout.toPx(t.side == TShapeSide.left ? annexLeft : annexRight, annexTop),
+      heightOffset,
+      formatMm(annex.height),
+    );
+
+    // Смещение приставки вдоль общей стороны.
+    if (params.tOffset.abs() > 0.5) {
+      switch (t.side) {
+        case TShapeSide.right:
+          _dimension(
+            canvas,
+            layout.toPx(width, 0),
+            layout.toPx(width, annex.top),
+            const Offset(46, 0),
+            'Смещение ${formatMm(params.tOffset)}',
+          );
+        case TShapeSide.left:
+          _dimension(
+            canvas,
+            layout.toPx(0, 0),
+            layout.toPx(0, annex.top),
+            const Offset(-46, 0),
+            'Смещение ${formatMm(params.tOffset)}',
+          );
+        case TShapeSide.top:
+          _dimension(
+            canvas,
+            layout.toPx(0, height),
+            layout.toPx(annex.left, height),
+            const Offset(0, -48),
+            'Смещение ${formatMm(params.tOffset)}',
+          );
+        case TShapeSide.bottom:
+          _dimension(
+            canvas,
+            layout.toPx(0, 0),
+            layout.toPx(annex.left, 0),
+            const Offset(0, 48),
+            'Смещение ${formatMm(params.tOffset)}',
+          );
+      }
+    }
+
+    // Площадь — в центре основного полотна (штамп листа считает её же).
+    _label(
+      canvas,
+      '${formatMeters(layers.geometry.areaM2)} м²',
+      layout.toPxPoint(
+        Offset(main.left + main.width / 2, main.top + main.height * 0.62),
+      ),
+      small: true,
+      color: _ink,
+    );
+  }
+
+  /// Подписи сторон: окантовка или подворот у самой длинной кромки стороны.
+  void _paintTShapeCallouts(Canvas canvas) {
+    final outer = layers.outer;
+    final longest = <WindowSide, int>{};
+    final lengths = <WindowSide, double>{};
+    for (var i = 0; i < outer.length; i++) {
+      final side = layers.sideOfEdge(outer, i);
+      final length = (outer[(i + 1) % outer.length] - outer[i]).distance;
+      if (length > (lengths[side] ?? 0)) {
+        lengths[side] = length;
+        longest[side] = i;
+      }
+    }
+    for (final entry in longest.entries) {
+      final index = entry.value;
+      final a = outer[index];
+      final b = outer[(index + 1) % outer.length];
+      final side = entry.key;
+      final middle = (layout.toPxPoint(a) + layout.toPxPoint(b)) / 2;
+      final normal = _uprightNormal(layout.toPxPoint(a), layout.toPxPoint(b));
+      final text = params.isScreen
+          ? '${side.label}: подворот ${formatMm(layers.hemWidthFor(side))} мм'
+          : '${side.label}: окантовка ${formatMm(layers.finishedWidthFor(side))} мм';
+      _label(
+        canvas,
+        text,
+        middle + normal * 20,
+        small: true,
+        color: _metalDark,
+      );
+    }
   }
 
   /// Штриховая линия — для строчек и невидимых контуров.
@@ -228,11 +550,11 @@ class WindowDrawingPainter extends CustomPainter {
   // ------------------------------------------------------------------- слои
 
   Color get _filmStrokeColor => switch (params.material) {
-        FilmMaterial.clearPvc => _filmEdge,
-        FilmMaterial.tintedPvc => const Color(0xFF3D4A5C),
-        FilmMaterial.mosquitoNet => const Color(0xFF6B7480),
-        FilmMaterial.screen => const Color(0xFF8C9298),
-      };
+    FilmMaterial.clearPvc => _filmEdge,
+    FilmMaterial.tintedPvc => const Color(0xFF3D4A5C),
+    FilmMaterial.mosquitoNet => const Color(0xFF6B7480),
+    FilmMaterial.screen => const Color(0xFF8C9298),
+  };
 
   /// Плёнка в раскрое: она заходит под окантовку, поэтому рисуется первой,
   /// а окантовка перекрывает её край. Вырезы — настоящие отверстия в полотне.
@@ -280,10 +602,18 @@ class WindowDrawingPainter extends CustomPainter {
           ..strokeWidth = 0.8;
         const step = 3.2;
         for (var x = bounds.left; x < bounds.right; x += step) {
-          canvas.drawLine(Offset(x, bounds.top), Offset(x, bounds.bottom), mesh);
+          canvas.drawLine(
+            Offset(x, bounds.top),
+            Offset(x, bounds.bottom),
+            mesh,
+          );
         }
         for (var y = bounds.top; y < bounds.bottom; y += step) {
-          canvas.drawLine(Offset(bounds.left, y), Offset(bounds.right, y), mesh);
+          canvas.drawLine(
+            Offset(bounds.left, y),
+            Offset(bounds.right, y),
+            mesh,
+          );
         }
       }
       canvas.restore();
@@ -320,15 +650,20 @@ class WindowDrawingPainter extends CustomPainter {
   /// Градиент плёнки: полупрозрачный, с холодным оттенком по материалу.
   Shader _filmGradient(Rect bounds) {
     final (Color light, Color deep) = switch (params.material) {
-      FilmMaterial.clearPvc =>
-        (const Color(0x66DCEBFB), const Color(0x4A7FB8E8)),
-      FilmMaterial.tintedPvc =>
-        (const Color(0x6639424F), const Color(0x5A22282F)),
-      FilmMaterial.mosquitoNet =>
-        (const Color(0x33858E99), const Color(0x22858E99)),
+      FilmMaterial.clearPvc => (
+        const Color(0x66DCEBFB),
+        const Color(0x4A7FB8E8),
+      ),
+      FilmMaterial.tintedPvc => (
+        const Color(0x6639424F),
+        const Color(0x5A22282F),
+      ),
+      FilmMaterial.mosquitoNet => (
+        const Color(0x33858E99),
+        const Color(0x22858E99),
+      ),
       // Скрин — простая серая полупрозрачная заливка.
-      FilmMaterial.screen =>
-        (const Color(0x66B9BEC4), const Color(0x4AB9BEC4)),
+      FilmMaterial.screen => (const Color(0x66B9BEC4), const Color(0x4AB9BEC4)),
     };
     return LinearGradient(
       begin: Alignment.topLeft,
@@ -339,9 +674,9 @@ class WindowDrawingPainter extends CustomPainter {
 
   /// Толщина окантовки для рисования: настоящая, но не тоньше пары точек.
   List<double> get _drawWidths => [
-        for (final width in layers.finishedWidths)
-          math.max(width, _minBandPx / layout.scale),
-      ];
+    for (final width in layers.finishedWidths)
+      math.max(width, _minBandPx / layout.scale),
+  ];
 
   /// Внутренний контур окантовки для рисования.
   List<Offset> get _drawInner => insetPolygonPerSide(layers.outer, _drawWidths);
@@ -406,9 +741,11 @@ class WindowDrawingPainter extends CustomPainter {
       ..color = const Color(0xFF5B6B80).withValues(alpha: 0.22)
       ..strokeWidth = 0.8;
     final hatchStep = math.max(bandBounds.height * 0.55, 16.0);
-    for (var x = bandBounds.left - bandBounds.height;
-        x < bandBounds.right;
-        x += hatchStep) {
+    for (
+      var x = bandBounds.left - bandBounds.height;
+      x < bandBounds.right;
+      x += hatchStep
+    ) {
       canvas.drawLine(
         Offset(x, bandBounds.bottom),
         Offset(x + bandBounds.height, bandBounds.top),
@@ -527,33 +864,39 @@ class WindowDrawingPainter extends CustomPainter {
 
   /// Металлический градиент для люверсов, скоб и замков.
   Shader _metalShader(Rect rect, {bool dull = false}) => RadialGradient(
-        center: const Alignment(-0.45, -0.5),
-        radius: 1.15,
-        colors: dull
-            ? const [
-                Color(0xFFE7EBF0),
-                Color(0xFFC2C9D2),
-                Color(0xFF98A1AC),
-                Color(0xFF6C747F),
-                Color(0xFF5A626C),
-              ]
-            : const [
-                Color(0xFFFFFFFF),
-                Color(0xFFE8EDF3),
-                Color(0xFFAFB7C1),
-                Color(0xFF6E7681),
-                Color(0xFF454C56),
-              ],
-        stops: const [0, 0.3, 0.62, 0.86, 1],
-      ).createShader(rect);
+    center: const Alignment(-0.45, -0.5),
+    radius: 1.15,
+    colors: dull
+        ? const [
+            Color(0xFFE7EBF0),
+            Color(0xFFC2C9D2),
+            Color(0xFF98A1AC),
+            Color(0xFF6C747F),
+            Color(0xFF5A626C),
+          ]
+        : const [
+            Color(0xFFFFFFFF),
+            Color(0xFFE8EDF3),
+            Color(0xFFAFB7C1),
+            Color(0xFF6E7681),
+            Color(0xFF454C56),
+          ],
+    stops: const [0, 0.3, 0.62, 0.86, 1],
+  ).createShader(rect);
 
   /// Тень под металлической деталью.
   void _metalShadow(Canvas canvas, Rect rect, double radius) {
     canvas.drawRRect(
-      RRect.fromRectAndRadius(rect.shift(Offset(0, radius * 0.16)), Radius.circular(radius)),
+      RRect.fromRectAndRadius(
+        rect.shift(Offset(0, radius * 0.16)),
+        Radius.circular(radius),
+      ),
       Paint()
         ..color = Colors.black.withValues(alpha: 0.22)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, math.max(radius * 0.28, 0.8)),
+        ..maskFilter = MaskFilter.blur(
+          BlurStyle.normal,
+          math.max(radius * 0.28, 0.8),
+        ),
     );
   }
 
@@ -635,7 +978,11 @@ class WindowDrawingPainter extends CustomPainter {
       ..strokeWidth = 1;
     for (var x = 0.0; x < length; x += 4) {
       canvas.drawLine(Offset(x, yMin), Offset(x, yMax), texture);
-      canvas.drawLine(Offset(x + 1.6, yMin), Offset(x + 1.6, yMax), textureLight);
+      canvas.drawLine(
+        Offset(x + 1.6, yMin),
+        Offset(x + 1.6, yMax),
+        textureLight,
+      );
     }
     final warp = Paint()
       ..color = _edgeDark.withValues(alpha: 0.06)
@@ -695,23 +1042,15 @@ class WindowDrawingPainter extends CustomPainter {
     canvas.save();
     canvas.translate(start.dx, start.dy);
     canvas.rotate(angle);
-    final quad = Path()
-      ..addRect(Rect.fromLTWH(0, 0, length, thickness));
-    canvas.drawPath(
-      quad,
-      Paint()..color = _filmEdge.withValues(alpha: 0.18),
-    );
+    final quad = Path()..addRect(Rect.fromLTWH(0, 0, length, thickness));
+    canvas.drawPath(quad, Paint()..color = _filmEdge.withValues(alpha: 0.18));
     canvas.save();
     canvas.clipPath(quad);
     final hatch = Paint()
       ..color = _filmEdge.withValues(alpha: 0.75)
       ..strokeWidth = 1.1;
     for (var x = -thickness; x < length + thickness; x += 7) {
-      canvas.drawLine(
-        Offset(x, thickness),
-        Offset(x + thickness, 0),
-        hatch,
-      );
+      canvas.drawLine(Offset(x, thickness), Offset(x + thickness, 0), hatch);
     }
     canvas.restore();
     canvas.drawRect(
@@ -743,7 +1082,9 @@ class WindowDrawingPainter extends CustomPainter {
     final normal = Offset(-unit.dy, unit.dx);
     final middle = (a + b) / 2;
     final center = layout.toPxPoint(boundsOf(layers.outer).center);
-    return ((center - middle).dx * normal.dx + (center - middle).dy * normal.dy) >= 0
+    return ((center - middle).dx * normal.dx +
+                (center - middle).dy * normal.dy) >=
+            0
         ? normal
         : -normal;
   }
@@ -782,7 +1123,10 @@ class WindowDrawingPainter extends CustomPainter {
         innerPoints[(i + 1) % innerPoints.length],
         innerPoints[i],
       ]);
-      canvas.drawPath(band, Paint()..color = _edgeColor.withValues(alpha: 0.30));
+      canvas.drawPath(
+        band,
+        Paint()..color = _edgeColor.withValues(alpha: 0.30),
+      );
 
       final length = (b1 - a1).distance;
       if (length < 4) continue;
@@ -820,10 +1164,7 @@ class WindowDrawingPainter extends CustomPainter {
     }
     for (final cutout in layers.cutouts) {
       final width = _drawWidths[0];
-      final seamWidth = math.max(
-        width - params.weldOverlapMm,
-        width * 0.35,
-      );
+      final seamWidth = math.max(width - params.weldOverlapMm, width * 0.35);
       final outerBounds = _cutoutBounds(cutout, width);
 
       final band = Path()..fillType = PathFillType.evenOdd;
@@ -848,7 +1189,10 @@ class WindowDrawingPainter extends CustomPainter {
       final seam = Path()..fillType = PathFillType.evenOdd;
       _addCutoutShape(seam, cutout, seamWidth);
       _addCutoutShape(seam, cutout, 0);
-      canvas.drawPath(seam, Paint()..color = _edgeColor.withValues(alpha: 0.30));
+      canvas.drawPath(
+        seam,
+        Paint()..color = _edgeColor.withValues(alpha: 0.30),
+      );
       _hatchCutoutRing(canvas, cutout, 0, seamWidth);
 
       canvas.drawPath(
@@ -880,13 +1224,13 @@ class WindowDrawingPainter extends CustomPainter {
       : 'вырез ${formatMm(cutout.spec.width)}×${formatMm(cutout.spec.height)}';
 
   Rect _cutoutBounds(CutoutGeometry cutout, double grow) => Rect.fromPoints(
-        layout.toPxPoint(
-          Offset(cutout.bounds.left - grow, cutout.bounds.top - grow),
-        ),
-        layout.toPxPoint(
-          Offset(cutout.bounds.right + grow, cutout.bounds.bottom + grow),
-        ),
-      );
+    layout.toPxPoint(
+      Offset(cutout.bounds.left - grow, cutout.bounds.top - grow),
+    ),
+    layout.toPxPoint(
+      Offset(cutout.bounds.right + grow, cutout.bounds.bottom + grow),
+    ),
+  );
 
   Path _cutoutPath(CutoutGeometry cutout, double grow) {
     final path = Path();
@@ -931,11 +1275,7 @@ class WindowDrawingPainter extends CustomPainter {
       for (var i = 0; i < segments; i++) {
         final angle = 2 * math.pi * i / segments;
         final unit = Offset(math.cos(angle), math.sin(angle));
-        canvas.drawLine(
-          center + unit * inner,
-          center + unit * outer,
-          hatch,
-        );
+        canvas.drawLine(center + unit * inner, center + unit * outer, hatch);
       }
       return;
     }
@@ -1091,9 +1431,11 @@ class WindowDrawingPainter extends CustomPainter {
         final hatch = Paint()
           ..color = _edgeDark.withValues(alpha: 0.45)
           ..strokeWidth = 1;
-        for (var x = weldRect.left - weldRect.height;
-            x < weldRect.right + weldRect.height;
-            x += 7) {
+        for (
+          var x = weldRect.left - weldRect.height;
+          x < weldRect.right + weldRect.height;
+          x += 7
+        ) {
           canvas.drawLine(
             Offset(x, weldRect.top),
             Offset(x + weldRect.height, weldRect.bottom),
@@ -1127,11 +1469,7 @@ class WindowDrawingPainter extends CustomPainter {
     final gap = Paint()
       ..color = _ink.withValues(alpha: 0.55)
       ..strokeWidth = math.max(tooth * 0.22, 0.8);
-    canvas.drawLine(
-      Offset(0, 0),
-      Offset(length, 0),
-      gap,
-    );
+    canvas.drawLine(Offset(0, 0), Offset(length, 0), gap);
     for (var x = tooth; x < length - tooth; x += step) {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
@@ -1142,7 +1480,12 @@ class WindowDrawingPainter extends CustomPainter {
       );
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(x + tooth * 0.9, -tooth * 0.05, tooth * 0.85, tooth * 1.05),
+          Rect.fromLTWH(
+            x + tooth * 0.9,
+            -tooth * 0.05,
+            tooth * 0.85,
+            tooth * 1.05,
+          ),
           Radius.circular(tooth * 0.3),
         ),
         teethRight,
@@ -1222,8 +1565,7 @@ class WindowDrawingPainter extends CustomPainter {
     for (var i = 0; i < all.length; i++) {
       final gaps = all[i];
       final band = layers.zipperBands[i];
-      final lineY = bounds.bottom -
-          bounds.height * (0.13 + 0.11 * i);
+      final lineY = bounds.bottom - bounds.height * (0.13 + 0.11 * i);
       final p0 = layout.toPx(bounds.left, lineY);
       final p1 = layout.toPx(band.left, lineY);
       final p2 = layout.toPx(band.right, lineY);
@@ -1244,7 +1586,10 @@ class WindowDrawingPainter extends CustomPainter {
         layout.toPxPoint(Offset(rect.left, rect.bottom)),
         layout.toPxPoint(Offset(rect.right, rect.top)),
       );
-      final rrect = RRect.fromRectAndRadius(screenRect, const Radius.circular(2));
+      final rrect = RRect.fromRectAndRadius(
+        screenRect,
+        const Radius.circular(2),
+      );
       canvas.drawRRect(rrect, Paint()..color = const Color(0xFFDCE2EA));
       canvas.drawRRect(
         rrect,
@@ -1278,7 +1623,6 @@ class WindowDrawingPainter extends CustomPainter {
       color: _metalDark,
     );
   }
-
 
   /// Фартук (бывший карман) — полоса от внутреннего края окантовки (у скрина
   /// от линии подворота) до внешнего края и немного ниже/выше.
@@ -1347,7 +1691,10 @@ class WindowDrawingPainter extends CustomPainter {
     double holeWidth,
     double holeHeight,
   ) {
-    final radius = math.max(math.min(outerWidth, outerHeight) / 2, _minEyeletPx);
+    final radius = math.max(
+      math.min(outerWidth, outerHeight) / 2,
+      _minEyeletPx,
+    );
     if (radius <= _minEyeletPx + 0.01) {
       // На мелком масштабе люверс — просто плотная точка металла.
       canvas.drawCircle(center, radius, Paint()..color = _metal);
@@ -1720,7 +2067,6 @@ class WindowDrawingPainter extends CustomPainter {
     canvas.restore();
   }
 
-
   void _drawStrap(Canvas canvas, Offset center, Offset normal) {
     final angle = math.atan2(normal.dy, normal.dx);
     canvas.save();
@@ -1794,8 +2140,10 @@ class WindowDrawingPainter extends CustomPainter {
     final topLeft = layout.toPxPoint(geometry.topLeft);
     final topRight = layout.toPxPoint(geometry.topRight);
     final leftHeightTop = layout.toPx(0, geometry.leftHeight);
-    final rightHeightTop =
-        layout.toPx(geometry.bottomWidth, geometry.rightHeight);
+    final rightHeightTop = layout.toPx(
+      geometry.bottomWidth,
+      geometry.rightHeight,
+    );
     // Верхняя кромка горизонтальна только при равных высотах слева/справа.
     // «Ширина верх» — это горизонтальный размер между верхними углами,
     // поэтому при разных высотах его нельзя вести вдоль наклонной кромки:
@@ -1844,7 +2192,8 @@ class WindowDrawingPainter extends CustomPainter {
     // У прямоугольного скрина длина кромки равна высоте стороны — подпись
     // «кромка» дублировала бы размер и засоряла узкое поле. Оставляем её
     // только там, где кромка действительно длиннее/короче (трапеция).
-    final screenEdgeEqualsHeight = params.isScreen &&
+    final screenEdgeEqualsHeight =
+        params.isScreen &&
         (geometry.leftEdgeLength - geometry.leftHeight).abs() < 0.5 &&
         (geometry.rightEdgeLength - geometry.rightHeight).abs() < 0.5;
     if (options.showEdgeLengths && !screenEdgeEqualsHeight) {
@@ -2028,8 +2377,8 @@ class WindowDrawingPainter extends CustomPainter {
     final zipperBand = layers.zipperBandTotalMm;
     final zipperNote = zipperBand > 0
         ? ' · ширина ${formatMm(layers.filmCutBounds.width)}'
-            ' → ${formatMm(layers.blankWidth)} мм, минус полоса молнии '
-            '${formatMm(zipperBand)} мм'
+              ' → ${formatMm(layers.blankWidth)} мм, минус полоса молнии '
+              '${formatMm(zipperBand)} мм'
         : '';
     final edgeHint = params.isScreen ? ' (пунктир — край заготовки)' : '';
     _label(
@@ -2100,7 +2449,17 @@ class WindowDrawingPainter extends CustomPainter {
 
   double _gridStep(double scale) {
     const candidates = <double>[
-      10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000,
+      10,
+      20,
+      25,
+      50,
+      100,
+      200,
+      250,
+      500,
+      1000,
+      2000,
+      5000,
     ];
     for (final candidate in candidates) {
       if (candidate * scale >= 34) return candidate;
@@ -2129,19 +2488,30 @@ class WindowDrawingPainter extends CustomPainter {
       color: _ink,
       small: true,
     );
-    final width = math.max(total, math.max(scaleText.width, caption.width)) + 24;
+    final width =
+        math.max(total, math.max(scaleText.width, caption.width)) + 24;
 
     // Подложка.
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTRB(left - 12, baseline - 44, left - 12 + width, baseline + 12),
+        Rect.fromLTRB(
+          left - 12,
+          baseline - 44,
+          left - 12 + width,
+          baseline + 12,
+        ),
         const Radius.circular(8),
       ),
       Paint()..color = Colors.white.withValues(alpha: 0.94),
     );
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTRB(left - 12, baseline - 44, left - 12 + width, baseline + 12),
+        Rect.fromLTRB(
+          left - 12,
+          baseline - 44,
+          left - 12 + width,
+          baseline + 12,
+        ),
         const Radius.circular(8),
       ),
       Paint()
@@ -2162,11 +2532,7 @@ class WindowDrawingPainter extends CustomPainter {
         segment,
         barHeight,
       );
-      canvas.drawRect(
-        rect,
-        Paint()
-          ..color = i.isEven ? _ink : Colors.white,
-      );
+      canvas.drawRect(rect, Paint()..color = i.isEven ? _ink : Colors.white);
     }
     canvas.drawRect(
       Rect.fromLTWH(left, barTop, total, barHeight),
@@ -2260,5 +2626,4 @@ class WindowDrawingPainter extends CustomPainter {
     painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
     canvas.restore();
   }
-
 }

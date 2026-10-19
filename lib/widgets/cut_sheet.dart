@@ -39,7 +39,8 @@ class CutSheet extends StatelessWidget {
   static const double _piecesVerticalPadding = 10;
 
   /// Всё, что на листе занимает место кроме самих заготовок.
-  static const double _chromeHeight = _captionBarHeight +
+  static const double _chromeHeight =
+      _captionBarHeight +
       _totalsHeight +
       titleBlockHeight +
       _piecesVerticalPadding * 2;
@@ -49,8 +50,9 @@ class CutSheet extends StatelessWidget {
 
   /// Заготовки заказа: по одной на окно, в порядке окон.
   static List<CutPiece> piecesOf(OrderProject project) => [
-        for (final window in project.windows) CutPiece.ofSpec(WindowSpec.of(window)),
-      ];
+    for (final window in project.windows)
+      CutPiece.ofSpec(WindowSpec.of(window)),
+  ];
 
   /// Размер листа раскроя. null — заготовки влезают, лист заполняет окно.
   static Size? sheetSize(OrderProject project, Size viewport) {
@@ -71,10 +73,14 @@ class CutSheet extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final sheetWidth =
-            math.max(constraints.maxWidth - _outerPadding * 2, 320.0);
-        final sheetHeight =
-            math.max(constraints.maxHeight - _outerPadding * 2, 320.0);
+        final sheetWidth = math.max(
+          constraints.maxWidth - _outerPadding * 2,
+          320.0,
+        );
+        final sheetHeight = math.max(
+          constraints.maxHeight - _outerPadding * 2,
+          320.0,
+        );
         final contentWidth = math.max(sheetWidth - _innerPadding * 2, 160.0);
         final area = Size(
           contentWidth,
@@ -157,8 +163,8 @@ class CutSheet extends StatelessWidget {
                                   ),
                                 )
                               : layout.contentHeight <= area.height
-                                  ? Center(child: paint)
-                                  : SingleChildScrollView(child: paint),
+                              ? Center(child: paint)
+                              : SingleChildScrollView(child: paint),
                         ),
                       ),
                     ),
@@ -189,6 +195,7 @@ class CutPiece {
     required this.widthMm,
     required this.heightMm,
     this.outline = const [],
+    this.contours = const [],
     this.areaM2 = 0,
   });
 
@@ -196,39 +203,50 @@ class CutPiece {
   /// раскрой и компенсацией усадки ПВХ (см.
   /// [WindowSpec.filmCutPolygonWithShrinkage]).
   factory CutPiece.ofSpec(WindowSpec spec) {
-    final polygon = spec.filmCutPolygonWithShrinkage;
+    final polygons = spec.filmCutPolygonsWithShrinkage;
     final areaM2 = spec.filmCutAreaWithShrinkageM2;
-    if (polygon.length < 3) {
+    if (polygons.isEmpty) {
       return CutPiece(
         widthMm: _positive(spec.filmCutWidthWithShrinkage),
         heightMm: _positive(spec.filmCutHeightWithShrinkage),
         areaM2: areaM2,
       );
     }
-    final bounds = boundsOf(polygon);
-    final width = _positive(bounds.width);
-    final height = _positive(bounds.height);
+    // У Т-окна без спайки заготовок две: каждая нормализуется к общему
+    // габариту, чтобы лист «Раскрой» показал фактическую форму обеих частей.
+    final bounds = boundsOfAll(polygons);
     if (bounds.width <= 0 || bounds.height <= 0) {
-      return CutPiece(widthMm: width, heightMm: height, areaM2: areaM2);
+      return CutPiece(
+        widthMm: _positive(bounds.width),
+        heightMm: _positive(bounds.height),
+        areaM2: areaM2,
+      );
     }
-    final outline = [
-      for (final point in polygon)
-        Offset(point.dx - bounds.left, point.dy - bounds.top),
+    final contours = [
+      for (final polygon in polygons)
+        [
+          for (final point in polygon)
+            Offset(point.dx - bounds.left, point.dy - bounds.top),
+        ],
     ];
     return CutPiece(
-      widthMm: width,
-      heightMm: height,
-      outline: outline,
+      widthMm: bounds.width,
+      heightMm: bounds.height,
+      outline: contours.first,
+      contours: contours,
       areaM2: areaM2,
     );
   }
-
   final double widthMm;
   final double heightMm;
 
   /// Контур заготовки, мм: начало в левом нижнем углу габарита, ось Y вверх.
-  /// Пустой список — заготовка прямоугольная.
+  /// Пустой список — заготовка прямоугольная. У Т-окна без спайки здесь
+  /// первый контур, полный список — [contours].
   final List<Offset> outline;
+
+  /// Все контуры заготовки: у обычного окна один, у Т-окна без спайки два.
+  final List<List<Offset>> contours;
 
   /// Площадь к раскрою по фактическому контуру, м² (с усадкой, минус вырезы).
   /// Ноль — посчитать по габариту (для заготовок, созданных вручную).
@@ -238,24 +256,39 @@ class CutPiece {
   static double _positive(double value) =>
       (!value.isFinite || value <= 0) ? 1 : value;
 
-  bool get hasContour => outline.length >= 3;
+  bool get hasContour => allContours.isNotEmpty;
 
-  /// Площадь фактического контура, мм² (без вычетов вырезов).
-  double get areaMm2 => hasContour
-      ? polygonArea(outline).abs()
-      : widthMm * heightMm;
+  /// Все контуры: явный список [contours] или одиночный [outline].
+  List<List<Offset>> get allContours => contours.isNotEmpty
+      ? contours
+      : (outline.length >= 3 ? [outline] : const []);
 
-  /// Длины сторон по обходу углов: низ, право, верх, лево (мм).
+  /// Площадь фактических контуров, мм² (без вычетов вырезов).
+  double get areaMm2 {
+    if (!hasContour) return widthMm * heightMm;
+    var area = 0.0;
+    for (final contour in allContours) {
+      area += polygonArea(contour).abs();
+    }
+    return area;
+  }
+
+  /// Длины сторон по обходу всех контуров (мм).
+  ///
+  /// У обычного окна порядок прежний: низ, право, верх, лево. У Т-окна без
+  /// спайки сначала идут четыре стороны основного полотна, затем приставки.
   List<double> get sideLengths {
     if (!hasContour) return [widthMm, heightMm, widthMm, heightMm];
     return [
-      for (var i = 0; i < outline.length; i++)
-        (outline[(i + 1) % outline.length] - outline[i]).distance,
+      for (final contour in allContours)
+        for (var i = 0; i < contour.length; i++)
+          (contour[(i + 1) % contour.length] - contour[i]).distance,
     ];
   }
 
-  double get minSideMm =>
-      sideLengths.isEmpty ? math.min(widthMm, heightMm) : sideLengths.reduce(math.min);
+  double get minSideMm => sideLengths.isEmpty
+      ? math.min(widthMm, heightMm)
+      : sideLengths.reduce(math.min);
 
   /// Отношение сторон заготовки (ширина / высота).
   double get aspect => heightMm <= 0 ? 1 : widthMm / heightMm;
@@ -353,7 +386,11 @@ class CutLayout {
         ? area.height
         : preferredRowHeight;
 
-    final naturalLayout = _wrap(pieces, _naturalScale(pieces, width, height), width);
+    final naturalLayout = _wrap(
+      pieces,
+      _naturalScale(pieces, width, height),
+      width,
+    );
     if (naturalLayout.contentHeight <= height) return naturalLayout;
 
     // Не влезло по высоте: уменьшаем ОБЩИЙ масштаб, пока всё не поместится.
@@ -419,7 +456,10 @@ class CutLayout {
       scale = math.min(scale, widthLimit);
     }
     // Мелкие заготовки не должны стать неразличимыми.
-    if (minSideMm.isFinite && minSideMm > 0 && widthLimit.isFinite && widthLimit > 0) {
+    if (minSideMm.isFinite &&
+        minSideMm > 0 &&
+        widthLimit.isFinite &&
+        widthLimit > 0) {
       final readable = minSmallSidePx / minSideMm;
       if (readable > scale) scale = math.min(readable, widthLimit);
     }
@@ -430,7 +470,16 @@ class CutLayout {
   /// Укладывает заготовки рядами при заданном масштабе.
   static CutLayout _wrap(List<CutPiece> pieces, double scale, double width) {
     final placements = <CutPlacement>[];
-    final row = <({int index, CutPiece piece, double left, double heightPx, int column})>[];
+    final row =
+        <
+          ({
+            int index,
+            CutPiece piece,
+            double left,
+            double heightPx,
+            int column,
+          })
+        >[];
     var x = 0.0;
     var top = 0.0;
     var rowIndex = 0;
@@ -442,20 +491,22 @@ class CutLayout {
       if (row.isEmpty) return;
       final cellHeight = topMargin + rowHeightPx + bottomMargin + captionHeight;
       for (final item in row) {
-        placements.add(CutPlacement(
-          index: item.index,
-          piece: item.piece,
-          // Заготовки ряда выравниваем по нижней кромке: подписи под ними
-          // оказываются на одной линии.
-          rect: Rect.fromLTWH(
-            item.left + sideMargin,
-            top + topMargin + (rowHeightPx - item.heightPx),
-            item.piece.widthMm * scale,
-            item.heightPx,
+        placements.add(
+          CutPlacement(
+            index: item.index,
+            piece: item.piece,
+            // Заготовки ряда выравниваем по нижней кромке: подписи под ними
+            // оказываются на одной линии.
+            rect: Rect.fromLTWH(
+              item.left + sideMargin,
+              top + topMargin + (rowHeightPx - item.heightPx),
+              item.piece.widthMm * scale,
+              item.heightPx,
+            ),
+            row: rowIndex,
+            column: item.column,
           ),
-          row: rowIndex,
-          column: item.column,
-        ));
+        );
       }
       top += cellHeight + rowGap;
       rowIndex += 1;
@@ -516,25 +567,25 @@ class CutPalette {
   final Color meshColor;
 
   static CutPalette of(FilmMaterial material) => switch (material) {
-        FilmMaterial.clearPvc => const CutPalette(
-            fill: Color(0x335AA7E8),
-            edge: Color(0xFF4C9BE8),
-          ),
-        FilmMaterial.tintedPvc => const CutPalette(
-            fill: Color(0x40546886),
-            edge: Color(0xFF54688A),
-          ),
-        FilmMaterial.mosquitoNet => const CutPalette(
-            fill: Color(0x2E8A93A0),
-            edge: Color(0xFF7C8798),
-            mesh: true,
-          ),
-        // Скрин — простая серая заливка, без клетки.
-        FilmMaterial.screen => const CutPalette(
-            fill: Color(0x33B9BEC4),
-            edge: Color(0xFF8C9298),
-          ),
-      };
+    FilmMaterial.clearPvc => const CutPalette(
+      fill: Color(0x335AA7E8),
+      edge: Color(0xFF4C9BE8),
+    ),
+    FilmMaterial.tintedPvc => const CutPalette(
+      fill: Color(0x40546886),
+      edge: Color(0xFF54688A),
+    ),
+    FilmMaterial.mosquitoNet => const CutPalette(
+      fill: Color(0x2E8A93A0),
+      edge: Color(0xFF7C8798),
+      mesh: true,
+    ),
+    // Скрин — простая серая заливка, без клетки.
+    FilmMaterial.screen => const CutPalette(
+      fill: Color(0x33B9BEC4),
+      edge: Color(0xFF8C9298),
+    ),
+  };
 }
 
 /// Отрисовка листа раскроя: прямоугольники заготовок, размеры, площади, подписи.
@@ -606,30 +657,35 @@ class CutSheetPainter extends CustomPainter {
       path.addRect(rect);
       return path;
     }
-    final points = _screenOutline(rect, piece);
-    if (points.isEmpty) {
+    final contours = _screenContours(rect, piece);
+    if (contours.isEmpty) {
       path.addRect(rect);
       return path;
     }
-    path.moveTo(points.first.dx, points.first.dy);
-    for (final point in points.skip(1)) {
-      path.lineTo(point.dx, point.dy);
+    for (final points in contours) {
+      if (points.isEmpty) continue;
+      path.moveTo(points.first.dx, points.first.dy);
+      for (final point in points.skip(1)) {
+        path.lineTo(point.dx, point.dy);
+      }
+      path.close();
     }
-    path.close();
     return path;
   }
 
-  /// Углы контура в координатах листа.
-  List<Offset> _screenOutline(Rect rect, CutPiece piece) {
-    if (!piece.hasContour) {
-      return [rect.bottomLeft, rect.bottomRight, rect.topRight, rect.topLeft];
-    }
+  /// Все контуры в координатах листа (у Т-окна без спайки их два).
+  List<List<Offset>> _screenContours(Rect rect, CutPiece piece) {
+    final contours = piece.allContours;
+    if (contours.isEmpty) return const [];
     return [
-      for (final point in piece.outline)
-        Offset(
-          rect.left + point.dx / piece.widthMm * rect.width,
-          rect.bottom - point.dy / piece.heightMm * rect.height,
-        ),
+      for (final contour in contours)
+        [
+          for (final point in contour)
+            Offset(
+              rect.left + point.dx / piece.widthMm * rect.width,
+              rect.bottom - point.dy / piece.heightMm * rect.height,
+            ),
+        ],
     ];
   }
 
@@ -668,7 +724,9 @@ class CutSheetPainter extends CustomPainter {
       fontSize -= 1;
       painter = _painter(text, fontSize: fontSize, bold: true);
     }
-    if (painter.width > rect.width - 6 || painter.height > rect.height - 6) return;
+    if (painter.width > rect.width - 6 || painter.height > rect.height - 6) {
+      return;
+    }
     // Светлая подложка: поверх клетки сетки цифры иначе теряются.
     canvas.drawRRect(
       RRect.fromRectAndRadius(
@@ -719,48 +777,56 @@ class CutSheetPainter extends CustomPainter {
   /// наклонные стороны — наклонную размерную линию.
   void _paintDimensions(Canvas canvas, Rect rect, CutPlacement placement) {
     final piece = placement.piece;
-    final points = _screenOutline(rect, piece);
-    final lengths = piece.sideLengths;
-    if (points.length < 3 || lengths.length != points.length) return;
+    final contours = _screenContours(rect, piece);
+    if (contours.isEmpty) return;
 
     final paint = Paint()
       ..color = _ink
       ..strokeWidth = 1.1;
     final center = rect.center;
 
-    for (var i = 0; i < points.length; i++) {
-      final a = points[i];
-      final b = points[(i + 1) % points.length];
-      final direction = b - a;
-      final lengthPx = direction.distance;
-      if (lengthPx < 1) continue;
-      final unit = direction / lengthPx;
-      var normal = Offset(-unit.dy, unit.dx);
-      final middle = (a + b) / 2;
-      // Нормаль наружу: от центра заготовки.
-      if ((middle + normal - center).distance <
-          (middle - normal - center).distance) {
-        normal = -normal;
+    for (var c = 0; c < contours.length; c++) {
+      final points = contours[c];
+      if (points.length < 3) continue;
+      final contour = piece.allContours[c];
+      final lengths = [
+        for (var i = 0; i < contour.length; i++)
+          (contour[(i + 1) % contour.length] - contour[i]).distance,
+      ];
+      for (var i = 0; i < points.length; i++) {
+        final a = points[i];
+        final b = points[(i + 1) % points.length];
+        final direction = b - a;
+        final lengthPx = direction.distance;
+        if (lengthPx < 1) continue;
+        final unit = direction / lengthPx;
+        var normal = Offset(-unit.dy, unit.dx);
+        final middle = (a + b) / 2;
+        // Нормаль наружу: от центра заготовки.
+        if ((middle + normal - center).distance <
+            (middle - normal - center).distance) {
+          normal = -normal;
+        }
+        final offset = normal * 16;
+        final a2 = a + offset;
+        final b2 = b + offset;
+
+        // Выносные линии и размерная линия со стрелками.
+        canvas.drawLine(a + normal * 3, a2 + normal * 6, paint);
+        canvas.drawLine(b + normal * 3, b2 + normal * 6, paint);
+        canvas.drawLine(a2, b2, paint);
+        _arrow(canvas, a2, -unit);
+        _arrow(canvas, b2, unit);
+
+        _label(
+          canvas,
+          formatMm(lengths[i]),
+          (a2 + b2) / 2 + normal * 11,
+          angle: _uprightAngle(direction),
+          small: true,
+          color: _dim,
+        );
       }
-      final offset = normal * 16;
-      final a2 = a + offset;
-      final b2 = b + offset;
-
-      // Выносные линии и размерная линия со стрелками.
-      canvas.drawLine(a + normal * 3, a2 + normal * 6, paint);
-      canvas.drawLine(b + normal * 3, b2 + normal * 6, paint);
-      canvas.drawLine(a2, b2, paint);
-      _arrow(canvas, a2, -unit);
-      _arrow(canvas, b2, unit);
-
-      _label(
-        canvas,
-        formatMm(lengths[i]),
-        (a2 + b2) / 2 + normal * 11,
-        angle: _uprightAngle(direction),
-        small: true,
-        color: _dim,
-      );
     }
   }
 
@@ -966,9 +1032,7 @@ class _CutTotalsBlock extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(
-                child: _statTile('Заготовок', '${specs.length} шт'),
-              ),
+              Expanded(child: _statTile('Заготовок', '${specs.length} шт')),
               const SizedBox(width: 10),
               Expanded(
                 child: _statTile(
@@ -998,7 +1062,11 @@ class _CutTotalsBlock extends StatelessWidget {
             'на отдельном листе.',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 9.5, height: 1.2, color: Color(0xFF66748A)),
+            style: TextStyle(
+              fontSize: 9.5,
+              height: 1.2,
+              color: Color(0xFF66748A),
+            ),
           ),
         ],
       ),
@@ -1058,7 +1126,8 @@ class _CutTitleBlock extends StatelessWidget {
     final totals = _CutTotals(specs);
     final first = project.windows.isEmpty ? null : project.windows.first;
     final now = DateTime.now();
-    final date = '${now.day.toString().padLeft(2, '0')}.'
+    final date =
+        '${now.day.toString().padLeft(2, '0')}.'
         '${now.month.toString().padLeft(2, '0')}.${now.year}';
 
     return Container(
@@ -1076,13 +1145,17 @@ class _CutTitleBlock extends StatelessWidget {
           Expanded(flex: 2, child: _cell('Дата', date)),
           Expanded(
             flex: 3,
-            child: _cell('Площадь изделий',
-                '${formatMeters(totals.productAreaM2)} м²'),
+            child: _cell(
+              'Площадь изделий',
+              '${formatMeters(totals.productAreaM2)} м²',
+            ),
           ),
           Expanded(
             flex: 3,
-            child: _cell('Площадь заготовок с усадкой',
-                '${formatMeters(totals.filmAreaWithShrinkageM2)} м²'),
+            child: _cell(
+              'Площадь заготовок с усадкой',
+              '${formatMeters(totals.filmAreaWithShrinkageM2)} м²',
+            ),
           ),
         ],
       ),

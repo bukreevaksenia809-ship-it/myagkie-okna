@@ -59,9 +59,9 @@ class DrawingSheet extends StatelessWidget {
   /// [viewport] больше не влияет на размер листа: он оставлен в подписи,
   /// потому что листы раскладки и раскроя считают свой размер от окна.
   static Size? detailedSheetSize(OrderProject project, Size viewport) => Size(
-        a4Width + _outerPadding * 2,
-        a4Height * a4PageCount(project) + _outerPadding * 2,
-      );
+    a4Width + _outerPadding * 2,
+    a4Height * a4PageCount(project) + _outerPadding * 2,
+  );
 
   /// Сколько страниц A4 занимает лист чертежа.
   ///
@@ -84,10 +84,7 @@ class DrawingSheet extends StatelessWidget {
   /// Лист собран из страниц A4 одинаковой высоты, поэтому резать можно только
   /// между страницами: окно никогда не окажется разрезанным. Одна страница —
   /// резать нечего.
-  static List<double>? safeBreakFractions(
-    OrderProject project,
-    Size viewport,
-  ) {
+  static List<double>? safeBreakFractions(OrderProject project, Size viewport) {
     final pages = a4PageCount(project);
     if (pages < 2) return null;
     return [for (var page = 1; page < pages; page++) page / pages];
@@ -173,15 +170,14 @@ class DrawingSheet extends StatelessWidget {
     double padRight = _detailPadRight,
     double padTop = _detailPadTop,
     double padBottom = _detailPadBottom,
-  }) =>
-      DrawingLayout(
-        size: area / paintScale,
-        geometry: spec.geometry,
-        padLeft: padLeft,
-        padRight: padRight,
-        padTop: padTop,
-        padBottom: padBottom,
-      );
+  }) => DrawingLayout(
+    size: area / paintScale,
+    geometry: spec.geometry,
+    padLeft: padLeft,
+    padRight: padRight,
+    padTop: padTop,
+    padBottom: padBottom,
+  );
 
   /// Рамка чертежа: масштаб выбираем по свободному полю, затем строим рамку
   /// ровно под сам чертёж плюс поля под размеры и выноски.
@@ -331,10 +327,7 @@ class DrawingSheet extends StatelessWidget {
         ),
         SizedBox(
           height: titleBlockHeight,
-          child: _TitleBlock(
-            project: project,
-            scaleLabel: layout.scaleLabel,
-          ),
+          child: _TitleBlock(project: project, scaleLabel: layout.scaleLabel),
         ),
       ],
     );
@@ -383,10 +376,7 @@ class DrawingSheet extends StatelessWidget {
                 ),
                 SizedBox(
                   height: titleBlockHeight,
-                  child: _TitleBlock(
-                    project: project,
-                    scaleLabel: 'по окнам',
-                  ),
+                  child: _TitleBlock(project: project, scaleLabel: 'по окнам'),
                 ),
               ],
             ),
@@ -554,13 +544,21 @@ class _Caption extends StatelessWidget {
 ///
 /// Припуск на раскрой в размеры изделия не входит — он виден в примечаниях
 /// и в раскрое плёнки.
-String _sizesLabel(WindowParams params) =>
-    '${formatMm(params.bottomWidth)}/${formatMm(params.topWidth)} · '
-    '${formatMm(params.leftHeight)}/${formatMm(params.rightHeight)}';
+String _sizesLabel(WindowParams params) {
+  if (params.isTShape) {
+    return '${formatMm(params.bottomWidth)} × ${formatMm(params.leftHeight)} + '
+        'приставка ${formatMm(params.tWidth)} × ${formatMm(params.tHeight)} '
+        '${params.tSide.label.toLowerCase()}';
+  }
+  return '${formatMm(params.bottomWidth)}/${formatMm(params.topWidth)} · '
+      '${formatMm(params.leftHeight)}/${formatMm(params.rightHeight)}';
+}
 
 /// Короткая запись размера окна для заказа из нескольких окон.
-String _shortSizeLabel(WindowParams params) =>
-    '${formatMm(params.bottomWidth)}×${formatMm(params.leftHeight)}';
+String _shortSizeLabel(WindowParams params) => params.isTShape
+    ? '${formatMm(params.bottomWidth)}×${formatMm(params.leftHeight)}+'
+          '${formatMm(params.tWidth)}×${formatMm(params.tHeight)}'
+    : '${formatMm(params.bottomWidth)}×${formatMm(params.leftHeight)}';
 
 class _TitleBlock extends StatelessWidget {
   const _TitleBlock({required this.project, required this.scaleLabel});
@@ -577,16 +575,22 @@ class _TitleBlock extends StatelessWidget {
     // Плёнка на листе — заготовка к раскрою по фактическому контуру: с
     // припуском, а усадка показана отдельным числом (и учтена в
     // totalFilmAreaWithShrinkage).
-    final totalFilmArea =
-        specs.fold<double>(0, (sum, spec) => sum + spec.filmCutAreaM2);
+    final totalFilmArea = specs.fold<double>(
+      0,
+      (sum, spec) => sum + spec.filmCutAreaM2,
+    );
     final totalFilmAreaWithShrinkage = specs.fold<double>(
       0,
       (sum, spec) => sum + spec.filmCutAreaWithShrinkageM2,
     );
-    final totalProductArea =
-        specs.fold<double>(0, (sum, spec) => sum + spec.productAreaM2);
-    final totalEyelets =
-        specs.fold<int>(0, (sum, spec) => sum + spec.eyeletCount);
+    final totalProductArea = specs.fold<double>(
+      0,
+      (sum, spec) => sum + spec.productAreaM2,
+    );
+    final totalEyelets = specs.fold<int>(
+      0,
+      (sum, spec) => sum + spec.eyeletCount,
+    );
     final consumption = <double, double>{};
     for (final spec in specs) {
       spec.edgeConsumption.forEach((roll, length) {
@@ -609,10 +613,7 @@ class _TitleBlock extends StatelessWidget {
           Expanded(
             child: Row(
               children: [
-                Expanded(
-                  flex: 3,
-                  child: _cell('Изделие', first.projectName),
-                ),
+                Expanded(flex: 3, child: _cell('Изделие', first.projectName)),
                 Expanded(flex: 2, child: _cell('Заказчик', first.customer)),
                 Expanded(
                   flex: 2,
@@ -630,18 +631,14 @@ class _TitleBlock extends StatelessWidget {
                     consumptionLabels.isEmpty
                         ? '—'
                         : consumptionLabels
-                            .map((entry) =>
-                                '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см')
-                            .join(' · '),
+                              .map(
+                                (entry) =>
+                                    '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см',
+                              )
+                              .join(' · '),
                   ),
                 ),
-                SizedBox(
-                  width: 104,
-                  child: _cell(
-                    'Масштаб',
-                    scaleLabel,
-                  ),
-                ),
+                SizedBox(width: 104, child: _cell('Масштаб', scaleLabel)),
               ],
             ),
           ),
@@ -656,11 +653,13 @@ class _TitleBlock extends StatelessWidget {
                     windows.length == 1
                         ? _sizesLabel(first)
                         : windows
-                            .asMap()
-                            .entries
-                            .map((entry) =>
-                                '№${entry.key + 1}: ${_shortSizeLabel(entry.value)}')
-                            .join(' · '),
+                              .asMap()
+                              .entries
+                              .map(
+                                (entry) =>
+                                    '№${entry.key + 1}: ${_shortSizeLabel(entry.value)}',
+                              )
+                              .join(' · '),
                   ),
                 ),
                 Expanded(
@@ -696,18 +695,18 @@ class _TitleBlock extends StatelessWidget {
                   child: _cell(
                     first.isScreen
                         ? 'Скрин: заготовка с подворотом '
-                            '${first.hemBySideShortLabel} (низ/право/верх/лево)'
-                            '${specs.first.zipperBandTotalMm > 0 ? ', минус '
-                                'полоса молнии '
-                                '${formatMm(specs.first.zipperBandTotalMm)} мм' : ''}'
+                              '${first.hemBySideShortLabel} (низ/право/верх/лево)'
+                              '${specs.first.zipperBandTotalMm > 0 ? ', минус '
+                                        'полоса молнии '
+                                        '${formatMm(specs.first.zipperBandTotalMm)} мм' : ''}'
                         : 'Полотно: раскрой с запайкой '
-                            '${formatMm(first.weldOverlapMm)} мм'
-                            '${specs.first.zipperBandTotalMm > 0 ? ', минус '
-                                'полоса молнии '
-                                '${formatMm(specs.first.zipperBandTotalMm)} мм' : ''}',
+                              '${formatMm(first.weldOverlapMm)} мм'
+                              '${specs.first.zipperBandTotalMm > 0 ? ', минус '
+                                        'полоса молнии '
+                                        '${formatMm(specs.first.zipperBandTotalMm)} мм' : ''}',
                     windows.length == 1
                         ? '${formatMm(specs.first.filmCutWidthWithAllowance)} × '
-                            '${formatMm(specs.first.filmCutHeightWithAllowance)}'
+                              '${formatMm(specs.first.filmCutHeightWithAllowance)}'
                         : 'итого ${formatMeters(totalFilmArea)} м²',
                   ),
                 ),
@@ -717,14 +716,14 @@ class _TitleBlock extends StatelessWidget {
                     first.isScreen
                         ? 'Усадка'
                         : first.hasShrinkage
-                            ? 'С усадкой '
-                                '${formatPercent(first.effectiveShrinkagePercent)}'
-                            : 'Без усадки',
+                        ? 'С усадкой '
+                              '${formatPercent(first.effectiveShrinkagePercent)}'
+                        : 'Без усадки',
                     windows.length == 1
                         ? (first.isScreen
-                            ? 'нет'
-                            : '${formatMm(specs.first.filmCutWidthWithShrinkage)} × '
-                                '${formatMm(specs.first.filmCutHeightWithShrinkage)}')
+                              ? 'нет'
+                              : '${formatMm(specs.first.filmCutWidthWithShrinkage)} × '
+                                    '${formatMm(specs.first.filmCutHeightWithShrinkage)}')
                         : '${formatMeters(totalFilmAreaWithShrinkage)} м²',
                   ),
                 ),
@@ -822,11 +821,14 @@ class _SidePanel extends StatelessWidget {
     // Подвижный крепёж (скобы, замки, ремни) есть и у скрина — он ставится по
     // подвороту независимо от типа окна.
     final anyMovable = windows.any(
-      (window) => window.isScreen || window.windowType != WindowType.fixed,
+      (window) => window.isScreen || window.isLifting,
     );
     final anyZipper = windows.any((window) => window.hasZipper);
     final anyCutout = windows.any((window) => window.cutouts.isNotEmpty);
-    final anyWeld = windows.any((window) => window.weldedSides.isNotEmpty);
+    final anyWeld = windows.any(
+      (window) =>
+          window.weldedSides.isNotEmpty || (window.isTShape && window.tWelded),
+    );
     final anyPocket = windows.any((window) => window.pocket);
     final anyDrain = windows.any((window) => window.drainHoles);
     final materials = <FilmMaterial>{
@@ -838,51 +840,58 @@ class _SidePanel extends StatelessWidget {
         (
           LegendKind.seam,
           'Подворот ${params.hemBySideShortLabel} (низ/право/верх/лево), шов '
-              '${formatMm(screenSeamMm)} мм'
+              '${formatMm(screenSeamMm)} мм',
         )
       else ...[
-        (
-          LegendKind.edge,
-          'Окантовка по сторонам: ${_widthList(windows)} мм'
-        ),
+        (LegendKind.edge, 'Окантовка по сторонам: ${_widthList(windows)} мм'),
         (LegendKind.seam, 'Запайка ${formatMm(params.weldOverlapMm)} мм'),
       ],
+      if (windows.any((window) => window.isTShape))
+        (
+          LegendKind.seam,
+          params.isTShape
+              ? params.tWelded
+                    ? 'Т-образное: спайка по общей стороне'
+                          '${params.tOffset > 0 ? ', смещение ${formatMm(params.tOffset)} мм' : ''}'
+                    : 'Т-образное: без спайки — два отдельных окна'
+              : 'Т-образные окна: см. чертежи',
+        ),
       (
         LegendKind.film,
-        'Полотно: ${materials.map((material) => material.label.toLowerCase()).join(', ')}'
+        'Полотно: ${materials.map((material) => material.label.toLowerCase()).join(', ')}',
       ),
       (
         LegendKind.eyelet,
         params.isScreen
             ? 'Люверс ${params.eyeletType.label.toLowerCase()} по подвороту'
-            : 'Люверс ${params.eyeletType.label.toLowerCase()}'
+            : 'Люверс ${params.eyeletType.label.toLowerCase()}',
       ),
       if (anyMovable)
         switch (params.fastenerType) {
           FastenerType.turnBuckles => (
-              LegendKind.buckle,
-              params.isScreen
-                  ? 'Поворотная скоба по подвороту'
-                  : 'Поворотная скоба'
-            ),
+            LegendKind.buckle,
+            params.isScreen
+                ? 'Поворотная скоба по подвороту'
+                : 'Поворотная скоба',
+          ),
           FastenerType.frenchLocks => (
-              LegendKind.lock,
-              params.isScreen
-                  ? 'Французский замок по подвороту'
-                  : 'Французский замок'
-            ),
+            LegendKind.lock,
+            params.isScreen
+                ? 'Французский замок по подвороту'
+                : 'Французский замок',
+          ),
           FastenerType.straps => (
-              LegendKind.strap,
-              params.isScreen
-                  ? 'Силиконовый ремень по подвороту'
-                  : 'Силиконовый ремень'
-            ),
+            LegendKind.strap,
+            params.isScreen
+                ? 'Силиконовый ремень по подвороту'
+                : 'Силиконовый ремень',
+          ),
           FastenerType.eyeletsOnly => (
-              LegendKind.eyelet,
-              params.isScreen
-                  ? 'Саморезы по верхней кромке'
-                  : 'Крепление саморезами'
-            ),
+            LegendKind.eyelet,
+            params.isScreen
+                ? 'Саморезы по верхней кромке'
+                : 'Крепление саморезами',
+          ),
         },
       if (anyLifting) (LegendKind.liftStrap, 'Подъёмный ремень 50×500 мм'),
       if (anyZipper)
@@ -892,25 +901,19 @@ class _SidePanel extends StatelessWidget {
           // у ПВХ — спайка тента шириной 50 мм.
           params.isScreen
               ? 'Полоса скрина ${formatMm(params.zipperBandWidth)} мм с молнией '
-                  '(шов ${formatMm(screenSeamMm)} мм)'
-              : 'Спайка ${formatMm(params.zipperBandWidth)} мм с молнией по центру'
+                    '(шов ${formatMm(screenSeamMm)} мм)'
+              : 'Спайка ${formatMm(params.zipperBandWidth)} мм с молнией по центру',
         ),
       if (anyCutout)
-        (
-          LegendKind.cutout,
-          'Вырез в полотне с окантовкой по контуру'
-        ),
+        (LegendKind.cutout, 'Вырез в полотне с окантовкой по контуру'),
       if (anyWeld)
-        (
-          LegendKind.weld,
-          'Спайка с соседним окном $windowWeldWidth мм'
-        ),
+        (LegendKind.weld, 'Спайка с соседним окном $windowWeldWidth мм'),
       if (anyPocket)
         (
           LegendKind.pocket,
           params.isScreen
               ? 'Фартук ${formatMm(params.pocketWidth)} мм (подворот)'
-              : 'Фартук ${formatMm(params.pocketWidth)} мм (тент 200 мм ×2)'
+              : 'Фартук ${formatMm(params.pocketWidth)} мм (тент 200 мм ×2)',
         ),
       if (anyDrain) (LegendKind.drain, 'Дренаж Ø6 мм'),
     ];
@@ -946,7 +949,9 @@ class _SidePanel extends StatelessWidget {
                     child: Text(
                       entry.$2,
                       style: const TextStyle(
-                          fontSize: 11.5, color: Color(0xFF2B3440)),
+                        fontSize: 11.5,
+                        color: Color(0xFF2B3440),
+                      ),
                     ),
                   ),
                 ],
@@ -995,12 +1000,12 @@ class _SidePanel extends StatelessWidget {
                 Text(
                   scaleDenominator > 0
                       ? 'Лист A4 (210 × 297 мм): печатайте в масштабе 100 %, '
-                          'без «по размеру страницы». Чертёж построен ровно '
-                          'в этом масштабе — приложите линейку, размеры сойдутся.'
+                            'без «по размеру страницы». Чертёж построен ровно '
+                            'в этом масштабе — приложите линейку, размеры сойдутся.'
                       : 'Лист A4 (210 × 297 мм): печатайте в масштабе 100 %, '
-                          'без «по размеру страницы». Чертежи окон здесь '
-                          'обзорные — точный масштаб смотрите на листе '
-                          'одного окна.',
+                            'без «по размеру страницы». Чертежи окон здесь '
+                            'обзорные — точный масштаб смотрите на листе '
+                            'одного окна.',
                   style: const TextStyle(
                     fontSize: 10.5,
                     height: 1.25,
@@ -1029,7 +1034,9 @@ class _SidePanel extends StatelessWidget {
                             child: Text(
                               '•',
                               style: TextStyle(
-                                  fontSize: 11, color: Color(0xFF7C8798)),
+                                fontSize: 11,
+                                color: Color(0xFF7C8798),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 5),
@@ -1085,16 +1092,20 @@ class _SidePanel extends StatelessWidget {
     }
     final labels = consumption.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
-    final totalEyelets =
-        specs.fold<int>(0, (sum, spec) => sum + spec.eyeletCount);
+    final totalEyelets = specs.fold<int>(
+      0,
+      (sum, spec) => sum + spec.eyeletCount,
+    );
     final first = project.windows.first;
     final materials = <FilmMaterial>{
       for (final window in project.windows) window.material,
     };
     final rollSummary = materials
-        .map((material) =>
-            '${material.label.toLowerCase()} — рулон '
-            '${formatMm(project.rollWidthFor(material))} мм')
+        .map(
+          (material) =>
+              '${material.label.toLowerCase()} — рулон '
+              '${formatMm(project.rollWidthFor(material))} мм',
+        )
         .join('; ');
     // Вычет полосы молнии из ширины кроя у ПВХ: та же формула, что у скрина,
     // поэтому в примечаниях заказа показываем её по каждому окну.
@@ -1113,7 +1124,7 @@ class _SidePanel extends StatelessWidget {
             '${formatMm(screenSeamMm)} мм; заготовка = готовый размер плюс '
             'среднее подворотов по каждой оси + ${formatMm(screenHemAxisExtraMm)} мм'
             '${specs.first.zipperBandTotalMm > 0 ? ' минус полоса молнии '
-                '${formatMm(specs.first.zipperBandTotalMm)} мм' : ''} — '
+                      '${formatMm(specs.first.zipperBandTotalMm)} мм' : ''} — '
             '${formatMm(specs.first.filmCutWidthWithAllowance)} × '
             '${formatMm(specs.first.filmCutHeightWithAllowance)} мм; '
             'тента и окантовки нет'
@@ -1130,7 +1141,7 @@ class _SidePanel extends StatelessWidget {
       'Крепёж: ${specs.first.fastenerSummary.toLowerCase()}',
       first.hasShrinkage
           ? 'Полотно: усадка '
-              '${formatPercent(first.effectiveShrinkagePercent)} учтена в раскрое'
+                '${formatPercent(first.effectiveShrinkagePercent)} учтена в раскрое'
           : 'Полотно: усадка не учитывается',
       'Раскладка полотна на рулоне ($rollSummary) — на отдельном листе',
       'Полотно: ${materials.map((material) => '${material.label} (${material.thickness})').join('; ')}',
@@ -1271,7 +1282,10 @@ class _LegendPainter extends CustomPainter {
     switch (kind) {
       case LegendKind.edge:
         final rect = Rect.fromLTWH(2, 3, size.width - 4, size.height - 6);
-        canvas.drawRect(rect, Paint()..color = edgeColor.withValues(alpha: 0.88));
+        canvas.drawRect(
+          rect,
+          Paint()..color = edgeColor.withValues(alpha: 0.88),
+        );
         canvas.drawRect(
           rect,
           Paint()
@@ -1287,9 +1301,11 @@ class _LegendPainter extends CustomPainter {
         final hatch = Paint()
           ..color = metalDark.withValues(alpha: 0.5)
           ..strokeWidth = 1;
-        for (var x = rect.left - rect.height;
-            x < rect.right + rect.height;
-            x += 5) {
+        for (
+          var x = rect.left - rect.height;
+          x < rect.right + rect.height;
+          x += 5
+        ) {
           canvas.drawLine(
             Offset(x, rect.top),
             Offset(x + rect.height, rect.bottom),
@@ -1334,11 +1350,7 @@ class _LegendPainter extends CustomPainter {
             ..color = metalDark,
         );
       case LegendKind.buckle:
-        final plate = Rect.fromCenter(
-          center: center,
-          width: 22,
-          height: 11,
-        );
+        final plate = Rect.fromCenter(center: center, width: 22, height: 11);
         canvas.drawRect(plate, Paint()..color = metal);
         canvas.drawRect(
           plate,
@@ -1353,19 +1365,12 @@ class _LegendPainter extends CustomPainter {
           Paint()..color = metalDark,
         );
       case LegendKind.cutout:
-        final rect = Rect.fromCenter(
-          center: center,
-          width: 16,
-          height: 12,
-        );
+        final rect = Rect.fromCenter(center: center, width: 16, height: 12);
         canvas.drawRect(
           rect.inflate(4),
           Paint()..color = edgeColor.withValues(alpha: 0.85),
         );
-        canvas.drawRect(
-          rect,
-          Paint()..color = const Color(0xFFF1F5FA),
-        );
+        canvas.drawRect(rect, Paint()..color = const Color(0xFFF1F5FA));
         canvas.drawRect(
           rect,
           Paint()
@@ -1375,16 +1380,17 @@ class _LegendPainter extends CustomPainter {
         );
       case LegendKind.weld:
         final rect = Rect.fromCenter(center: center, width: 22, height: 12);
-        canvas.drawRect(
-          rect,
-          Paint()..color = filmEdge.withValues(alpha: 0.2),
-        );
+        canvas.drawRect(rect, Paint()..color = filmEdge.withValues(alpha: 0.2));
         canvas.save();
         canvas.clipRect(rect);
         final hatch = Paint()
           ..color = filmEdge
           ..strokeWidth = 1.2;
-        for (var x = rect.left - rect.height; x < rect.right + rect.height; x += 5) {
+        for (
+          var x = rect.left - rect.height;
+          x < rect.right + rect.height;
+          x += 5
+        ) {
           canvas.drawLine(
             Offset(x, rect.bottom),
             Offset(x + rect.height, rect.top),
@@ -1479,7 +1485,10 @@ class _LegendPainter extends CustomPainter {
         );
       case LegendKind.zipperBand:
         final band = Rect.fromLTWH(center.dx - 6, 1, 12, size.height - 2);
-        canvas.drawRect(band, Paint()..color = edgeColor.withValues(alpha: 0.9));
+        canvas.drawRect(
+          band,
+          Paint()..color = edgeColor.withValues(alpha: 0.9),
+        );
         canvas.drawRect(
           band,
           Paint()
@@ -1553,7 +1562,6 @@ class _LegendPainter extends CustomPainter {
         );
     }
   }
-
 
   @override
   bool shouldRepaint(covariant _LegendPainter oldDelegate) =>

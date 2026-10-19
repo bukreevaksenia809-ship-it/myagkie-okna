@@ -3,6 +3,7 @@
 // Основной пример заказчика: 2000 × 1500 плюс приставка 800 × 600 со
 // смещением 200 мм. Окантовка 100 мм (готовая 50), запайка 5 мм, авто-припуск
 // +10 мм к высоте отключён — числа в тестах считаются вручную.
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/models/order_json.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
@@ -11,29 +12,32 @@ import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/costs_summary.dart';
 import 'package:soft_window_drawer/services/estimate.dart';
 import 'package:soft_window_drawer/services/tech_card.dart';
+import 'package:soft_window_drawer/widgets/cut_sheet.dart';
+import 'package:soft_window_drawer/widgets/drawing_sheet.dart';
 
 WindowParams tWindow({
   TShapeSide side = TShapeSide.right,
   double offset = 200,
   bool welded = true,
   FilmMaterial material = FilmMaterial.clearPvc,
-}) =>
-    WindowParams(
-      windowType: WindowType.tShape,
-      bottomWidth: 2000,
-      topWidth: 2000,
-      leftHeight: 1500,
-      rightHeight: 1500,
-      tSide: side,
-      tWidth: 800,
-      tHeight: 600,
-      tOffset: offset,
-      tWelded: welded,
-      material: material,
-      pvcHeightAllowanceEnabled: false,
-    );
+}) => WindowParams(
+  windowType: WindowType.tShape,
+  bottomWidth: 2000,
+  topWidth: 2000,
+  leftHeight: 1500,
+  rightHeight: 1500,
+  tSide: side,
+  tWidth: 800,
+  tHeight: 600,
+  tOffset: offset,
+  tWelded: welded,
+  material: material,
+  pvcHeightAllowanceEnabled: false,
+);
 
 void main() {
+  tShapeSheetTests();
+
   group('Т-окно: модель', () {
     test('тип окна и поля приставки читаются и копируются', () {
       final params = tWindow();
@@ -163,8 +167,16 @@ void main() {
         Offset(2000, 1500),
         Offset(0, 1500),
       ]);
-      expect(bottom.geometry.sideLengths,
-          [200, 600, 800, 600, 1000, 1500, 2000, 1500]);
+      expect(bottom.geometry.sideLengths, [
+        200,
+        600,
+        800,
+        600,
+        1000,
+        1500,
+        2000,
+        1500,
+      ]);
       expect(bottom.geometry.perimeter, 8200);
       expect(bottom.productAreaM2, closeTo(3.48, 1e-9));
       expect(bottom.layers.weldLengthMm, 800);
@@ -260,7 +272,8 @@ void main() {
 
       // Полотно: площадь заготовки Т-окна (3,1416 м²) — в строке материала.
       final film = estimate.lines.firstWhere(
-        (line) => line.title.contains(params.material.thickness) ||
+        (line) =>
+            line.title.contains(params.material.thickness) ||
             line.title.contains('Полотно'),
       );
       expect(film.quantity, closeTo(3.1416, 1e-4));
@@ -281,8 +294,9 @@ void main() {
       expect(summary.filmAreaM2, closeTo(3.1416, 1e-6));
 
       final card = TechCard.forWindow(params);
-      final edging = card.operations
-          .firstWhere((op) => op.kind == TechOperationKind.edging);
+      final edging = card.operations.firstWhere(
+        (op) => op.kind == TechOperationKind.edging,
+      );
       expect(edging.edgeTotals, {100.0: 8600.0});
       final edgeLength = edging.materials
           .where((material) => material.name.contains('полоса'))
@@ -302,6 +316,73 @@ void main() {
       expect(text, contains(formatMm(800)));
       expect(text, contains(formatMm(600)));
       expect(text, contains(formatMm(200)));
+    });
+  });
+}
+
+// --- Листы «Чертёж» и «Раскрой» для Т-окна ---------------------------------
+
+void tShapeSheetTests() {
+  group('Т-окно: листы', () {
+    test('раскрой Т-окна: заготовка по фактической форме', () {
+      final welded = CutSheet.piecesOf(
+        OrderProject(windows: [tWindow()]),
+      ).single;
+      expect(welded.widthMm, closeTo(2710, 1e-9));
+      expect(welded.heightMm, closeTo(1410, 1e-9));
+      expect(welded.allContours, hasLength(1));
+      // Восемь сторон заготовки: контур 8 600 минус 45 мм запайки на каждой.
+      expect(welded.sideLengths, hasLength(8));
+      expect(welded.sideLengths.reduce((a, b) => a + b), closeTo(8240, 1e-9));
+      expect(welded.areaM2, closeTo(3.1416, 1e-6));
+
+      final separate = CutSheet.piecesOf(
+        OrderProject(windows: [tWindow(welded: false)]),
+      ).single;
+      expect(separate.allContours, hasLength(2));
+      expect(separate.sideLengths, hasLength(8));
+      // Две заготовки: 6 640 + 2 440 = 9 080 мм.
+      expect(separate.sideLengths.reduce((a, b) => a + b), closeTo(9080, 1e-9));
+      expect(separate.areaM2, closeTo(3.0552, 1e-6));
+    });
+
+    testWidgets('лист «Чертёж» рисует Т-окно без ошибок', (
+      WidgetTester tester,
+    ) async {
+      tester.view.physicalSize = const Size(
+        DrawingSheet.a4Width + 40,
+        DrawingSheet.a4Height + 40,
+      );
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final project = OrderProject(windows: [tWindow()]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: DrawingSheet(project: project)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('лист «Раскрой» рисует Т-окно без ошибок', (
+      WidgetTester tester,
+    ) async {
+      tester.view.physicalSize = const Size(1500, 1100);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final project = OrderProject(windows: [tWindow(welded: false)]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: CutSheet(project: project)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
     });
   });
 }
