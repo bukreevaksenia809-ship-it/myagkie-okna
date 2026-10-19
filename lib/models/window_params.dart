@@ -3,20 +3,51 @@ import 'dart:math' as math;
 /// Тип мягкого окна по способу открывания.
 enum WindowType {
   fixed,
-  lifting;
+  lifting,
+
+  /// Т-образное (или Г-образное) окно: основное полотно плюс приставка,
+  /// сваренные по общей стороне. См. [WindowParams.tSide] и соседние поля.
+  tShape;
 
   String get label => switch (this) {
-        WindowType.fixed => 'Глухое',
-        WindowType.lifting => 'Подъёмное',
-      };
+    WindowType.fixed => 'Глухое',
+    WindowType.lifting => 'Подъёмное',
+    WindowType.tShape => 'Т-образное',
+  };
 
   String get hint => switch (this) {
-        WindowType.fixed =>
-          'Люверсы по периметру (любого типа; в углах круглые, если включён '
-              'тумблер «Круглые люверсы в углах»). Молния и фартук — по желанию',
-        WindowType.lifting =>
-          'Сверху ряд люверсов, ниже скобы; сверху висят подъёмные ремни',
-      };
+    WindowType.fixed =>
+      'Люверсы по периметру (любого типа; в углах круглые, если включён '
+          'тумблер «Круглые люверсы в углах»). Молния и фартук — по желанию',
+    WindowType.lifting =>
+      'Сверху ряд люверсов, ниже скобы; сверху висят подъёмные ремни',
+    WindowType.tShape =>
+      'Два полотна — основное и приставка — свариваются по общей стороне. '
+          'Окантовка идёт только по внешнему периметру, общая сторона — шов',
+  };
+}
+
+/// Сторона основного полотна, к которой приваривается приставка Т-окна.
+///
+/// [right] — приставка справа (общая сторона вертикальная), [left] — слева,
+/// [top] — сверху (общая сторона горизонтальная), [bottom] — снизу.
+enum TShapeSide {
+  right('Справа'),
+  left('Слева'),
+  top('Сверху'),
+  bottom('Снизу');
+
+  const TShapeSide(this.label);
+
+  final String label;
+
+  /// Сторона окна, которая является общей (спайкой).
+  EdgeSide get sharedEdge => switch (this) {
+    TShapeSide.right => EdgeSide.right,
+    TShapeSide.left => EdgeSide.left,
+    TShapeSide.top => EdgeSide.top,
+    TShapeSide.bottom => EdgeSide.bottom,
+  };
 }
 
 /// Технология изделия. Отдельного поля у окна нет: технология выводится из
@@ -42,26 +73,30 @@ enum WindowTech {
 /// без коричневого тента-окантовки, а крепится только люверсами по подвороту
 /// (см. [WindowParams.isScreen], [WindowParams.hemWidths], [screenSeamMm]).
 enum FilmMaterial {
-  clearPvc(
-    'Обычный ПВХ',
-    'ПВХ 700 мкм',
-    [1400, 1800, 2000, 2400, 2600],
-  ),
-  tintedPvc(
-    'Тонированный ПВХ',
-    'ПВХ 700 мкм, тонировка',
-    [1400, 1800, 2000, 2400],
-  ),
-  mosquitoNet(
-    'Москитная сетка',
-    'сетка ПВХ',
-    [1400, 1800, 2000, 2400, 2600, 3000],
-  ),
-  screen(
-    'Скрин',
-    'скрин-ткань ПВХ',
-    [1400, 1800, 2000, 2400, 2500, 2600, 5000],
-  );
+  clearPvc('Обычный ПВХ', 'ПВХ 700 мкм', [1400, 1800, 2000, 2400, 2600]),
+  tintedPvc('Тонированный ПВХ', 'ПВХ 700 мкм, тонировка', [
+    1400,
+    1800,
+    2000,
+    2400,
+  ]),
+  mosquitoNet('Москитная сетка', 'сетка ПВХ', [
+    1400,
+    1800,
+    2000,
+    2400,
+    2600,
+    3000,
+  ]),
+  screen('Скрин', 'скрин-ткань ПВХ', [
+    1400,
+    1800,
+    2000,
+    2400,
+    2500,
+    2600,
+    5000,
+  ]);
 
   const FilmMaterial(this.label, this.thickness, this.rollWidths);
 
@@ -160,13 +195,13 @@ enum EdgeMaterial {
   pvcTent630;
 
   String get label => switch (this) {
-        EdgeMaterial.pvcTent630 => 'ПВХ-тент 630–650 г/м²',
-      };
+    EdgeMaterial.pvcTent630 => 'ПВХ-тент 630–650 г/м²',
+  };
 
   /// Способ соединения: ПВХ-тент сваривают горячим воздухом.
   String get joining => switch (this) {
-        EdgeMaterial.pvcTent630 => 'Сварка горячим воздухом 400–500 °C',
-      };
+    EdgeMaterial.pvcTent630 => 'Сварка горячим воздухом 400–500 °C',
+  };
 
   bool get isWelded => this == EdgeMaterial.pvcTent630;
 }
@@ -194,20 +229,20 @@ enum EdgeSide {
   left;
 
   String get label => switch (this) {
-        EdgeSide.bottom => 'Низ',
-        EdgeSide.right => 'Право',
-        EdgeSide.top => 'Верх',
-        EdgeSide.left => 'Лево',
-      };
+    EdgeSide.bottom => 'Низ',
+    EdgeSide.right => 'Право',
+    EdgeSide.top => 'Верх',
+    EdgeSide.left => 'Лево',
+  };
 
   /// Противоположная сторона — ею сваривается копия окна: право↔лево,
   /// верх↔низ.
   EdgeSide get opposite => switch (this) {
-        EdgeSide.bottom => EdgeSide.top,
-        EdgeSide.top => EdgeSide.bottom,
-        EdgeSide.left => EdgeSide.right,
-        EdgeSide.right => EdgeSide.left,
-      };
+    EdgeSide.bottom => EdgeSide.top,
+    EdgeSide.top => EdgeSide.bottom,
+    EdgeSide.left => EdgeSide.right,
+    EdgeSide.right => EdgeSide.left,
+  };
 }
 
 /// Тип люверса: круглый Ø10 мм или овальный 42×22 мм под скобу.
@@ -250,11 +285,11 @@ enum FastenerType {
   /// Название крепежа в единственном числе — для сметы и ведомости, где
   /// строка считается за штуку: «Поворотная скоба — 12 шт».
   String get itemTitle => switch (this) {
-        FastenerType.eyeletsOnly => 'Только люверсы',
-        FastenerType.turnBuckles => 'Поворотная скоба',
-        FastenerType.frenchLocks => 'Французский замок',
-        FastenerType.straps => 'Силиконовый ремень',
-      };
+    FastenerType.eyeletsOnly => 'Только люверсы',
+    FastenerType.turnBuckles => 'Поворотная скоба',
+    FastenerType.frenchLocks => 'Французский замок',
+    FastenerType.straps => 'Силиконовый ремень',
+  };
 }
 
 /// Как расположена верхняя кромка относительно нижней.
@@ -265,11 +300,11 @@ enum TopAlign {
   custom;
 
   String get label => switch (this) {
-        TopAlign.center => 'По центру',
-        TopAlign.left => 'По левому краю',
-        TopAlign.right => 'По правому краю',
-        TopAlign.custom => 'Вручную',
-      };
+    TopAlign.center => 'По центру',
+    TopAlign.left => 'По левому краю',
+    TopAlign.right => 'По правому краю',
+    TopAlign.custom => 'Вручную',
+  };
 }
 
 /// Числовые поля, которые вводит пользователь.
@@ -279,6 +314,9 @@ enum ParamField {
   leftHeight,
   rightHeight,
   topOffset,
+  tWidth,
+  tHeight,
+  tOffset,
   eyeletStep,
   eyeletCornerOffset,
   drainCount,
@@ -294,41 +332,44 @@ enum ParamField {
   hemLeft;
 
   String get label => switch (this) {
-        ParamField.bottomWidth => 'Ширина низ',
-        ParamField.topWidth => 'Ширина верх',
-        ParamField.leftHeight => 'Высота лево',
-        ParamField.rightHeight => 'Высота право',
-        ParamField.topOffset => 'Смещение верх',
-        ParamField.eyeletStep => 'Интервал люверсов',
-        ParamField.eyeletCornerOffset => 'Отступ люверса от угла',
-        ParamField.drainCount => 'Дренажных отверстий',
-        ParamField.pocketWidth => 'Ширина фартука',
-        ParamField.shrinkagePercent => 'Усадка ПВХ',
-        ParamField.rollGap => 'Зазор при раскладке',
-        ParamField.allowanceWidth => 'Припуск на раскрой по ширине',
-        ParamField.allowanceHeight => 'Припуск на раскрой по высоте',
-        ParamField.weldOverlap => 'Запайка плёнки под окантовку',
-        ParamField.hemBottom => 'Подворот скрина снизу',
-        ParamField.hemRight => 'Подворот скрина справа',
-        ParamField.hemTop => 'Подворот скрина сверху',
-        ParamField.hemLeft => 'Подворот скрина слева',
-      };
+    ParamField.bottomWidth => 'Ширина низ',
+    ParamField.topWidth => 'Ширина верх',
+    ParamField.leftHeight => 'Высота лево',
+    ParamField.rightHeight => 'Высота право',
+    ParamField.topOffset => 'Смещение верх',
+    ParamField.tWidth => 'Ширина приставки',
+    ParamField.tHeight => 'Высота приставки',
+    ParamField.tOffset => 'Смещение приставки',
+    ParamField.eyeletStep => 'Интервал люверсов',
+    ParamField.eyeletCornerOffset => 'Отступ люверса от угла',
+    ParamField.drainCount => 'Дренажных отверстий',
+    ParamField.pocketWidth => 'Ширина фартука',
+    ParamField.shrinkagePercent => 'Усадка ПВХ',
+    ParamField.rollGap => 'Зазор при раскладке',
+    ParamField.allowanceWidth => 'Припуск на раскрой по ширине',
+    ParamField.allowanceHeight => 'Припуск на раскрой по высоте',
+    ParamField.weldOverlap => 'Запайка плёнки под окантовку',
+    ParamField.hemBottom => 'Подворот скрина снизу',
+    ParamField.hemRight => 'Подворот скрина справа',
+    ParamField.hemTop => 'Подворот скрина сверху',
+    ParamField.hemLeft => 'Подворот скрина слева',
+  };
 
   String get unit => switch (this) {
-        ParamField.shrinkagePercent => '%',
-        ParamField.drainCount => 'шт',
-        _ => 'мм',
-      };
+    ParamField.shrinkagePercent => '%',
+    ParamField.drainCount => 'шт',
+    _ => 'мм',
+  };
 }
 
 /// Поле подворота скрина для стороны окна — чтобы замечания и подписи
 /// адресовались конкретной стороне, а не «подвороту вообще».
 ParamField hemFieldForSide(EdgeSide side) => switch (side) {
-      EdgeSide.bottom => ParamField.hemBottom,
-      EdgeSide.right => ParamField.hemRight,
-      EdgeSide.top => ParamField.hemTop,
-      EdgeSide.left => ParamField.hemLeft,
-    };
+  EdgeSide.bottom => ParamField.hemBottom,
+  EdgeSide.right => ParamField.hemRight,
+  EdgeSide.top => ParamField.hemTop,
+  EdgeSide.left => ParamField.hemLeft,
+};
 
 /// Припуск на сварку (напайка, запайка): на сколько плёнка ПВХ заходит под
 /// окантовку. Значение по умолчанию — **5 мм** (подсов ПВХ под тент у цеха
@@ -425,10 +466,10 @@ class ZipperSpec {
       );
 
   Map<String, dynamic> toJson() => {
-        'centered': centered,
-        'offsetMm': offsetMm,
-        'bandWidth': bandWidth,
-      };
+    'centered': centered,
+    'offsetMm': offsetMm,
+    'bandWidth': bandWidth,
+  };
 }
 
 /// Форма выреза в полотне.
@@ -471,14 +512,13 @@ class Cutout {
     double? height,
     double? centerXMm,
     double? centerYMm,
-  }) =>
-      Cutout(
-        shape: shape ?? this.shape,
-        width: width ?? this.width,
-        height: height ?? this.height,
-        centerXMm: centerXMm ?? this.centerXMm,
-        centerYMm: centerYMm ?? this.centerYMm,
-      );
+  }) => Cutout(
+    shape: shape ?? this.shape,
+    width: width ?? this.width,
+    height: height ?? this.height,
+    centerXMm: centerXMm ?? this.centerXMm,
+    centerYMm: centerYMm ?? this.centerYMm,
+  );
 
   /// Площадь выреза, мм².
   double get areaMm2 => shape == CutoutShape.circle
@@ -486,17 +526,16 @@ class Cutout {
       : width * height;
 
   /// Длина контура выреза, мм — столько окантовки уходит на его обработку.
-  double get perimeterMm => shape == CutoutShape.circle
-      ? math.pi * width
-      : 2 * (width + height);
+  double get perimeterMm =>
+      shape == CutoutShape.circle ? math.pi * width : 2 * (width + height);
 
   Map<String, dynamic> toJson() => {
-        'shape': shape.name,
-        'width': width,
-        'height': height,
-        'centerXMm': centerXMm,
-        'centerYMm': centerYMm,
-      };
+    'shape': shape.name,
+    'width': width,
+    'height': height,
+    'centerXMm': centerXMm,
+    'centerYMm': centerYMm,
+  };
 }
 
 /// Подъёмный ремень: ширина и длина заготовки, мм.
@@ -528,6 +567,11 @@ class WindowParams {
     this.allowanceHeightMm = 0,
     this.topAlign = TopAlign.center,
     this.topOffsetMm = 0,
+    this.tSide = TShapeSide.right,
+    this.tWidth = 800,
+    this.tHeight = 600,
+    this.tOffset = 0,
+    this.tWelded = true,
     this.rollBottom = 100,
     this.rollTop = 100,
     this.rollLeft = 100,
@@ -601,6 +645,29 @@ class WindowParams {
 
   final TopAlign topAlign;
   final double topOffsetMm;
+
+  // --- Т-образное окно (windowType == WindowType.tShape) -------------------
+  //
+  // Приставка — прямоугольник [tWidth] × [tHeight], приваренный к стороне
+  // [tSide] основного полотна. [tOffset] — смещение приставки вдоль общей
+  // стороны: от низа для правой/левой, от левого края для верхней/нижней.
+  // При [tWelded] == false это два отдельных окна: окантовка считается по
+  // периметру каждой части, шва по общей стороне нет.
+
+  /// Сторона основного полотна, к которой крепится приставка.
+  final TShapeSide tSide;
+
+  /// Ширина приставки (по горизонтали), мм.
+  final double tWidth;
+
+  /// Высота приставки (по вертикали), мм.
+  final double tHeight;
+
+  /// Смещение приставки вдоль общей стороны, мм.
+  final double tOffset;
+
+  /// Спайка по общей стороне. false — два отдельных окна.
+  final bool tWelded;
 
   /// Пресеты ширины рулона окантовки, мм — быстрые кнопки в панели.
   ///
@@ -774,8 +841,7 @@ class WindowParams {
   String get allowanceWidthLabel => formatSignedMm(allowanceWidthMm);
 
   /// Фактический припуск по высоте («авто + вручную») в виде «+10» / «0».
-  String get allowanceHeightLabel =>
-      formatSignedMm(effectiveAllowanceHeightMm);
+  String get allowanceHeightLabel => formatSignedMm(effectiveAllowanceHeightMm);
 
   /// Ручной припуск по высоте в виде «+80» / «0» — для разбивки в панели.
   String get manualAllowanceHeightLabel => formatSignedMm(allowanceHeightMm);
@@ -815,19 +881,19 @@ class WindowParams {
   ///
   /// Порядок обхода углов: низ, право, верх, лево.
   List<EdgeSide> get eyeletlessSides => [
-        if (noEyeletsBottom) EdgeSide.bottom,
-        if (noEyeletsTop) EdgeSide.top,
-      ];
+    if (noEyeletsBottom) EdgeSide.bottom,
+    if (noEyeletsTop) EdgeSide.top,
+  ];
 
   /// Есть ли сторона без люверсов.
   bool get hasEyeletlessSides => noEyeletsTop || noEyeletsBottom;
 
   /// Сторона окна без люверсов.
   bool hasEyeletsOn(EdgeSide side) => switch (side) {
-        EdgeSide.bottom => !noEyeletsBottom,
-        EdgeSide.top => !noEyeletsTop,
-        EdgeSide.left || EdgeSide.right => true,
-      };
+    EdgeSide.bottom => !noEyeletsBottom,
+    EdgeSide.top => !noEyeletsTop,
+    EdgeSide.left || EdgeSide.right => true,
+  };
 
   /// Подпись сторон без люверсов: «верх», «низ», «низ и верх».
   String get eyeletlessSidesLabel {
@@ -882,54 +948,55 @@ class WindowParams {
 
   bool get isLifting => windowType == WindowType.lifting;
 
+  /// Т-образное окно: основное полотно плюс приставка.
+  bool get isTShape => windowType == WindowType.tShape;
+
+  /// Глухое окно: обычное глухое или Т-образное (обе части стоят на месте).
+  bool get isFixedShape => !isLifting;
+
   /// Готовая (сложенная пополам) ширина окантовки по ширине рулона, мм.
   static double finishedEdgeWidth(double rawWidth) => rawWidth / 2;
 
   /// Ширина рулона окантовки для стороны с индексом обхода углов:
   /// 0 — низ, 1 — право, 2 — верх, 3 — лево.
   double rollForEdge(int index) => switch (index % 4) {
-        0 => rollBottom,
-        1 => rollRight,
-        2 => rollTop,
-        _ => rollLeft,
-      };
+    0 => rollBottom,
+    1 => rollRight,
+    2 => rollTop,
+    _ => rollLeft,
+  };
 
   /// Ширина рулона окантовки для стороны окна.
   double rollForSide(EdgeSide side) => switch (side) {
-        EdgeSide.bottom => rollBottom,
-        EdgeSide.right => rollRight,
-        EdgeSide.top => rollTop,
-        EdgeSide.left => rollLeft,
-      };
+    EdgeSide.bottom => rollBottom,
+    EdgeSide.right => rollRight,
+    EdgeSide.top => rollTop,
+    EdgeSide.left => rollLeft,
+  };
 
   /// Подвороты скрина по сторонам в порядке обхода углов:
   /// низ, право, верх, лево (мм).
   ///
   /// Именно этот список идёт в геометрию: заготовка скрина — готовый контур,
   /// расширенный на своё значение с каждой стороны.
-  List<double> get hemWidths => [
-        hemBottomMm,
-        hemRightMm,
-        hemTopMm,
-        hemLeftMm,
-      ];
+  List<double> get hemWidths => [hemBottomMm, hemRightMm, hemTopMm, hemLeftMm];
 
   /// Подворот скрина для стороны с индексом обхода углов
   /// (0 — низ, 1 — право, 2 — верх, 3 — лево).
   double hemForEdge(int index) => switch (index % 4) {
-        0 => hemBottomMm,
-        1 => hemRightMm,
-        2 => hemTopMm,
-        _ => hemLeftMm,
-      };
+    0 => hemBottomMm,
+    1 => hemRightMm,
+    2 => hemTopMm,
+    _ => hemLeftMm,
+  };
 
   /// Подворот скрина для стороны окна.
   double hemForSide(EdgeSide side) => switch (side) {
-        EdgeSide.bottom => hemBottomMm,
-        EdgeSide.right => hemRightMm,
-        EdgeSide.top => hemTopMm,
-        EdgeSide.left => hemLeftMm,
-      };
+    EdgeSide.bottom => hemBottomMm,
+    EdgeSide.right => hemRightMm,
+    EdgeSide.top => hemTopMm,
+    EdgeSide.left => hemLeftMm,
+  };
 
   /// Сумма подворотов по четырём сторонам, мм.
   ///
@@ -974,7 +1041,8 @@ class WindowParams {
       hemTopMm == hemLeftMm;
 
   /// Подпись подворотов по сторонам: «низ 40, право 50, верх 60, лево 40 мм».
-  String get hemBySideLabel => 'низ ${formatMm(hemBottomMm)}, '
+  String get hemBySideLabel =>
+      'низ ${formatMm(hemBottomMm)}, '
       'право ${formatMm(hemRightMm)}, верх ${formatMm(hemTopMm)}, '
       'лево ${formatMm(hemLeftMm)} мм';
 
@@ -997,6 +1065,11 @@ class WindowParams {
     double? allowanceHeightMm,
     TopAlign? topAlign,
     double? topOffsetMm,
+    TShapeSide? tSide,
+    double? tWidth,
+    double? tHeight,
+    double? tOffset,
+    bool? tWelded,
     double? rollBottom,
     double? rollTop,
     double? rollLeft,
@@ -1042,6 +1115,11 @@ class WindowParams {
       allowanceHeightMm: allowanceHeightMm ?? this.allowanceHeightMm,
       topAlign: topAlign ?? this.topAlign,
       topOffsetMm: topOffsetMm ?? this.topOffsetMm,
+      tSide: tSide ?? this.tSide,
+      tWidth: tWidth ?? this.tWidth,
+      tHeight: tHeight ?? this.tHeight,
+      tOffset: tOffset ?? this.tOffset,
+      tWelded: tWelded ?? this.tWelded,
       rollBottom: rollBottom ?? this.rollBottom,
       rollTop: rollTop ?? this.rollTop,
       rollLeft: rollLeft ?? this.rollLeft,
@@ -1091,16 +1169,8 @@ class WindowParams {
     final bandWidth = zippers.first.bandWidth;
     return copyWith(
       zippers: [
-        ZipperSpec(
-          centered: false,
-          offsetMm: third,
-          bandWidth: bandWidth,
-        ),
-        ZipperSpec(
-          centered: false,
-          offsetMm: third * 2,
-          bandWidth: bandWidth,
-        ),
+        ZipperSpec(centered: false, offsetMm: third, bandWidth: bandWidth),
+        ZipperSpec(centered: false, offsetMm: third * 2, bandWidth: bandWidth),
       ],
     );
   }
@@ -1128,10 +1198,7 @@ class WindowParams {
     return copyWith(
       cutouts: [
         ...cutouts,
-        Cutout(
-          centerXMm: bottomWidth / 2,
-          centerYMm: 400 + index * 450.0,
-        ),
+        Cutout(centerXMm: bottomWidth / 2, centerYMm: 400 + index * 450.0),
       ],
     );
   }
@@ -1156,102 +1223,113 @@ class WindowParams {
   }
 
   WindowParams withField(ParamField field, double value) => switch (field) {
-        ParamField.bottomWidth => copyWith(bottomWidth: value),
-        ParamField.topWidth => copyWith(topWidth: value),
-        ParamField.leftHeight => copyWith(leftHeight: value),
-        ParamField.rightHeight => copyWith(rightHeight: value),
-        ParamField.topOffset => copyWith(topOffsetMm: value),
-        ParamField.eyeletStep => copyWith(eyeletStep: value),
-        ParamField.eyeletCornerOffset => copyWith(eyeletCornerOffset: value),
-        ParamField.drainCount => copyWith(drainCount: value),
-        ParamField.pocketWidth => copyWith(pocketWidth: value),
-        ParamField.shrinkagePercent => copyWith(shrinkagePercent: value),
-        ParamField.allowanceWidth => copyWith(allowanceWidthMm: value),
-        ParamField.allowanceHeight => copyWith(allowanceHeightMm: value),
-        ParamField.weldOverlap => copyWith(weldOverlapMm: value),
-        ParamField.hemBottom => copyWith(hemBottomMm: value),
-        ParamField.hemRight => copyWith(hemRightMm: value),
-        ParamField.hemTop => copyWith(hemTopMm: value),
-        ParamField.hemLeft => copyWith(hemLeftMm: value),
-        // Зазор раскладки живёт в параметрах заказа — здесь только заглушка
-        // для единообразия интерфейса.
-        ParamField.rollGap => this,
-      };
+    ParamField.bottomWidth => copyWith(bottomWidth: value),
+    ParamField.topWidth => copyWith(topWidth: value),
+    ParamField.leftHeight => copyWith(leftHeight: value),
+    ParamField.rightHeight => copyWith(rightHeight: value),
+    ParamField.topOffset => copyWith(topOffsetMm: value),
+    ParamField.tWidth => copyWith(tWidth: value),
+    ParamField.tHeight => copyWith(tHeight: value),
+    ParamField.tOffset => copyWith(tOffset: value),
+    ParamField.eyeletStep => copyWith(eyeletStep: value),
+    ParamField.eyeletCornerOffset => copyWith(eyeletCornerOffset: value),
+    ParamField.drainCount => copyWith(drainCount: value),
+    ParamField.pocketWidth => copyWith(pocketWidth: value),
+    ParamField.shrinkagePercent => copyWith(shrinkagePercent: value),
+    ParamField.allowanceWidth => copyWith(allowanceWidthMm: value),
+    ParamField.allowanceHeight => copyWith(allowanceHeightMm: value),
+    ParamField.weldOverlap => copyWith(weldOverlapMm: value),
+    ParamField.hemBottom => copyWith(hemBottomMm: value),
+    ParamField.hemRight => copyWith(hemRightMm: value),
+    ParamField.hemTop => copyWith(hemTopMm: value),
+    ParamField.hemLeft => copyWith(hemLeftMm: value),
+    // Зазор раскладки живёт в параметрах заказа — здесь только заглушка
+    // для единообразия интерфейса.
+    ParamField.rollGap => this,
+  };
 
   double valueOf(ParamField field) => switch (field) {
-        ParamField.bottomWidth => bottomWidth,
-        ParamField.topWidth => topWidth,
-        ParamField.leftHeight => leftHeight,
-        ParamField.rightHeight => rightHeight,
-        ParamField.topOffset => topOffsetMm,
-        ParamField.eyeletStep => eyeletStep,
-        ParamField.eyeletCornerOffset => eyeletCornerOffset,
-        ParamField.drainCount => drainCount,
-        ParamField.pocketWidth => pocketWidth,
-        ParamField.shrinkagePercent => shrinkagePercent,
-        ParamField.allowanceWidth => allowanceWidthMm,
-        ParamField.allowanceHeight => allowanceHeightMm,
-        ParamField.weldOverlap => weldOverlapMm,
-        ParamField.hemBottom => hemBottomMm,
-        ParamField.hemRight => hemRightMm,
-        ParamField.hemTop => hemTopMm,
-        ParamField.hemLeft => hemLeftMm,
-        ParamField.rollGap => 0,
-      };
+    ParamField.bottomWidth => bottomWidth,
+    ParamField.topWidth => topWidth,
+    ParamField.leftHeight => leftHeight,
+    ParamField.rightHeight => rightHeight,
+    ParamField.topOffset => topOffsetMm,
+    ParamField.tWidth => tWidth,
+    ParamField.tHeight => tHeight,
+    ParamField.tOffset => tOffset,
+    ParamField.eyeletStep => eyeletStep,
+    ParamField.eyeletCornerOffset => eyeletCornerOffset,
+    ParamField.drainCount => drainCount,
+    ParamField.pocketWidth => pocketWidth,
+    ParamField.shrinkagePercent => shrinkagePercent,
+    ParamField.allowanceWidth => allowanceWidthMm,
+    ParamField.allowanceHeight => allowanceHeightMm,
+    ParamField.weldOverlap => weldOverlapMm,
+    ParamField.hemBottom => hemBottomMm,
+    ParamField.hemRight => hemRightMm,
+    ParamField.hemTop => hemTopMm,
+    ParamField.hemLeft => hemLeftMm,
+    ParamField.rollGap => 0,
+  };
 
   /// Краткая подпись состояния — используется для проверки перерисовки.
   String get signature => [
-        projectName,
-        customer,
-        drawingNumber,
-        windowType.name,
-        bottomWidth,
-        topWidth,
-        leftHeight,
-        rightHeight,
-        allowanceWidthMm,
-        allowanceHeightMm,
-        topAlign.name,
-        topOffsetMm,
-        rollBottom,
-        rollTop,
-        rollLeft,
-        rollRight,
-        edgeMaterial.name,
-        edgeColor.name,
-        weldOverlapMm,
-        eyeletType.name,
-        eyeletStep,
-        eyeletCornerOffset,
-        roundEyeletsEnabled,
-        material.name,
-        hemBottomMm,
-        hemRightMm,
-        hemTopMm,
-        hemLeftMm,
-        fastenerType.name,
-        for (final zipper in zippers)
-          '${zipper.centered}:${zipper.offsetMm}:${zipper.bandWidth}',
-        for (final cutout in cutouts)
-          '${cutout.shape.name}:${cutout.width}:${cutout.height}:'
-              '${cutout.centerXMm}:${cutout.centerYMm}',
-        for (final side in weldedSides) side.name,
-        removeEyeletsOnWelded,
-        noEyeletsTop,
-        noEyeletsBottom,
-        zipperEnabled,
-        zipperCentered,
-        zipperOffsetMm,
-        zipperBandWidth,
-        pocket,
-        pocketTop,
-        pocketWidth,
-        drainHoles,
-        drainCount,
-        shrinkageEnabled,
-        shrinkagePercent,
-        pvcHeightAllowanceEnabled,
-      ].join('|');
+    projectName,
+    customer,
+    drawingNumber,
+    windowType.name,
+    bottomWidth,
+    topWidth,
+    leftHeight,
+    rightHeight,
+    allowanceWidthMm,
+    allowanceHeightMm,
+    topAlign.name,
+    topOffsetMm,
+    tSide.name,
+    tWidth,
+    tHeight,
+    tOffset,
+    tWelded,
+    rollBottom,
+    rollTop,
+    rollLeft,
+    rollRight,
+    edgeMaterial.name,
+    edgeColor.name,
+    weldOverlapMm,
+    eyeletType.name,
+    eyeletStep,
+    eyeletCornerOffset,
+    roundEyeletsEnabled,
+    material.name,
+    hemBottomMm,
+    hemRightMm,
+    hemTopMm,
+    hemLeftMm,
+    fastenerType.name,
+    for (final zipper in zippers)
+      '${zipper.centered}:${zipper.offsetMm}:${zipper.bandWidth}',
+    for (final cutout in cutouts)
+      '${cutout.shape.name}:${cutout.width}:${cutout.height}:'
+          '${cutout.centerXMm}:${cutout.centerYMm}',
+    for (final side in weldedSides) side.name,
+    removeEyeletsOnWelded,
+    noEyeletsTop,
+    noEyeletsBottom,
+    zipperEnabled,
+    zipperCentered,
+    zipperOffsetMm,
+    zipperBandWidth,
+    pocket,
+    pocketTop,
+    pocketWidth,
+    drainHoles,
+    drainCount,
+    shrinkageEnabled,
+    shrinkagePercent,
+    pvcHeightAllowanceEnabled,
+  ].join('|');
 }
 
 /// Что показывать на листе.

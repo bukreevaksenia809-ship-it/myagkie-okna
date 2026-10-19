@@ -11,11 +11,11 @@ enum WindowSide {
   left;
 
   String get label => switch (this) {
-        WindowSide.bottom => 'низ',
-        WindowSide.right => 'право',
-        WindowSide.top => 'верх',
-        WindowSide.left => 'лево',
-      };
+    WindowSide.bottom => 'низ',
+    WindowSide.right => 'право',
+    WindowSide.top => 'верх',
+    WindowSide.left => 'лево',
+  };
 }
 
 /// Вырез в полотне в координатах модели.
@@ -34,8 +34,7 @@ class CutoutGeometry {
     required Offset center,
     required double radius,
     required Cutout spec,
-  }) =>
-      CutoutGeometry._(spec: spec, center: center, radius: radius);
+  }) => CutoutGeometry._(spec: spec, center: center, radius: radius);
 
   final Cutout spec;
   final Offset center;
@@ -82,6 +81,198 @@ class EyeletPlacement {
   final double positionInEdge;
 }
 
+/// Нижняя левая вершина прямоугольника в координатах модели (ось Y вверх):
+/// у [Rect] поле `top` — это МИНИМАЛЬНЫЙ Y, то есть нижняя кромка.
+Offset _rectBottomLeft(Rect rect) => Offset(rect.left, rect.top);
+
+/// Нижняя правая вершина прямоугольника в координатах модели.
+Offset _rectBottomRight(Rect rect) => Offset(rect.right, rect.top);
+
+/// Верхняя правая вершина прямоугольника в координатах модели.
+Offset _rectTopRight(Rect rect) => Offset(rect.right, rect.bottom);
+
+/// Верхняя левая вершина прямоугольника в координатах модели.
+Offset _rectTopLeft(Rect rect) => Offset(rect.left, rect.bottom);
+
+/// Геометрия Т-образного окна: основное полотно плюс приставка.
+///
+/// Основное полотно для Т-окна считается прямоугольником
+/// `bottomWidth × leftHeight`; приставка — прямоугольник `tWidth × tHeight`,
+/// приваренный к стороне [side]. Смещение [annexRect] вдоль общей стороны
+/// задаётся [WindowParams.tOffset] и зажимается так, чтобы приставка не
+/// выходила за общую сторону. Размер приставки, не помещающийся в общую
+/// сторону, тоже подрезается по стороне — об этом предупреждает проверка
+/// параметров, а не молчаливая ошибка в чертеже.
+///
+/// [outline] — фактический внешний контур (6–8 вершин), обход против часовой
+/// стрелки. [sharedStart]–[sharedEnd] — общая сторона (шов спайки).
+class TShapeLayout {
+  const TShapeLayout._({
+    required this.side,
+    required this.mainRect,
+    required this.annexRect,
+    required this.outline,
+    required this.sharedStart,
+    required this.sharedEnd,
+    required this.welded,
+  });
+
+  factory TShapeLayout.build(WindowParams params) {
+    // Для Т-окна основное полотно — прямоугольник: ширины верха и низа и
+    // высоты сторон должны совпадать. Панель при переводе в Т выравнивает их,
+    // а проверка параметров предупреждает, если пользователь поменял размер.
+    final width = WindowGeometry._positive(params.bottomWidth);
+    final height = WindowGeometry._positive(params.leftHeight);
+    final side = params.tSide;
+    var annexWidth = WindowGeometry._positive(params.tWidth);
+    var annexHeight = WindowGeometry._positive(params.tHeight);
+    var offset = params.tOffset.isFinite ? params.tOffset : 0.0;
+
+    // Приставка вдоль общей стороны не может быть длиннее самой стороны.
+    if (side == TShapeSide.left || side == TShapeSide.right) {
+      annexHeight = math.min(annexHeight, height);
+      offset = offset.clamp(0.0, math.max(height - annexHeight, 0.0));
+    } else {
+      annexWidth = math.min(annexWidth, width);
+      offset = offset.clamp(0.0, math.max(width - annexWidth, 0.0));
+    }
+
+    final main = Rect.fromLTWH(0, 0, width, height);
+    final Rect annex;
+    switch (side) {
+      case TShapeSide.right:
+        annex = Rect.fromLTWH(width, offset, annexWidth, annexHeight);
+      case TShapeSide.left:
+        annex = Rect.fromLTWH(-annexWidth, offset, annexWidth, annexHeight);
+      case TShapeSide.top:
+        annex = Rect.fromLTWH(offset, height, annexWidth, annexHeight);
+      case TShapeSide.bottom:
+        annex = Rect.fromLTWH(offset, -annexHeight, annexWidth, annexHeight);
+    }
+
+    // Контур собирается по стороне прикрепления. Порядок вершин — против
+    // часовой стрелки; совпадающие вершины (приставка вровень с углом)
+    // убираются, чтобы в многоугольнике не было нулевых сторон.
+    final raw = <Offset>[];
+    switch (side) {
+      case TShapeSide.right:
+        raw.addAll([
+          _rectBottomLeft(main),
+          _rectBottomRight(main),
+          Offset(width, annex.top),
+          _rectBottomRight(annex),
+          _rectTopRight(annex),
+          Offset(width, annex.bottom),
+          _rectTopRight(main),
+          _rectTopLeft(main),
+        ]);
+      case TShapeSide.left:
+        raw.addAll([
+          _rectBottomLeft(main),
+          _rectBottomRight(main),
+          _rectTopRight(main),
+          _rectTopLeft(main),
+          Offset(0, annex.bottom),
+          _rectTopLeft(annex),
+          _rectBottomLeft(annex),
+          Offset(0, annex.top),
+        ]);
+      case TShapeSide.top:
+        raw.addAll([
+          _rectBottomLeft(main),
+          _rectBottomRight(main),
+          _rectTopRight(main),
+          _rectBottomRight(annex),
+          _rectTopRight(annex),
+          _rectTopLeft(annex),
+          Offset(annex.left, height),
+          _rectTopLeft(main),
+        ]);
+      case TShapeSide.bottom:
+        raw.addAll([
+          _rectBottomLeft(main),
+          Offset(annex.left, 0),
+          _rectBottomLeft(annex),
+          _rectBottomRight(annex),
+          Offset(annex.right, 0),
+          _rectBottomRight(main),
+          _rectTopRight(main),
+          _rectTopLeft(main),
+        ]);
+    }
+    final outline = <Offset>[];
+    for (final point in raw) {
+      if (outline.isEmpty || (outline.last - point).distance > 1e-6) {
+        outline.add(point);
+      }
+    }
+    if (outline.length > 1 && (outline.first - outline.last).distance <= 1e-6) {
+      outline.removeLast();
+    }
+
+    final (sharedStart, sharedEnd) = switch (side) {
+      TShapeSide.right => (
+        Offset(width, annex.top),
+        Offset(width, annex.bottom),
+      ),
+      TShapeSide.left => (Offset(0, annex.top), Offset(0, annex.bottom)),
+      TShapeSide.top => (
+        Offset(annex.left, height),
+        Offset(annex.right, height),
+      ),
+      TShapeSide.bottom => (Offset(annex.left, 0), Offset(annex.right, 0)),
+    };
+
+    return TShapeLayout._(
+      side: side,
+      mainRect: main,
+      annexRect: annex,
+      outline: outline,
+      sharedStart: sharedStart,
+      sharedEnd: sharedEnd,
+      welded: params.tWelded,
+    );
+  }
+
+  final TShapeSide side;
+
+  /// Основное полотно (прямоугольник).
+  final Rect mainRect;
+
+  /// Приставка (прямоугольник).
+  final Rect annexRect;
+
+  /// Фактический внешний контур окна.
+  final List<Offset> outline;
+
+  /// Начало общей стороны (шва).
+  final Offset sharedStart;
+
+  /// Конец общей стороны (шва).
+  final Offset sharedEnd;
+
+  /// Спайка по общей стороне; false — два отдельных окна.
+  final bool welded;
+
+  double get sharedLength => (sharedEnd - sharedStart).distance;
+
+  /// Контур основного полотна (для расчёта двух отдельных окон).
+  List<Offset> get mainPolygon => [
+    _rectBottomLeft(mainRect),
+    _rectBottomRight(mainRect),
+    _rectTopRight(mainRect),
+    _rectTopLeft(mainRect),
+  ];
+
+  /// Контур приставки.
+  List<Offset> get annexPolygon => [
+    _rectBottomLeft(annexRect),
+    _rectBottomRight(annexRect),
+    _rectTopRight(annexRect),
+    _rectTopLeft(annexRect),
+  ];
+}
+
 /// Чертёж мягкого окна: четырёхугольник, у которого нижняя и верхняя кромки
 /// горизонтальны, а высоты слева и справа заданы замерами.
 ///
@@ -95,6 +286,7 @@ class WindowGeometry {
     required this.topOffset,
     this.pocketDrop = 0,
     this.pocketTopRise = 0,
+    this.tLayout,
   });
 
   factory WindowGeometry.of(WindowParams params) {
@@ -110,10 +302,9 @@ class WindowGeometry {
       TopAlign.right => bottom - top,
       TopAlign.custom => params.topOffsetMm.isFinite ? params.topOffsetMm : 0.0,
     };
-    final pocketWidth =
-        params.pocketWidth.isFinite && params.pocketWidth > 0
-            ? params.pocketWidth
-            : 0.0;
+    final pocketWidth = params.pocketWidth.isFinite && params.pocketWidth > 0
+        ? params.pocketWidth
+        : 0.0;
     return WindowGeometry(
       bottomWidth: bottom,
       topWidth: top,
@@ -122,6 +313,10 @@ class WindowGeometry {
       topOffset: offset,
       pocketDrop: params.pocket && !params.isScreen ? pocketWidth : 0,
       pocketTopRise: params.pocketTop && !params.isScreen ? pocketWidth : 0,
+      // Т-образное окно: контур строится объединением основного полотна и
+      // приставки (см. [TShapeLayout]). Остальные размеры остаются в полях,
+      // чтобы чертёж и подписи могли показать обе части.
+      tLayout: params.isTShape ? TShapeLayout.build(params) : null,
     );
   }
 
@@ -140,6 +335,12 @@ class WindowGeometry {
   /// кромки, мм.
   final double pocketTopRise;
 
+  /// Геометрия Т-образного окна (null у обычного окна).
+  final TShapeLayout? tLayout;
+
+  /// Т-образное окно — контур не четырёхугольный.
+  bool get isTShape => tLayout != null;
+
   static double _positive(double value) =>
       (!value.isFinite || value <= 0) ? 100 : value;
 
@@ -150,7 +351,14 @@ class WindowGeometry {
 
   /// Углы против часовой стрелки (в координатах с осью Y вверх), начиная
   /// с левого нижнего. Порядок важен для [insetPolygonPerSide].
-  List<Offset> get corners => [bottomLeft, bottomRight, topRight, topLeft];
+  ///
+  /// У Т-образного окна вершин 6–8: это фактический контур объединения
+  /// основного полотна и приставки.
+  List<Offset> get corners =>
+      tLayout?.outline ?? [bottomLeft, bottomRight, topRight, topLeft];
+
+  /// Габарит фактического контура изделия (без фартука).
+  Rect get productBounds => boundsOf(corners);
 
   /// Длины сторон по обходу углов: низ, право, верх, лево.
   List<double> get sideLengths {
@@ -161,9 +369,28 @@ class WindowGeometry {
     ];
   }
 
-  double get leftEdgeLength => sideLengths[3];
+  /// Длина левой кромки. У Т-окна это сумма всех левых отрезков контура.
+  double get leftEdgeLength {
+    if (!isTShape) return sideLengths[3];
+    return _edgeLengthOnSide(WindowSide.left);
+  }
 
-  double get rightEdgeLength => sideLengths[1];
+  /// Длина правой кромки. У Т-окна — сумма правых отрезков контура.
+  double get rightEdgeLength {
+    if (!isTShape) return sideLengths[1];
+    return _edgeLengthOnSide(WindowSide.right);
+  }
+
+  double _edgeLengthOnSide(WindowSide side) {
+    var total = 0.0;
+    final points = corners;
+    for (var i = 0; i < points.length; i++) {
+      final a = points[i];
+      final b = points[(i + 1) % points.length];
+      if (sideOfPolygonEdge(points, i) == side) total += (b - a).distance;
+    }
+    return total;
+  }
 
   /// Длина окантовки по наружному контуру (без запаса на стыки).
   double get perimeter => sideLengths.reduce((a, b) => a + b);
@@ -172,10 +399,10 @@ class WindowGeometry {
 
   double get areaM2 => areaMm2 / 1000000;
 
-  double get minX => math.min(0, topOffset);
-  double get maxX => math.max(bottomWidth, topOffset + topWidth);
-  double get minY => -pocketDrop;
-  double get maxY => math.max(leftHeight, rightHeight);
+  double get minX => productBounds.left;
+  double get maxX => productBounds.right;
+  double get minY => productBounds.top - pocketDrop;
+  double get maxY => productBounds.bottom;
 
   /// Верхняя граница листа: изделие плюс верхний фартук (если он есть).
   ///
@@ -186,14 +413,14 @@ class WindowGeometry {
   double get spanX => maxX - minX;
   double get spanY => topBound - minY;
 
-  /// Габаритная высота изделия.
-  double get overallHeight => maxY;
+  /// Габаритная высота изделия (у Т-окна — вместе с приставкой).
+  double get overallHeight => isTShape ? productBounds.height : maxY;
 
   /// Насколько верхняя кромка выходит за нижнюю справа (мм).
-  double get rightOverhang => topOffset + topWidth - bottomWidth;
+  double get rightOverhang => isTShape ? 0 : topOffset + topWidth - bottomWidth;
 
   /// Насколько верхняя кромка выходит за нижнюю слева (мм).
-  double get leftOverhang => -topOffset;
+  double get leftOverhang => isTShape ? 0 : -topOffset;
 }
 
 /// Слои окна: окантовка по сторонам, шов (напайка), плёнка и люверсы.
@@ -211,8 +438,9 @@ class WindowLayers {
 
   /// Ширины рулонов окантовки по сторонам в порядке обхода:
   /// низ, право, верх, лево (мм). У скрина окантовки нет — нули.
-  List<double> get rolls =>
-      isScreen ? const [0, 0, 0, 0] : [for (var i = 0; i < 4; i++) params.rollForEdge(i)];
+  List<double> get rolls => isScreen
+      ? const [0, 0, 0, 0]
+      : [for (var i = 0; i < 4; i++) params.rollForEdge(i)];
 
   /// Готовые (сложенные пополам) ширины окантовки по сторонам.
   List<double> get finishedWidths => isScreen
@@ -247,65 +475,315 @@ class WindowLayers {
     return [halfBottomTop, halfLeftRight, halfBottomTop, halfLeftRight];
   }
 
+  /// Т-образное окно: контур из нескольких вершин.
+  bool get isTShape => geometry.isTShape;
+
+  /// Геометрия Т-образного окна (null у обычного окна).
+  TShapeLayout? get tLayout => geometry.tLayout;
+
+  /// Спайка по общей стороне у Т-окна.
+  bool get tWelded => tLayout?.welded ?? false;
+
+  /// Части Т-окна: основное полотно и приставка. У обычного окна — один
+  /// контур. Нужно для раскроя, чертежа и «двух отдельных окон».
+  List<List<Offset>> get partPolygons {
+    final t = tLayout;
+    if (t == null) return [outer];
+    return [t.mainPolygon, t.annexPolygon];
+  }
+
+  /// Сторона окна для ребра многоугольника. Для четырёхугольника порядок
+  /// прежний (низ, право, верх, лево), для Т-контура сторона выводится из
+  /// направления наружной нормали ребра.
+  WindowSide sideOfEdge(List<Offset> polygon, int index) =>
+      sideOfPolygonEdge(polygon, index);
+
+  static EdgeSide edgeSideOf(WindowSide side) => switch (side) {
+    WindowSide.bottom => EdgeSide.bottom,
+    WindowSide.right => EdgeSide.right,
+    WindowSide.top => EdgeSide.top,
+    WindowSide.left => EdgeSide.left,
+  };
+
+  static WindowSide windowSideOf(EdgeSide side) => switch (side) {
+    EdgeSide.bottom => WindowSide.bottom,
+    EdgeSide.right => WindowSide.right,
+    EdgeSide.top => WindowSide.top,
+    EdgeSide.left => WindowSide.left,
+  };
+
+  /// Готовая ширина окантовки для стороны окна, мм.
+  double finishedWidthFor(WindowSide side) => isScreen
+      ? 0.0
+      : WindowParams.finishedEdgeWidth(params.rollForSide(edgeSideOf(side)));
+
+  /// Подворот скрина для стороны окна, мм.
+  double hemWidthFor(WindowSide side) => switch (side) {
+    WindowSide.bottom => params.hemBottomMm,
+    WindowSide.right => params.hemRightMm,
+    WindowSide.top => params.hemTopMm,
+    WindowSide.left => params.hemLeftMm,
+  };
+
+  /// Прибавка к заготовке скрина по стороне (половина прибавки по оси), мм.
+  double hemOutsetFor(WindowSide side) => switch (side) {
+    WindowSide.bottom || WindowSide.top => params.hemAxisBottomTopIncrease / 2,
+    WindowSide.left || WindowSide.right => params.hemAxisLeftRightIncrease / 2,
+  };
+
+  /// Ширины по рёбрам многоугольника — по стороне каждого ребра.
+  List<double> perEdge(
+    List<Offset> polygon,
+    double Function(WindowSide side) width,
+  ) => [
+    for (var i = 0; i < polygon.length; i++)
+      width(sideOfPolygonEdge(polygon, i)),
+  ];
+
+  /// Прямоугольник с подрезкой/расширением по сторонам. Положительное
+  /// значение — внутрь (ПВХ под окантовку), отрицательное — наружу (скрин).
+  /// [shared] — общая сторона, по ней припуска нет: там спайка.
+  Rect _blankRect(
+    Rect rect,
+    EdgeSide? shared,
+    double Function(WindowSide side) amount,
+  ) {
+    final left = shared == EdgeSide.left ? 0.0 : amount(WindowSide.left);
+    final right = shared == EdgeSide.right ? 0.0 : amount(WindowSide.right);
+    final bottom = shared == EdgeSide.bottom ? 0.0 : amount(WindowSide.bottom);
+    final top = shared == EdgeSide.top ? 0.0 : amount(WindowSide.top);
+    return Rect.fromLTRB(
+      rect.left + left,
+      rect.top + bottom,
+      rect.right - right,
+      rect.bottom - top,
+    );
+  }
+
+  static List<Offset> _rectPolygon(Rect rect) => [
+    Offset(rect.left, rect.top),
+    Offset(rect.right, rect.top),
+    Offset(rect.right, rect.bottom),
+    Offset(rect.left, rect.bottom),
+  ];
+
+  /// Склеивает две заготовки Т-окна в один контур по общей стороне.
+  List<Offset>? _mergeTBlank(TShapeSide side, Rect main, Rect annex) {
+    final points = <Offset>[];
+    switch (side) {
+      case TShapeSide.right:
+        points.addAll([
+          Offset(main.left, main.top),
+          Offset(main.right, main.top),
+          Offset(main.right, annex.top),
+          Offset(annex.right, annex.top),
+          Offset(annex.right, annex.bottom),
+          Offset(main.right, annex.bottom),
+          Offset(main.right, main.bottom),
+          Offset(main.left, main.bottom),
+        ]);
+      case TShapeSide.left:
+        points.addAll([
+          Offset(main.left, main.top),
+          Offset(main.right, main.top),
+          Offset(main.right, main.bottom),
+          Offset(main.left, main.bottom),
+          Offset(main.left, annex.bottom),
+          Offset(annex.left, annex.bottom),
+          Offset(annex.left, annex.top),
+          Offset(main.left, annex.top),
+        ]);
+      case TShapeSide.top:
+        points.addAll([
+          Offset(main.left, main.top),
+          Offset(main.right, main.top),
+          Offset(main.right, main.bottom),
+          Offset(annex.right, main.bottom),
+          Offset(annex.right, annex.bottom),
+          Offset(annex.left, annex.bottom),
+          Offset(annex.left, main.bottom),
+          Offset(main.left, main.bottom),
+        ]);
+      case TShapeSide.bottom:
+        points.addAll([
+          Offset(main.left, main.top),
+          Offset(annex.left, main.top),
+          Offset(annex.left, annex.top),
+          Offset(annex.right, annex.top),
+          Offset(annex.right, main.top),
+          Offset(main.right, main.top),
+          Offset(main.right, main.bottom),
+          Offset(main.left, main.bottom),
+        ]);
+    }
+    final outline = <Offset>[];
+    for (final point in points) {
+      if (outline.isEmpty || (outline.last - point).distance > 1e-6) {
+        outline.add(point);
+      }
+    }
+    while (outline.length > 2 &&
+        (outline.first - outline.last).distance <= 1e-6) {
+      outline.removeLast();
+    }
+    if (outline.length < 3) return null;
+    if (polygonArea(outline) < 0) return outline.reversed.toList();
+    return outline;
+  }
+
+  /// Заготовка одного полотна Т-окна (без склейки).
+  List<Offset> _tPartBlank(
+    Rect rect,
+    EdgeSide? shared,
+    double Function(WindowSide side) amount,
+  ) => _rectPolygon(_blankRect(rect, shared, amount));
+
+  /// Контуры заготовки полотна: у обычного окна — один, у Т — либо один
+  /// склеенный контур (спайка), либо два отдельных (без спайки).
+  late final List<List<Offset>> filmPolygons = _buildFilmPolygons();
+
+  List<List<Offset>> _buildFilmPolygons() {
+    if (!isTShape) {
+      if (isScreen) {
+        return [outsetPolygonPerSide(outer, perEdge(outer, hemOutsetFor))];
+      }
+      return [
+        insetPolygonPerSide(
+          outer,
+          perEdge(
+            outer,
+            (side) =>
+                math.max(finishedWidthFor(side) - params.weldOverlapMm, 0.0),
+          ),
+        ),
+      ];
+    }
+    final t = tLayout!;
+    double amount(WindowSide side) => isScreen
+        ? -hemOutsetFor(side)
+        : math.max(finishedWidthFor(side) - params.weldOverlapMm, 0.0);
+    // Без спайки — два отдельных окна: припуск по окантовке снимается по
+    // всем четырём сторонам каждой части. Со спайкой общая сторона припуска
+    // не имеет — там шов.
+    final mainShared = t.welded ? t.side.sharedEdge : null;
+    final annexShared = t.welded ? t.side.sharedEdge.opposite : null;
+    final mainBlank = _tPartBlank(t.mainRect, mainShared, amount);
+    final annexBlank = _tPartBlank(t.annexRect, annexShared, amount);
+    if (t.welded) {
+      final mainRect = _blankRect(t.mainRect, mainShared, amount);
+      final annexRect = _blankRect(t.annexRect, annexShared, amount);
+      final merged = _mergeTBlank(t.side, mainRect, annexRect);
+      if (merged != null) return [merged];
+    }
+    return [mainBlank, annexBlank];
+  }
+
+  /// Габариты заготовок по частям Т-окна: основное полотно и приставка
+  /// (у обычного окна — один габарит). По ним в техкарте печатаются размеры
+  /// каждой части, а не только общий габарит.
+  late final List<Rect> filmPartBounds = _buildFilmPartBounds();
+
+  List<Rect> _buildFilmPartBounds() {
+    final t = tLayout;
+    if (t == null) return [filmCutBounds];
+    double amount(WindowSide side) => isScreen
+        ? -hemOutsetFor(side)
+        : math.max(finishedWidthFor(side) - params.weldOverlapMm, 0.0);
+    final mainShared = t.welded ? t.side.sharedEdge : null;
+    final annexShared = t.welded ? t.side.sharedEdge.opposite : null;
+    return [
+      _blankRect(t.mainRect, mainShared, amount),
+      _blankRect(t.annexRect, annexShared, amount),
+    ];
+  }
+
   /// Внутренняя граница окантовки: видимая граница плёнки.
   ///
   /// У скрина видимый размер — это готовый контур изделия: подворот
   /// загибается на изнанку, наружу ничего не выходит.
-  late final List<Offset> edgeInner =
-      isScreen ? List.of(outer) : insetPolygonPerSide(outer, finishedWidths);
+  late final List<List<Offset>> edgeInnerPolygons = _buildEdgeInnerPolygons();
 
-  /// Граница полотна в раскрое.
-  ///
-  /// ПВХ заходит под окантовку на [WindowParams.weldOverlapMm], поэтому его
-  /// край ближе к наружному контуру, чем внутренняя граница окантовки.
-  /// Скрин, наоборот, кроится БОЛЬШЕ готового размера: прибавка по каждой оси
-  /// равна среднему двух подворотов оси плюс 20 мм ([hemOutsetWidths],
-  /// [WindowParams.hemAxisBottomTopIncrease] /
-  /// [WindowParams.hemAxisLeftRightIncrease]). Изделие 2000 × 2000 при подвороте
-  /// 40 мм на все стороны даёт заготовку 2060 × 2060 мм, при 120 мм на все
-  /// стороны — 2140 × 2140 мм, а при (низ 40, верх 60, лево 40, право 40) —
-  /// 2060 × 2070 мм: по высоте (40 + 60) / 2 + 20 = 70 мм.
-  late final List<Offset> filmEdge = isScreen
-      ? outsetPolygonPerSide(outer, hemOutsetWidths)
-      : insetPolygonPerSide(
+  List<List<Offset>> _buildEdgeInnerPolygons() {
+    if (isScreen) {
+      return isTShape ? partPolygons : [outer];
+    }
+    if (!isTShape) {
+      return [insetPolygonPerSide(outer, perEdge(outer, finishedWidthFor))];
+    }
+    // У Т-окна внутренний контур окантовки строится по внешнему контуру:
+    // общая сторона — шов, окантовки там нет, поэтому и подрезки нет.
+    return [insetPolygonPerSide(outer, perEdge(outer, finishedWidthFor))];
+  }
+
+  /// Внутренняя граница окантовки (первый контур — для подписей и старых
+  /// вызовов; у Т-окна без спайки контуров два, см. [edgeInnerPolygons]).
+  List<Offset> get edgeInner => edgeInnerPolygons.first;
+
+  /// Граница полотна в раскрое (первый контур). Полный список контуров —
+  /// [filmPolygons]: у Т-окна без спайки их два.
+  List<Offset> get filmEdge => filmPolygons.first;
+
+  /// Линия центров люверсов (первый контур).
+  List<Offset> get eyeletLine => eyeletPolygons.first;
+
+  /// Контуры, по которым ставятся люверсы: у обычного окна один, у Т-окна
+  /// при спайке — общий внешний контур, без спайки — периметры двух частей.
+  late final List<List<Offset>> eyeletPolygons = _buildEyeletPolygons();
+
+  List<List<Offset>> _buildEyeletPolygons() {
+    if (isScreen) {
+      return isTShape ? (tWelded ? [outer] : partPolygons) : [outer];
+    }
+    if (!isTShape) {
+      return [
+        insetPolygonPerSide(
           outer,
-          [
-            for (final width in finishedWidths)
-              math.max(width - params.weldOverlapMm, 0.0),
-          ],
-        );
-
-  /// Линия центров люверсов.
-  ///
-  /// У ПВХ это середина окантовки, у скрина — линия подворота (готовый
-  /// контур): люверсы ставятся по подвороту.
-  late final List<Offset> eyeletLine = isScreen
-      ? List.of(outer)
-      : insetPolygonPerSide(
+          perEdge(outer, (side) => finishedWidthFor(side) / 2),
+        ),
+      ];
+    }
+    if (tWelded) {
+      return [
+        insetPolygonPerSide(
           outer,
-          [for (final width in finishedWidths) width / 2],
-        );
+          perEdge(outer, (side) => finishedWidthFor(side) / 2),
+        ),
+      ];
+    }
+    return [
+      for (final part in partPolygons)
+        insetPolygonPerSide(
+          part,
+          perEdge(part, (side) => finishedWidthFor(side) / 2),
+        ),
+    ];
+  }
 
-  /// Линия подворота (сгиба) скрина: на половину прибавки по оси внутрь от
-  /// края заготовки.
+  /// Линия подворота (сгиба) скрина: готовый контур изделия.
   ///
-  /// Отступ берётся не фактическим подворотом стороны, а половиной прибавки
-  /// по оси: именно на столько заготовка выступает за готовый контур. Поэтому
-  /// линия сгиба всегда ложится ровно на контур изделия, а полоса подворота
-  /// на чертеже остаётся одинаковой по обеим кромкам оси — при разных
-  /// подворотах (лево 80, право 120) это 60 мм с каждой стороны.
-  late final List<Offset> screenHemLine =
-      isScreen ? insetPolygonPerSide(filmEdge, hemOutsetWidths) : const [];
+  /// У ПВХ подворота нет — список пуст.
+  late final List<List<Offset>> screenHemPolygons = isScreen
+      ? (isTShape && !tWelded ? partPolygons : [outer])
+      : const [];
 
   /// Линия шва [screenSeamMm] внутри подворота скрина.
-  late final List<Offset> screenSeamLine = isScreen
-      ? insetPolygonPerSide(screenHemLine, const [
-          screenSeamMm,
-          screenSeamMm,
-          screenSeamMm,
-          screenSeamMm,
-        ])
-      : const [];
+  late final List<List<Offset>> screenSeamPolygons = [
+    for (final hem in screenHemPolygons)
+      insetPolygonPerSide(hem, const [
+        screenSeamMm,
+        screenSeamMm,
+        screenSeamMm,
+        screenSeamMm,
+      ]),
+  ];
+
+  /// Линия подворота (первый контур — для подписей и старых вызовов).
+  List<Offset> get screenHemLine =>
+      screenHemPolygons.isEmpty ? const [] : screenHemPolygons.first;
+
+  /// Линия шва подворота (первый контур).
+  List<Offset> get screenSeamLine =>
+      screenSeamPolygons.isEmpty ? const [] : screenSeamPolygons.first;
 
   late final _EyeletResult _eyeletResult = _computeEyelets();
 
@@ -318,10 +796,10 @@ class WindowLayers {
   int get eyeletCount => eyelets.length;
 
   /// Габариты видимой плёнки (по внутренней границе окантовки).
-  late final Rect filmVisibleBounds = boundsOf(edgeInner);
+  late final Rect filmVisibleBounds = boundsOfAll(edgeInnerPolygons);
 
   /// Габариты плёнки в раскрое (с напайкой под окантовку).
-  late final Rect filmCutBounds = boundsOf(filmEdge);
+  late final Rect filmCutBounds = boundsOfAll(filmPolygons);
 
   /// Суммарная ширина полос всех молний окна, мм.
   ///
@@ -357,8 +835,16 @@ class WindowLayers {
   double get blankHeight => filmCutBounds.height;
 
   /// Площадь полотна изделия в раскрое (с напайкой, без припуска), м².
-  double get filmAreaM2 =>
-      math.max(polygonArea(filmEdge).abs() - cutoutAreaMm2, 0) / 1000000;
+  ///
+  /// У Т-окна без спайки это сумма площадей двух заготовок: они не
+  /// пересекаются и считаются раздельно.
+  double get filmAreaM2 {
+    var area = 0.0;
+    for (final polygon in filmPolygons) {
+      area += polygonArea(polygon).abs();
+    }
+    return math.max(area - cutoutAreaMm2, 0) / 1000000;
+  }
 
   /// Люверсы, которые закрываются крепежом подвижных сторон:
   /// низ и бока, сверху саморезы или люверсы.
@@ -373,7 +859,9 @@ class WindowLayers {
   /// прямоугольная скоба. Если тумблер «Круглые люверсы в углах» выключен,
   /// угловых точек в [eyelets] нет вовсе, и список крепежа не меняется.
   List<EyeletPlacement> get movableSideEyelets {
-    if (!isScreen && params.windowType == WindowType.fixed) return const [];
+    // Т-образное окно глухое: подвижного крепежа у него нет (у скрина есть —
+    // он снимается).
+    if (!isScreen && !params.isLifting) return const [];
     return eyelets
         .where((eyelet) => eyelet.side != WindowSide.top && !eyelet.isCorner)
         .toList(growable: false);
@@ -400,9 +888,9 @@ class WindowLayers {
   ///
   /// Порядок — по обходу углов: низ, право, верх, лево.
   List<WindowSide> get eyeletlessSides => [
-        if (params.noEyeletsBottom) WindowSide.bottom,
-        if (params.noEyeletsTop) WindowSide.top,
-      ];
+    if (params.noEyeletsBottom) WindowSide.bottom,
+    if (params.noEyeletsTop) WindowSide.top,
+  ];
 
   /// Подпись сторон без люверсов для документов: «верх», «низ», «низ и верх».
   String get eyeletlessSidesLabel {
@@ -414,10 +902,10 @@ class WindowLayers {
 
   /// Ставятся ли на этой стороне люверсы (кнопки «не ставить сверху/снизу»).
   bool sideHasEyelets(WindowSide side) => switch (side) {
-        WindowSide.bottom => !params.noEyeletsBottom,
-        WindowSide.top => !params.noEyeletsTop,
-        WindowSide.left || WindowSide.right => true,
-      };
+    WindowSide.bottom => !params.noEyeletsBottom,
+    WindowSide.top => !params.noEyeletsTop,
+    WindowSide.left || WindowSide.right => true,
+  };
 
   /// Тип люверса в конкретной точке: в углах круглый (угол тянет
   /// по диагонали, овальный там не держит), по сторонам — выбранный
@@ -427,8 +915,8 @@ class WindowLayers {
   /// [eyelets] нет, и круглый тип не подставляется нигде.
   EyeletType typeFor(EyeletPlacement eyelet) =>
       eyelet.isCorner && params.roundEyeletsEnabled
-          ? EyeletType.round10
-          : params.effectiveEyeletType;
+      ? EyeletType.round10
+      : params.effectiveEyeletType;
 
   /// Тип люверса, который ставится по сторонам окна.
   EyeletType get eyeletType => params.effectiveEyeletType;
@@ -477,12 +965,31 @@ class WindowLayers {
     final result = <double, double>{};
     // Скрин не окантовывается: расход тента нулевой.
     if (isScreen) return result;
-    final lengths = geometry.sideLengths;
-    for (var i = 0; i < lengths.length; i++) {
-      if (isSideWelded(i)) continue;
-      final roll = rolls[i];
-      result[roll] = (result[roll] ?? 0) + lengths[i];
+
+    void addPolygon(List<Offset> polygon) {
+      for (var i = 0; i < polygon.length; i++) {
+        final side = sideOfPolygonEdge(polygon, i);
+        final edgeSide = edgeSideOf(side);
+        // Спайка с соседним окном: окантовки на этой стороне нет.
+        if (params.isWelded(edgeSide)) continue;
+        final length =
+            (polygon[(i + 1) % polygon.length] - polygon[i]).distance;
+        final roll = params.rollForSide(edgeSide);
+        result[roll] = (result[roll] ?? 0) + length;
+      }
     }
+
+    // Т-окно без спайки — два отдельных окна: окантовка по периметру
+    // каждой части, включая их общую линию. Со спайкой — только внешний
+    // контур: общая сторона окантовки не имеет.
+    if (isTShape && !tWelded) {
+      for (final part in partPolygons) {
+        addPolygon(part);
+      }
+    } else {
+      addPolygon(outer);
+    }
+
     for (final cutout in cutouts) {
       // Осознанное упрощение: контуры вырезов всегда относятся к нижнему
       // рулону (rolls[0]), даже если низ спаян с соседним окном. Вырез
@@ -495,21 +1002,66 @@ class WindowLayers {
     return result;
   }
 
-  /// Спаяна ли сторона с индексом обхода углов (0 — низ, 1 — право,
-  /// 2 — верх, 3 — лево).
-  bool isSideWelded(int index) => switch (index % 4) {
-        0 => params.isWelded(EdgeSide.bottom),
-        1 => params.isWelded(EdgeSide.right),
-        2 => params.isWelded(EdgeSide.top),
-        _ => params.isWelded(EdgeSide.left),
-      };
+  /// Длины внешних кромок по сторонам окна, мм.
+  ///
+  /// У Т-окна на одной стороне может быть несколько отрезков (низ основного
+  /// полотна плюс низ приставки) — они суммируются. Это длины ИЗДЕЛИЯ: без
+  /// вычета спаек.
+  Map<EdgeSide, double> get edgeLengthsBySide {
+    final result = <EdgeSide, double>{
+      for (final side in EdgeSide.values) side: 0.0,
+    };
+    void addPolygon(List<Offset> polygon) {
+      for (var i = 0; i < polygon.length; i++) {
+        final edgeSide = edgeSideOf(sideOfPolygonEdge(polygon, i));
+        final length =
+            (polygon[(i + 1) % polygon.length] - polygon[i]).distance;
+        result[edgeSide] = (result[edgeSide] ?? 0) + length;
+      }
+    }
 
-  /// Длина спаек с соседними окнами, мм.
+    if (isTShape && !tWelded) {
+      for (final part in partPolygons) {
+        addPolygon(part);
+      }
+    } else {
+      addPolygon(outer);
+    }
+    return result;
+  }
+
+  /// Спаяна ли кромка внешнего контура с индексом обхода.
+  ///
+  /// У обычного окна порядок прежний (низ, право, верх, лево). У Т-окна
+  /// сторона ребра выводится из его направления.
+  bool isSideWelded(int index) {
+    if (!isTShape) {
+      return params.isWelded(switch (index % 4) {
+        0 => EdgeSide.bottom,
+        1 => EdgeSide.right,
+        2 => EdgeSide.top,
+        _ => EdgeSide.left,
+      });
+    }
+    return params.isWelded(edgeSideOf(sideOfEdge(outer, index)));
+  }
+
+  /// Длина спаек, мм.
+  ///
+  /// У Т-окна со спайкой сюда входит общая сторона (шов двух полотен) и
+  /// отмеченные пользователем спайки с соседними окнами. Без спайки общей
+  /// стороны нет — это два отдельных окна.
   double get weldLengthMm {
     var total = 0.0;
-    final lengths = geometry.sideLengths;
-    for (var i = 0; i < lengths.length; i++) {
-      if (isSideWelded(i)) total += lengths[i];
+    if (isTShape && tWelded) total += tLayout!.sharedLength;
+    final polygons = (isTShape && !tWelded) ? partPolygons : [outer];
+    for (final polygon in polygons) {
+      for (var i = 0; i < polygon.length; i++) {
+        if (!params.isWelded(edgeSideOf(sideOfPolygonEdge(polygon, i)))) {
+          continue;
+        }
+        total += (polygon[(i + 1) % polygon.length] - polygon[i]).distance;
+      }
     }
     return total;
   }
@@ -530,11 +1082,12 @@ class WindowLayers {
     // У скрина нет нижней окантовки — пробивать дренаж не во что.
     if (!params.drainHoles || count <= 0 || isScreen) return const [];
 
-    final bottomEyelets = eyelets
-        .where((eyelet) => eyelet.side == WindowSide.bottom)
-        .map((eyelet) => eyelet.center)
-        .toList()
-      ..sort((a, b) => a.dx.compareTo(b.dx));
+    final bottomEyelets =
+        eyelets
+            .where((eyelet) => eyelet.side == WindowSide.bottom)
+            .map((eyelet) => eyelet.center)
+            .toList()
+          ..sort((a, b) => a.dx.compareTo(b.dx));
 
     if (bottomEyelets.length >= count + 2) {
       final middles = <Offset>[];
@@ -543,9 +1096,10 @@ class WindowLayers {
       }
       final result = <Offset>[];
       for (var k = 1; k <= count; k++) {
-        final index = (k * middles.length / (count + 1))
-            .floor()
-            .clamp(0, middles.length - 1);
+        final index = (k * middles.length / (count + 1)).floor().clamp(
+          0,
+          middles.length - 1,
+        );
         result.add(middles[index]);
       }
       return result;
@@ -558,7 +1112,6 @@ class WindowLayers {
     ];
   }
 
-
   /// Линии всех молний: всегда вертикально, по низу до верха видимой плёнки.
   ///
   /// У скрина видимый контур — готовое изделие (кромка подворота), поэтому
@@ -566,8 +1119,8 @@ class WindowLayers {
   /// размера на прибавку по каждой оси ([hemOutsetWidths]).
   /// Положение зажато в границах видимого контура (см. [_zipperOf]).
   List<({Offset start, Offset end, double bandWidth})> get zippers => [
-        for (final spec in params.zippers) _zipperOf(spec),
-      ];
+    for (final spec in params.zippers) _zipperOf(spec),
+  ];
 
   ({Offset start, Offset end, double bandWidth}) _zipperOf(ZipperSpec spec) {
     // Для скрина это кромка подворота: полоса не выходит за заготовку и не
@@ -634,8 +1187,8 @@ class WindowLayers {
 
   /// Ширина спайки молнии и расстояния от неё до кромок плёнки — по каждой.
   List<({double left, double band, double right})> get zipperGapsAll => [
-        for (final band in zipperBands) _gapsOf(band),
-      ];
+    for (final band in zipperBands) _gapsOf(band),
+  ];
 
   ({double left, double band, double right}) _gapsOf(Rect band) {
     final bounds = filmVisibleBounds;
@@ -683,6 +1236,16 @@ class WindowLayers {
       WindowSide.right || WindowSide.left => false,
     };
     if (!enabled) return const [];
+    // У Т-окна без спайки фартук не поддерживается: полосы двух частей
+    // пересекаются на общей стороне, и полоса получилась бы разорванной.
+    if (isTShape && !tWelded) return const [];
+    // Приставка снизу перекрывает низ основного полотна — фартук по низу
+    // в этом варианте тоже не строится (см. проверку параметров).
+    if (side == WindowSide.bottom &&
+        tLayout != null &&
+        tLayout!.side == TShapeSide.bottom) {
+      return const [];
+    }
 
     final index = switch (side) {
       WindowSide.bottom => 0,
@@ -696,8 +1259,9 @@ class WindowLayers {
     // Внутренняя граница полосы: у ПВХ — внутренний край окантовки,
     // у скрина — линия подворота (готовый контур изделия).
     final innerA = isScreen ? screenHemLine[index] : edgeInner[index];
-    final innerB =
-        isScreen ? screenHemLine[(index + 1) % screenHemLine.length] : edgeInner[(index + 1) % edgeInner.length];
+    final innerB = isScreen
+        ? screenHemLine[(index + 1) % screenHemLine.length]
+        : edgeInner[(index + 1) % edgeInner.length];
 
     // Наружная граница: у ПВХ внешний край тента плюс ширина фартука,
     // у скрина — край заготовки (полоса подворота уже лежит снаружи контура).
@@ -727,119 +1291,121 @@ class WindowLayers {
   ///
   /// Полоса идёт от внутреннего края нижней окантовки (`finishedWidths[0]`)
   /// до внешнего края и ниже на ширину фартука.
-  Rect get pocketRect => params.pocket
-      ? boundsOf(pocketBand(WindowSide.bottom))
-      : Rect.zero;
+  Rect get pocketRect =>
+      params.pocket ? boundsOf(pocketBand(WindowSide.bottom)) : Rect.zero;
 
   /// Габарит верхнего фартука — зеркало нижнего.
-  Rect get pocketTopRect => params.pocketTop
-      ? boundsOf(pocketBand(WindowSide.top))
-      : Rect.zero;
+  Rect get pocketTopRect =>
+      params.pocketTop ? boundsOf(pocketBand(WindowSide.top)) : Rect.zero;
 
   _EyeletResult _computeEyelets() {
-    const sides = [
-      WindowSide.bottom,
-      WindowSide.right,
-      WindowSide.top,
-      WindowSide.left,
-    ];
-    final polygon = eyeletLine;
     final placements = <EyeletPlacement>[];
     final steps = <double>[];
 
-    for (var i = 0; i < polygon.length; i++) {
-      // Спаянная сторона: там сварка полотен, крепить нечего.
-      if (params.removeEyeletsOnWelded && isSideWelded(i)) continue;
-
-      final a = polygon[i];
-      final b = polygon[(i + 1) % polygon.length];
-      final direction = b - a;
-      final length = direction.distance;
-      if (length < 1) continue;
-      final unit = direction / length;
-      final angle = math.atan2(unit.dy, unit.dx);
-      final side = sides[i % sides.length];
-
-      final offset = params.eyeletCornerOffset.clamp(0.0, math.max(length / 2 - 1, 0));
-      final usable = length - offset * 2;
-      // Интервал задаёт пользователь ([WindowParams.eyeletStep], 50…2000 мм).
-      // Жёсткого «рекомендованного» коридора здесь нет: берём ровно введённое
-      // число. Защищаемся только от нуля/NaN/отрицательного значения — иначе
-      // деление даст бесконечность, и минимум 50 мм.
-      final requested = params.eyeletStep;
-      final nominal = requested.isFinite && requested >= minEyeletStepMm
-          ? requested
-          : minEyeletStepMm;
-      // Число интервалов округляем ВВЕРХ: тогда фактический интервал
-      // usable / intervals получается НЕ БОЛЬШЕ заданного, и «хвоста» в углу
-      // нет. Именно поэтому это «примерный интервал»: задан 300 мм — фактически
-      // 269…291 мм по сторонам.
-      // Если заданный интервал больше стороны (1500 мм на стороне 800 мм),
-      // получается ровно один интервал: по люверсу в каждом углу стороны.
-      final intervals = math.max(1, (usable / nominal).ceil());
-      final actual = usable / intervals;
-      // Сторона без люверсов (кнопка «не ставить сверху/снизу») в подпись
-      // фактического интервала не попадает: крепежа там нет.
-      if (sideHasEyelets(side)) steps.add(actual);
-
-      for (var k = 0; k <= intervals; k++) {
-        // Точки стороны идут строго с равным шагом [actual] от отступа
-        // [offset]: k = 0 — начало стороны, k = intervals — её конец. Никаких
-        // дополнительных «угловых» точек сверх этой последовательности нет,
-        // поэтому расстановка детерминирована: при одном и том же отступе
-        // люверсы всегда в одних и тех же координатах.
-        var distance = offset + actual * k;
-        // Угол — это точка, стоящая в самом углу полотна. При отступе
-        // [eyeletCornerOffset] > 0 концы стороны сдвинуты внутрь и углами уже
-        // не являются: иначе при отступе 50 мм на чертеже появлялись бы
-        // «лишние» круглые люверсы у каждого угла (по два на угол).
-        final isCornerIndex = offset < 0.5 && (k == 0 || k == intervals);
-
-        // Тумблер «Круглые люверсы в углах» выключен: угловая точка не
-        // ставится вовсе — ни на чертеже, ни в расходе, ни в смете.
-        // Точки, сдвинутые от угла на [offset] > 0, — обычные точки стороны,
-        // их выключение не трогает: там уже не угол.
-        if (!params.roundEyeletsEnabled && isCornerIndex && offset < 0.5) {
+    // Люверсы ставятся по каждому контуру: у обычного окна он один, у Т-окна
+    // со спайкой — общий внешний, без спайки — по периметру каждой части.
+    for (final polygon in eyeletPolygons) {
+      for (var i = 0; i < polygon.length; i++) {
+        final side = sideOfPolygonEdge(polygon, i);
+        // Спаянная сторона: там сварка полотен, крепить нечего.
+        if (params.removeEyeletsOnWelded && params.isWelded(edgeSideOf(side))) {
           continue;
         }
 
-        // Фартук (бывший карман) снизу: угловые люверсы внизу не ставим, а
-        // боковые поднимаем, чтобы в полость фартука заводился утяжитель.
-        // Фартук сверху — зеркально: углы сверху убираем, боковые опускаем.
-        if (params.pocket) {
-          if (side == WindowSide.bottom && (k == 0 || k == intervals)) {
-            continue;
-          }
-          if (side == WindowSide.right && k == 0) {
-            distance += pocketCornerOffset;
-          }
-          if (side == WindowSide.left && k == intervals) {
-            distance -= pocketCornerOffset;
-          }
-        }
-        if (params.pocketTop) {
-          if (side == WindowSide.top && (k == 0 || k == intervals)) {
-            continue;
-          }
-          if (side == WindowSide.right && k == intervals) {
-            distance -= pocketCornerOffset;
-          }
-          if (side == WindowSide.left && k == 0) {
-            distance += pocketCornerOffset;
-          }
-        }
-        if ((params.pocket || params.pocketTop) &&
-            (distance < 0 || distance > length)) {
-          continue;
-        }
+        final a = polygon[i];
+        final b = polygon[(i + 1) % polygon.length];
+        final direction = b - a;
+        final length = direction.distance;
+        if (length < 1) continue;
+        final unit = direction / length;
+        final angle = math.atan2(unit.dy, unit.dx);
 
-        placements.add(EyeletPlacement(
-          center: a + unit * distance,
-          side: side,
-          angle: angle,
-          isCorner: isCornerIndex,
-          positionInEdge: distance / length,
-        ));
+        final offset = params.eyeletCornerOffset.clamp(
+          0.0,
+          math.max(length / 2 - 1, 0),
+        );
+        final usable = length - offset * 2;
+        // Интервал задаёт пользователь ([WindowParams.eyeletStep], 50…2000 мм).
+        // Жёсткого «рекомендованного» коридора здесь нет: берём ровно введённое
+        // число. Защищаемся только от нуля/NaN/отрицательного значения — иначе
+        // деление даст бесконечность, и минимум 50 мм.
+        final requested = params.eyeletStep;
+        final nominal = requested.isFinite && requested >= minEyeletStepMm
+            ? requested
+            : minEyeletStepMm;
+        // Число интервалов округляем ВВЕРХ: тогда фактический интервал
+        // usable / intervals получается НЕ БОЛЬШЕ заданного, и «хвоста» в углу
+        // нет. Именно поэтому это «примерный интервал»: задан 300 мм — фактически
+        // 269…291 мм по сторонам.
+        // Если заданный интервал больше стороны (1500 мм на стороне 800 мм),
+        // получается ровно один интервал: по люверсу в каждом углу стороны.
+        final intervals = math.max(1, (usable / nominal).ceil());
+        final actual = usable / intervals;
+        // Сторона без люверсов (кнопка «не ставить сверху/снизу») в подпись
+        // фактического интервала не попадает: крепежа там нет.
+        if (sideHasEyelets(side)) steps.add(actual);
+
+        for (var k = 0; k <= intervals; k++) {
+          // Точки стороны идут строго с равным шагом [actual] от отступа
+          // [offset]: k = 0 — начало стороны, k = intervals — её конец. Никаких
+          // дополнительных «угловых» точек сверх этой последовательности нет,
+          // поэтому расстановка детерминирована: при одном и том же отступе
+          // люверсы всегда в одних и тех же координатах.
+          var distance = offset + actual * k;
+          // Угол — это точка, стоящая в самом углу полотна. При отступе
+          // [eyeletCornerOffset] > 0 концы стороны сдвинуты внутрь и углами уже
+          // не являются: иначе при отступе 50 мм на чертеже появлялись бы
+          // «лишние» круглые люверсы у каждого угла (по два на угол).
+          final isCornerIndex = offset < 0.5 && (k == 0 || k == intervals);
+
+          // Тумблер «Круглые люверсы в углах» выключен: угловая точка не
+          // ставится вовсе — ни на чертеже, ни в расходе, ни в смете.
+          // Точки, сдвинутые от угла на [offset] > 0, — обычные точки стороны,
+          // их выключение не трогает: там уже не угол.
+          if (!params.roundEyeletsEnabled && isCornerIndex && offset < 0.5) {
+            continue;
+          }
+
+          // Фартук (бывший карман) снизу: угловые люверсы внизу не ставим, а
+          // боковые поднимаем, чтобы в полость фартука заводился утяжитель.
+          // Фартук сверху — зеркально: углы сверху убираем, боковые опускаем.
+          if (params.pocket) {
+            if (side == WindowSide.bottom && (k == 0 || k == intervals)) {
+              continue;
+            }
+            if (side == WindowSide.right && k == 0) {
+              distance += pocketCornerOffset;
+            }
+            if (side == WindowSide.left && k == intervals) {
+              distance -= pocketCornerOffset;
+            }
+          }
+          if (params.pocketTop) {
+            if (side == WindowSide.top && (k == 0 || k == intervals)) {
+              continue;
+            }
+            if (side == WindowSide.right && k == intervals) {
+              distance -= pocketCornerOffset;
+            }
+            if (side == WindowSide.left && k == 0) {
+              distance += pocketCornerOffset;
+            }
+          }
+          if ((params.pocket || params.pocketTop) &&
+              (distance < 0 || distance > length)) {
+            continue;
+          }
+
+          placements.add(
+            EyeletPlacement(
+              center: a + unit * distance,
+              side: side,
+              angle: angle,
+              isCorner: isCornerIndex,
+              positionInEdge: distance / length,
+            ),
+          );
+        }
       }
     }
 
@@ -896,6 +1462,37 @@ class WindowSpec {
   ///
   /// Припуск на раскрой сюда не входит: изделие остаётся размером замера.
   double get productAreaM2 => geometry.areaM2;
+
+  /// Т-образное окно.
+  bool get isTShape => params.isTShape;
+
+  /// Геометрия Т-окна (null у обычного).
+  TShapeLayout? get tLayout => geometry.tLayout;
+
+  /// Длина общей стороны (шва) Т-окна, мм.
+  double get tSharedLength => tLayout?.sharedLength ?? 0;
+
+  /// Габариты заготовок по частям: [основное, приставка] или [общий].
+  List<Rect> get filmPartBounds => layers.filmPartBounds;
+
+  /// Периметр, по которому идёт окантовка/подворот: у Т-окна без спайки —
+  /// сумма периметров двух частей, со спайкой — внешний контур.
+  double get edgePerimeterMm =>
+      layers.edgeLengthsBySide.values.fold(0.0, (sum, value) => sum + value);
+
+  /// Подпись Т-окна для панели, чертежа и документов.
+  String get tShapeSummary {
+    final t = tLayout;
+    if (t == null) return '—';
+    final side = params.tSide.label.toLowerCase();
+    final weld = t.welded
+        ? 'спайка по общей стороне ${formatMm(t.sharedLength)} мм'
+        : 'без спайки — два отдельных окна';
+    return 'Т-образное: основное '
+        '${formatMm(params.bottomWidth)} × ${formatMm(params.leftHeight)} мм + '
+        'приставка ${formatMm(params.tWidth)} × ${formatMm(params.tHeight)} мм '
+        '$side, смещение ${formatMm(params.tOffset)} мм; $weld';
+  }
 
   /// Площадь ПОЛОТНА изделия (с напайкой/подворотом, без припуска), м².
   ///
@@ -1001,9 +1598,7 @@ class WindowSpec {
   double get heightSlopeExtraMm => _heightSlopeExtra;
 
   String _slopeExtraLabel(double extra, String sides) =>
-      extra.abs() < 0.5
-          ? ''
-          : ' + ${formatMm(extra)} (наклон $sides)';
+      extra.abs() < 0.5 ? '' : ' + ${formatMm(extra)} (наклон $sides)';
 
   /// Человеческий расчёт высоты заготовки скрина для панели:
   /// «Высота: 2 000 + 140 = 2 140 мм», а при разных подворотах —
@@ -1062,11 +1657,9 @@ class WindowSpec {
   /// Усадка берётся из [WindowParams.effectiveShrinkagePercent]: у скрина её
   /// нет (0 %), у ПВХ — поле окна.
   double get filmCutWidthWithShrinkage =>
-      filmCutWidthWithAllowance *
-      (1 + params.effectiveShrinkagePercent / 100);
+      filmCutWidthWithAllowance * (1 + params.effectiveShrinkagePercent / 100);
   double get filmCutHeightWithShrinkage =>
-      filmCutHeightWithAllowance *
-      (1 + params.effectiveShrinkagePercent / 100);
+      filmCutHeightWithAllowance * (1 + params.effectiveShrinkagePercent / 100);
 
   /// Контур заготовки к раскрою: [WindowLayers.filmEdge], растянутый на
   /// припуск на раскрой.
@@ -1086,9 +1679,9 @@ class WindowSpec {
   /// меняется незначительно: 50 мм на 2080 мм ширины — это 2,4 %), а площадь
   /// уменьшается пропорционально ширине. Пропорции верхней и нижней кромок
   /// сохраняются, поэтому трапеция не превращается в прямоугольник.
-  List<Offset> get filmCutPolygon {
-    final polygon = layers.filmEdge;
-    if (polygon.length < 3) return List.of(polygon);
+  List<List<Offset>> get filmCutPolygons {
+    final polygons = layers.filmPolygons;
+    if (polygons.isEmpty) return const [];
     final bounds = layers.filmCutBounds;
     final width = bounds.width;
     final height = bounds.height;
@@ -1098,51 +1691,79 @@ class WindowSpec {
     final sy = height > 1e-9
         ? (height + params.effectiveAllowanceHeightMm) / height
         : 1.0;
-    return scalePolygonAroundCenter(
-      polygon,
-      sx.isFinite && sx > 0.05 ? sx : 1.0,
-      sy.isFinite && sy > 0.05 ? sy : 1.0,
-    );
+    final fx = sx.isFinite && sx > 0.05 ? sx : 1.0;
+    final fy = sy.isFinite && sy > 0.05 ? sy : 1.0;
+    final center = bounds.center;
+    // Контуры растягиваются вокруг ОБЩЕГО центра габарита: так у Т-окна без
+    // спайки обе части сохраняют взаимное положение, а не «разъезжаются».
+    return [
+      for (final polygon in polygons)
+        [
+          for (final point in polygon)
+            Offset(
+              center.dx + (point.dx - center.dx) * fx,
+              center.dy + (point.dy - center.dy) * fy,
+            ),
+        ],
+    ];
   }
 
-  /// Контур заготовки к раскрою с компенсацией усадки ПВХ.
+  /// Контур заготовки к раскрою (первый; у Т-окна без спайки их два —
+  /// см. [filmCutPolygons]).
+  List<Offset> get filmCutPolygon => filmCutPolygons.first;
+
+  /// Контуры заготовки к раскрою с компенсацией усадки ПВХ.
   ///
-  /// Усадка компенсируется по обеим осям, поэтому контур равномерно
-  /// растягивается в `1 + s/100` раз относительно центра габарита.
-  List<Offset> get filmCutPolygonWithShrinkage {
-    final polygon = filmCutPolygon;
+  /// Усадка компенсируется по обеим осям, поэтому контуры равномерно
+  /// растягиваются в `1 + s/100` раз относительно центра габарита.
+  List<List<Offset>> get filmCutPolygonsWithShrinkage {
     final factor = 1 + params.effectiveShrinkagePercent / 100;
-    if (polygon.length < 3 || factor == 1) return List.of(polygon);
-    return scalePolygonAroundCenter(polygon, factor, factor);
+    if (factor == 1) return filmCutPolygons;
+    final center = layers.filmCutBounds.center;
+    return [
+      for (final polygon in filmCutPolygons)
+        [
+          for (final point in polygon)
+            Offset(
+              center.dx + (point.dx - center.dx) * factor,
+              center.dy + (point.dy - center.dy) * factor,
+            ),
+        ],
+    ];
   }
+
+  /// Контур заготовки к раскрою с компенсацией усадки (первый).
+  List<Offset> get filmCutPolygonWithShrinkage =>
+      filmCutPolygonsWithShrinkage.first;
 
   /// Площадь ЗАГОТОВКИ к раскрою по ФАКТИЧЕСКОМУ контуру: припуск, без
   /// усадки, минус вырезы, м².
   ///
-  /// Считается по площади полигона [filmCutPolygon] (это `filmEdge` с
+  /// Считается по площади полигонов [filmCutPolygons] (это `filmEdge` с
   /// припуском), а не по габаритному прямоугольнику. Для трапеции или окна с
   /// разными высотами сторон фактическая площадь меньше габаритной — именно
-  /// она идёт в ведомость и смету. У скрина контур уже сужен на полосу молнии,
-  /// поэтому площадь считается от новой ширины: 2080 × 2080 = 4,3264 м² без
-  /// молнии и 2030 × 2080 = 4,2224 м² с полосой 50 мм (ровно на 50 × 2080 =
-  /// 0,104 м² меньше). Усадка здесь ещё не учтена: фактический расход и деньги
-  /// идут по [filmCutAreaWithShrinkageM2].
+  /// она идёт в ведомость и смету. У Т-окна без спайки площади двух заготовок
+  /// складываются: они не пересекаются и считаются раздельно.
   double get filmCutAreaM2 {
-    final area = polygonArea(filmCutPolygon).abs() - layers.cutoutAreaMm2;
-    return math.max(area, 0) / 1000000;
+    var area = 0.0;
+    for (final polygon in filmCutPolygons) {
+      area += polygonArea(polygon).abs();
+    }
+    return math.max(area - layers.cutoutAreaMm2, 0) / 1000000;
   }
 
   /// Площадь заготовки к раскрою по контуру С учётом усадки, м².
   ///
-  /// Контур заготовки растягивается в `1 + s/100` раз по обеим осям, поэтому
-  /// площадь растёт в `(1 + s/100)²`, а не на процент. При прямоугольной
-  /// заготовке 2020 × 2030 мм и усадке 1,5 % получаются прежние
-  /// 2050,3 × 2060,45 мм = 4,224541 м²; у трапеции площадь считается по её
-  /// контуру. Именно эта площадь идёт в расход, смету и ведомость.
+  /// Контуры заготовки растягиваются в `1 + s/100` раз по обеим осям, поэтому
+  /// площадь растёт в `(1 + s/100)²`. Для Т-окна без спайки складываются
+  /// площади двух растянутых заготовок. Именно эта площадь идёт в расход,
+  /// смету и ведомость.
   double get filmCutAreaWithShrinkageM2 {
-    final area =
-        polygonArea(filmCutPolygonWithShrinkage).abs() - layers.cutoutAreaMm2;
-    return math.max(area, 0) / 1000000;
+    var area = 0.0;
+    for (final polygon in filmCutPolygonsWithShrinkage) {
+      area += polygonArea(polygon).abs();
+    }
+    return math.max(area - layers.cutoutAreaMm2, 0) / 1000000;
   }
 
   /// Расход окантовки по ширинам рулонов.
@@ -1190,17 +1811,17 @@ class WindowSpec {
 
   String get edgeSummary => params.isScreen
       ? 'без окантовки: подворот ${params.hemBySideShortLabel} '
-          '(низ/право/верх/лево), шов ${formatMm(screenSeamMm)} мм'
+            '(низ/право/верх/лево), шов ${formatMm(screenSeamMm)} мм'
       : '${params.edgeColor.label.toLowerCase()}, ${params.edgeMaterial.label}';
 
   /// Название выбранного крепежа подвижных сторон строчными: «поворотные
   /// скобы». У скрина крепёж ставится по подвороту, у ПВХ — по окантовке.
   String get movableFastenerLabel => switch (params.fastenerType) {
-        FastenerType.eyeletsOnly => 'только люверсы',
-        FastenerType.turnBuckles => 'поворотные скобы',
-        FastenerType.frenchLocks => 'французский замок',
-        FastenerType.straps => 'силиконовые ремни',
-      };
+    FastenerType.eyeletsOnly => 'только люверсы',
+    FastenerType.turnBuckles => 'поворотные скобы',
+    FastenerType.frenchLocks => 'французский замок',
+    FastenerType.straps => 'силиконовые ремни',
+  };
 
   /// Подпись крепежа окна.
   ///
@@ -1216,8 +1837,9 @@ class WindowSpec {
           'по подвороту (скрин)';
     }
     return switch (params.windowType) {
-      WindowType.fixed => 'Саморезы по окантовке (глухое)',
-      WindowType.lifting => 'Сверху саморезы, низ и бока — $movableFastenerLabel',
+      WindowType.fixed || WindowType.tShape => 'Саморезы по окантовке (глухое)',
+      WindowType.lifting =>
+        'Сверху саморезы, низ и бока — $movableFastenerLabel',
     };
   }
 
@@ -1287,11 +1909,11 @@ class WindowSpec {
       for (final cutout in layers.cutouts)
         cutout.isCircle
             ? 'Ø${formatMm(cutout.spec.width)} мм в точке '
-                '${formatMm(cutout.spec.centerXMm)}×'
-                '${formatMm(cutout.spec.centerYMm)} мм'
+                  '${formatMm(cutout.spec.centerXMm)}×'
+                  '${formatMm(cutout.spec.centerYMm)} мм'
             : '${formatMm(cutout.spec.width)}×${formatMm(cutout.spec.height)} мм '
-                'в точке ${formatMm(cutout.spec.centerXMm)}×'
-                '${formatMm(cutout.spec.centerYMm)} мм',
+                  'в точке ${formatMm(cutout.spec.centerXMm)}×'
+                  '${formatMm(cutout.spec.centerYMm)} мм',
     ];
     return '${params.cutouts.length} шт: ${parts.join('; ')}; '
         '${params.isScreen ? 'подворот по контуру' : 'окантовка по контуру'} '
@@ -1300,18 +1922,32 @@ class WindowSpec {
 
   /// Спайка с соседними окнами.
   String get weldSummary {
-    if (params.weldedSides.isEmpty) return '—';
-    final sides = params.weldedSides
-        .map((side) => switch (side) {
+    final parts = <String>[];
+    if (params.isTShape && params.tWelded) {
+      parts.add(
+        'общая сторона приставки и основного полотна ('
+        '${formatMm(tSharedLength)} мм) — полотна свариваются внахлёст '
+        '${formatMm(windowWeldWidth)} мм, окантовка по ней не ставится',
+      );
+    }
+    if (params.weldedSides.isNotEmpty) {
+      final sides = params.weldedSides
+          .map(
+            (side) => switch (side) {
               EdgeSide.left => 'левая',
               EdgeSide.right => 'правая',
               EdgeSide.bottom => 'нижняя',
               EdgeSide.top => 'верхняя',
-            })
-        .join(', ');
-    return '$sides сторона — полотна свариваются внахлёст '
-        '${formatMm(windowWeldWidth)} мм, окантовка не ставится '
-        '(всего ${formatMm(layers.weldLengthMm)} мм)';
+            },
+          )
+          .join(', ');
+      parts.add(
+        '$sides сторона — спайка с соседним окном внахлёст '
+        '${formatMm(windowWeldWidth)} мм, окантовка не ставится',
+      );
+    }
+    if (parts.isEmpty) return '—';
+    return '${parts.join('; ')} (всего ${formatMm(layers.weldLengthMm)} мм)';
   }
 
   String get zipperSummary {
@@ -1325,7 +1961,7 @@ class WindowSpec {
     final around = gaps == null
         ? ''
         : ', слева ${formatMm(gaps.left)} / справа ${formatMm(gaps.right)} мм '
-            'до $edge';
+              'до $edge';
     return 'вертикальная, $position$around';
   }
 
@@ -1375,8 +2011,8 @@ class WindowSpec {
             '${formatMm(params.hemAxisLeftRightIncrease)} мм '
             '(при (40, 60) это 70 мм, при (120, 120) — 140 мм)'
             '${widthSlopeExtraMm.abs() >= 0.5 || heightSlopeExtraMm.abs() >= 0.5 ? '; у трапеции/окна с разными высотами наклон сторон добавляет к габариту по ширине '
-                '${formatSignedMm(widthSlopeExtraMm)}, по высоте '
-                '${formatSignedMm(heightSlopeExtraMm)} мм' : ''}',
+                      '${formatSignedMm(widthSlopeExtraMm)}, по высоте '
+                      '${formatSignedMm(heightSlopeExtraMm)} мм' : ''}',
         'Заготовка скрина: ${formatMm(filmCutWidthWithAllowance)} × '
             '${formatMm(filmCutHeightWithAllowance)} мм '
             '(${formatMm(filmCutWidth)} × ${formatMm(filmCutHeight)} мм '
@@ -1384,27 +2020,39 @@ class WindowSpec {
         'Расход скрина — площадь заготовки по фактическому контуру '
             '${formatMeters(filmCutAreaWithShrinkageM2)} м²'
             '${zipperBandTotalMm > 0 ? ' (ширина уже без полосы молнии '
-                '${formatMm(zipperBandTotalMm)} мм)' : ''}',
+                      '${formatMm(zipperBandTotalMm)} мм)' : ''}',
       ] else ...[
         'Окантовка складывается пополам; запайка плёнки под окантовку '
             '${formatMm(params.weldOverlapMm)} мм по всему периметру',
         'Окантовка по сторонам — ${edgeBySideSummary.lowercaseFirst}',
         'Расход окантовки: ${edgeConsumptionLabels.join(', ')}',
       ],
+      if (params.isTShape) tShapeSummary,
+      if (params.isTShape && params.tWelded)
+        'Спайка по общей стороне: ${formatMm(tSharedLength)} мм, шов '
+            '${formatMm(windowWeldWidth)} мм внахлёст; окантовка идёт только '
+            'по внешнему периметру (${formatMm(edgePerimeterMm)} мм), на '
+            'общей стороне её нет',
+      if (params.isTShape && !params.tWelded)
+        'Приставка не спаяна с основным полотном: это два отдельных окна, '
+            'окантовка считается по периметру каждой части '
+            '(${formatMm(edgePerimeterMm)} мм)',
       'Полотно ${params.isScreen ? 'скрина' : 'ПВХ 700 мкм'} в раскрое: '
           'заготовка ${formatMm(filmCutWidthWithAllowance)} × '
           '${formatMm(filmCutHeightWithAllowance)} мм'
-          '${params.isScreen ? '' : params.hasShrinkage ? '; с усадкой '
-              '${formatPercent(params.effectiveShrinkagePercent)} — '
-              '${formatMm(filmCutWidthWithShrinkage)} × '
-              '${formatMm(filmCutHeightWithShrinkage)} мм'
+          '${params.isScreen
+              ? ''
+              : params.hasShrinkage
+              ? '; с усадкой '
+                    '${formatPercent(params.effectiveShrinkagePercent)} — '
+                    '${formatMm(filmCutWidthWithShrinkage)} × '
+                    '${formatMm(filmCutHeightWithShrinkage)} мм'
               : '; усадка не учитывается'}',
       if (params.hasAllowance)
         'Припуск на раскрой: ширина ${params.allowanceWidthLabel} мм, '
             'высота ${params.allowanceHeightLabel} мм'
             '${params.hasAutoHeightAllowance ? ' (в том числе авто '
-                '${formatMm(params.autoHeightAllowanceMm)} мм к высоте для ПВХ)'
-                : ''} — '
+                      '${formatMm(params.autoHeightAllowanceMm)} мм к высоте для ПВХ)' : ''} — '
             '${params.isScreen ? 'скрин кроится' : 'плёнка кроится'} '
             '${formatMm(filmCutWidthWithAllowance)} × '
             '${formatMm(filmCutHeightWithAllowance)} мм',
@@ -1413,9 +2061,9 @@ class WindowSpec {
           'сторонам, от угла ${formatMm(params.eyeletCornerOffset)} мм, '
           'всего $eyeletCount шт'
           '${params.roundEyeletsEnabled ? '' : '; круглые люверсы в углах '
-              'отключены — угловых точек нет'}'
+                    'отключены — угловых точек нет'}'
           '${params.hasEyeletlessSides ? '; без люверсов: '
-              '${layers.eyeletlessSidesLabel} (сторона остаётся без крепежа)' : ''}',
+                    '${layers.eyeletlessSidesLabel} (сторона остаётся без крепежа)' : ''}',
       'Крепёж: ${fastenerSummary.toLowerCase()}',
       if (params.isLifting && !params.isScreen)
         'Подъёмные ремни: $strapCount шт, '
@@ -1428,32 +2076,31 @@ class WindowSpec {
           params.zippers.length == 1)
         params.isScreen
             ? 'Полоса молнии из скрина ${formatMm(params.zipperBandWidth)} мм; '
-                'от полосы до кромки подворота: слева '
-                '${formatMm(layers.zipperGaps!.left)} мм, справа '
-                '${formatMm(layers.zipperGaps!.right)} мм (не меньше '
-                '${formatMm(minScreenZipperHemMm)} мм)'
+                  'от полосы до кромки подворота: слева '
+                  '${formatMm(layers.zipperGaps!.left)} мм, справа '
+                  '${formatMm(layers.zipperGaps!.right)} мм (не меньше '
+                  '${formatMm(minScreenZipperHemMm)} мм)'
             : 'Спайка молнии ${formatMm(params.zipperBandWidth)} мм; от спайки '
-                'до кромок плёнки: слева ${formatMm(layers.zipperGaps!.left)} мм, '
-                'справа ${formatMm(layers.zipperGaps!.right)} мм',
+                  'до кромок плёнки: слева ${formatMm(layers.zipperGaps!.left)} мм, '
+                  'справа ${formatMm(layers.zipperGaps!.right)} мм',
       if (zipperWidthReductionLabel != null)
         params.isScreen
             ? 'Ширина кроя скрина уменьшена на полосу молнии '
-                '${formatMm(zipperBandTotalMm)} мм: '
-                '${formatMm(filmCutWidthBeforeZipper)} → '
-                '${formatMm(filmCutWidth)} мм до припуска (площадь полосы '
-                '${formatMeters(screenZipperBandAreaM2)} м² отдельно не '
-                'считается)'
+                  '${formatMm(zipperBandTotalMm)} мм: '
+                  '${formatMm(filmCutWidthBeforeZipper)} → '
+                  '${formatMm(filmCutWidth)} мм до припуска (площадь полосы '
+                  '${formatMeters(screenZipperBandAreaM2)} м² отдельно не '
+                  'считается)'
             : 'Ширина кроя плёнки уменьшена на полосу (спайку) молнии '
-                '${formatMm(zipperBandTotalMm)} мм: '
-                '${formatMm(filmCutWidthBeforeZipper)} → '
-                '${formatMm(filmCutWidth)} мм до припуска; полоса тента '
-                'идёт в расход окантовки',
+                  '${formatMm(zipperBandTotalMm)} мм: '
+                  '${formatMm(filmCutWidthBeforeZipper)} → '
+                  '${formatMm(filmCutWidth)} мм до припуска; полоса тента '
+                  'идёт в расход окантовки',
       if (params.cutouts.isNotEmpty) 'Вырезы: $cutoutsSummary',
       if (params.weldedSides.isNotEmpty) 'Спайка окон: $weldSummary',
       if (params.drainHoles && !params.isScreen)
         'Дренаж: ${params.drainCount.round()} отв. Ø6 мм в нижней окантовке',
-      if (params.pocket || params.pocketTop)
-        _pocketNote(),
+      if (params.pocket || params.pocketTop) _pocketNote(),
       'Полотно: ${params.material.thickness}; доступные рулоны '
           '${params.material.rollWidthsLabel} см',
       if (params.isScreen)
@@ -1499,10 +2146,10 @@ enum ParamIssueSeverity {
   error;
 
   String get label => switch (this) {
-        ParamIssueSeverity.info => 'Подсказка',
-        ParamIssueSeverity.warning => 'Предупреждение',
-        ParamIssueSeverity.error => 'Ошибка',
-      };
+    ParamIssueSeverity.info => 'Подсказка',
+    ParamIssueSeverity.warning => 'Предупреждение',
+    ParamIssueSeverity.error => 'Ошибка',
+  };
 }
 
 /// Замечание к введённым параметрам.
@@ -1513,7 +2160,8 @@ class ParamIssue {
     bool isError = true,
     ParamIssueSeverity? severity,
   }) : severity =
-            severity ?? (isError ? ParamIssueSeverity.error : ParamIssueSeverity.info);
+           severity ??
+           (isError ? ParamIssueSeverity.error : ParamIssueSeverity.info);
 
   final ParamField field;
   final String message;
@@ -1538,55 +2186,67 @@ class ParamIssue {
 void _checkEyeletStep(WindowParams params, List<ParamIssue> issues) {
   final step = params.eyeletStep;
   if (!step.isFinite) {
-    issues.add(const ParamIssue(
-      ParamField.eyeletStep,
-      'Интервал люверсов: укажите число в миллиметрах',
-    ));
+    issues.add(
+      const ParamIssue(
+        ParamField.eyeletStep,
+        'Интервал люверсов: укажите число в миллиметрах',
+      ),
+    );
     return;
   }
   if (step < minEyeletStepMm) {
-    issues.add(ParamIssue(
-      ParamField.eyeletStep,
-      'Интервал люверсов: ${formatMm(step)} мм — меньше минимума '
-      '${formatMm(minEyeletStepMm)} мм',
-    ));
+    issues.add(
+      ParamIssue(
+        ParamField.eyeletStep,
+        'Интервал люверсов: ${formatMm(step)} мм — меньше минимума '
+        '${formatMm(minEyeletStepMm)} мм',
+      ),
+    );
     return;
   }
   if (step > maxEyeletStepMm) {
-    issues.add(ParamIssue(
-      ParamField.eyeletStep,
-      'Интервал люверсов: ${formatMm(step)} мм — больше максимума '
-      '${formatMm(maxEyeletStepMm)} мм',
-    ));
+    issues.add(
+      ParamIssue(
+        ParamField.eyeletStep,
+        'Интервал люверсов: ${formatMm(step)} мм — больше максимума '
+        '${formatMm(maxEyeletStepMm)} мм',
+      ),
+    );
     return;
   }
   if (step > looseEyeletStepMm) {
-    issues.add(ParamIssue(
-      ParamField.eyeletStep,
-      'Интервал люверсов: ${formatMm(step)} мм — полотно будет парусить '
-      'между креплениями',
-      severity: ParamIssueSeverity.warning,
-    ));
+    issues.add(
+      ParamIssue(
+        ParamField.eyeletStep,
+        'Интервал люверсов: ${formatMm(step)} мм — полотно будет парусить '
+        'между креплениями',
+        severity: ParamIssueSeverity.warning,
+      ),
+    );
     return;
   }
   if (step < denseEyeletStepMm) {
-    issues.add(ParamIssue(
-      ParamField.eyeletStep,
-      'Интервал люверсов: ${formatMm(step)} мм — перерасход люверсов и узкая '
-      'перемычка',
-      severity: ParamIssueSeverity.warning,
-    ));
+    issues.add(
+      ParamIssue(
+        ParamField.eyeletStep,
+        'Интервал люверсов: ${formatMm(step)} мм — перерасход люверсов и узкая '
+        'перемычка',
+        severity: ParamIssueSeverity.warning,
+      ),
+    );
     return;
   }
   // Рекомендуемый диапазон: вне него — только подсказка, ввод не запрещён.
   if (step < recommendedEyeletStepMinMm || step > recommendedEyeletStepMaxMm) {
-    issues.add(ParamIssue(
-      ParamField.eyeletStep,
-      'Интервал люверсов: ${formatMm(step)} мм — вне рекомендуемых '
-      '${formatMm(recommendedEyeletStepMinMm)}–'
-      '${formatMm(recommendedEyeletStepMaxMm)} мм, но так тоже делают',
-      severity: ParamIssueSeverity.info,
-    ));
+    issues.add(
+      ParamIssue(
+        ParamField.eyeletStep,
+        'Интервал люверсов: ${formatMm(step)} мм — вне рекомендуемых '
+        '${formatMm(recommendedEyeletStepMinMm)}–'
+        '${formatMm(recommendedEyeletStepMaxMm)} мм, но так тоже делают',
+        severity: ParamIssueSeverity.info,
+      ),
+    );
   }
 }
 
@@ -1597,13 +2257,17 @@ List<ParamIssue> validateParams(WindowParams params) {
 
   void checkPositive(ParamField field, double value, {double max = 20000}) {
     if (!value.isFinite || value <= 0) {
-      issues.add(ParamIssue(field, '${field.label}: укажите значение больше нуля'));
+      issues.add(
+        ParamIssue(field, '${field.label}: укажите значение больше нуля'),
+      );
     } else if (value > max) {
-      issues.add(ParamIssue(
-        field,
-        '${field.label}: ${formatMm(value)} — больше ${formatMm(max)}, проверьте замер',
-        isError: false,
-      ));
+      issues.add(
+        ParamIssue(
+          field,
+          '${field.label}: ${formatMm(value)} — больше ${formatMm(max)}, проверьте замер',
+          isError: false,
+        ),
+      );
     }
   }
 
@@ -1616,11 +2280,13 @@ List<ParamIssue> validateParams(WindowParams params) {
   ) {
     if (!value.isFinite) return;
     if (value < min || value > max) {
-      issues.add(ParamIssue(
-        field,
-        '${field.label}: обычно $hint, у вас ${formatMm(value)}',
-        isError: false,
-      ));
+      issues.add(
+        ParamIssue(
+          field,
+          '${field.label}: обычно $hint, у вас ${formatMm(value)}',
+          isError: false,
+        ),
+      );
     }
   }
 
@@ -1628,6 +2294,76 @@ List<ParamIssue> validateParams(WindowParams params) {
   checkPositive(ParamField.topWidth, params.topWidth);
   checkPositive(ParamField.leftHeight, params.leftHeight);
   checkPositive(ParamField.rightHeight, params.rightHeight);
+
+  // --- Т-образное окно -----------------------------------------------------
+  if (params.isTShape) {
+    checkPositive(ParamField.tWidth, params.tWidth);
+    checkPositive(ParamField.tHeight, params.tHeight);
+    if (!params.tOffset.isFinite || params.tOffset < 0) {
+      issues.add(
+        const ParamIssue(
+          ParamField.tOffset,
+          'Смещение приставки: укажите 0 или больше — приставка не может '
+          'выступать за начало общей стороны',
+          isError: false,
+        ),
+      );
+    }
+    // Основное полотно Т-окна — прямоугольник: контур строится по низу и
+    // левой высоте. Если верх/право отличаются, честно предупреждаем, что
+    // в чертеже используется прямоугольник, а не трапеция.
+    if ((params.topWidth - params.bottomWidth).abs() > 0.5 ||
+        (params.rightHeight - params.leftHeight).abs() > 0.5) {
+      issues.add(
+        const ParamIssue(
+          ParamField.topWidth,
+          'Т-образное окно: основное полотно считается прямоугольником по низу '
+          'и левой высоте. Выровняйте ширины верха/низа и высоты сторон',
+          isError: false,
+        ),
+      );
+    }
+    final along =
+        (params.tSide == TShapeSide.left || params.tSide == TShapeSide.right)
+        ? params.leftHeight
+        : params.bottomWidth;
+    final annexAlong =
+        (params.tSide == TShapeSide.left || params.tSide == TShapeSide.right)
+        ? params.tHeight
+        : params.tWidth;
+    if (annexAlong.isFinite && along.isFinite && annexAlong > along + 0.5) {
+      issues.add(
+        ParamIssue(
+          ParamField.tHeight,
+          'Приставка длиннее общей стороны на '
+          '${formatMm(annexAlong - along)} мм — в чертеже она подрезана по '
+          'стороне ${formatMm(along)} мм',
+          isError: false,
+        ),
+      );
+    }
+    if (!params.tWelded) {
+      issues.add(
+        const ParamIssue(
+          ParamField.tWidth,
+          'Спайка по общей стороне выключена: это два отдельных окна, '
+          'окантовка и площадь считаются по каждой части раздельно',
+          isError: false,
+        ),
+      );
+    }
+    if ((params.pocket || params.pocketTop) &&
+        (!params.tWelded || params.tSide == TShapeSide.bottom)) {
+      issues.add(
+        const ParamIssue(
+          ParamField.pocketWidth,
+          'Фартук в Т-окне не поддерживается без спайки и при приставке снизу: '
+          'полоса фартука разрывается на общей стороне',
+          isError: false,
+        ),
+      );
+    }
+  }
 
   // Интервал люверсов задаёт пользователь: 50…2000 мм — рамки ввода.
   // Внутри них значение принимается всегда (это не «шаг 250–400» из старой
@@ -1661,60 +2397,76 @@ List<ParamIssue> validateParams(WindowParams params) {
   // но изделие получится меньше замера, поэтому предупреждаем.
   void checkAllowance(ParamField field, double value, String axis) {
     if (!value.isFinite) {
-      issues.add(ParamIssue(
-        field,
-        'Припуск на раскрой, $axis: укажите число в миллиметрах',
-        isError: false,
-      ));
+      issues.add(
+        ParamIssue(
+          field,
+          'Припуск на раскрой, $axis: укажите число в миллиметрах',
+          isError: false,
+        ),
+      );
       return;
     }
     if (value < 0) {
-      issues.add(ParamIssue(
-        field,
-        'Припуск на раскрой, $axis: ${formatMm(value)} мм — отрицательный, '
-        'изделие будет меньше замера',
-        isError: false,
-      ));
+      issues.add(
+        ParamIssue(
+          field,
+          'Припуск на раскрой, $axis: ${formatMm(value)} мм — отрицательный, '
+          'изделие будет меньше замера',
+          isError: false,
+        ),
+      );
       return;
     }
     if (value > maxAllowanceMm) {
-      issues.add(ParamIssue(
-        field,
-        'Припуск на раскрой, $axis: ${formatMm(value)} мм — больше '
-        '${formatMm(maxAllowanceMm)} мм, проверьте значение',
-        isError: false,
-      ));
+      issues.add(
+        ParamIssue(
+          field,
+          'Припуск на раскрой, $axis: ${formatMm(value)} мм — больше '
+          '${formatMm(maxAllowanceMm)} мм, проверьте значение',
+          isError: false,
+        ),
+      );
     }
   }
 
   checkAllowance(ParamField.allowanceWidth, params.allowanceWidthMm, 'ширина');
-  checkAllowance(ParamField.allowanceHeight, params.allowanceHeightMm, 'высота');
+  checkAllowance(
+    ParamField.allowanceHeight,
+    params.allowanceHeightMm,
+    'высота',
+  );
 
   if (params.topWidth.isFinite &&
       params.bottomWidth.isFinite &&
       params.topWidth > params.bottomWidth) {
-    issues.add(const ParamIssue(
-      ParamField.topWidth,
-      'Верх шире низа — проверьте замеры',
-      isError: false,
-    ));
+    issues.add(
+      const ParamIssue(
+        ParamField.topWidth,
+        'Верх шире низа — проверьте замеры',
+        isError: false,
+      ),
+    );
   }
 
   final geometry = WindowGeometry.of(params);
   if (params.topAlign == TopAlign.custom) {
     if (geometry.rightOverhang > 1) {
-      issues.add(ParamIssue(
-        ParamField.topOffset,
-        'Верх выступает вправо на ${formatMm(geometry.rightOverhang)} мм',
-        isError: false,
-      ));
+      issues.add(
+        ParamIssue(
+          ParamField.topOffset,
+          'Верх выступает вправо на ${formatMm(geometry.rightOverhang)} мм',
+          isError: false,
+        ),
+      );
     }
     if (geometry.leftOverhang > 1) {
-      issues.add(ParamIssue(
-        ParamField.topOffset,
-        'Верх выступает влево на ${formatMm(geometry.leftOverhang)} мм',
-        isError: false,
-      ));
+      issues.add(
+        ParamIssue(
+          ParamField.topOffset,
+          'Верх выступает влево на ${formatMm(geometry.leftOverhang)} мм',
+          isError: false,
+        ),
+      );
     }
   }
 
@@ -1725,12 +2477,14 @@ List<ParamIssue> validateParams(WindowParams params) {
   if (!params.weldOverlapMm.isFinite ||
       params.weldOverlapMm < minWeldOverlapMm ||
       params.weldOverlapMm > maxWeldOverlapMm) {
-    issues.add(ParamIssue(
-      ParamField.weldOverlap,
-      'Запайка под окантовку: ${formatMm(params.weldOverlapMm)} мм — вне '
-      'диапазона ${formatMm(minWeldOverlapMm)}–${formatMm(maxWeldOverlapMm)} мм',
-      isError: !params.weldOverlapMm.isFinite,
-    ));
+    issues.add(
+      ParamIssue(
+        ParamField.weldOverlap,
+        'Запайка под окантовку: ${formatMm(params.weldOverlapMm)} мм — вне '
+        'диапазона ${formatMm(minWeldOverlapMm)}–${formatMm(maxWeldOverlapMm)} мм',
+        isError: !params.weldOverlapMm.isFinite,
+      ),
+    );
   } else if (!params.isScreen) {
     checkRange(
       ParamField.weldOverlap,
@@ -1751,19 +2505,20 @@ List<ParamIssue> validateParams(WindowParams params) {
       final field = hemFieldForSide(side);
       final name = side.label.toLowerCase();
       if (!hem.isFinite || hem <= 0) {
-        issues.add(ParamIssue(
-          field,
-          'Подворот, $name: укажите значение больше нуля',
-        ));
+        issues.add(
+          ParamIssue(field, 'Подворот, $name: укажите значение больше нуля'),
+        );
         continue;
       }
       if (hem < minScreenHemMm || hem > maxScreenHemMm) {
-        issues.add(ParamIssue(
-          field,
-          'Подворот, $name: ${formatMm(hem)} мм — вне диапазона '
-          '${formatMm(minScreenHemMm)}–${formatMm(maxScreenHemMm)} мм',
-          isError: false,
-        ));
+        issues.add(
+          ParamIssue(
+            field,
+            'Подворот, $name: ${formatMm(hem)} мм — вне диапазона '
+            '${formatMm(minScreenHemMm)}–${formatMm(maxScreenHemMm)} мм',
+            isError: false,
+          ),
+        );
         continue;
       }
       checkRange(field, hem, 30, 80, '40–60 мм');
@@ -1773,21 +2528,24 @@ List<ParamIssue> validateParams(WindowParams params) {
   if (params.isScreen) {
     // У скрина нет окантовки: проверять её ширины и запайку нечего.
     if (params.drainHoles) {
-      issues.add(const ParamIssue(
-        ParamField.drainCount,
-        'Дренаж делается в нижней окантовке — у скрина её нет',
-        isError: false,
-      ));
+      issues.add(
+        const ParamIssue(
+          ParamField.drainCount,
+          'Дренаж делается в нижней окантовке — у скрина её нет',
+          isError: false,
+        ),
+      );
     }
   } else {
-    final maxFinished =
-        layers.finishedWidths.reduce((a, b) => a > b ? a : b);
+    final maxFinished = layers.finishedWidths.reduce((a, b) => a > b ? a : b);
     final minSpan = math.min(geometry.spanX, geometry.maxY);
     if (maxFinished * 2 + params.weldOverlapMm * 2 >= minSpan) {
-      issues.add(const ParamIssue(
-        ParamField.bottomWidth,
-        'Окантовка со швом не оставляет места полотну — выберите рулон уже',
-      ));
+      issues.add(
+        const ParamIssue(
+          ParamField.bottomWidth,
+          'Окантовка со швом не оставляет места полотну — выберите рулон уже',
+        ),
+      );
     }
 
     // Окантовка: ширина рулона вводится вручную на каждую сторону. Разумный
@@ -1799,12 +2557,14 @@ List<ParamIssue> validateParams(WindowParams params) {
       final raw = params.rollForSide(side);
       final name = side.label.toLowerCase();
       if (!raw.isFinite || raw < minEdgeRollWidth || raw > maxEdgeRollWidth) {
-        issues.add(ParamIssue(
-          ParamField.bottomWidth,
-          'Окантовка, $name: ${formatMm(raw)} мм — вне диапазона '
-          '${formatMm(minEdgeRollWidth)}–${formatMm(maxEdgeRollWidth)} мм',
-          isError: false,
-        ));
+        issues.add(
+          ParamIssue(
+            ParamField.bottomWidth,
+            'Окантовка, $name: ${formatMm(raw)} мм — вне диапазона '
+            '${formatMm(minEdgeRollWidth)}–${formatMm(maxEdgeRollWidth)} мм',
+            isError: false,
+          ),
+        );
         continue;
       }
       final finished = WindowParams.finishedEdgeWidth(raw);
@@ -1812,13 +2572,15 @@ List<ParamIssue> validateParams(WindowParams params) {
       // запас на кромку, поэтому минимум — запайка + 15 мм готовой.
       final minFinishedForWeld = params.weldOverlapMm + 15;
       if (finished < minFinishedForWeld) {
-        issues.add(ParamIssue(
-          ParamField.bottomWidth,
-          'Окантовка, $name: готовая полоса ${formatMm(finished)} мм — уже '
-          '${formatMm(minFinishedForWeld)} мм, запайке '
-          '${formatMm(params.weldOverlapMm)} мм не хватает ленты',
-          isError: false,
-        ));
+        issues.add(
+          ParamIssue(
+            ParamField.bottomWidth,
+            'Окантовка, $name: готовая полоса ${formatMm(finished)} мм — уже '
+            '${formatMm(minFinishedForWeld)} мм, запайке '
+            '${formatMm(params.weldOverlapMm)} мм не хватает ленты',
+            isError: false,
+          ),
+        );
       }
     }
   }
@@ -1832,27 +2594,31 @@ List<ParamIssue> validateParams(WindowParams params) {
   for (var i = 0; i < params.zippers.length; i++) {
     final spec = params.zippers[i];
     if (spec.bandWidth < 40 || spec.bandWidth > 120) {
-      issues.add(ParamIssue(
-        ParamField.bottomWidth,
-        params.isScreen
-            ? 'Ширина полосы молнии — 40–120 мм (обычно 50 мм)'
-            : 'Ширина спайки молнии — 40–120 мм (обычно 50 мм)',
-        isError: false,
-      ));
+      issues.add(
+        ParamIssue(
+          ParamField.bottomWidth,
+          params.isScreen
+              ? 'Ширина полосы молнии — 40–120 мм (обычно 50 мм)'
+              : 'Ширина спайки молнии — 40–120 мм (обычно 50 мм)',
+          isError: false,
+        ),
+      );
     }
     if (!spec.centered) {
       final bounds = layers.filmVisibleBounds;
       final half = math.max(spec.bandWidth, 20) / 2;
       final limit = bounds.width;
       if (spec.offsetMm < half || spec.offsetMm > limit - half) {
-        issues.add(ParamIssue(
-          ParamField.bottomWidth,
-          params.isScreen
-              ? 'Молния №${i + 1} выходит за пределы заготовки '
-                  '(ширина по кромке подворота ${formatMm(limit)} мм)'
-              : 'Молния №${i + 1} выходит за пределы плёнки '
-                  '(доступно ${formatMm(limit)} мм)',
-        ));
+        issues.add(
+          ParamIssue(
+            ParamField.bottomWidth,
+            params.isScreen
+                ? 'Молния №${i + 1} выходит за пределы заготовки '
+                      '(ширина по кромке подворота ${formatMm(limit)} мм)'
+                : 'Молния №${i + 1} выходит за пределы плёнки '
+                      '(доступно ${formatMm(limit)} мм)',
+          ),
+        );
       }
     }
     // Скрин: полоса молнии не подходит к кромке подворота ближе 100 мм —
@@ -1862,13 +2628,15 @@ List<ParamIssue> validateParams(WindowParams params) {
       if (i < gaps.length) {
         final near = math.min(gaps[i].left, gaps[i].right);
         if (near < minScreenZipperHemMm) {
-          issues.add(ParamIssue(
-            ParamField.bottomWidth,
-            'Молния №${i + 1} на скрине: до кромки подворота '
-            '${formatMm(near)} мм — меньше '
-            '${formatMm(minScreenZipperHemMm)} мм',
-            isError: false,
-          ));
+          issues.add(
+            ParamIssue(
+              ParamField.bottomWidth,
+              'Молния №${i + 1} на скрине: до кромки подворота '
+              '${formatMm(near)} мм — меньше '
+              '${formatMm(minScreenZipperHemMm)} мм',
+              isError: false,
+            ),
+          );
         }
       }
     }
@@ -1883,38 +2651,46 @@ List<ParamIssue> validateParams(WindowParams params) {
         bounds.right > filmBounds.right + 0.5 ||
         bounds.top < filmBounds.top - 0.5 ||
         bounds.bottom > filmBounds.bottom + 0.5) {
-      issues.add(ParamIssue(
-        ParamField.bottomWidth,
-        'Вырез №${i + 1} выходит за пределы полотна',
-      ));
+      issues.add(
+        ParamIssue(
+          ParamField.bottomWidth,
+          'Вырез №${i + 1} выходит за пределы полотна',
+        ),
+      );
     }
     for (var j = i + 1; j < layers.cutouts.length; j++) {
       if (bounds.overlaps(layers.cutouts[j].bounds)) {
-        issues.add(ParamIssue(
-          ParamField.bottomWidth,
-          'Вырезы №${i + 1} и №${j + 1} пересекаются',
-          isError: false,
-        ));
+        issues.add(
+          ParamIssue(
+            ParamField.bottomWidth,
+            'Вырезы №${i + 1} и №${j + 1} пересекаются',
+            isError: false,
+          ),
+        );
       }
     }
     for (final band in layers.zipperBands) {
       if (bounds.overlaps(band)) {
-        issues.add(ParamIssue(
-          ParamField.bottomWidth,
-          'Вырез №${i + 1} попадает на полосу молнии',
-          isError: false,
-        ));
+        issues.add(
+          ParamIssue(
+            ParamField.bottomWidth,
+            'Вырез №${i + 1} попадает на полосу молнии',
+            isError: false,
+          ),
+        );
       }
     }
   }
 
   final heightDiff = (params.leftHeight - params.rightHeight).abs();
   if (heightDiff.isFinite && heightDiff > 0 && heightDiff <= 500) {
-    issues.add(const ParamIssue(
-      ParamField.rightHeight,
-      'Высоты слева и справа отличаются меньше чем на 500 мм — это нормально, но проверьте, не опечатка ли',
-      isError: false,
-    ));
+    issues.add(
+      const ParamIssue(
+        ParamField.rightHeight,
+        'Высоты слева и справа отличаются меньше чем на 500 мм — это нормально, но проверьте, не опечатка ли',
+        isError: false,
+      ),
+    );
   }
 
   return issues;
@@ -1923,6 +2699,45 @@ List<ParamIssue> validateParams(WindowParams params) {
 /// Есть ли среди замечаний настоящие ошибки.
 bool hasBlockingIssues(List<ParamIssue> issues) =>
     issues.any((issue) => issue.isError);
+
+/// Сторона окна для ребра многоугольника.
+///
+/// Для четырёхугольника сохраняется прежний порядок обхода (низ, право, верх,
+/// лево), поэтому трапеции и старые чертежи считаются ровно как раньше. Для
+/// Т-контура (6–8 вершин) сторона выводится из наружной нормали ребра: какая
+/// компонента больше — та сторона и есть.
+WindowSide sideOfPolygonEdge(List<Offset> polygon, int index) {
+  final count = polygon.length;
+  if (count == 4) {
+    return switch (index % 4) {
+      0 => WindowSide.bottom,
+      1 => WindowSide.right,
+      2 => WindowSide.top,
+      _ => WindowSide.left,
+    };
+  }
+  final a = polygon[index % count];
+  final b = polygon[(index + 1) % count];
+  final direction = b - a;
+  final length = direction.distance;
+  if (length < 1e-9) return WindowSide.bottom;
+  final unit = direction / length;
+  // Обход против часовой стрелки: наружная нормаль — (dy, −dx).
+  final outward = Offset(unit.dy, -unit.dx);
+  if (outward.dx.abs() >= outward.dy.abs()) {
+    return outward.dx >= 0 ? WindowSide.right : WindowSide.left;
+  }
+  return outward.dy >= 0 ? WindowSide.top : WindowSide.bottom;
+}
+
+/// Габарит нескольких контуров (например, двух заготовок Т-окна без спайки).
+Rect boundsOfAll(List<List<Offset>> polygons) {
+  final points = <Offset>[];
+  for (final polygon in polygons) {
+    points.addAll(polygon);
+  }
+  return boundsOf(points);
+}
 
 /// Знаковая площадь многоугольника (положительная при обходе против часовой).
 double polygonArea(List<Offset> polygon) {
@@ -2018,10 +2833,9 @@ List<Offset> insetPolygonPerSide(List<Offset> polygon, List<double> distances) {
         ? 0.0
         : distances.reduce((a, b) => a > b ? a : b);
     if (!maxDistance.isFinite || maxDistance <= 0.05) return List.of(polygon);
-    return insetPolygonPerSide(
-      polygon,
-      [for (final distance in distances) distance / 2],
-    );
+    return insetPolygonPerSide(polygon, [
+      for (final distance in distances) distance / 2,
+    ]);
   }
   return result;
 }
