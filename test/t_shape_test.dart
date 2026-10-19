@@ -11,7 +11,9 @@ import 'package:soft_window_drawer/models/window_geometry.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/costs_summary.dart';
 import 'package:soft_window_drawer/services/estimate.dart';
+import 'package:soft_window_drawer/services/roll_plan.dart';
 import 'package:soft_window_drawer/services/tech_card.dart';
+import 'package:soft_window_drawer/services/tech_checks.dart';
 import 'package:soft_window_drawer/widgets/cut_sheet.dart';
 import 'package:soft_window_drawer/widgets/drawing_sheet.dart';
 
@@ -280,9 +282,14 @@ void main() {
 
       // Спайка по общей стороне — отдельная строка с длиной 0,6 м.
       final weld = estimate.lines.firstWhere(
-        (line) => line.title.toLowerCase().contains('спайк'),
+        (line) => line.title.contains('общей стороне Т-окна'),
       );
       expect(weld.quantity, closeTo(0.6, 1e-9));
+      // Спайка с соседними окнами отдельной строкой не появляется.
+      expect(
+        estimate.lines.where((line) => line.title.contains('между окнами')),
+        isEmpty,
+      );
     });
 
     test('расход и техкарта: окантовка только по внешнему периметру', () {
@@ -290,6 +297,7 @@ void main() {
       final summary = CostsSummary(OrderProject(windows: [params]));
       expect(summary.edgeByRoll, {100.0: 8600.0});
       expect(summary.weldLengthMm, 600);
+      expect(summary.tShapeSeamMm, 600);
       expect(summary.productAreaM2, closeTo(3.48, 1e-9));
       expect(summary.filmAreaM2, closeTo(3.1416, 1e-6));
 
@@ -316,6 +324,36 @@ void main() {
       expect(text, contains(formatMm(800)));
       expect(text, contains(formatMm(600)));
       expect(text, contains(formatMm(200)));
+    });
+
+    test('техпроверки и раскладка на рулоне не падают на Т-окне', () {
+      final params = tWindow();
+      // Проверки параметров производства: Т-окно не должно давать исключений
+      // и блокирующих ошибок.
+      final checks = techChecksFor(params);
+      expect(checks.where((check) => check.isBlocking), isEmpty);
+
+      final plans = buildRollPlans(OrderProject(windows: [params]));
+      expect(plans, hasLength(1));
+      final plan = plans.single;
+      expect(plan.layout.placements, hasLength(1));
+      // На рулон укладывается габарит заготовки, площадь в документах —
+      // фактическая (они не обязаны совпадать у Т-формы).
+      final placement = plan.layout.placements.single;
+      final spec = WindowSpec.of(params);
+      // Заготовку можно повернуть на 90° — габарит должен совпасть с одним
+      // из двух размеров.
+      expect(
+        {placement.width, placement.height},
+        {
+          closeTo(spec.filmCutWidthWithShrinkage, 1e-6),
+          closeTo(spec.filmCutHeightWithShrinkage, 1e-6),
+        },
+      );
+      expect(
+        WindowSpec.of(params).filmCutAreaWithShrinkageM2,
+        closeTo(3.1416, 1e-6),
+      );
     });
   });
 }
@@ -358,6 +396,40 @@ void tShapeSheetTests() {
       addTearDown(tester.view.resetDevicePixelRatio);
 
       final project = OrderProject(windows: [tWindow()]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: DrawingSheet(project: project)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Т-окно с молнией, вырезом и фартуком рисуется', (
+      WidgetTester tester,
+    ) async {
+      final params = tWindow().copyWith(
+        zippers: const [ZipperSpec(centered: true)],
+        cutouts: const [
+          Cutout(width: 300, height: 300, centerXMm: 700, centerYMm: 500),
+        ],
+        pocket: true,
+        pocketWidth: 100,
+      );
+      final project = OrderProject(windows: [params]);
+      // Все прежние элементы должны уживаться с Т-контуром и не ронять листы.
+      expect(WindowSpec.of(params).eyeletCount, greaterThan(0));
+      expect(WindowSpec.of(params).layers.zippers, hasLength(1));
+      expect(WindowSpec.of(params).layers.cutouts, hasLength(1));
+
+      tester.view.physicalSize = const Size(
+        DrawingSheet.a4Width + 40,
+        DrawingSheet.a4Height + 40,
+      );
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(body: DrawingSheet(project: project)),

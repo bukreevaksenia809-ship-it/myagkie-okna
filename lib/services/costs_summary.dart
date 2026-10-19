@@ -8,8 +8,8 @@ import 'roll_plan.dart';
 /// Используется на вкладке «Расходы» и при сохранении заказов для отчётности.
 class CostsSummary {
   CostsSummary(this.project)
-      : specs = [for (final window in project.windows) WindowSpec.of(window)],
-        rollPlans = buildRollPlans(project) {
+    : specs = [for (final window in project.windows) WindowSpec.of(window)],
+      rollPlans = buildRollPlans(project) {
     for (final spec in specs) {
       productAreaM2 += spec.productAreaM2;
       // Плёнка закупается и кроится по заготовке. Заготовка бывает двух
@@ -37,8 +37,11 @@ class CostsSummary {
         ifAbsent: () => spec.filmCutAreaWithShrinkageM2,
       );
       spec.edgeConsumption.forEach((roll, length) {
-        edgeByRoll.update(roll, (value) => value + length,
-            ifAbsent: () => length);
+        edgeByRoll.update(
+          roll,
+          (value) => value + length,
+          ifAbsent: () => length,
+        );
       });
       // Люверсы считаем по типу, который реально ставится: по сторонам —
       // выбранный пользователем тип, в углах — всегда круглый. Так расход и
@@ -59,8 +62,11 @@ class CostsSummary {
       if (fastenerType != FastenerType.eyeletsOnly) {
         final count = spec.layers.movableSideEyelets.length;
         if (count > 0) {
-          fastenerCount.update(fastenerType, (value) => value + count,
-              ifAbsent: () => count);
+          fastenerCount.update(
+            fastenerType,
+            (value) => value + count,
+            ifAbsent: () => count,
+          );
         }
       }
       // Саморезы верхнего ряда: у подъёмного окна и у скрина верх крепится
@@ -124,6 +130,11 @@ class CostsSummary {
           : 0;
       cutoutPerimeterMm += spec.layers.cutoutPerimeterMm;
       weldLengthMm += spec.layers.weldLengthMm;
+      // Отдельно ведём шов по общей стороне Т-окна: в смете это своя
+      // операция, а спайки с соседними окнами считаются отдельной строкой.
+      if (spec.params.isTShape && spec.params.tWelded) {
+        tShapeSeamMm += spec.tSharedLength;
+      }
     }
   }
 
@@ -226,6 +237,9 @@ class CostsSummary {
   /// Спайки с соседними окнами, мм.
   double weldLengthMm = 0;
 
+  /// Длина шва по общей стороне Т-окон, мм.
+  double tShapeSeamMm = 0;
+
   /// Всего дренажных отверстий, шт.
   int drainTotal = 0;
 
@@ -296,42 +310,41 @@ class CostsSummary {
     final entries = fastenerCount.entries.toList()
       ..sort((a, b) => a.key.index.compareTo(b.key.index));
     return [
-      for (final entry in entries)
-        '${entry.key.itemTitle} — ${entry.value} шт',
+      for (final entry in entries) '${entry.key.itemTitle} — ${entry.value} шт',
     ];
   }
 
   /// Заготовки сопутствующих материалов (молния, фартук, ремни).
   List<String> get extraLabels => [
-        if (cutoutCount > 0)
-          'Вырезы: $cutoutCount шт, окантовка по контуру '
-              '${formatMm(cutoutPerimeterMm)} мм',
-        if (weldLengthMm > 0)
-          'Спайка с соседними окнами: ${formatMm(weldLengthMm)} мм '
-              '(окантовка на этих сторонах не ставится)',
-        if (zipperCount - screenZipperCount > 0)
-          'Спайка молнии: тент ${formatMm(100)} мм × '
-              '${formatMm(zipperBandLengthMm - screenZipperBandLengthMm)} мм — '
-              '${zipperCount - screenZipperCount} шт; ширина кроя полотна '
-              'уменьшена на полосу (спайку) '
-              '${formatMm(pvcZipperBandWidthMm)} мм',
-        if (screenZipperCount > 0)
-          'Полоса молнии из скрина: $screenZipperCount шт, '
-              '${formatMm(screenZipperBandWidthMm)} мм в сумме — ширина кроя '
-              'уже уменьшена на эту полосу (ткань '
-              '${formatMeters(screenZipperBandAreaM2)} м² отдельно не '
-              'считается), шов ${formatMm(screenSeamMm)} мм по краям полосы '
-              '(длина ${formatMm(screenZipperBandLengthMm)} мм)',
-        if (pocketCount > 0)
-          'Фартук (низ/верх): $pocketCount шт, полоса '
-              '${formatMm(pocketLengthMm)} мм',
-        if (screenHemLengthMm > 0)
-          'Подворот скрина и шов ${formatMm(screenSeamMm)} мм: '
-              '${formatMm(screenHemLengthMm)} мм периметра и полос — расход '
-              'скрина считается по площади суженной заготовки',
-        if (drainTotal > 0) 'Дренаж Ø6 мм: $drainTotal шт',
-        if (strapCount > 0)
-          'Подъёмные ремни: ${formatMm(50)} × ${formatMm(500)} мм — '
-              '$strapCount шт',
-      ];
+    if (cutoutCount > 0)
+      'Вырезы: $cutoutCount шт, окантовка по контуру '
+          '${formatMm(cutoutPerimeterMm)} мм',
+    if (weldLengthMm > 0)
+      'Спайка с соседними окнами: ${formatMm(weldLengthMm)} мм '
+          '(окантовка на этих сторонах не ставится)',
+    if (zipperCount - screenZipperCount > 0)
+      'Спайка молнии: тент ${formatMm(100)} мм × '
+          '${formatMm(zipperBandLengthMm - screenZipperBandLengthMm)} мм — '
+          '${zipperCount - screenZipperCount} шт; ширина кроя полотна '
+          'уменьшена на полосу (спайку) '
+          '${formatMm(pvcZipperBandWidthMm)} мм',
+    if (screenZipperCount > 0)
+      'Полоса молнии из скрина: $screenZipperCount шт, '
+          '${formatMm(screenZipperBandWidthMm)} мм в сумме — ширина кроя '
+          'уже уменьшена на эту полосу (ткань '
+          '${formatMeters(screenZipperBandAreaM2)} м² отдельно не '
+          'считается), шов ${formatMm(screenSeamMm)} мм по краям полосы '
+          '(длина ${formatMm(screenZipperBandLengthMm)} мм)',
+    if (pocketCount > 0)
+      'Фартук (низ/верх): $pocketCount шт, полоса '
+          '${formatMm(pocketLengthMm)} мм',
+    if (screenHemLengthMm > 0)
+      'Подворот скрина и шов ${formatMm(screenSeamMm)} мм: '
+          '${formatMm(screenHemLengthMm)} мм периметра и полос — расход '
+          'скрина считается по площади суженной заготовки',
+    if (drainTotal > 0) 'Дренаж Ø6 мм: $drainTotal шт',
+    if (strapCount > 0)
+      'Подъёмные ремни: ${formatMm(50)} × ${formatMm(500)} мм — '
+          '$strapCount шт',
+  ];
 }
