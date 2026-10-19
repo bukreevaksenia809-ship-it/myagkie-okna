@@ -334,8 +334,9 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       tool: 'Раскроечный стол, дисковый нож, рулетка, угольник, маркер',
       control:
           'Габарит ${formatMm(spec.filmCutWidthWithAllowance)} × '
-          '${formatMm(spec.filmCutHeightWithAllowance)} мм (±5 мм), длины сторон и углы — по контуру чертежа, '
-          'кромка ровная без задиров и волн',
+          '${formatMm(spec.filmCutHeightWithAllowance)} мм (±5 мм), '
+          'длины сторон и углы — по контуру чертежа, кромка ровная без задиров '
+          'и волн',
       source:
           'WindowSpec.filmCutWidthWithAllowance / filmCutHeightWithAllowance '
           '(готовый размер + среднее подворотов по оси + '
@@ -349,7 +350,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       kind: TechOperationKind.cutting,
       title: 'Раскрой плёнки',
       description:
-          '${params.isTShape ? 'Т-образное окно: выкроить основное полотно и приставку, затем сварить по общей стороне. ' : ''}'
+          '${params.isTShape ? 'Т-образное окно: выкроить основное полотно и пристройки, затем сварить по общим сторонам. ' : ''}'
           'Отрезать полотно по раскрою: видимый размер '
           '${formatMm(visible.width)} × ${formatMm(visible.height)} мм, плюс '
           'запайка ${formatMm(params.weldOverlapMm)} мм с каждой стороны'
@@ -390,7 +391,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
               ? 'по фактическому контуру, с припуском и усадкой, без вырезов'
               : 'по фактическому контуру, с припуском, без площади вырезов',
         ),
-        if (params.isTShape && spec.filmPartBounds.length == 2) ...[
+        if (params.isTShape && spec.filmPartBounds.length >= 2) ...[
           TechMaterial(
             name: 'Основное полотно (Т-окно)',
             size:
@@ -398,23 +399,26 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
                 '${formatMm(spec.filmPartBounds[0].height)} мм',
             note: 'основная часть, припуск под окантовку по внешним сторонам',
           ),
-          TechMaterial(
-            name: 'Приставка (Т-окно)',
-            size:
-                '${formatMm(spec.filmPartBounds[1].width)} × '
-                '${formatMm(spec.filmPartBounds[1].height)} мм',
-            note:
-                '${params.tSide.label.toLowerCase()}, смещение '
-                '${formatMm(params.tOffset)} мм'
-                '${params.tWelded ? ', общая сторона — шов' : ', отдельное окно'}',
-          ),
+          for (var index = 0; index < spec.layers.tAnnexes.length; index++)
+            TechMaterial(
+              name:
+                  'Пристройка ${spec.layers.tAnnexes[index].number} (Т-окно)',
+              size:
+                  '${formatMm(spec.filmPartBounds[index + 1].width)} × '
+                  '${formatMm(spec.filmPartBounds[index + 1].height)} мм',
+              note:
+                  '${spec.layers.tAnnexes[index].side.label.toLowerCase()}, '
+                  'смещение ${formatMm(spec.layers.tAnnexes[index].offset)} мм'
+                  '${spec.layers.tAnnexes[index].welded ? ', общая сторона — шов' : ', отдельное окно'}',
+            ),
         ],
       ],
       tool: 'Раскроечный стол, дисковый нож, рулетка, угольник, маркер',
       control:
           'Габарит ${formatMm(spec.filmCutWidthWithShrinkage)} × '
-          '${formatMm(spec.filmCutHeightWithShrinkage)} мм (±5 мм), длины сторон и углы — по контуру чертежа, '
-          'кромка ровная без задиров и волн',
+          '${formatMm(spec.filmCutHeightWithShrinkage)} мм (±5 мм), '
+          'длины сторон и углы — по контуру чертежа, кромка ровная без задиров '
+          'и волн',
       source:
           'WindowSpec.filmCutWidthWithShrinkage / filmCutHeightWithShrinkage '
           '(видимый размер + запайка − полоса молнии + припуск на раскрой + '
@@ -519,21 +523,22 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
   // У Т-окна со спайкой общая сторона — отдельная операция: по ней
   // свариваются два полотна. Спайки с соседними окнами (weldedSides) идут
   // тем же видом операции, но отдельными материалами по сторонам.
-  if (params.weldedSides.isNotEmpty || (params.isTShape && params.tWelded)) {
+  if (params.weldedSides.isNotEmpty ||
+      (params.isTShape && spec.tWeldedSeamLength > 0)) {
     final bySide = layers.edgeLengthsBySide;
     final weldedMaterials = <TechMaterial>[];
-    if (params.isTShape && params.tWelded) {
+    for (final annex in spec.layers.tAnnexes.where((annex) => annex.welded)) {
       weldedMaterials.add(
         TechMaterial(
           name:
-              'Спайка по общей стороне Т-окна внахлёст '
+              'Спайка по общей стороне пристройки ${annex.number} внахлёст '
               '${formatMm(windowWeldWidth)} мм',
-          size: '${formatMm(spec.tSharedLength)} мм',
-          quantity: spec.tSharedLength,
+          size: '${formatMm(annex.sharedLength)} мм',
+          quantity: annex.sharedLength,
           note:
-              'приставка ${formatMm(params.tWidth)} × '
-              '${formatMm(params.tHeight)} мм '
-              '${params.tSide.label.toLowerCase()}',
+              'пристройка ${annex.number} ${formatMm(annex.rect.width)} × '
+              '${formatMm(annex.rect.height)} мм '
+              '${annex.side.label.toLowerCase()}',
         ),
       );
     }
@@ -554,8 +559,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     }
     add(
       kind: TechOperationKind.weldNeighbor,
-      title: params.isTShape && params.tWelded
-          ? 'Спайка полотен по общей стороне'
+      title: params.isTShape && spec.tWeldedSeamLength > 0
+          ? 'Спайка полотен по общим сторонам'
           : 'Спайка с соседним окном',
       description:
           '${spec.weldSummary}. Сварку вести с двух сторон шва, шов '
@@ -567,7 +572,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       control:
           'Шов по всей длине ${formatMm(layers.weldLengthMm)} мм, без '
           'расслоения; плоскости полотен совпадают, зазоров нет',
-      source: 'WindowParams.tWelded / weldedSides / WindowLayers.weldLengthMm',
+      source: 'WindowParams.tWelded + t2Welded / weldedSides / WindowLayers.weldLengthMm',
     );
   }
 

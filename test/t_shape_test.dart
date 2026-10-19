@@ -282,7 +282,7 @@ void main() {
 
       // Спайка по общей стороне — отдельная строка с длиной 0,6 м.
       final weld = estimate.lines.firstWhere(
-        (line) => line.title.contains('общей стороне Т-окна'),
+        (line) => line.title.contains('общим сторонам Т-окна'),
       );
       expect(weld.quantity, closeTo(0.6, 1e-9));
       // Спайка с соседними окнами отдельной строкой не появляется.
@@ -320,7 +320,7 @@ void main() {
     test('техкарта показывает обе части приставки', () {
       final card = TechCard.forWindow(tWindow());
       final text = card.operations.map((op) => op.text).join('\n');
-      expect(text, contains('пристав'));
+      expect(text, contains('Пристройка 1'));
       expect(text, contains(formatMm(800)));
       expect(text, contains(formatMm(600)));
       expect(text, contains(formatMm(200)));

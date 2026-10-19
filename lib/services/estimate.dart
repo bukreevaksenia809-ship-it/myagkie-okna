@@ -140,7 +140,7 @@ class Estimate {
                               'полосу молнии '
                               '${formatMm(summary.screenZipperBandWidthMm)} мм' : ''}'
               : '${entry.key.thickness}; заготовка по контуру'
-                    '${hasTShape ? ' (Т-окно: основное полотно + приставка)' : ''}'
+                    '${hasTShape ? ' (Т-окно: основное полотно + пристройки)' : ''}'
                     '${summary.hasShrinkage ? ' с компенсацией усадки' : ''}'
                     '${summary.hasAutoHeightAllowance ? '${summary.hasShrinkage ? ' и' : ' с'} авто-припуском '
                               '+10 мм к высоте (ПВХ)' : ''}'
@@ -368,16 +368,34 @@ class Estimate {
       );
     }
     if (prices.isEnabled(PriceItemKeys.weld)) {
-      // Шов по общей стороне Т-окна — отдельная операция: это сварка двух
-      // полотен одного изделия, а не спайка с соседним окном.
-      if (summary.tShapeSeamMm > 0) {
+      // Швы по общим сторонам Т-окна — отдельные операции: это сварка двух
+      // полотен одного изделия, а не спайка с соседним окном. У углового
+      // Т-окна пристроек две, поэтому и строк две — по каждой пристройке.
+      final seamByAnnex = <int, double>{};
+      for (final spec in summary.specs) {
+        for (final annex in spec.layers.tAnnexes.where((annex) => annex.welded)) {
+          seamByAnnex.update(
+            annex.number,
+            (value) => value + annex.sharedLength,
+            ifAbsent: () => annex.sharedLength,
+          );
+        }
+      }
+      final seamNumbers = seamByAnnex.keys.toList()..sort();
+      for (final number in seamNumbers) {
+        final seamMm = seamByAnnex[number] ?? 0;
+        if (!(seamMm > 0)) continue;
         lines.add(
           EstimateLine(
-            title: 'Спайка по общей стороне Т-окна',
-            note:
-                'два полотна свариваются внахлёст; окантовки на общей '
-                'стороне нет',
-            quantity: summary.tShapeSeamMm / 1000,
+            title: seamNumbers.length == 1
+                ? 'Спайка по общим сторонам Т-окна'
+                : 'Спайка по общей стороне пристройки $number Т-окна',
+            note: seamNumbers.length == 1
+                ? 'два полотна свариваются внахлёст; окантовки на общей '
+                      'стороне нет'
+                : 'пристройка $number: два полотна свариваются внахлёст; '
+                      'окантовки на общей стороне нет',
+            quantity: seamMm / 1000,
             unit: 'м',
             unitPrice: prices.weldPerM,
             group: EstimateGroup.work,

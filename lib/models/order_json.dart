@@ -87,6 +87,16 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'tHeight': p.tHeight,
       'tOffset': p.tOffset,
       'tWelded': p.tWelded,
+      // Включена ли первая пристройка (старые заказы читаются как включённая).
+      'tEnabled': p.tEnabled,
+      // Вторая пристройка Т-окна (угловая форма). У старых заказов её нет,
+      // поэтому поле пишется всегда, а читается с выключенным значением.
+      't2Enabled': p.t2Enabled,
+      't2Side': p.t2Side.name,
+      't2Width': p.t2Width,
+      't2Height': p.t2Height,
+      't2Offset': p.t2Offset,
+      't2Welded': p.t2Welded,
       // Ширина рулона окантовки — число миллиметров на каждую сторону.
       'rollBottom': p.rollBottom,
       'rollTop': p.rollTop,
@@ -170,6 +180,16 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     tHeight: _double(json['tHeight'], fallback.tHeight),
     tOffset: _double(json['tOffset'], fallback.tOffset),
     tWelded: _bool(json['tWelded'], fallback.tWelded),
+    // Старый заказ без поля — пристройка включена (прежнее поведение).
+    tEnabled: _bool(json['tEnabled'], true),
+    // Вторая пристройка по умолчанию выключена: старый заказ читается как
+    // ровно прежнее Т-окно с одной пристройкой.
+    t2Enabled: _bool(json['t2Enabled'], false),
+    t2Side: _enumByName(TShapeSide.values, json['t2Side'], fallback.t2Side),
+    t2Width: _double(json['t2Width'], fallback.t2Width),
+    t2Height: _double(json['t2Height'], fallback.t2Height),
+    t2Offset: _double(json['t2Offset'], fallback.t2Offset),
+    t2Welded: _bool(json['t2Welded'], fallback.t2Welded),
     rollBottom: _edgeWidthFromJson(json['rollBottom'], fallback.rollBottom),
     rollTop: _edgeWidthFromJson(json['rollTop'], fallback.rollTop),
     rollLeft: _edgeWidthFromJson(json['rollLeft'], fallback.rollLeft),

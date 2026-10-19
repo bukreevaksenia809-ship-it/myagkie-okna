@@ -827,7 +827,7 @@ class _SidePanel extends StatelessWidget {
     final anyCutout = windows.any((window) => window.cutouts.isNotEmpty);
     final anyWeld = windows.any(
       (window) =>
-          window.weldedSides.isNotEmpty || (window.isTShape && window.tWelded),
+          window.weldedSides.isNotEmpty || (window.isTShape && window.tAnyWelded),
     );
     final anyPocket = windows.any((window) => window.pocket);
     final anyDrain = windows.any((window) => window.drainHoles);
@@ -850,10 +850,11 @@ class _SidePanel extends StatelessWidget {
         (
           LegendKind.seam,
           params.isTShape
-              ? params.tWelded
-                    ? 'Т-образное: спайка по общей стороне'
-                          '${params.tOffset > 0 ? ', смещение ${formatMm(params.tOffset)} мм' : ''}'
-                    : 'Т-образное: без спайки — два отдельных окна'
+              ? params.tAnyWelded
+                    ? 'Т-образное: пристроек ${params.tAnnexes.length}, '
+                          'спайка по общим сторонам'
+                          '${params.tAnnexes.any((annex) => annex.offset > 0) ? ', со смещением' : ''}'
+                    : 'Т-образное: пристройки без спайки — отдельные окна'
               : 'Т-образные окна: см. чертежи',
         ),
       (

@@ -343,27 +343,33 @@ class WindowDrawingPainter extends CustomPainter {
     }
   }
 
-  /// Шов по общей стороне Т-окна (или пометка, что части не спаяны).
+  /// Швы по общим сторонам пристроек (или пометка, что часть не спаяна).
   void _paintTShapeSeam(Canvas canvas, TShapeLayout t) {
-    final a = layout.toPxPoint(t.sharedStart);
-    final b = layout.toPxPoint(t.sharedEnd);
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = t.welded ? 4.2 : 2.0
-      ..color = t.welded ? _special.withValues(alpha: 0.85) : _metalDark;
-    _dashedLine(canvas, a, b, paint, dash: 9, gap: 5);
-    final middle = (a + b) / 2;
-    final normal = _uprightNormal(a, b);
-    _label(
-      canvas,
-      t.welded
-          ? 'спайка ${formatMm(t.sharedLength)} мм'
-          : 'не спаяно — два окна',
-      middle + normal * 18,
-      angle: _uprightAngle(b - a),
-      small: true,
-      color: t.welded ? _special : _metalDark,
-    );
+    for (final annex in t.annexes) {
+      final a = layout.toPxPoint(annex.sharedStart);
+      final b = layout.toPxPoint(annex.sharedEnd);
+      final paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = annex.welded ? 4.2 : 2.0
+        ..color = annex.welded
+            ? _special.withValues(alpha: 0.85)
+            : _metalDark;
+      _dashedLine(canvas, a, b, paint, dash: 9, gap: 5);
+      // Подпись ставим не на середину шва, а ближе к началу: у угловой формы
+      // два шва рядом, и подписи на серединах пересекались бы.
+      final anchor = Offset.lerp(a, b, 0.3)!;
+      final normal = _uprightNormal(a, b);
+      _label(
+        canvas,
+        annex.welded
+            ? '${annex.label}: спайка ${formatMm(annex.sharedLength)} мм'
+            : '${annex.label}: не спаяно — отдельное окно',
+        anchor + normal * 16,
+        angle: _uprightAngle(b - a),
+        small: true,
+        color: annex.welded ? _special : _metalDark,
+      );
+    }
   }
 
   /// Единичная нормаль к отрезку (для подписи шва).
@@ -375,22 +381,25 @@ class WindowDrawingPainter extends CustomPainter {
     return Offset(unit.dy, -unit.dx);
   }
 
-  /// Размеры Т-окна: обе части, смещение приставки и площадь полотна.
+  /// Размеры Т-окна: обе части (основное полотно и каждая пристройка),
+  /// смещение пристроек и площадь полотна.
   void _paintTShapeDimensions(Canvas canvas) {
     final t = layers.tLayout;
     if (t == null) return;
     final main = t.mainRect;
-    final annex = t.annexRect;
     final width = main.width;
     final height = main.height;
+    final anyBottomAnnex = t.annexes.any(
+      (annex) => annex.side == TShapeSide.bottom,
+    );
 
     // Основное полотно: ширина и высота.
-    final widthY = t.side == TShapeSide.bottom ? height : 0.0;
+    final widthY = anyBottomAnnex ? height : 0.0;
     _dimension(
       canvas,
       layout.toPx(width, widthY),
       layout.toPx(0, widthY),
-      Offset(0, t.side == TShapeSide.bottom ? -34 : 34),
+      Offset(0, anyBottomAnnex ? -34 : 34),
       'Основное ${formatMm(width)}',
     );
     _dimension(
@@ -401,73 +410,78 @@ class WindowDrawingPainter extends CustomPainter {
       formatMm(height),
     );
 
-    // Приставка: ширина и высота.
-    final annexBottom = annex.top;
-    final annexTop = annex.bottom;
-    final annexLeft = annex.left;
-    final annexRight = annex.right;
-    final widthOffset = t.side == TShapeSide.top
-        ? const Offset(0, -32)
-        : const Offset(0, 32);
-    _dimension(
-      canvas,
-      layout.toPx(annexLeft, t.side == TShapeSide.top ? annexTop : annexBottom),
-      layout.toPx(
-        annexRight,
-        t.side == TShapeSide.top ? annexTop : annexBottom,
-      ),
-      widthOffset,
-      'Приставка ${formatMm(annex.width)}',
-    );
-    final heightOffset = t.side == TShapeSide.left
-        ? const Offset(-36, 0)
-        : const Offset(36, 0);
-    _dimension(
-      canvas,
-      layout.toPx(
-        t.side == TShapeSide.left ? annexLeft : annexRight,
-        annexBottom,
-      ),
-      layout.toPx(t.side == TShapeSide.left ? annexLeft : annexRight, annexTop),
-      heightOffset,
-      formatMm(annex.height),
-    );
+    // Каждая пристройка: ширина, высота и смещение вдоль общей стороны.
+    for (final annex in t.annexes) {
+      final annexBottom = annex.rect.top;
+      final annexTop = annex.rect.bottom;
+      final annexLeft = annex.rect.left;
+      final annexRight = annex.rect.right;
+      final side = annex.side;
+      // Ширину пристройки подписываем со стороны, свободной от шва, чтобы
+      // подпись не легла на подпись шва.
+      final widthLineY = switch (side) {
+        TShapeSide.top => annexTop,
+        TShapeSide.bottom => annexBottom,
+        TShapeSide.right || TShapeSide.left => annexBottom,
+      };
+      final widthOffset = switch (side) {
+        TShapeSide.bottom => const Offset(0, 32),
+        _ => const Offset(0, -32),
+      };
+      _dimension(
+        canvas,
+        layout.toPx(annexLeft, widthLineY),
+        layout.toPx(annexRight, widthLineY),
+        widthOffset,
+        '${annex.label} ${formatMm(annex.rect.width)}',
+      );
+      final heightOffset = side == TShapeSide.left
+          ? const Offset(-36, 0)
+          : const Offset(36, 0);
+      _dimension(
+        canvas,
+        layout.toPx(side == TShapeSide.left ? annexLeft : annexRight, annexBottom),
+        layout.toPx(side == TShapeSide.left ? annexLeft : annexRight, annexTop),
+        heightOffset,
+        formatMm(annex.rect.height),
+      );
 
-    // Смещение приставки вдоль общей стороны.
-    if (params.tOffset.abs() > 0.5) {
-      switch (t.side) {
-        case TShapeSide.right:
-          _dimension(
-            canvas,
-            layout.toPx(width, 0),
-            layout.toPx(width, annex.top),
-            const Offset(46, 0),
-            'Смещение ${formatMm(params.tOffset)}',
-          );
-        case TShapeSide.left:
-          _dimension(
-            canvas,
-            layout.toPx(0, 0),
-            layout.toPx(0, annex.top),
-            const Offset(-46, 0),
-            'Смещение ${formatMm(params.tOffset)}',
-          );
-        case TShapeSide.top:
-          _dimension(
-            canvas,
-            layout.toPx(0, height),
-            layout.toPx(annex.left, height),
-            const Offset(0, -48),
-            'Смещение ${formatMm(params.tOffset)}',
-          );
-        case TShapeSide.bottom:
-          _dimension(
-            canvas,
-            layout.toPx(0, 0),
-            layout.toPx(annex.left, 0),
-            const Offset(0, 48),
-            'Смещение ${formatMm(params.tOffset)}',
-          );
+      // Смещение показываем снаружи пристройки, а не поверх неё.
+      if (annex.offset.abs() > 0.5) {
+        switch (side) {
+          case TShapeSide.right:
+            _dimension(
+              canvas,
+              layout.toPx(annexRight, 0),
+              layout.toPx(annexRight, annex.rect.top),
+              const Offset(46, 0),
+              'Смещение ${formatMm(annex.offset)}',
+            );
+          case TShapeSide.left:
+            _dimension(
+              canvas,
+              layout.toPx(annexLeft, 0),
+              layout.toPx(annexLeft, annex.rect.top),
+              const Offset(-46, 0),
+              'Смещение ${formatMm(annex.offset)}',
+            );
+          case TShapeSide.top:
+            _dimension(
+              canvas,
+              layout.toPx(0, annexTop),
+              layout.toPx(annex.rect.left, annexTop),
+              const Offset(0, -48),
+              'Смещение ${formatMm(annex.offset)}',
+            );
+          case TShapeSide.bottom:
+            _dimension(
+              canvas,
+              layout.toPx(0, annexBottom),
+              layout.toPx(annex.rect.left, annexBottom),
+              const Offset(0, 48),
+              'Смещение ${formatMm(annex.offset)}',
+            );
+        }
       }
     }
 

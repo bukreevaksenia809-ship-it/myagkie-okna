@@ -94,27 +94,244 @@ Offset _rectTopRight(Rect rect) => Offset(rect.right, rect.bottom);
 /// Верхняя левая вершина прямоугольника в координатах модели.
 Offset _rectTopLeft(Rect rect) => Offset(rect.left, rect.bottom);
 
-/// Геометрия Т-образного окна: основное полотно плюс приставка.
+/// Эпсилон геометрии объединения прямоугольников, мм.
+const double _unionEps = 1e-6;
+
+/// Внешний контур объединения осевых прямоугольников.
+///
+/// Используется для Т-окна: контур — объединение основного полотна и всех
+/// включённых пристроек. Внутренние (общие) стороны прямоугольников в контур
+/// не попадают: по ним идёт шов, а не внешняя кромка. Порядок вершин — против
+/// часовой стрелки; вершины стоят на всех границах прямоугольников, поэтому
+/// контур повторяет фактическую форму (без скруглений и «склейки» углов).
+///
+/// [start] — желаемая первая вершина (обычно левый нижний угол основного
+/// полотна). Если из неё нет выходящего ребра, обход начнётся с крайней левой
+/// нижней вершины контура.
+List<Offset> unionOutlineOfRects(List<Rect> rects, {Offset? start}) {
+  final parts = [
+    for (final rect in rects)
+      if (rect.width > _unionEps && rect.height > _unionEps) rect,
+  ];
+  if (parts.isEmpty) return const [];
+
+  final xs = <double>{for (final rect in parts) ...[rect.left, rect.right]}
+      .toList()
+    ..sort();
+  final ys = <double>{for (final rect in parts) ...[rect.top, rect.bottom]}
+      .toList()
+    ..sort();
+  bool covered(double x, double y) => parts.any(
+    (rect) =>
+        x > rect.left + _unionEps &&
+        x < rect.right - _unionEps &&
+        y > rect.top + _unionEps &&
+        y < rect.bottom - _unionEps,
+  );
+
+  final nx = xs.length - 1;
+  final ny = ys.length - 1;
+  if (nx < 1 || ny < 1) return const [];
+  final inside = List.generate(nx, (_) => List<bool>.filled(ny, false));
+  for (var i = 0; i < nx; i++) {
+    for (var j = 0; j < ny; j++) {
+      inside[i][j] = covered((xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2);
+    }
+  }
+
+  // Направленные рёбра контура: внутренность всегда слева от направления.
+  final edges = <Offset, List<Offset>>{};
+  void add(Offset a, Offset b) => edges.putIfAbsent(a, () => []).add(b);
+  for (var i = 0; i < nx; i++) {
+    for (var j = 0; j < ny; j++) {
+      if (!inside[i][j]) continue;
+      if (j == 0 || !inside[i][j - 1]) {
+        add(Offset(xs[i], ys[j]), Offset(xs[i + 1], ys[j]));
+      }
+      if (j == ny - 1 || !inside[i][j + 1]) {
+        add(Offset(xs[i + 1], ys[j + 1]), Offset(xs[i], ys[j + 1]));
+      }
+      if (i == 0 || !inside[i - 1][j]) {
+        add(Offset(xs[i], ys[j + 1]), Offset(xs[i], ys[j]));
+      }
+      if (i == nx - 1 || !inside[i + 1][j]) {
+        add(Offset(xs[i + 1], ys[j]), Offset(xs[i + 1], ys[j + 1]));
+      }
+    }
+  }
+  if (edges.isEmpty) return const [];
+
+  Offset nextOf(Offset current, Offset? previous) {
+    final options = edges[current];
+    if (options == null || options.isEmpty) return current;
+    if (options.length == 1) return options.first;
+    Offset? straight;
+    Offset? left;
+    Offset? right;
+    Offset? down;
+    if (previous == null) {
+      for (final option in options) {
+        final delta = option - current;
+        if (delta.dx > _unionEps && delta.dy.abs() <= _unionEps) right = option;
+        if (delta.dy < -_unionEps && delta.dx.abs() <= _unionEps) down = option;
+      }
+      return right ?? down ?? options.first;
+    }
+    final unitX = (current - previous).dx.sign;
+    final unitY = (current - previous).dy.sign;
+    for (final option in options) {
+      final delta = option - current;
+      final x = delta.dx.sign;
+      final y = delta.dy.sign;
+      if (x == unitX && y == unitY) straight = option;
+      // Поворот влево (против часовой) — внутренность остаётся слева.
+      if (x == -unitY && y == unitX) left = option;
+      if (x == unitY && y == -unitX) right = option;
+    }
+    return straight ?? left ?? right ?? options.first;
+  }
+
+  Offset startPoint;
+  if (start != null && edges.containsKey(start) && edges[start]!.isNotEmpty) {
+    startPoint = start;
+  } else {
+    final candidates = edges.keys.toList()
+      ..sort((a, b) {
+        final byY = a.dy.compareTo(b.dy);
+        return byY != 0 ? byY : a.dx.compareTo(b.dx);
+      });
+    startPoint = candidates.first;
+  }
+
+  final outline = <Offset>[];
+  var current = startPoint;
+  Offset? previous;
+  var guard = 0;
+  do {
+    outline.add(current);
+    final next = nextOf(current, previous);
+    previous = current;
+    current = next;
+    if (++guard > 100000) break;
+  } while ((current - startPoint).distance > _unionEps);
+  if (outline.length > 1 &&
+      (outline.first - outline.last).distance <= _unionEps) {
+    outline.removeLast();
+  }
+  return _dropCollinear(outline);
+}
+
+/// Убирает из ортогонального контура вершины, лежащие на прямой.
+///
+/// Сетка объединения даёт лишние вершины на продолжениях сторон соседних
+/// прямоугольников; в контуре они не нужны. Совпадающие подряд вершины и
+/// «нулевые» углы тоже уходят.
+List<Offset> _dropCollinear(List<Offset> polygon) {
+  if (polygon.length < 3) return polygon;
+  final points = List<Offset>.of(polygon);
+  var changed = true;
+  while (changed && points.length > 3) {
+    changed = false;
+    for (var i = 0; i < points.length; i++) {
+      final previous = points[(i - 1 + points.length) % points.length];
+      final current = points[i];
+      final next = points[(i + 1) % points.length];
+      final sameX =
+          (previous.dx - current.dx).abs() <= _unionEps &&
+          (next.dx - current.dx).abs() <= _unionEps;
+      final sameY =
+          (previous.dy - current.dy).abs() <= _unionEps &&
+          (next.dy - current.dy).abs() <= _unionEps;
+      if (sameX || sameY) {
+        points.removeAt(i);
+        changed = true;
+        break;
+      }
+    }
+  }
+  return points;
+}
+
+/// Пристройка в построенной геометрии: прямоугольник, сторона и общая сторона.
+class TShapeAnnexLayout {
+  const TShapeAnnexLayout({
+    required this.number,
+    required this.side,
+    required this.rect,
+    required this.offset,
+    required this.welded,
+    required this.clamped,
+  });
+
+  /// Номер пристройки: 1 или 2.
+  final int number;
+
+  final TShapeSide side;
+
+  /// Прямоугольник пристройки в координатах модели.
+  final Rect rect;
+
+  /// Фактическое смещение вдоль общей стороны (после подрезки), мм.
+  final double offset;
+
+  /// Спайка по общей стороне.
+  final bool welded;
+
+  /// Пристройка не помещалась в общую сторону и была подрезана — об этом
+  /// предупреждает проверка параметров.
+  final bool clamped;
+
+  /// Подпись блока: «Пристройка 1».
+  String get label => 'Пристройка $number';
+
+  /// Начало общей стороны (шва).
+  Offset get sharedStart => switch (side) {
+    TShapeSide.right => Offset(rect.left, rect.top),
+    TShapeSide.left => Offset(rect.right, rect.top),
+    TShapeSide.top => Offset(rect.left, rect.top),
+    TShapeSide.bottom => Offset(rect.left, rect.bottom),
+  };
+
+  /// Конец общей стороны (шва).
+  Offset get sharedEnd => switch (side) {
+    TShapeSide.right => Offset(rect.left, rect.bottom),
+    TShapeSide.left => Offset(rect.right, rect.bottom),
+    TShapeSide.top => Offset(rect.right, rect.top),
+    TShapeSide.bottom => Offset(rect.right, rect.bottom),
+  };
+
+  double get sharedLength => (sharedEnd - sharedStart).distance;
+
+  /// Контур пристройки против часовой стрелки.
+  List<Offset> get polygon => [
+    _rectBottomLeft(rect),
+    _rectBottomRight(rect),
+    _rectTopRight(rect),
+    _rectTopLeft(rect),
+  ];
+}
+
+/// Геометрия Т-образного окна: основное полотно плюс до двух пристроек.
 ///
 /// Основное полотно для Т-окна считается прямоугольником
-/// `bottomWidth × leftHeight`; приставка — прямоугольник `tWidth × tHeight`,
-/// приваренный к стороне [side]. Смещение [annexRect] вдоль общей стороны
-/// задаётся [WindowParams.tOffset] и зажимается так, чтобы приставка не
-/// выходила за общую сторону. Размер приставки, не помещающийся в общую
-/// сторону, тоже подрезается по стороне — об этом предупреждает проверка
-/// параметров, а не молчаливая ошибка в чертеже.
+/// `bottomWidth × leftHeight`; пристройка — прямоугольник, приваренный к
+/// стороне [TShapeAnnexLayout.side]. Смещение вдоль общей стороны задаётся
+/// параметрами и зажимается так, чтобы пристройка не выходила за общую
+/// сторону: об этом предупреждает проверка параметров, а не молчаливая ошибка.
 ///
-/// [outline] — фактический внешний контур (6–8 вершин), обход против часовой
-/// стрелки. [sharedStart]–[sharedEnd] — общая сторона (шов спайки).
+/// [outline] — фактический внешний контур (объединение основного полотна и
+/// всех включённых пристроек), обход против часовой стрелки. [annexes] —
+/// построенные пристройки; [groups] — контуры для расчёта окантовки и
+/// люверсов: сваренные пристройки объединены с основным полотном, отдельные
+/// (без спайки) идут самостоятельными контурами.
 class TShapeLayout {
   const TShapeLayout._({
-    required this.side,
     required this.mainRect,
-    required this.annexRect,
+    required this.annexes,
     required this.outline,
-    required this.sharedStart,
-    required this.sharedEnd,
-    required this.welded,
+    required this.groups,
+    required this.ignoredSecondAnnex,
+    required this.ignoredOverlap,
   });
 
   factory TShapeLayout.build(WindowParams params) {
@@ -123,140 +340,220 @@ class TShapeLayout {
     // а проверка параметров предупреждает, если пользователь поменял размер.
     final width = WindowGeometry._positive(params.bottomWidth);
     final height = WindowGeometry._positive(params.leftHeight);
-    final side = params.tSide;
-    var annexWidth = WindowGeometry._positive(params.tWidth);
-    var annexHeight = WindowGeometry._positive(params.tHeight);
-    var offset = params.tOffset.isFinite ? params.tOffset : 0.0;
-
-    // Приставка вдоль общей стороны не может быть длиннее самой стороны.
-    if (side == TShapeSide.left || side == TShapeSide.right) {
-      annexHeight = math.min(annexHeight, height);
-      offset = offset.clamp(0.0, math.max(height - annexHeight, 0.0));
-    } else {
-      annexWidth = math.min(annexWidth, width);
-      offset = offset.clamp(0.0, math.max(width - annexWidth, 0.0));
-    }
-
     final main = Rect.fromLTWH(0, 0, width, height);
-    final Rect annex;
-    switch (side) {
-      case TShapeSide.right:
-        annex = Rect.fromLTWH(width, offset, annexWidth, annexHeight);
-      case TShapeSide.left:
-        annex = Rect.fromLTWH(-annexWidth, offset, annexWidth, annexHeight);
-      case TShapeSide.top:
-        annex = Rect.fromLTWH(offset, height, annexWidth, annexHeight);
-      case TShapeSide.bottom:
-        annex = Rect.fromLTWH(offset, -annexHeight, annexWidth, annexHeight);
-    }
 
-    // Контур собирается по стороне прикрепления. Порядок вершин — против
-    // часовой стрелки; совпадающие вершины (приставка вровень с углом)
-    // убираются, чтобы в многоугольнике не было нулевых сторон.
-    final raw = <Offset>[];
-    switch (side) {
-      case TShapeSide.right:
-        raw.addAll([
-          _rectBottomLeft(main),
-          _rectBottomRight(main),
-          Offset(width, annex.top),
-          _rectBottomRight(annex),
-          _rectTopRight(annex),
-          Offset(width, annex.bottom),
-          _rectTopRight(main),
-          _rectTopLeft(main),
-        ]);
-      case TShapeSide.left:
-        raw.addAll([
-          _rectBottomLeft(main),
-          _rectBottomRight(main),
-          _rectTopRight(main),
-          _rectTopLeft(main),
-          Offset(0, annex.bottom),
-          _rectTopLeft(annex),
-          _rectBottomLeft(annex),
-          Offset(0, annex.top),
-        ]);
-      case TShapeSide.top:
-        raw.addAll([
-          _rectBottomLeft(main),
-          _rectBottomRight(main),
-          _rectTopRight(main),
-          _rectBottomRight(annex),
-          _rectTopRight(annex),
-          _rectTopLeft(annex),
-          Offset(annex.left, height),
-          _rectTopLeft(main),
-        ]);
-      case TShapeSide.bottom:
-        raw.addAll([
-          _rectBottomLeft(main),
-          Offset(annex.left, 0),
-          _rectBottomLeft(annex),
-          _rectBottomRight(annex),
-          Offset(annex.right, 0),
-          _rectBottomRight(main),
-          _rectTopRight(main),
-          _rectTopLeft(main),
-        ]);
-    }
-    final outline = <Offset>[];
-    for (final point in raw) {
-      if (outline.isEmpty || (outline.last - point).distance > 1e-6) {
-        outline.add(point);
+    final annexes = <TShapeAnnexLayout>[];
+    var ignoredSecondAnnex = false;
+    var ignoredOverlap = false;
+    final specs = params.tAnnexes;
+    for (final spec in specs) {
+      // Две пристройки на одной стороне запрещены: вторая не строится, чтобы
+      // расчёт не ломался и чертёж не показывал наложение. Панель и проверка
+      // параметров объясняют причину.
+      if (spec.number == 2 && params.tAnnexSideConflict) {
+        ignoredSecondAnnex = true;
+        continue;
       }
-    }
-    if (outline.length > 1 && (outline.first - outline.last).distance <= 1e-6) {
-      outline.removeLast();
+      var annexWidth = WindowGeometry._positive(spec.width);
+      var annexHeight = WindowGeometry._positive(spec.height);
+      var offset = spec.offset.isFinite ? spec.offset : 0.0;
+      var clamped = false;
+
+      // Пристройка вдоль общей стороны не может быть длиннее самой стороны.
+      if (spec.side == TShapeSide.left || spec.side == TShapeSide.right) {
+        if (annexHeight > height) {
+          annexHeight = height;
+          clamped = true;
+        }
+        final maxOffset = math.max(height - annexHeight, 0.0);
+        if (offset < 0) {
+          offset = 0;
+          clamped = true;
+        } else if (offset > maxOffset) {
+          offset = maxOffset;
+          clamped = true;
+        }
+      } else {
+        if (annexWidth > width) {
+          annexWidth = width;
+          clamped = true;
+        }
+        final maxOffset = math.max(width - annexWidth, 0.0);
+        if (offset < 0) {
+          offset = 0;
+          clamped = true;
+        } else if (offset > maxOffset) {
+          offset = maxOffset;
+          clamped = true;
+        }
+      }
+
+      final rect = switch (spec.side) {
+        TShapeSide.right => Rect.fromLTWH(
+          width,
+          offset,
+          annexWidth,
+          annexHeight,
+        ),
+        TShapeSide.left => Rect.fromLTWH(
+          -annexWidth,
+          offset,
+          annexWidth,
+          annexHeight,
+        ),
+        TShapeSide.top => Rect.fromLTWH(
+          offset,
+          height,
+          annexWidth,
+          annexHeight,
+        ),
+        TShapeSide.bottom => Rect.fromLTWH(
+          offset,
+          -annexHeight,
+          annexWidth,
+          annexHeight,
+        ),
+      };
+      // Пересечение пристроек запрещено: наложение двух прямоугольников
+      // дало бы несуществующую деталь. Вторая пристройка в этом случае не
+      // строится, расчёт не ломается, а панель показывает предупреждение.
+      final overlaps = annexes.any(
+        (annex) =>
+            rect.intersect(annex.rect).width > 0.5 &&
+            rect.intersect(annex.rect).height > 0.5,
+      );
+      if (overlaps) {
+        ignoredOverlap = true;
+        continue;
+      }
+      annexes.add(
+        TShapeAnnexLayout(
+          number: spec.number,
+          side: spec.side,
+          rect: rect,
+          offset: offset,
+          welded: spec.welded,
+          clamped: clamped,
+        ),
+      );
     }
 
-    final (sharedStart, sharedEnd) = switch (side) {
-      TShapeSide.right => (
-        Offset(width, annex.top),
-        Offset(width, annex.bottom),
-      ),
-      TShapeSide.left => (Offset(0, annex.top), Offset(0, annex.bottom)),
-      TShapeSide.top => (
-        Offset(annex.left, height),
-        Offset(annex.right, height),
-      ),
-      TShapeSide.bottom => (Offset(annex.left, 0), Offset(annex.right, 0)),
-    };
+    // Контур — объединение основного полотна и всех пристроек. Обход
+    // начинается с левого нижнего угла основного полотна, чтобы подписи и
+    // прежние чертежи не «прыгали».
+    final outline = annexes.isEmpty
+        ? <Offset>[
+            _rectBottomLeft(main),
+            _rectBottomRight(main),
+            _rectTopRight(main),
+            _rectTopLeft(main),
+          ]
+        : unionOutlineOfRects([
+            main,
+            for (final annex in annexes) annex.rect,
+          ], start: _rectBottomLeft(main));
+
+    // Группы контуров: сваренные пристройки — часть общего контура, отдельные
+    // (без спайки) — самостоятельные окна со своим периметром.
+    final groups = <List<Offset>>[];
+    final welded = annexes.where((annex) => annex.welded).toList();
+    if (welded.isEmpty) {
+      groups.add([
+        _rectBottomLeft(main),
+        _rectBottomRight(main),
+        _rectTopRight(main),
+        _rectTopLeft(main),
+      ]);
+    } else {
+      final merged = unionOutlineOfRects([
+        main,
+        for (final annex in welded) annex.rect,
+      ], start: _rectBottomLeft(main));
+      groups.add(merged);
+    }
+    for (final annex in annexes.where((annex) => !annex.welded)) {
+      groups.add(annex.polygon);
+    }
 
     return TShapeLayout._(
-      side: side,
       mainRect: main,
-      annexRect: annex,
+      annexes: annexes,
       outline: outline,
-      sharedStart: sharedStart,
-      sharedEnd: sharedEnd,
-      welded: params.tWelded,
+      groups: groups,
+      ignoredSecondAnnex: ignoredSecondAnnex || ignoredOverlap,
+      ignoredOverlap: ignoredOverlap,
     );
   }
-
-  final TShapeSide side;
 
   /// Основное полотно (прямоугольник).
   final Rect mainRect;
 
-  /// Приставка (прямоугольник).
-  final Rect annexRect;
+  /// Построенные пристройки в порядке номеров.
+  final List<TShapeAnnexLayout> annexes;
 
   /// Фактический внешний контур окна.
   final List<Offset> outline;
 
-  /// Начало общей стороны (шва).
-  final Offset sharedStart;
+  /// Контуры для окантовки, люверсов и подворота: сваренные части объединены,
+  /// отдельные окна — раздельно.
+  final List<List<Offset>> groups;
 
-  /// Конец общей стороны (шва).
-  final Offset sharedEnd;
+  /// Вторая пристройка не построена (та же сторона или пересечение).
+  final bool ignoredSecondAnnex;
 
-  /// Спайка по общей стороне; false — два отдельных окна.
-  final bool welded;
+  /// Вторая пристройка не построена из-за пересечения с первой.
+  final bool ignoredOverlap;
 
-  double get sharedLength => (sharedEnd - sharedStart).distance;
+  /// Первая пристройка (для обратной совместимости и подписей).
+  TShapeAnnexLayout? get firstAnnex =>
+      annexes.isEmpty ? null : annexes.first;
 
-  /// Контур основного полотна (для расчёта двух отдельных окон).
+  bool get hasAnnexes => annexes.isNotEmpty;
+
+  /// Есть ли хоть одна спайка с основным полотном.
+  bool get anyWelded => annexes.any((annex) => annex.welded);
+
+  /// Все пристройки спаяны с основным полотном (или пристроек нет).
+  bool get allWelded => annexes.every((annex) => annex.welded);
+
+  /// Сваренные пристройки.
+  List<TShapeAnnexLayout> get weldedAnnexes =>
+      annexes.where((annex) => annex.welded).toList(growable: false);
+
+  /// Отдельные (несваренные) пристройки.
+  List<TShapeAnnexLayout> get separateAnnexes => annexes
+      .where((annex) => !annex.welded)
+      .toList(growable: false);
+
+  /// Суммарная длина швов по всем пристройкам, мм.
+  double get allSeamsLength =>
+      annexes.fold(0.0, (sum, annex) => sum + annex.sharedLength);
+
+  /// Суммарная длина ШВОВ спайки (только сваренные пристройки), мм.
+  double get weldedSeamLength =>
+      weldedAnnexes.fold(0.0, (sum, annex) => sum + annex.sharedLength);
+
+  // --- Прежние имена для одной пристройки -------------------------------
+
+  /// Сторона первой пристройки (null — пристроек нет).
+  TShapeSide? get side => firstAnnex?.side;
+
+  /// Прямоугольник первой пристройки (null — пристроек нет).
+  Rect? get annexRect => firstAnnex?.rect;
+
+  /// Начало шва первой пристройки.
+  Offset get sharedStart => firstAnnex?.sharedStart ?? Offset.zero;
+
+  /// Конец шва первой пристройки.
+  Offset get sharedEnd => firstAnnex?.sharedEnd ?? Offset.zero;
+
+  /// Суммарная длина общих сторон всех пристроек, мм.
+  double get sharedLength => allSeamsLength;
+
+  /// Спайка по общей стороне у первой пристройки (прежнее поле).
+  bool get welded => firstAnnex?.welded ?? false;
+
+  /// Контур основного полотна (для расчёта отдельных окон).
   List<Offset> get mainPolygon => [
     _rectBottomLeft(mainRect),
     _rectBottomRight(mainRect),
@@ -264,13 +561,14 @@ class TShapeLayout {
     _rectTopLeft(mainRect),
   ];
 
-  /// Контур приставки.
-  List<Offset> get annexPolygon => [
-    _rectBottomLeft(annexRect),
-    _rectBottomRight(annexRect),
-    _rectTopRight(annexRect),
-    _rectTopLeft(annexRect),
+  /// Контуры пристроек.
+  List<List<Offset>> get annexPolygons => [
+    for (final annex in annexes) annex.polygon,
   ];
+
+  /// Контур первой пристройки (прежнее поле).
+  List<Offset> get annexPolygon =>
+      annexes.isEmpty ? const [] : annexes.first.polygon;
 }
 
 /// Чертёж мягкого окна: четырёхугольник, у которого нижняя и верхняя кромки
@@ -533,16 +831,31 @@ class WindowLayers {
   /// Геометрия Т-образного окна (null у обычного окна).
   TShapeLayout? get tLayout => geometry.tLayout;
 
-  /// Спайка по общей стороне у Т-окна.
-  bool get tWelded => tLayout?.welded ?? false;
+  /// Спайка по общей стороне у Т-окна (хотя бы у одной пристройки).
+  bool get tWelded => tLayout?.anyWelded ?? false;
 
-  /// Части Т-окна: основное полотно и приставка. У обычного окна — один
-  /// контур. Нужно для раскроя, чертежа и «двух отдельных окон».
+  /// Все пристройки Т-окна спаяны с основным полотном.
+  bool get tAllWelded => tLayout?.allWelded ?? false;
+
+  /// Есть ли пристройка без спайки: тогда это отдельное окно.
+  bool get tAnySeparate => tLayout?.separateAnnexes.isNotEmpty ?? false;
+
+  /// Части Т-окна: основное полотно и каждая пристройка. У обычного окна —
+  /// один контур. Нужно для раскроя, чертежа и «отдельных окон».
   List<List<Offset>> get partPolygons {
     final t = tLayout;
     if (t == null) return [outer];
-    return [t.mainPolygon, t.annexPolygon];
+    return [t.mainPolygon, ...t.annexPolygons];
   }
+
+  /// Контуры для окантовки и люверсов: у Т-окна сваренные пристройки
+  /// объединены с основным полотном, отдельные (без спайки) идут сами по
+  /// себе. У обычного окна — внешний контур.
+  List<List<Offset>> get groupPolygons => tLayout?.groups ?? [outer];
+
+  /// Пристройки Т-окна (пусто у обычного окна).
+  List<TShapeAnnexLayout> get tAnnexes =>
+      tLayout?.annexes ?? const <TShapeAnnexLayout>[];
 
   /// Сторона окна для ребра многоугольника. Для четырёхугольника порядок
   /// прежний (низ, право, верх, лево), для Т-контура сторона выводится из
@@ -592,26 +905,6 @@ class WindowLayers {
       width(sideOfPolygonEdge(polygon, i)),
   ];
 
-  /// Прямоугольник с подрезкой/расширением по сторонам. Положительное
-  /// значение — внутрь (ПВХ под окантовку), отрицательное — наружу (скрин).
-  /// [shared] — общая сторона, по ней припуска нет: там спайка.
-  Rect _blankRect(
-    Rect rect,
-    EdgeSide? shared,
-    double Function(WindowSide side) amount,
-  ) {
-    final left = shared == EdgeSide.left ? 0.0 : amount(WindowSide.left);
-    final right = shared == EdgeSide.right ? 0.0 : amount(WindowSide.right);
-    final bottom = shared == EdgeSide.bottom ? 0.0 : amount(WindowSide.bottom);
-    final top = shared == EdgeSide.top ? 0.0 : amount(WindowSide.top);
-    return Rect.fromLTRB(
-      rect.left + left,
-      rect.top + bottom,
-      rect.right - right,
-      rect.bottom - top,
-    );
-  }
-
   static List<Offset> _rectPolygon(Rect rect) => [
     Offset(rect.left, rect.top),
     Offset(rect.right, rect.top),
@@ -619,83 +912,69 @@ class WindowLayers {
     Offset(rect.left, rect.bottom),
   ];
 
-  /// Склеивает две заготовки Т-окна в один контур по общей стороне.
-  List<Offset>? _mergeTBlank(TShapeSide side, Rect main, Rect annex) {
-    final points = <Offset>[];
-    switch (side) {
-      case TShapeSide.right:
-        points.addAll([
-          Offset(main.left, main.top),
-          Offset(main.right, main.top),
-          Offset(main.right, annex.top),
-          Offset(annex.right, annex.top),
-          Offset(annex.right, annex.bottom),
-          Offset(main.right, annex.bottom),
-          Offset(main.right, main.bottom),
-          Offset(main.left, main.bottom),
-        ]);
-      case TShapeSide.left:
-        points.addAll([
-          Offset(main.left, main.top),
-          Offset(main.right, main.top),
-          Offset(main.right, main.bottom),
-          Offset(main.left, main.bottom),
-          Offset(main.left, annex.bottom),
-          Offset(annex.left, annex.bottom),
-          Offset(annex.left, annex.top),
-          Offset(main.left, annex.top),
-        ]);
-      case TShapeSide.top:
-        points.addAll([
-          Offset(main.left, main.top),
-          Offset(main.right, main.top),
-          Offset(main.right, main.bottom),
-          Offset(annex.right, main.bottom),
-          Offset(annex.right, annex.bottom),
-          Offset(annex.left, annex.bottom),
-          Offset(annex.left, main.bottom),
-          Offset(main.left, main.bottom),
-        ]);
-      case TShapeSide.bottom:
-        points.addAll([
-          Offset(main.left, main.top),
-          Offset(annex.left, main.top),
-          Offset(annex.left, annex.top),
-          Offset(annex.right, annex.top),
-          Offset(annex.right, main.top),
-          Offset(main.right, main.top),
-          Offset(main.right, main.bottom),
-          Offset(main.left, main.bottom),
-        ]);
-    }
-    final outline = <Offset>[];
-    for (final point in points) {
-      if (outline.isEmpty || (outline.last - point).distance > 1e-6) {
-        outline.add(point);
-      }
-    }
-    while (outline.length > 2 &&
-        (outline.first - outline.last).distance <= 1e-6) {
-      outline.removeLast();
-    }
-    if (outline.length < 3) return null;
-    if (polygonArea(outline) < 0) return outline.reversed.toList();
-    return outline;
+  /// Припуск под окантовку (ПВХ) или прибавка подворота (скрин) по стороне.
+  ///
+  /// Положительное значение — внутрь (плёнка подрезается под окантовку),
+  /// отрицательное — наружу (заготовка скрина больше готового изделия).
+  double _blankAmount(WindowSide side) => isScreen
+      ? -hemOutsetFor(side)
+      : math.max(finishedWidthFor(side) - params.weldOverlapMm, 0.0);
+
+  /// Прямоугольник заготовки с подрезкой по сторонам.
+  ///
+  /// [shared] — стороны, по которым припуска нет: там шов спайки.
+  Rect _blankRect(Rect rect, Set<EdgeSide> shared) {
+    double value(EdgeSide side) => shared.contains(side)
+        ? 0.0
+        : _blankAmount(windowSideOf(side));
+    return Rect.fromLTRB(
+      rect.left + value(EdgeSide.left),
+      rect.top + value(EdgeSide.bottom),
+      rect.right - value(EdgeSide.right),
+      rect.bottom - value(EdgeSide.top),
+    );
   }
 
-  /// Заготовка одного полотна Т-окна (без склейки).
-  List<Offset> _tPartBlank(
-    Rect rect,
-    EdgeSide? shared,
-    double Function(WindowSide side) amount,
-  ) => _rectPolygon(_blankRect(rect, shared, amount));
+  /// Габарит заготовки всего окна по прямоугольнику изделия.
+  ///
+  /// У Т-окна — основа для прямоугольных заготовок частей; у обычного окна
+  /// используется для подписей.
+  Rect get blankRect {
+    final bounds = geometry.productBounds;
+    return _blankRect(bounds, const <EdgeSide>{});
+  }
 
-  /// Контуры заготовки полотна: у обычного окна — один, у Т — либо один
-  /// склеенный контур (спайка), либо два отдельных (без спайки).
+  /// Заготовки по частям: у обычного окна один прямоугольник, у Т-окна —
+  /// основное полотно и каждая пристройка (свой прямоугольник).
+  late final List<Rect> partBlankRects = _buildPartBlankRects();
+
+  List<Rect> _buildPartBlankRects() {
+    final t = tLayout;
+    if (t == null) return [filmCutBounds];
+    final mainShared = <EdgeSide>{
+      for (final annex in t.weldedAnnexes) annex.side.sharedEdge,
+    };
+    return [
+      _blankRect(t.mainRect, mainShared),
+      for (final annex in t.annexes)
+        _blankRect(
+          annex.rect,
+          annex.welded
+              ? <EdgeSide>{annex.side.sharedEdge.opposite}
+              : const <EdgeSide>{},
+        ),
+    ];
+  }
+
+  /// Контуры заготовки полотна.
+  ///
+  /// У Т-окна сваренные пристройки объединены с основным полотном в общий
+  /// контур, а пристройки без спайки — отдельные прямоугольники.
   late final List<List<Offset>> filmPolygons = _buildFilmPolygons();
 
   List<List<Offset>> _buildFilmPolygons() {
-    if (!isTShape) {
+    final t = tLayout;
+    if (t == null) {
       if (isScreen) {
         return [outsetPolygonPerSide(outer, perEdge(outer, hemOutsetFor))];
       }
@@ -710,61 +989,44 @@ class WindowLayers {
         ),
       ];
     }
-    final t = tLayout!;
-    double amount(WindowSide side) => isScreen
-        ? -hemOutsetFor(side)
-        : math.max(finishedWidthFor(side) - params.weldOverlapMm, 0.0);
-    // Без спайки — два отдельных окна: припуск по окантовке снимается по
-    // всем четырём сторонам каждой части. Со спайкой общая сторона припуска
-    // не имеет — там шов.
-    final mainShared = t.welded ? t.side.sharedEdge : null;
-    final annexShared = t.welded ? t.side.sharedEdge.opposite : null;
-    final mainBlank = _tPartBlank(t.mainRect, mainShared, amount);
-    final annexBlank = _tPartBlank(t.annexRect, annexShared, amount);
-    if (t.welded) {
-      final mainRect = _blankRect(t.mainRect, mainShared, amount);
-      final annexRect = _blankRect(t.annexRect, annexShared, amount);
-      final merged = _mergeTBlank(t.side, mainRect, annexRect);
-      if (merged != null) return [merged];
+    final welded = t.weldedAnnexes;
+    final polygons = <List<Offset>>[];
+    final mainBlank = partBlankRects.first;
+    if (welded.isEmpty) {
+      polygons.add(_rectPolygon(mainBlank));
+    } else {
+      final merged = unionOutlineOfRects([
+        mainBlank,
+        for (final annex in welded) partBlankRects[annex.number],
+      ], start: Offset(mainBlank.left, mainBlank.top));
+      polygons.add(
+        merged.length >= 3 ? merged : _rectPolygon(mainBlank),
+      );
     }
-    return [mainBlank, annexBlank];
+    for (final annex in t.separateAnnexes) {
+      polygons.add(_rectPolygon(partBlankRects[annex.number]));
+    }
+    return polygons;
   }
 
-  /// Габариты заготовок по частям Т-окна: основное полотно и приставка
+  /// Габариты заготовок по частям: основное полотно и каждая пристройка
   /// (у обычного окна — один габарит). По ним в техкарте печатаются размеры
   /// каждой части, а не только общий габарит.
-  late final List<Rect> filmPartBounds = _buildFilmPartBounds();
-
-  List<Rect> _buildFilmPartBounds() {
-    final t = tLayout;
-    if (t == null) return [filmCutBounds];
-    double amount(WindowSide side) => isScreen
-        ? -hemOutsetFor(side)
-        : math.max(finishedWidthFor(side) - params.weldOverlapMm, 0.0);
-    final mainShared = t.welded ? t.side.sharedEdge : null;
-    final annexShared = t.welded ? t.side.sharedEdge.opposite : null;
-    return [
-      _blankRect(t.mainRect, mainShared, amount),
-      _blankRect(t.annexRect, annexShared, amount),
-    ];
-  }
+  late final List<Rect> filmPartBounds = partBlankRects;
 
   /// Внутренняя граница окантовки: видимая граница плёнки.
   ///
   /// У скрина видимый размер — это готовый контур изделия: подворот
-  /// загибается на изнанку, наружу ничего не выходит.
+  /// загибается на изнанку, наружу ничего не выходит. У Т-окна контуров
+  /// столько же, сколько групп частей (см. [groupPolygons]).
   late final List<List<Offset>> edgeInnerPolygons = _buildEdgeInnerPolygons();
 
   List<List<Offset>> _buildEdgeInnerPolygons() {
-    if (isScreen) {
-      return isTShape ? partPolygons : [outer];
-    }
-    if (!isTShape) {
-      return [insetPolygonPerSide(outer, perEdge(outer, finishedWidthFor))];
-    }
-    // У Т-окна внутренний контур окантовки строится по внешнему контуру:
-    // общая сторона — шов, окантовки там нет, поэтому и подрезки нет.
-    return [insetPolygonPerSide(outer, perEdge(outer, finishedWidthFor))];
+    if (isScreen) return groupPolygons;
+    return [
+      for (final polygon in groupPolygons)
+        insetPolygonPerSide(polygon, perEdge(polygon, finishedWidthFor)),
+    ];
   }
 
   /// Внутренняя граница окантовки (первый контур — для подписей и старых
@@ -783,40 +1045,21 @@ class WindowLayers {
   late final List<List<Offset>> eyeletPolygons = _buildEyeletPolygons();
 
   List<List<Offset>> _buildEyeletPolygons() {
-    if (isScreen) {
-      return isTShape ? (tWelded ? [outer] : partPolygons) : [outer];
-    }
-    if (!isTShape) {
-      return [
-        insetPolygonPerSide(
-          outer,
-          perEdge(outer, (side) => finishedWidthFor(side) / 2),
-        ),
-      ];
-    }
-    if (tWelded) {
-      return [
-        insetPolygonPerSide(
-          outer,
-          perEdge(outer, (side) => finishedWidthFor(side) / 2),
-        ),
-      ];
-    }
+    if (isScreen) return groupPolygons;
     return [
-      for (final part in partPolygons)
+      for (final polygon in groupPolygons)
         insetPolygonPerSide(
-          part,
-          perEdge(part, (side) => finishedWidthFor(side) / 2),
+          polygon,
+          perEdge(polygon, (side) => finishedWidthFor(side) / 2),
         ),
     ];
   }
 
   /// Линия подворота (сгиба) скрина: готовый контур изделия.
   ///
-  /// У ПВХ подворота нет — список пуст.
-  late final List<List<Offset>> screenHemPolygons = isScreen
-      ? (isTShape && !tWelded ? partPolygons : [outer])
-      : const [];
+  /// У ПВХ подворота нет — список пуст. У Т-окна — по группам частей.
+  late final List<List<Offset>> screenHemPolygons =
+      isScreen ? groupPolygons : const [];
 
   /// Линия шва [screenSeamMm] внутри подворота скрина.
   late final List<List<Offset>> screenSeamPolygons = [
@@ -1031,15 +1274,12 @@ class WindowLayers {
       }
     }
 
-    // Т-окно без спайки — два отдельных окна: окантовка по периметру
-    // каждой части, включая их общую линию. Со спайкой — только внешний
-    // контур: общая сторона окантовки не имеет.
-    if (isTShape && !tWelded) {
-      for (final part in partPolygons) {
-        addPolygon(part);
-      }
-    } else {
-      addPolygon(outer);
+    // У Т-окна окантовка считается по группам частей: сваренные пристройки
+    // входят в общий контур (общая сторона — шов, окантовки там нет),
+    // а пристройки без спайки — отдельные окна со своим периметром,
+    // включая общую линию.
+    for (final polygon in groupPolygons) {
+      addPolygon(polygon);
     }
 
     for (final cutout in cutouts) {
@@ -1072,12 +1312,8 @@ class WindowLayers {
       }
     }
 
-    if (isTShape && !tWelded) {
-      for (final part in partPolygons) {
-        addPolygon(part);
-      }
-    } else {
-      addPolygon(outer);
+    for (final polygon in groupPolygons) {
+      addPolygon(polygon);
     }
     return result;
   }
@@ -1105,9 +1341,9 @@ class WindowLayers {
   /// стороны нет — это два отдельных окна.
   double get weldLengthMm {
     var total = 0.0;
-    if (isTShape && tWelded) total += tLayout!.sharedLength;
-    final polygons = (isTShape && !tWelded) ? partPolygons : [outer];
-    for (final polygon in polygons) {
+    // Швы по общей стороне каждой СПАЯННОЙ пристройки — отдельно.
+    if (isTShape) total += tLayout!.weldedSeamLength;
+    for (final polygon in groupPolygons) {
       for (var i = 0; i < polygon.length; i++) {
         if (!params.isWelded(edgeSideOf(sideOfPolygonEdge(polygon, i)))) {
           continue;
@@ -1288,15 +1524,22 @@ class WindowLayers {
       WindowSide.right || WindowSide.left => false,
     };
     if (!enabled) return const [];
-    // У Т-окна без спайки фартук не поддерживается: полосы двух частей
-    // пересекаются на общей стороне, и полоса получилась бы разорванной.
-    if (isTShape && !tWelded) return const [];
-    // Приставка снизу перекрывает низ основного полотна — фартук по низу
-    // в этом варианте тоже не строится (см. проверку параметров).
-    if (side == WindowSide.bottom &&
-        tLayout != null &&
-        tLayout!.side == TShapeSide.bottom) {
-      return const [];
+    // У Т-окна без спайки хотя бы одной пристройки фартук не поддерживается:
+    // полосы частей пересекаются на общей стороне и полоса рвётся.
+    if (isTShape && !tAllWelded) return const [];
+    // Пристройка на той же стороне перекрывает кромку основного полотна —
+    // фартук по этой стороне не строится (см. проверку параметров).
+    final t = tLayout;
+    if (t != null) {
+      final blocked = t.annexes.any(
+        (annex) => switch (side) {
+          WindowSide.bottom => annex.side == TShapeSide.bottom,
+          WindowSide.top => annex.side == TShapeSide.top,
+          WindowSide.left => annex.side == TShapeSide.left,
+          WindowSide.right => annex.side == TShapeSide.right,
+        },
+      );
+      if (blocked) return const [];
     }
 
     final index = switch (side) {
@@ -1521,14 +1764,47 @@ class WindowSpec {
   /// Геометрия Т-окна (null у обычного).
   TShapeLayout? get tLayout => geometry.tLayout;
 
-  /// Длина общей стороны (шва) Т-окна, мм.
-  double get tSharedLength => tLayout?.sharedLength ?? 0;
+  /// Длина общей стороны (шва) первой пристройки, мм.
+  double get tSharedLength => tLayout?.firstAnnex?.sharedLength ?? 0;
 
-  /// Габариты заготовок по частям: [основное, приставка] или [общий].
+  /// Суммарная длина швов по всем пристройкам, мм.
+  double get tSeamsLength => tLayout?.allSeamsLength ?? 0;
+
+  /// Длина только сваренных швов по пристройкам, мм.
+  double get tWeldedSeamLength => tLayout?.weldedSeamLength ?? 0;
+
+  /// Пристройки Т-окна (пусто у обычного окна).
+  List<TShapeAnnexLayout> get tAnnexes =>
+      tLayout?.annexes ?? const <TShapeAnnexLayout>[];
+
+  /// Предупреждение о конфликте пристроек; null — всё в порядке.
+  ///
+  /// Две пристройки на одной стороне запрещены: в расчёте остаётся только
+  /// первая, а панель и проверка параметров объясняют, что поменять.
+  String? get tAnnexConflict {
+    if (!params.isTShape) return null;
+    if (params.tAnnexSideConflict) {
+      return 'Пристройки 1 и 2 стоят на одной стороне — так нельзя. '
+          'В расчёте оставлена только пристройка 1: выберите для второй '
+          'другую сторону.';
+    }
+    if (tLayout?.ignoredOverlap ?? false) {
+      return 'Пристройки пересекаются — так нельзя. В расчёте оставлена '
+          'только первая: сдвиньте вторую вдоль её стороны.';
+    }
+    if (tLayout?.ignoredSecondAnnex ?? false) {
+      return 'Вторая пристройка не построена: она стоит на одной стороне '
+          'с первой.';
+    }
+    return null;
+  }
+
+  /// Габариты заготовок по частям: [основное, пристройка 1, пристройка 2]
+  /// или [общий] у обычного окна.
   List<Rect> get filmPartBounds => layers.filmPartBounds;
 
   /// Периметр, по которому идёт окантовка/подворот: у Т-окна без спайки —
-  /// сумма периметров двух частей, со спайкой — внешний контур.
+  /// сумма периметров каждой части, со спайкой — внешний контур.
   double get edgePerimeterMm =>
       layers.edgeLengthsBySide.values.fold(0.0, (sum, value) => sum + value);
 
@@ -1536,22 +1812,43 @@ class WindowSpec {
   String get tShapeSummary {
     final t = tLayout;
     if (t == null) return '—';
-    final side = params.tSide.label.toLowerCase();
-    final weld = t.welded
-        ? 'спайка по общей стороне ${formatMm(t.sharedLength)} мм'
-        : 'без спайки — два отдельных окна';
-    return 'Т-образное: основное '
-        '${formatMm(params.bottomWidth)} × ${formatMm(params.leftHeight)} мм + '
-        'приставка ${formatMm(params.tWidth)} × ${formatMm(params.tHeight)} мм '
-        '$side, смещение ${formatMm(params.tOffset)} мм; $weld';
+    final parts = <String>[
+      'основное ${formatMm(params.bottomWidth)} × '
+          '${formatMm(params.leftHeight)} мм',
+      for (final annex in t.annexes)
+        '${annex.number == 1 ? 'пристройка 1' : 'пристройка 2'} '
+            '${formatMm(annex.rect.width)} × ${formatMm(annex.rect.height)} мм '
+            '${annex.side.label.toLowerCase()}, смещение '
+            '${formatMm(annex.offset)} мм',
+    ];
+    final welded = t.weldedAnnexes;
+    final separate = t.separateAnnexes;
+    final details = <String>[];
+    if (welded.isNotEmpty) {
+      details.add(
+        'швы по общей стороне: '
+        '${welded.map((annex) => '${formatMm(annex.sharedLength)} мм').join(' и ')}',
+      );
+    }
+    if (separate.isNotEmpty) {
+      details.add(
+        'без спайки — отдельные окна: '
+        '${separate.map((annex) => annex.label.toLowerCase()).join(', ')}',
+      );
+    }
+    final conflict = tAnnexConflict;
+    return 'Т-образное: ${parts.join(' + ')}; '
+        '${details.isEmpty ? 'пристроек нет' : details.join('; ')}'
+        '${conflict == null ? '' : '; $conflict'}';
   }
 
-  /// Площадь ПОЛОТНА изделия (с напайкой/подворотом, без припуска), м².
+  /// Площадь ЗАГОТОВКИ ПОЛОТНА (с напайкой/подворотом, без припуска), м².
   ///
-  /// Это площадь самого полотна по контуру [WindowLayers.filmEdge], а не
-  /// габарит заготовки: для непрямоугольного (трапеции) полотно меньше
-  /// габаритного прямоугольника. Для расходных документов и денег берётся
-  /// заготовка ([filmCutAreaWithShrinkageM2]); эта площадь — справочная.
+  /// Считается как прямоугольник (прямоугольники частей у Т-окна), а не по
+  /// площади полигона: для трапеции и окна с разными высотами сторон
+  /// заготовка кроится прямоугольником по габариту, поэтому в расход идёт
+  /// именно прямоугольная площадь. Для денег берётся заготовка
+  /// ([filmCutAreaWithShrinkageM2]) — она же плюс припуск и усадка.
   double get filmAreaM2 => layers.filmAreaM2;
 
   /// Видимый размер плёнки (по внутренней границе окантовки).
@@ -1716,21 +2013,9 @@ class WindowSpec {
   /// Контур заготовки к раскрою: [WindowLayers.filmEdge], растянутый на
   /// припуск на раскрой.
   ///
-  /// Припуск по ширине и высоте — это прибавка к габариту, поэтому контур
-  /// растягивается относительно центра своего габарита: ширина становится
-  /// `filmCutWidth + allowanceWidthMm`, высота —
-  /// `filmCutHeight + effectiveAllowanceHeightMm`. Для прямоугольника это
-  /// ровно прежние `filmCutWidthWithAllowance × filmCutHeightWithAllowance`,
-  /// а для трапеции — её фактическая форма, а не описанный прямоугольник.
-  ///
-  /// Полоса молнии уже учтена в [filmCutWidth]: до припуска контур сжимается
-  /// по ширине на [zipperBandTotalMm] (у ПВХ и у скрина одинаково).
-  /// Прямоугольник при этом просто становится уже на полосу, а трапеция
-  /// сжимается по X относительно центра габарита — так габаритная ширина
-  /// уменьшается ровно на полосу, углы остаются теми же (наклон боковых сторон
-  /// меняется незначительно: 50 мм на 2080 мм ширины — это 2,4 %), а площадь
-  /// уменьшается пропорционально ширине. Пропорции верхней и нижней кромок
-  /// сохраняются, поэтому трапеция не превращается в прямоугольник.
+  /// Припуск растягивает контур относительно центра габарита. Полоса молнии
+  /// уже учтена в [filmCutWidth]: до припуска контур сжимается по ширине на
+  /// [zipperBandTotalMm] (у ПВХ и у скрина одинаково).
   List<List<Offset>> get filmCutPolygons {
     final polygons = layers.filmPolygons;
     if (polygons.isEmpty) return const [];
@@ -1788,14 +2073,12 @@ class WindowSpec {
   List<Offset> get filmCutPolygonWithShrinkage =>
       filmCutPolygonsWithShrinkage.first;
 
-  /// Площадь ЗАГОТОВКИ к раскрою по ФАКТИЧЕСКОМУ контуру: припуск, без
-  /// усадки, минус вырезы, м².
+  /// Площадь ЗАГОТОВКИ к раскрою по контуру: припуск, без усадки, минус
+  /// вырезы, м².
   ///
   /// Считается по площади полигонов [filmCutPolygons] (это `filmEdge` с
-  /// припуском), а не по габаритному прямоугольнику. Для трапеции или окна с
-  /// разными высотами сторон фактическая площадь меньше габаритной — именно
-  /// она идёт в ведомость и смету. У Т-окна без спайки площади двух заготовок
-  /// складываются: они не пересекаются и считаются раздельно.
+  /// припуском), а не по габаритному прямоугольнику. У Т-окна складываются
+  /// площади прямоугольных заготовок частей.
   double get filmCutAreaM2 {
     var area = 0.0;
     for (final polygon in filmCutPolygons) {
@@ -1804,7 +2087,7 @@ class WindowSpec {
     return math.max(area - layers.cutoutAreaMm2, 0) / 1000000;
   }
 
-  /// Площадь заготовки к раскрою по контуру С учётом усадки, м².
+  /// Площадь заготовки-прямоугольника к раскрою С учётом усадки, м².
   ///
   /// Контуры заготовки растягиваются в `1 + s/100` раз по обеим осям, поэтому
   /// площадь растёт в `(1 + s/100)²`. Для Т-окна без спайки складываются
@@ -1975,12 +2258,17 @@ class WindowSpec {
   /// Спайка с соседними окнами.
   String get weldSummary {
     final parts = <String>[];
-    if (params.isTShape && params.tWelded) {
+    // Швы по пристройкам — каждый отдельной операцией.
+    for (final annex in tAnnexes.where((annex) => annex.welded)) {
       parts.add(
-        'общая сторона приставки и основного полотна ('
-        '${formatMm(tSharedLength)} мм) — полотна свариваются внахлёст '
-        '${formatMm(windowWeldWidth)} мм, окантовка по ней не ставится',
+        'шов по общей стороне пристройки ${annex.number} '
+        '(${annex.side.label.toLowerCase()}, ${formatMm(annex.sharedLength)} мм) '
+        '— полотна свариваются внахлёст ${formatMm(windowWeldWidth)} мм, '
+        'окантовка по ней не ставится',
       );
+    }
+    if (params.isTShape && tAnnexes.isNotEmpty && !tLayout!.anyWelded) {
+      parts.add('пристройки не спаяны — отдельные окна');
     }
     if (params.weldedSides.isNotEmpty) {
       final sides = params.weldedSides
@@ -2080,15 +2368,19 @@ class WindowSpec {
         'Расход окантовки: ${edgeConsumptionLabels.join(', ')}',
       ],
       if (params.isTShape) tShapeSummary,
-      if (params.isTShape && params.tWelded)
-        'Спайка по общей стороне: ${formatMm(tSharedLength)} мм, шов '
-            '${formatMm(windowWeldWidth)} мм внахлёст; окантовка идёт только '
-            'по внешнему периметру (${formatMm(edgePerimeterMm)} мм), на '
-            'общей стороне её нет',
-      if (params.isTShape && !params.tWelded)
-        'Приставка не спаяна с основным полотном: это два отдельных окна, '
-            'окантовка считается по периметру каждой части '
+      if (params.isTShape && tLayout!.weldedAnnexes.isNotEmpty)
+        'Спайка по общей стороне пристроек: ${formatMm(tWeldedSeamLength)} мм, '
+            'шов ${formatMm(windowWeldWidth)} мм внахлёст; окантовка идёт '
+            'только по внешнему периметру (${formatMm(edgePerimeterMm)} мм), '
+            'на общей стороне её нет',
+      if (params.isTShape && tLayout!.separateAnnexes.isNotEmpty)
+        'Пристройки без спайки (${tLayout!.separateAnnexes.map((annex) => annex.number).join(', ')}) '
+            '— отдельные окна: окантовка считается по периметру каждой части '
             '(${formatMm(edgePerimeterMm)} мм)',
+      if (params.isTShape)
+        'Заготовка Т-окна — прямоугольник по каждой части: '
+            '${filmPartBounds.map((rect) => '${formatMm(rect.width)} × ${formatMm(rect.height)}').join(', ')} мм',
+      ?tAnnexConflict,
       'Полотно ${params.isScreen ? 'скрина' : 'ПВХ 700 мкм'} в раскрое: '
           'заготовка ${formatMm(filmCutWidthWithAllowance)} × '
           '${formatMm(filmCutHeightWithAllowance)} мм'
@@ -2349,15 +2641,55 @@ List<ParamIssue> validateParams(WindowParams params) {
 
   // --- Т-образное окно -----------------------------------------------------
   if (params.isTShape) {
-    checkPositive(ParamField.tWidth, params.tWidth);
-    checkPositive(ParamField.tHeight, params.tHeight);
-    if (!params.tOffset.isFinite || params.tOffset < 0) {
+    final annexes = params.tAnnexes;
+    for (var index = 0; index < annexes.length; index++) {
+      final annex = annexes[index];
+      final widthField = index == 0
+          ? ParamField.tWidth
+          : ParamField.t2Width;
+      final heightField = index == 0
+          ? ParamField.tHeight
+          : ParamField.t2Height;
+      final offsetField = index == 0
+          ? ParamField.tOffset
+          : ParamField.t2Offset;
+      checkPositive(widthField, annex.width);
+      checkPositive(heightField, annex.height);
+      if (!annex.offset.isFinite || annex.offset < 0) {
+        issues.add(
+          ParamIssue(
+            offsetField,
+            '${annex.label}: смещение — 0 или больше, пристройка не может '
+            'выступать за начало общей стороны',
+            isError: false,
+          ),
+        );
+      }
+      final vertical =
+          annex.side == TShapeSide.left || annex.side == TShapeSide.right;
+      final along = vertical ? params.leftHeight : params.bottomWidth;
+      final annexAlong = vertical ? annex.height : annex.width;
+      if (annexAlong.isFinite && along.isFinite && annexAlong > along + 0.5) {
+        issues.add(
+          ParamIssue(
+            heightField,
+            '${annex.label} длиннее общей стороны на '
+            '${formatMm(annexAlong - along)} мм — в чертеже она подрезана по '
+            'стороне ${formatMm(along)} мм',
+            isError: false,
+          ),
+        );
+      }
+    }
+    // Две пристройки на одной стороне запрещены: в расчёте остаётся только
+    // первая, а здесь — понятное предупреждение, что поменять.
+    if (params.tAnnexSideConflict) {
       issues.add(
         const ParamIssue(
-          ParamField.tOffset,
-          'Смещение приставки: укажите 0 или больше — приставка не может '
-          'выступать за начало общей стороны',
-          isError: false,
+          ParamField.t2Width,
+          'Пристройки 1 и 2 стоят на одной стороне — так нельзя. В расчёте '
+          'оставлена только пристройка 1. Выберите для второй другую сторону',
+          severity: ParamIssueSeverity.warning,
         ),
       );
     }
@@ -2375,42 +2707,30 @@ List<ParamIssue> validateParams(WindowParams params) {
         ),
       );
     }
-    final along =
-        (params.tSide == TShapeSide.left || params.tSide == TShapeSide.right)
-        ? params.leftHeight
-        : params.bottomWidth;
-    final annexAlong =
-        (params.tSide == TShapeSide.left || params.tSide == TShapeSide.right)
-        ? params.tHeight
-        : params.tWidth;
-    if (annexAlong.isFinite && along.isFinite && annexAlong > along + 0.5) {
+    for (final annex in params.tAnnexes.where((annex) => !annex.welded)) {
       issues.add(
         ParamIssue(
-          ParamField.tHeight,
-          'Приставка длиннее общей стороны на '
-          '${formatMm(annexAlong - along)} мм — в чертеже она подрезана по '
-          'стороне ${formatMm(along)} мм',
+          annex.number == 1 ? ParamField.tWidth : ParamField.t2Width,
+          '${annex.label}: спайка по общей стороне выключена — это отдельное '
+          'окно, окантовка и площадь считаются по каждой части раздельно',
           isError: false,
         ),
       );
     }
-    if (!params.tWelded) {
-      issues.add(
-        const ParamIssue(
-          ParamField.tWidth,
-          'Спайка по общей стороне выключена: это два отдельных окна, '
-          'окантовка и площадь считаются по каждой части раздельно',
-          isError: false,
-        ),
-      );
-    }
-    if ((params.pocket || params.pocketTop) &&
-        (!params.tWelded || params.tSide == TShapeSide.bottom)) {
+    final separate = params.tAnnexes.any((annex) => !annex.welded);
+    final bottomAnnex = params.tAnnexes.any(
+      (annex) => annex.side == TShapeSide.bottom,
+    );
+    final topAnnex = params.tAnnexes.any(
+      (annex) => annex.side == TShapeSide.top,
+    );
+    if ((params.pocket && (separate || bottomAnnex)) ||
+        (params.pocketTop && (separate || topAnnex))) {
       issues.add(
         const ParamIssue(
           ParamField.pocketWidth,
-          'Фартук в Т-окне не поддерживается без спайки и при приставке снизу: '
-          'полоса фартука разрывается на общей стороне',
+          'Фартук в Т-окне не поддерживается без спайки и со стороны '
+          'пристройки: полоса фартука разрывается на общей стороне',
           isError: false,
         ),
       );

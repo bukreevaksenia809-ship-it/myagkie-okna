@@ -51,12 +51,14 @@ void main() {
   _screenZipperBlankRules();
   _screenHemPresetsRules();
   _levelEdgePanelRules();
+  _twoAnnexPanelRules();
   testWidgets('панель 420: спайка добавляет окно, припуски идут в модель', (
     WidgetTester tester,
   ) async {
     // Узкая панель (420) и очень высокое окно: все разделы построены,
-    // по ширине ничего не переполняется.
-    tester.view.physicalSize = const Size(420, 6000);
+    // по ширине ничего не переполняется. Высота с запасом: в Т-окне два
+    // блока пристроек, и кнопка выреза уходит ниже прежних 6000 px.
+    tester.view.physicalSize = const Size(420, 7200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -69,6 +71,7 @@ void main() {
     // 1. Спецэлементы выбранного окна: молния и вырез.
     await tester.tap(find.text('Добавить молнию'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Добавить вырез'));
     await tester.tap(find.text('Добавить вырез'));
     await tester.pumpAndSettle();
     expect(hostKey.currentState!.project.selected.zippers, hasLength(1));
@@ -1073,11 +1076,11 @@ void _tShapePanelRules() {
       expect(params.topWidth, params.bottomWidth);
       expect(params.rightHeight, params.leftHeight);
       expect(find.text('Т-образное окно'), findsOneWidget);
-      expect(find.text('Сторона приставки'), findsOneWidget);
+      expect(find.text('Сторона пристройки 1'), findsOneWidget);
       expect(find.byKey(const Key('t-welded')), findsOneWidget);
 
-      // Сторона приставки: снизу.
-      final bottomSide = find.text('Снизу');
+      // Сторона пристройки 1: снизу.
+      final bottomSide = find.byKey(const Key('t1-side-bottom'));
       await tester.ensureVisible(bottomSide);
       await tester.tap(bottomSide);
       await tester.pumpAndSettle();
@@ -1107,4 +1110,96 @@ void _tShapePanelRules() {
       expect(tester.takeException(), isNull);
     },
   );
+}
+
+// --- Панель: вторая пристройка Т-окна --------------------------------------
+
+/// «Пристройка 1» и «Пристройка 2»: включение, сторона, размеры, смещение,
+/// спайка и предупреждение о двух пристройках на одной стороне.
+void _twoAnnexPanelRules() {
+  testWidgets('панель: пристройка 2 включается и настраивается', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 9000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final hostKey = GlobalKey<_PanelHostState>();
+    await tester.pumpWidget(_PanelHost(key: hostKey));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    // Переводим окно в Т-форму: появляются два блока пристроек.
+    await tester.tap(find.byKey(const Key('make-t-shape')));
+    await tester.pumpAndSettle();
+    var params = hostKey.currentState!.project.selected;
+    expect(params.isTShape, isTrue);
+    expect(params.tEnabled, isTrue);
+    expect(params.t2Enabled, isFalse, reason: 'вторая выключена по умолчанию');
+    expect(find.text('Пристройка 1'), findsOneWidget);
+    expect(find.text('Пристройка 2'), findsOneWidget);
+
+    // Включаем вторую пристройку.
+    final enable2 = find.byKey(const Key('t2-enabled'));
+    await tester.ensureVisible(enable2);
+    await tester.tap(enable2);
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.t2Enabled, isTrue);
+    expect(find.byKey(const Key('t2-side-bottom')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // Сторона «слева».
+    await tester.ensureVisible(find.byKey(const Key('t2-side-left')));
+    await tester.tap(find.byKey(const Key('t2-side-left')));
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.t2Side, TShapeSide.left);
+
+    // Размеры и смещение — в модель.
+    for (final (key, value) in const [
+      ('t2Width-field', '650'),
+      ('t2Height-field', '450'),
+      ('t2Offset-field', '120'),
+    ]) {
+      final field = find.byKey(Key(key));
+      await tester.ensureVisible(field);
+      await tester.enterText(field, value);
+      await tester.pumpAndSettle();
+    }
+    params = hostKey.currentState!.project.selected;
+    expect(params.t2Width, 650);
+    expect(params.t2Height, 450);
+    expect(params.t2Offset, 120);
+    final spec = WindowSpec.of(params);
+    expect(spec.tAnnexes, hasLength(2));
+    expect(spec.tAnnexes[1].side, TShapeSide.left);
+
+    // Спайка второй пристройки.
+    final welded2 = find.byKey(const Key('t2-welded'));
+    await tester.ensureVisible(welded2);
+    await tester.tap(welded2);
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.t2Welded, isFalse);
+    expect(WindowSpec.of(params).layers.tAnnexes[1].welded, isFalse);
+
+    // Обе пристройки на одной стороне: панель показывает предупреждение,
+    // модель и расчёт не ломаются.
+    await tester.ensureVisible(find.byKey(const Key('t1-side-left')));
+    await tester.tap(find.byKey(const Key('t1-side-left')));
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    expect(params.tSide, TShapeSide.left);
+    expect(params.tAnnexSideConflict, isTrue);
+    final conflict = find.byKey(const Key('t-annex-conflict'));
+    await tester.ensureVisible(conflict);
+    expect(conflict, findsOneWidget);
+    expect(find.textContaining('стоят на одной стороне'), findsWidgets);
+    final conflictSpec = WindowSpec.of(params);
+    expect(conflictSpec.tAnnexes, hasLength(1));
+    expect(conflictSpec.productAreaM2, greaterThan(0));
+    expect(tester.takeException(), isNull);
+  });
 }

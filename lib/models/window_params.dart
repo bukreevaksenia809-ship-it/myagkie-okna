@@ -73,6 +73,40 @@ enum TShapeSide {
   };
 }
 
+/// Пристройка Т-образного окна: сторона, размеры, смещение и спайка.
+///
+/// У окна может быть до двух пристроек (угловая форма: например, справа и
+/// снизу). Пристройка — прямоугольник [width] × [height], приваренный к
+/// стороне [side] основного полотна; [offset] — смещение вдоль общей стороны
+/// (от низа для правой/левой, от левого края для верхней/нижней).
+class TShapeAnnex {
+  const TShapeAnnex({
+    required this.number,
+    required this.side,
+    required this.width,
+    required this.height,
+    required this.offset,
+    required this.welded,
+  });
+
+  /// Номер пристройки в панели и документах: 1 или 2.
+  final int number;
+
+  final TShapeSide side;
+  final double width;
+  final double height;
+  final double offset;
+
+  /// Спайка по общей стороне; false — отдельное окно.
+  final bool welded;
+
+  /// Подпись блока в панели и техкарте: «Пристройка 1».
+  String get label => 'Пристройка $number';
+
+  /// Сторона основного полотна, по которой идёт общая сторона (шов).
+  EdgeSide get sharedEdge => side.sharedEdge;
+}
+
 /// Технология изделия. Отдельного поля у окна нет: технология выводится из
 /// материала полотна, чтобы не было двух противоречащих источников истины
 /// (см. [WindowParams.tech] и [WindowParams.isScreen]). Пользователь выбирает
@@ -340,6 +374,9 @@ enum ParamField {
   tWidth,
   tHeight,
   tOffset,
+  t2Width,
+  t2Height,
+  t2Offset,
   eyeletStep,
   eyeletCornerOffset,
   drainCount,
@@ -363,6 +400,9 @@ enum ParamField {
     ParamField.tWidth => 'Ширина приставки',
     ParamField.tHeight => 'Высота приставки',
     ParamField.tOffset => 'Смещение приставки',
+    ParamField.t2Width => 'Ширина пристройки 2',
+    ParamField.t2Height => 'Высота пристройки 2',
+    ParamField.t2Offset => 'Смещение пристройки 2',
     ParamField.eyeletStep => 'Интервал люверсов',
     ParamField.eyeletCornerOffset => 'Отступ люверса от угла',
     ParamField.drainCount => 'Дренажных отверстий',
@@ -596,6 +636,13 @@ class WindowParams {
     this.tHeight = 600,
     this.tOffset = 0,
     this.tWelded = true,
+    this.tEnabled = true,
+    this.t2Enabled = false,
+    this.t2Side = TShapeSide.bottom,
+    this.t2Width = 700,
+    this.t2Height = 500,
+    this.t2Offset = 0,
+    this.t2Welded = true,
     this.rollBottom = 100,
     this.rollTop = 100,
     this.rollLeft = 100,
@@ -679,13 +726,22 @@ class WindowParams {
 
   // --- Т-образное окно (windowType == WindowType.tShape) -------------------
   //
-  // Приставка — прямоугольник [tWidth] × [tHeight], приваренный к стороне
-  // [tSide] основного полотна. [tOffset] — смещение приставки вдоль общей
-  // стороны: от низа для правой/левой, от левого края для верхней/нижней.
+  // Пристройка — прямоугольник [tWidth] × [tHeight], приваренный к стороне
+  // [tSide] основного полотна. [tOffset] — смещение вдоль общей стороны:
+  // от низа для правой/левой, от левого края для верхней/нижней.
   // При [tWelded] == false это два отдельных окна: окантовка считается по
   // периметру каждой части, шва по общей стороне нет.
+  //
+  // Вторая пристройка ([t2Side] и соседние поля) — для угловой формы: две
+  // пристройки на разных сторонах, например справа и снизу. У старых заказов
+  // её нет, поэтому [t2Enabled] по умолчанию выключен: чтение старого JSON
+  // даёт ровно прежнее Т-окно с одной пристройкой.
 
-  /// Сторона основного полотна, к которой крепится приставка.
+  /// Включена ли первая пристройка. По умолчанию включена: у старого заказа
+  /// без поля Т-окно остаётся прежним — основное полотно плюс пристройка.
+  final bool tEnabled;
+
+  /// Сторона основного полотна, к которой крепится пристройка.
   final TShapeSide tSide;
 
   /// Ширина приставки (по горизонтали), мм.
@@ -699,6 +755,77 @@ class WindowParams {
 
   /// Спайка по общей стороне. false — два отдельных окна.
   final bool tWelded;
+
+  /// Включена ли вторая пристройка (угловая форма). У старых заказов — нет.
+  final bool t2Enabled;
+
+  /// Сторона второй пристройки. Должна отличаться от [tSide]: две пристройки
+  /// на одной стороне запрещены (см. [tAnnexSideConflict]).
+  final TShapeSide t2Side;
+
+  /// Ширина второй пристройки, мм.
+  final double t2Width;
+
+  /// Высота второй пристройки, мм.
+  final double t2Height;
+
+  /// Смещение второй пристройки вдоль общей стороны, мм.
+  final double t2Offset;
+
+  /// Спайка второй пристройки по общей стороне.
+  final bool t2Welded;
+
+  /// Включённые пристройки в порядке номеров.
+  ///
+  /// Пустой список — Т-окно без пристроек (только основное полотно).
+  List<TShapeAnnex> get tAnnexes => !isTShape
+      ? const []
+      : [
+          if (tEnabled)
+            TShapeAnnex(
+              number: 1,
+              side: tSide,
+              width: tWidth,
+              height: tHeight,
+              offset: tOffset,
+              welded: tWelded,
+            ),
+          if (t2Enabled)
+            TShapeAnnex(
+              number: 2,
+              side: t2Side,
+              width: t2Width,
+              height: t2Height,
+              offset: t2Offset,
+              welded: t2Welded,
+            ),
+        ];
+
+  /// Есть ли включённые пристройки (только для Т-окна).
+  bool get hasTAnnexes => isTShape && tAnnexes.isNotEmpty;
+
+  /// Есть ли вторая включённая пристройка.
+  bool get hasSecondAnnex => isTShape && tEnabled && t2Enabled;
+
+  /// Есть ли хотя бы одна спайка пристройки с основным полотном.
+  bool get tAnyWelded => tAnnexes.any((annex) => annex.welded);
+
+  /// Спаяны ли все пристройки с основным полотном (или пристроек нет).
+  bool get tAllWelded =>
+      tAnnexes.isEmpty || tAnnexes.every((annex) => annex.welded);
+
+  /// Обе пристройки стоят на одной стороне — так нельзя.
+  ///
+  /// Проверка параметров и панель показывают предупреждение, а геометрия
+  /// оставляет только первую пристройку: расчёт не ломается и не рисует
+  /// наложение двух пристроек в одном месте.
+  bool get tAnnexSideConflict => hasSecondAnnex && t2Side == tSide;
+
+  /// Подпись сторон пристроек для документов:
+  /// «Пристройка 1 — справа; Пристройка 2 — снизу».
+  String get tAnnexSidesLabel => tAnnexes
+      .map((annex) => '${annex.label} — ${annex.side.label.toLowerCase()}')
+      .join('; ');
 
   /// Пресеты ширины рулона окантовки, мм — быстрые кнопки в панели.
   ///
@@ -1102,6 +1229,13 @@ class WindowParams {
     double? tHeight,
     double? tOffset,
     bool? tWelded,
+    bool? tEnabled,
+    bool? t2Enabled,
+    TShapeSide? t2Side,
+    double? t2Width,
+    double? t2Height,
+    double? t2Offset,
+    bool? t2Welded,
     double? rollBottom,
     double? rollTop,
     double? rollLeft,
@@ -1153,6 +1287,13 @@ class WindowParams {
       tHeight: tHeight ?? this.tHeight,
       tOffset: tOffset ?? this.tOffset,
       tWelded: tWelded ?? this.tWelded,
+      tEnabled: tEnabled ?? this.tEnabled,
+      t2Enabled: t2Enabled ?? this.t2Enabled,
+      t2Side: t2Side ?? this.t2Side,
+      t2Width: t2Width ?? this.t2Width,
+      t2Height: t2Height ?? this.t2Height,
+      t2Offset: t2Offset ?? this.t2Offset,
+      t2Welded: t2Welded ?? this.t2Welded,
       rollBottom: rollBottom ?? this.rollBottom,
       rollTop: rollTop ?? this.rollTop,
       rollLeft: rollLeft ?? this.rollLeft,
@@ -1264,6 +1405,9 @@ class WindowParams {
     ParamField.tWidth => copyWith(tWidth: value),
     ParamField.tHeight => copyWith(tHeight: value),
     ParamField.tOffset => copyWith(tOffset: value),
+    ParamField.t2Width => copyWith(t2Width: value),
+    ParamField.t2Height => copyWith(t2Height: value),
+    ParamField.t2Offset => copyWith(t2Offset: value),
     ParamField.eyeletStep => copyWith(eyeletStep: value),
     ParamField.eyeletCornerOffset => copyWith(eyeletCornerOffset: value),
     ParamField.drainCount => copyWith(drainCount: value),
@@ -1290,6 +1434,9 @@ class WindowParams {
     ParamField.tWidth => tWidth,
     ParamField.tHeight => tHeight,
     ParamField.tOffset => tOffset,
+    ParamField.t2Width => t2Width,
+    ParamField.t2Height => t2Height,
+    ParamField.t2Offset => t2Offset,
     ParamField.eyeletStep => eyeletStep,
     ParamField.eyeletCornerOffset => eyeletCornerOffset,
     ParamField.drainCount => drainCount,
@@ -1324,6 +1471,13 @@ class WindowParams {
     tHeight,
     tOffset,
     tWelded,
+    tEnabled,
+    t2Enabled,
+    t2Side.name,
+    t2Width,
+    t2Height,
+    t2Offset,
+    t2Welded,
     rollBottom,
     rollTop,
     rollLeft,

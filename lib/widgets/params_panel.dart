@@ -78,6 +78,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
     ParamField.tWidth,
     ParamField.tHeight,
     ParamField.tOffset,
+    ParamField.t2Width,
+    ParamField.t2Height,
+    ParamField.t2Offset,
     ParamField.eyeletStep,
     ParamField.eyeletCornerOffset,
     ParamField.drainCount,
@@ -1947,12 +1950,13 @@ class _ParamsPanelState extends State<ParamsPanel> {
     return '${params.cutouts.length} шт · контур ${formatMm(perimeter)} мм';
   }
 
-  /// Раздел «Т-образное окно»: перевод в Т-форму, сторона приставки, её
-  /// размеры, смещение и спайка по общей стороне.
+  /// Раздел «Т-образное окно»: перевод в Т-форму и две пристройки.
   ///
-  /// Кнопка «Сделать Т-образным» заодно выравнивает ширины верха/низа и
-  /// высоты сторон: основное полотно Т-окна — прямоугольник, а приставка
-  /// приваривается к его стороне.
+  /// Каждая пристройка — свой блок «Пристройка 1» / «Пристройка 2»: сторона,
+  /// ширина, высота, смещение, спайка и включение. Две пристройки позволяют
+  /// сделать угловую форму (например, справа и снизу). Пристройки на одной
+  /// стороне запрещены — панель показывает предупреждение, а расчёт оставляет
+  /// только первую и не ломается.
   Widget _tShapeSection(WindowParams params) {
     if (!params.isTShape) {
       return Column(
@@ -1972,14 +1976,16 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Основное полотно плюс приставка, сваренные по общей стороне. '
-            'Окантовка пойдёт только по внешнему периметру.',
+            'Основное полотно плюс до двух пристроек, сваренных по общим '
+            'сторонам. Окантовка пойдёт только по внешнему периметру.',
             style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
         ],
       );
     }
 
+    final spec = WindowSpec.of(params);
+    final conflict = spec.tAnnexConflict;
     return _panelCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2002,56 +2008,158 @@ class _ParamsPanelState extends State<ParamsPanel> {
             ],
           ),
           Text(
-            WindowSpec.of(params).tShapeSummary,
+            spec.tShapeSummary,
+            key: const Key('t-shape-summary'),
             style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
+          if (conflict != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              key: const Key('t-annex-conflict'),
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF4E0),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE0B466)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    size: 16,
+                    color: Color(0xFF8A5200),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      conflict,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF8A5200),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
-          const Text(
-            'Сторона приставки',
-            style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
-          ),
-          const SizedBox(height: 6),
-          _chips<TShapeSide>(
-            values: TShapeSide.values,
-            selected: params.tSide,
-            labelOf: (value) => value.label,
-            onSelected: (value) => _updateWindow(params.copyWith(tSide: value)),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(child: _numberField(ParamField.tWidth)),
-              const SizedBox(width: 10),
-              Expanded(child: _numberField(ParamField.tHeight)),
-            ],
-          ),
-          const SizedBox(height: 10),
-          _numberField(ParamField.tOffset),
+          _annexBlock(params, 1),
+          const SizedBox(height: 8),
+          _annexBlock(params, 2),
           const SizedBox(height: 4),
-          const Text(
-            'Смещение — вдоль общей стороны: от низа для приставки справа или '
-            'слева, от левого края для верхней или нижней.',
-            style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-          ),
-          SwitchListTile(
-            key: const Key('t-welded'),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            value: params.tWelded,
-            title: const Text(
-              'Спайка по общей стороне',
-              style: TextStyle(fontSize: 12),
-            ),
-            subtitle: const Text(
-              'Включено — два полотна свариваются в одно Т-окно, окантовка '
-              'только по внешнему периметру. Выключено — два отдельных окна, '
-              'каждое окантовывается целиком.',
-              style: TextStyle(fontSize: 11),
-            ),
-            onChanged: (value) =>
-                _updateWindow(params.copyWith(tWelded: value)),
+          Text(
+            'Смещение — вдоль общей стороны: от низа для пристройки справа '
+            'или слева, от левого края для верхней или нижней. Две пристройки '
+            'на одной стороне запрещены: выберите разные стороны.',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Блок одной пристройки: включение, сторона, размеры, смещение и спайка.
+  Widget _annexBlock(WindowParams params, int number) {
+    final first = number == 1;
+    final enabled = first ? params.tEnabled : params.t2Enabled;
+    final side = first ? params.tSide : params.t2Side;
+    final welded = first ? params.tWelded : params.t2Welded;
+    final widthField = first ? ParamField.tWidth : ParamField.t2Width;
+    final heightField = first ? ParamField.tHeight : ParamField.t2Height;
+    final offsetField = first ? ParamField.tOffset : ParamField.t2Offset;
+    final prefix = 't$number';
+    WindowParams withEnabled(bool value) => first
+        ? params.copyWith(tEnabled: value)
+        : params.copyWith(t2Enabled: value);
+    WindowParams withSide(TShapeSide value) =>
+        first ? params.copyWith(tSide: value) : params.copyWith(t2Side: value);
+    WindowParams withWelded(bool value) => first
+        ? params.copyWith(tWelded: value)
+        : params.copyWith(t2Welded: value);
+
+    return Material(
+      key: Key('t-annex-$number'),
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: enabled ? const Color(0xFFC3CCDA) : const Color(0xFFE4E8EF),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile(
+              key: Key('$prefix-enabled'),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              value: enabled,
+              title: Text(
+                'Пристройка $number',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: Text(
+                first
+                    ? 'Основная пристройка Т-окна. Выключите, если нужна только '
+                          'вторая (или ни одной).'
+                    : 'Вторая пристройка — угловая форма: например, справа и '
+                          'снизу.',
+                style: const TextStyle(fontSize: 11),
+              ),
+              onChanged: (value) => _updateWindow(withEnabled(value)),
+            ),
+            if (enabled) ...[
+              Text(
+                'Сторона пристройки $number',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
+              ),
+              const SizedBox(height: 4),
+              _chips<TShapeSide>(
+                values: TShapeSide.values,
+                selected: side,
+                labelOf: (value) => value.label,
+                keyOf: (value) => '$prefix-side-${value.name}',
+                onSelected: (value) => _updateWindow(withSide(value)),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(child: _numberField(widthField)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _numberField(heightField)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              _numberField(offsetField),
+              SwitchListTile(
+                key: Key(first ? 't-welded' : 't2-welded'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: welded,
+                title: const Text(
+                  'Спайка по общей стороне',
+                  style: TextStyle(fontSize: 12),
+                ),
+                subtitle: Text(
+                  welded
+                      ? 'Два полотна свариваются в одно окно, окантовка — только '
+                            'по внешнему периметру.'
+                      : 'Без спайки: отдельное окно, окантовка по всему '
+                            'периметру части.',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                onChanged: (value) => _updateWindow(withWelded(value)),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -2767,6 +2875,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     required String Function(T) labelOf,
     required ValueChanged<T> onSelected,
     bool Function(T)? enabledOf,
+    String Function(T)? keyOf,
   }) {
     return Wrap(
       spacing: 6,
@@ -2774,6 +2883,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       children: [
         for (final value in values)
           ChoiceChip(
+            key: keyOf == null ? null : Key(keyOf(value)),
             label: Text(labelOf(value), style: const TextStyle(fontSize: 12)),
             selected: selected == value,
             visualDensity: VisualDensity.compact,

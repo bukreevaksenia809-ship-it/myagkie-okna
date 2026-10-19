@@ -146,7 +146,7 @@ class CostsSheet extends StatelessWidget {
           'вырезов ${spec.params.cutouts.length}',
         if (spec.layers.weldLengthMm > 0)
           'спайка ${formatMm(spec.layers.weldLengthMm)}'
-              '${spec.params.isTShape ? ' (общая сторона Т)' : ''}',
+              '${spec.params.isTShape ? ' (общие стороны Т)' : ''}',
         if (spec.params.pocket)
           'фартук снизу ${formatMm(spec.params.pocketWidth)}',
         if (spec.params.pocketTop)
@@ -171,18 +171,22 @@ class CostsSheet extends StatelessWidget {
         window.windowType.label,
         window.material.label,
         // Размеры изделия — только основные (припуск в изделие не входит).
-        // У Т-окна показываем обе части и сторону приставки.
+        // У Т-окна показываем основное полотно и каждую пристройку со своей
+        // стороной: у угловой формы их две.
         window.isTShape
-            ? '${formatMm(window.bottomWidth)}×${formatMm(window.leftHeight)} + '
-                  '${formatMm(window.tWidth)}×${formatMm(window.tHeight)} '
-                  '${window.tSide.label.toLowerCase()}'
+            ? [
+                '${formatMm(window.bottomWidth)}×${formatMm(window.leftHeight)}',
+                for (final annex in window.tAnnexes)
+                  '${formatMm(annex.width)}×${formatMm(annex.height)} '
+                      '${annex.side.label.toLowerCase()}',
+              ].join(' + ')
             : '${formatMm(window.bottomWidth)}/${formatMm(window.topWidth)} · '
                   '${formatMm(window.leftHeight)}/${formatMm(window.rightHeight)}',
         // Плёнка в раскрое — заготовка с припуском и усадкой.
         '${formatMm(spec.filmCutWidthWithShrinkage)} × '
             '${formatMm(spec.filmCutHeightWithShrinkage)}',
         formatMeters(spec.productAreaM2),
-        // Заготовка по контуру к раскрою — фактическая, с усадкой.
+        // Заготовка по контуру к раскрою, с усадкой.
         formatMeters(spec.filmCutAreaWithShrinkageM2),
         '${spec.eyeletCount}',
         spec.params.isScreen
