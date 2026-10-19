@@ -1,10 +1,15 @@
 // Независимая проверка расчёта косых окон (трапеций и окон с разными
 // высотами слева/справа).
 //
-// Числа в тестах посчитаны ВРУЧНУЮ, отдельно от кода приложения: контур
-// изделия задаётся углами, стороны сдвигаются по своим нормалям, соседние
-// сдвинутые прямые пересекаются, площадь берётся формулой Гаусса, длины
-// сторон — по теореме Пифагора. Приложение сравнивается с этими числами,
+// Правило заказчика: раскрой трапеции считается КАК ПРЯМОУГОЛЬНИК. Заготовка —
+// это габарит изделия минус окантовка (плюс запайка) по сторонам, как у
+// прямоугольного окна; никакой площади по полигону. Изделие на чертеже
+// остаётся фактической формы (трапецией), но плёнка кроится прямоугольником,
+// поэтому «пустые» углы честно входят в расход.
+//
+// Числа в тестах посчитаны ВРУЧНУЮ, отдельно от кода приложения: габарит
+// берётся по углам изделия, вычеты — половина рулона минус запайка, площадь —
+// произведение ширины на высоту. Приложение сравнивается с этими числами,
 // поэтому тест ловит ошибку и в геометрии, и в площади, и в расходе.
 //
 // Четыре примера заказчика:
@@ -17,6 +22,7 @@
 //
 // Запуск: flutter test test/trapezoid_audit_test.dart
 import 'dart:math' as math;
+import 'dart:ui' show Rect;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
@@ -24,97 +30,6 @@ import 'package:soft_window_drawer/models/window_geometry.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/costs_summary.dart';
 import 'package:soft_window_drawer/widgets/cut_sheet.dart';
-
-/// Независимый четырёхугольник: углы против часовой стрелки, начало в левом
-/// нижнем. Никаких функций приложения — только аналитическая геометрия.
-class _Quad {
-  const _Quad(this.points);
-
-  factory _Quad.window({
-    required double bottomWidth,
-    required double topWidth,
-    required double leftHeight,
-    required double rightHeight,
-  }) {
-    final offset = (bottomWidth - topWidth) / 2;
-    return _Quad([
-      Offset.zero,
-      Offset(bottomWidth, 0),
-      Offset(offset + topWidth, rightHeight),
-      Offset(offset, leftHeight),
-    ]);
-  }
-
-  final List<Offset> points;
-
-  List<double> get sideLengths => [
-        for (var i = 0; i < points.length; i++)
-          (points[(i + 1) % points.length] - points[i]).distance,
-      ];
-
-  double get areaMm2 {
-    var sum = 0.0;
-    for (var i = 0; i < points.length; i++) {
-      final a = points[i];
-      final b = points[(i + 1) % points.length];
-      sum += a.dx * b.dy - b.dx * a.dy;
-    }
-    return (sum / 2).abs();
-  }
-
-  double get width => _maxX - _minX;
-  double get height => _maxY - _minY;
-  double get _minX => points.map((p) => p.dx).reduce(math.min);
-  double get _maxX => points.map((p) => p.dx).reduce(math.max);
-  double get _minY => points.map((p) => p.dy).reduce(math.min);
-  double get _maxY => points.map((p) => p.dy).reduce(math.max);
-
-  /// Сдвиг каждой стороны по нормали внутрь (outward = false) или наружу.
-  _Quad offset(List<double> distances, {required bool outward}) {
-    final shifted = <(Offset, Offset)>[];
-    for (var i = 0; i < points.length; i++) {
-      final a = points[i];
-      final b = points[(i + 1) % points.length];
-      final direction = b - a;
-      final unit = direction / direction.distance;
-      // Обход против часовой: внутренняя нормаль (−dy, dx).
-      final inward = Offset(-unit.dy, unit.dx);
-      final normal = outward ? -inward : inward;
-      final distance = distances[i];
-      shifted.add((a + normal * distance, b + normal * distance));
-    }
-    final result = <Offset>[];
-    for (var i = 0; i < shifted.length; i++) {
-      final previous = shifted[(i - 1 + shifted.length) % shifted.length];
-      final current = shifted[i];
-      result.add(
-        _intersection(previous.$1, previous.$2, current.$1, current.$2),
-      );
-    }
-    return _Quad(result);
-  }
-
-  /// Растяжение относительно центра габарита — как припуск и усадка.
-  _Quad scale(double sx, double sy) {
-    final center = Offset((_minX + _maxX) / 2, (_minY + _maxY) / 2);
-    return _Quad([
-      for (final point in points)
-        Offset(
-          center.dx + (point.dx - center.dx) * sx,
-          center.dy + (point.dy - center.dy) * sy,
-        ),
-    ]);
-  }
-
-  static Offset _intersection(Offset p1, Offset p2, Offset p3, Offset p4) {
-    final d1 = p2 - p1;
-    final d2 = p4 - p3;
-    final denominator = d1.dx * d2.dy - d1.dy * d2.dx;
-    final t =
-        ((p3.dx - p1.dx) * d2.dy - (p3.dy - p1.dy) * d2.dx) / denominator;
-    return p1 + d1 * t;
-  }
-}
 
 WindowParams _pvc({
   required double bottom,
@@ -126,84 +41,100 @@ WindowParams _pvc({
   double rollTop = 100,
   double rollLeft = 100,
   double weld = 5,
-}) =>
-    WindowParams(
-      bottomWidth: bottom,
-      topWidth: top,
-      leftHeight: left,
-      rightHeight: right,
-      rollBottom: rollBottom,
-      rollRight: rollRight,
-      rollTop: rollTop,
-      rollLeft: rollLeft,
-      weldOverlapMm: weld,
-    );
+}) => WindowParams(
+  bottomWidth: bottom,
+  topWidth: top,
+  leftHeight: left,
+  rightHeight: right,
+  rollBottom: rollBottom,
+  rollRight: rollRight,
+  rollTop: rollTop,
+  rollLeft: rollLeft,
+  weldOverlapMm: weld,
+);
 
-/// Заготовка ПВХ по ручному расчёту: окантовка / 2 минус запайка.
-_Quad _manualPvcFilm(WindowParams params) {
-  final outer = _Quad.window(
-    bottomWidth: params.bottomWidth,
-    topWidth: params.topWidth,
-    leftHeight: params.leftHeight,
-    rightHeight: params.rightHeight,
-  );
-  final distances = [
-    for (final roll in [
-      params.rollBottom,
-      params.rollRight,
-      params.rollTop,
-      params.rollLeft,
-    ])
-      math.max(roll / 2 - params.weldOverlapMm, 0.0),
-  ];
-  return outer.offset(distances, outward: false);
-}
-
-/// Заготовка скрина: прибавка по оси — (сторона 1 + сторона 2) / 2 + 20,
-/// половина прибавки на каждую кромку оси.
-_Quad _manualScreenFilm(WindowParams params) {
-  final outer = _Quad.window(
-    bottomWidth: params.bottomWidth,
-    topWidth: params.topWidth,
-    leftHeight: params.leftHeight,
-    rightHeight: params.rightHeight,
-  );
-  final heightIncrease =
-      (params.hemBottomMm + params.hemTopMm) / 2 + screenHemAxisExtraMm;
-  final widthIncrease =
-      (params.hemLeftMm + params.hemRightMm) / 2 + screenHemAxisExtraMm;
-  return outer.offset(
-    [
-      heightIncrease / 2,
-      widthIncrease / 2,
-      heightIncrease / 2,
-      widthIncrease / 2,
-    ],
-    outward: true,
+/// Ручная прямоугольная заготовка ПВХ: габарит минус окантовка плюс запайка.
+Rect _manualPvcBlank(WindowParams params) {
+  final bounds = WindowSpec.of(params).geometry.productBounds;
+  double deduction(double roll) =>
+      math.max(roll / 2 - params.weldOverlapMm, 0.0);
+  return Rect.fromLTRB(
+    bounds.left + deduction(params.rollLeft),
+    bounds.top + deduction(params.rollBottom),
+    bounds.right - deduction(params.rollRight),
+    bounds.bottom - deduction(params.rollTop),
   );
 }
 
-/// Контур к раскрою с припуском: у ПВХ авто +10 мм к высоте, у скрина — нет.
-_Quad _manualCut(WindowSpec spec) {
-  final film = spec.params.isScreen
-      ? _manualScreenFilm(spec.params)
-      : _manualPvcFilm(spec.params);
-  final extraHeight = spec.params.effectiveAllowanceHeightMm;
-  return film.scale(1, (film.height + extraHeight) / film.height);
+/// Ручная прямоугольная заготовка скрина: габарит плюс прибавка по осям.
+Rect _manualScreenBlank(WindowParams params) {
+  final bounds = WindowSpec.of(params).geometry.productBounds;
+  final halfHeight = params.hemAxisBottomTopIncrease / 2;
+  final halfWidth = params.hemAxisLeftRightIncrease / 2;
+  return Rect.fromLTRB(
+    bounds.left - halfWidth,
+    bounds.top - halfHeight,
+    bounds.right + halfWidth,
+    bounds.bottom + halfHeight,
+  );
 }
 
-List<double> _sidesOf(List<Offset> polygon) => [
-      for (var i = 0; i < polygon.length; i++)
-        (polygon[(i + 1) % polygon.length] - polygon[i]).distance,
-    ];
+Rect _manualBlank(WindowParams params) =>
+    params.isScreen ? _manualScreenBlank(params) : _manualPvcBlank(params);
 
-void _expectSides(List<double> actual, List<double> expected, String what) {
+/// Заготовка к раскрою: прямоугольник плюс припуск и минус полосы молний,
+/// ровно как у прямоугольного окна. Припуск растягивает прямоугольник
+/// относительно его центра — как в WindowSpec.filmCutPolygons.
+Rect _manualCut(WindowParams params) {
+  final blank = _manualBlank(params);
+  final zipper = params.zippers.fold<double>(
+    0,
+    (sum, spec) => sum + spec.bandWidth,
+  );
+  final targetWidth = blank.width - zipper + params.allowanceWidthMm;
+  final targetHeight = blank.height + params.effectiveAllowanceHeightMm;
+  final sx = targetWidth / blank.width;
+  final sy = targetHeight / blank.height;
+  final center = blank.center;
+  return Rect.fromLTRB(
+    center.dx + (blank.left - center.dx) * sx,
+    center.dy + (blank.top - center.dy) * sy,
+    center.dx + (blank.right - center.dx) * sx,
+    center.dy + (blank.bottom - center.dy) * sy,
+  );
+}
+
+void _expectSides(
+  List<double> actual,
+  List<double> expected,
+  String what,
+) {
   expect(actual.length, expected.length, reason: '$what: число сторон');
   for (var i = 0; i < expected.length; i++) {
-    expect(actual[i], closeTo(expected[i], 1e-4),
-        reason: '$what: сторона $i');
+    expect(
+      actual[i],
+      closeTo(expected[i], 1e-4),
+      reason: '$what: сторона $i',
+    );
   }
 }
+
+/// Прямоугольник заготовки против ручного: углы и площадь.
+void _expectRect(List<Offset> actual, Rect expected, String what) {
+  expect(actual.length, 4, reason: '$what: это прямоугольник');
+  expect(actual[0].dx, closeTo(expected.left, 1e-6), reason: '$what: лево');
+  expect(actual[0].dy, closeTo(expected.top, 1e-6), reason: '$what: низ');
+  expect(actual[2].dx, closeTo(expected.right, 1e-6), reason: '$what: право');
+  expect(actual[2].dy, closeTo(expected.bottom, 1e-6), reason: '$what: верх');
+}
+
+/// Стороны CutPiece прямоугольной заготовки: низ, право, верх, лево.
+List<double> _rectCutSides(Rect cut) => [
+  cut.width,
+  cut.height,
+  cut.width,
+  cut.height,
+];
 
 void main() {
   group('Косые окна: ручной расчёт против WindowSpec', () {
@@ -217,36 +148,55 @@ void main() {
       );
       final spec = WindowSpec.of(params);
 
-      // Ручной контур изделия: низ 2000, бока по √(500² + 1000²) = 1118,034,
+      // Изделие остаётся трапецией: низ 2000, бока по √(500² + 1000²),
       // верх 1000.
-      _expectSides(spec.geometry.sideLengths,
-          [2000, 1118.0339887, 1000, 1118.0339887], 'стороны изделия');
+      _expectSides(
+        spec.geometry.sideLengths,
+        [2000, 1118.0339887, 1000, 1118.0339887],
+        'стороны изделия',
+      );
+      expect(spec.productAreaM2, closeTo(1.5, 1e-9));
 
-      // Ручная заготовка: низ 1854,377, верх 944,377, бока 1017,411.
-      final film = _manualPvcFilm(params);
-      _expectSides(_sidesOf(film.points),
-          [1854.3769335, 1017.4108918, 944.3769335, 1017.4108918],
-          'ручная заготовка');
-      _expectSides(_sidesOf(spec.layers.filmEdge),
-          [1854.3769335, 1017.4108918, 944.3769335, 1017.4108918],
-          'заготовка WindowSpec');
-      expect(spec.filmAreaM2, closeTo(1.273433, 1e-6));
-      expect(film.areaMm2 / 1e6, closeTo(1.273433, 1e-6));
+      // Заготовка — ПРЯМОУГОЛЬНИК по габариту. Вычет с каждой стороны:
+      // 100 / 2 − 5 = 45 мм. Ширина 2000 − 90 = 1910, высота 1000 − 90 = 910.
+      final blank = _manualPvcBlank(params);
+      expect(blank.width, closeTo(1910, 1e-9));
+      expect(blank.height, closeTo(910, 1e-9));
+      _expectRect(spec.layers.filmEdge, blank, 'заготовка WindowSpec');
+      expect(spec.filmCutWidth, closeTo(1910, 1e-9));
+      expect(spec.filmCutHeight, closeTo(910, 1e-9));
+      // Площадь прямоугольника: 1910 × 910 = 1,7381 м² (а не 1,27 по
+      // контуру трапеции).
+      expect(spec.filmAreaM2, closeTo(1.7381, 1e-9));
+      expect(
+        spec.layers.filmAreaM2,
+        closeTo(1910 * 910 / 1000000, 1e-9),
+      );
 
-      // К раскрою: авто +10 мм к высоте — 1854,377 × 920; стороны 1026,365.
-      final cut = _manualCut(spec);
-      expect(spec.filmCutWidth, closeTo(1854.3769335, 1e-4));
-      expect(spec.filmCutHeightWithAllowance, closeTo(920, 1e-6));
-      expect(spec.filmCutAreaM2, closeTo(1.287427, 1e-6));
-      expect(cut.areaMm2 / 1e6, closeTo(1.287427, 1e-6));
+      // К раскрою: авто +10 мм к высоте — 1910 × 920.
+      final cut = _manualCut(params);
+      expect(cut.width, closeTo(1910, 1e-9));
+      expect(cut.height, closeTo(920, 1e-9));
+      expect(spec.filmCutWidthWithAllowance, closeTo(1910, 1e-9));
+      expect(spec.filmCutHeightWithAllowance, closeTo(920, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(1.7572, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(cut.width * cut.height / 1e6, 1e-9));
+      _expectRect(spec.filmCutPolygon, cut, 'раскрой WindowSpec');
+      expect(spec.filmCutPolygon, hasLength(4));
 
-      // Лист «Раскрой»: длины четырёх сторон фактической трапеции.
+      // Лист «Раскрой» рисует прямоугольную заготовку с четырьмя равными
+      // парами сторон: 1910, 920, 1910, 920.
       final piece = CutPiece.ofSpec(spec);
-      _expectSides(piece.sideLengths,
-          [1854.3769335, 1026.364918, 944.3769335, 1026.364918], 'CutPiece');
+      _expectSides(
+        piece.sideLengths,
+        _rectCutSides(cut),
+        'CutPiece',
+      );
+      expect(piece.widthMm, closeTo(1910, 1e-9));
+      expect(piece.heightMm, closeTo(920, 1e-9));
       expect(piece.areaM2, closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9));
 
-      // Расход окантовки — по НАРУЖНЫМ сторонам изделия, а не по заготовке.
+      // Расход окантовки — по НАРУЖНЫМ сторонам ИЗДЕЛИЯ, а не по заготовке.
       expect(spec.edgeConsumption[100], closeTo(5236.0679775, 1e-4));
       expect(spec.edgeConsumption.length, 1);
     });
@@ -262,30 +212,34 @@ void main() {
       final spec = WindowSpec.of(params);
 
       // Верх наклонён: 1200 × 400 → длина √(1200² + 400²) = 1264,911.
-      _expectSides(spec.geometry.sideLengths,
-          [1200, 1400, 1264.9110641, 1000], 'стороны изделия');
+      _expectSides(
+        spec.geometry.sideLengths,
+        [1200, 1400, 1264.9110641, 1000],
+        'стороны изделия',
+      );
       expect(spec.productAreaM2, closeTo(1.44, 1e-9));
 
-      final film = _manualPvcFilm(params);
-      _expectSides(_sidesOf(film.points),
-          [1110, 1292.5658107, 1170.0427301, 922.5658107],
-          'ручная заготовка');
-      _expectSides(_sidesOf(spec.layers.filmEdge),
-          [1110, 1292.5658107, 1170.0427301, 922.5658107],
-          'заготовка WindowSpec');
-      expect(spec.filmAreaM2, closeTo(1.229398, 1e-6));
-
-      // К раскрою: 1110 × 1302,566; наклонный верх 1170,951, бока 1302,566
-      // и 929,703.
-      final cut = _manualCut(spec);
+      // Заготовка-прямоугольник: ширина 1200 − 90 = 1110, высота берётся по
+      // габариту (верх на 1400) и тоже минус 90: 1400 − 90 = 1310.
+      final blank = _manualPvcBlank(params);
+      expect(blank.width, closeTo(1110, 1e-9));
+      expect(blank.height, closeTo(1310, 1e-9));
+      _expectRect(spec.layers.filmEdge, blank, 'заготовка WindowSpec');
       expect(spec.filmCutWidth, closeTo(1110, 1e-9));
-      expect(spec.filmCutHeightWithAllowance, closeTo(1302.5658107, 1e-4));
-      expect(spec.filmCutAreaM2, closeTo(1.238909, 1e-6));
-      expect(cut.areaMm2 / 1e6, closeTo(1.238909, 1e-6));
+      expect(spec.filmCutHeight, closeTo(1310, 1e-9));
+      expect(spec.filmAreaM2, closeTo(1110 * 1310 / 1000000, 1e-9));
+
+      // К раскрою: 1110 × (1310 + 10) = 1110 × 1320.
+      final cut = _manualCut(params);
+      expect(cut.width, closeTo(1110, 1e-9));
+      expect(cut.height, closeTo(1320, 1e-9));
+      expect(spec.filmCutWidth, closeTo(1110, 1e-9));
+      expect(spec.filmCutHeightWithAllowance, closeTo(1320, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(1.4652, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(cut.width * cut.height / 1e6, 1e-9));
 
       final piece = CutPiece.ofSpec(spec);
-      _expectSides(piece.sideLengths,
-          [1110, 1302.5658107, 1170.9511136, 929.7032958], 'CutPiece');
+      _expectSides(piece.sideLengths, _rectCutSides(cut), 'CutPiece');
       expect(piece.areaM2, closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9));
 
       // Окантовка: низ 1200 + право 1400 + верх 1264,911 + лево 1000.
@@ -307,24 +261,27 @@ void main() {
       final spec = WindowSpec.of(params);
 
       // Готовые полосы: низ 60, верх 40, бока 50; вычет запайки 10.
-      final film = _manualPvcFilm(params);
-      _expectSides(_sidesOf(film.points),
-          [1860.5572809, 1028.5913142, 940.5572809, 1028.5913142],
-          'ручная заготовка');
-      _expectSides(_sidesOf(spec.layers.filmEdge),
-          [1860.5572809, 1028.5913142, 940.5572809, 1028.5913142],
-          'заготовка WindowSpec');
-      expect(spec.filmAreaM2, closeTo(1.288513, 1e-6));
+      // Ширина: 2000 − (50 − 10) − (50 − 10) = 1920.
+      // Высота: 1000 − (60 − 10) − (40 − 10) = 920.
+      final blank = _manualPvcBlank(params);
+      expect(blank.width, closeTo(1920, 1e-9));
+      expect(blank.height, closeTo(920, 1e-9));
+      _expectRect(spec.layers.filmEdge, blank, 'заготовка WindowSpec');
+      expect(spec.filmCutWidth, closeTo(1920, 1e-9));
+      expect(spec.filmCutHeight, closeTo(920, 1e-9));
+      expect(spec.filmAreaM2, closeTo(1920 * 920 / 1000000, 1e-9));
 
-      final cut = _manualCut(spec);
-      expect(spec.filmCutWidth, closeTo(1860.5572809, 1e-4));
-      expect(spec.filmCutHeightWithAllowance, closeTo(930, 1e-6));
-      expect(spec.filmCutAreaM2, closeTo(1.302518, 1e-6));
-      expect(cut.areaMm2 / 1e6, closeTo(1.302518, 1e-6));
+      // К раскрою: 1920 × (920 + 10) = 1920 × 930.
+      final cut = _manualCut(params);
+      expect(cut.width, closeTo(1920, 1e-9));
+      expect(cut.height, closeTo(930, 1e-9));
+      expect(spec.filmCutWidth, closeTo(1920, 1e-9));
+      expect(spec.filmCutHeightWithAllowance, closeTo(930, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(1.7856, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(cut.width * cut.height / 1e6, 1e-9));
 
       final piece = CutPiece.ofSpec(spec);
-      _expectSides(piece.sideLengths,
-          [1860.5572809, 1037.5451605, 940.5572809, 1037.5451605], 'CutPiece');
+      _expectSides(piece.sideLengths, _rectCutSides(cut), 'CutPiece');
 
       // Расход по рулонам: низ 2000 → 120, бока 2 × 1118,034 → 100,
       // верх 1000 → 80.
@@ -348,46 +305,43 @@ void main() {
       final spec = WindowSpec.of(params);
 
       // Прибавка по высоте: (80 + 100) / 2 + 20 = 110;
-      // по ширине: (100 + 80) / 2 + 20 = 110. У прямоугольника это дало бы
-      // 2110 × 2110, но у трапеции наклон боковых сторон добавляет к габариту
-      // заготовки ещё 67,984 мм по ширине.
+      // по ширине: (100 + 80) / 2 + 20 = 110. Заготовка-прямоугольник:
+      // (2000 + 110) × (1000 + 110) = 2110 × 1110.
       expect(params.hemAxisBottomTopIncrease, closeTo(110, 1e-9));
       expect(params.hemAxisLeftRightIncrease, closeTo(110, 1e-9));
-      expect(spec.filmCutWidth, closeTo(2177.9837411, 1e-4));
+      expect(spec.filmCutWidth, closeTo(2110, 1e-9));
       expect(spec.filmCutHeight, closeTo(1110, 1e-9));
-      expect(spec.widthSlopeExtraMm, closeTo(67.9837411, 1e-4));
+      // Наклона сторон в прямоугольном раскрое больше нет.
+      expect(spec.widthSlopeExtraMm, closeTo(0, 1e-9));
       expect(spec.heightSlopeExtraMm, closeTo(0, 1e-9));
-      // Формула честно показывает три слагаемых: готовый габарит, прибавку
-      // по оси и наклон боковых сторон.
       final widthFormula = spec.screenBlankWidthFormulaLabel;
       expect(widthFormula, contains('${formatMm(2000)} + ${formatMm(110)}'));
-      expect(widthFormula, contains('наклон боковых сторон'));
-      expect(widthFormula, contains('= ${formatMm(2177.9837411)} мм'));
+      expect(widthFormula, isNot(contains('наклон')));
+      expect(widthFormula, contains('= ${formatMm(2110)} мм'));
 
-      // Ручная заготовка: низ 2177,984, верх 1067,984, бока 1241,018.
-      final film = _manualScreenFilm(params);
-      _expectSides(_sidesOf(film.points),
-          [2177.9837411, 1241.0177022, 1067.9837411, 1241.0177022],
-          'ручная заготовка скрина');
-      _expectSides(_sidesOf(spec.layers.filmEdge),
-          [2177.9837411, 1241.0177022, 1067.9837411, 1241.0177022],
-          'заготовка WindowSpec');
-      expect(spec.filmAreaM2, closeTo(1.801512, 1e-6));
+      final blank = _manualScreenBlank(params);
+      expect(blank.width, closeTo(2110, 1e-9));
+      expect(blank.height, closeTo(1110, 1e-9));
+      _expectRect(spec.layers.filmEdge, blank, 'заготовка WindowSpec');
+      expect(spec.filmAreaM2, closeTo(2110 * 1110 / 1000000, 1e-9));
 
-      // У скрина нет ни припуска, ни усадки — площадь заготовки та же.
-      expect(spec.filmCutAreaM2, closeTo(1.801512, 1e-6));
-      expect(spec.filmCutAreaWithShrinkageM2, closeTo(1.801512, 1e-6));
-      expect(_manualCut(spec).areaMm2 / 1e6, closeTo(1.801512, 1e-6));
+      // У скрина нет ни припуска, ни усадки — площадь та же, прямоугольная.
+      final cut = _manualCut(params);
+      expect(spec.filmCutAreaM2, closeTo(2.3421, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(cut.width * cut.height / 1e6, 1e-9));
+      expect(spec.filmCutAreaWithShrinkageM2, closeTo(2.3421, 1e-9));
+      _expectRect(spec.filmCutPolygon, cut, 'раскрой WindowSpec');
 
       final piece = CutPiece.ofSpec(spec);
-      _expectSides(piece.sideLengths,
-          [2177.9837411, 1241.0177022, 1067.9837411, 1241.0177022], 'CutPiece');
+      _expectSides(piece.sideLengths, _rectCutSides(cut), 'CutPiece');
+      expect(piece.widthMm, closeTo(2110, 1e-9));
+      expect(piece.heightMm, closeTo(1110, 1e-9));
 
       // Окантовки у скрина нет: расход пуст, длина подворота — периметр.
       expect(spec.edgeConsumption, isEmpty);
       final summary = CostsSummary(OrderProject(windows: [params]));
       expect(summary.screenHemLengthMm, closeTo(5236.0679775, 1e-4));
-      expect(summary.filmAreaM2, closeTo(1.801512, 1e-6));
+      expect(summary.filmAreaM2, closeTo(2.3421, 1e-9));
     });
 
     test('молния на трапеции сужает ширину, высота не меняется', () {
@@ -399,25 +353,52 @@ void main() {
         weld: 5,
       );
       final plain = WindowSpec.of(params);
-      final withZipper = WindowSpec.of(params.copyWith(
-        zippers: const [ZipperSpec(centered: true)],
-      ));
+      final withZipper = WindowSpec.of(
+        params.copyWith(zippers: const [ZipperSpec(centered: true)]),
+      );
       expect(withZipper.zipperBandTotalMm, closeTo(50, 1e-9));
-      expect(withZipper.filmCutWidth,
-          closeTo(plain.filmCutWidth - 50, 1e-9));
-      expect(withZipper.filmCutHeight,
-          closeTo(plain.filmCutHeight, 1e-9));
-      // Площадь уменьшается пропорционально ширине: 50 / 1854,377.
+      expect(
+        withZipper.filmCutWidth,
+        closeTo(plain.filmCutWidth - 50, 1e-9),
+      );
+      expect(withZipper.filmCutHeight, closeTo(plain.filmCutHeight, 1e-9));
+      // Площадь прямоугольника уменьшается пропорционально ширине:
+      // 50 / 1910.
       expect(
         withZipper.filmCutAreaM2,
-        closeTo(plain.filmCutAreaM2 * (plain.filmCutWidth - 50) /
-            plain.filmCutWidth, 1e-6),
+        closeTo(
+          plain.filmCutAreaM2 * (plain.filmCutWidth - 50) / plain.filmCutWidth,
+          1e-9,
+        ),
       );
       // Подпись вычета — та же, что у прямоугольного окна.
       expect(
         withZipper.zipperWidthReductionLabel,
         contains('минус полоса молнии ${formatMm(50)} мм'),
       );
+    });
+
+    test('Т-окно: заготовка — прямоугольник по каждой части', () {
+      const params = WindowParams(
+        windowType: WindowType.tShape,
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 1500,
+        rightHeight: 1500,
+        tSide: TShapeSide.right,
+        tWidth: 800,
+        tHeight: 600,
+        tOffset: 200,
+        pvcHeightAllowanceEnabled: false,
+      );
+      final spec = WindowSpec.of(params);
+      // Части: основное 1955 × 1410, пристройка 755 × 510 — по прямоугольнику.
+      expect(spec.filmPartBounds, hasLength(2));
+      expect(spec.filmPartBounds[0].width, closeTo(1955, 1e-9));
+      expect(spec.filmPartBounds[0].height, closeTo(1410, 1e-9));
+      expect(spec.filmPartBounds[1].width, closeTo(755, 1e-9));
+      expect(spec.filmPartBounds[1].height, closeTo(510, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(3.1416, 1e-6));
     });
   });
 }

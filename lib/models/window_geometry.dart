@@ -935,10 +935,12 @@ class WindowLayers {
     );
   }
 
-  /// Габарит заготовки всего окна по прямоугольнику изделия.
+  /// Габарит заготовки всего окна по ПРЯМОУГОЛЬНИКУ изделия.
   ///
-  /// У Т-окна — основа для прямоугольных заготовок частей; у обычного окна
-  /// используется для подписей.
+  /// Для прямоугольного окна это ровно прежняя формула «габарит минус
+  /// окантовка (плюс запайка) по сторонам»; для трапеции и окна с разными
+  /// высотами сторон заготовка тоже считается прямоугольником по габариту —
+  /// никакой площади по полигону (см. [filmCutAreaM2]).
   Rect get blankRect {
     final bounds = geometry.productBounds;
     return _blankRect(bounds, const <EdgeSide>{});
@@ -950,7 +952,7 @@ class WindowLayers {
 
   List<Rect> _buildPartBlankRects() {
     final t = tLayout;
-    if (t == null) return [filmCutBounds];
+    if (t == null) return [blankRect];
     final mainShared = <EdgeSide>{
       for (final annex in t.weldedAnnexes) annex.side.sharedEdge,
     };
@@ -968,27 +970,15 @@ class WindowLayers {
 
   /// Контуры заготовки полотна.
   ///
-  /// У Т-окна сваренные пристройки объединены с основным полотном в общий
-  /// контур, а пристройки без спайки — отдельные прямоугольники.
+  /// У обычного окна — один прямоугольник (и для трапеции: заготовка кроится
+  /// прямоугольником по габариту). У Т-окна сваренные пристройки объединены
+  /// с основным полотном в общий контур, а пристройки без спайки — отдельные
+  /// прямоугольники.
   late final List<List<Offset>> filmPolygons = _buildFilmPolygons();
 
   List<List<Offset>> _buildFilmPolygons() {
     final t = tLayout;
-    if (t == null) {
-      if (isScreen) {
-        return [outsetPolygonPerSide(outer, perEdge(outer, hemOutsetFor))];
-      }
-      return [
-        insetPolygonPerSide(
-          outer,
-          perEdge(
-            outer,
-            (side) =>
-                math.max(finishedWidthFor(side) - params.weldOverlapMm, 0.0),
-          ),
-        ),
-      ];
-    }
+    if (t == null) return [_rectPolygon(blankRect)];
     final welded = t.weldedAnnexes;
     final polygons = <List<Offset>>[];
     final mainBlank = partBlankRects.first;
@@ -2013,9 +2003,17 @@ class WindowSpec {
   /// Контур заготовки к раскрою: [WindowLayers.filmEdge], растянутый на
   /// припуск на раскрой.
   ///
-  /// Припуск растягивает контур относительно центра габарита. Полоса молнии
-  /// уже учтена в [filmCutWidth]: до припуска контур сжимается по ширине на
-  /// [zipperBandTotalMm] (у ПВХ и у скрина одинаково).
+  /// Заготовка ВСЕГДА прямоугольная: у обычного окна (в том числе у трапеции
+  /// и у окна с разными высотами сторон) — один прямоугольник по габариту,
+  /// у Т-окна — прямоугольники частей (сваренные объединены в общий контур).
+  /// Припуск по ширине и высоте — прибавка к габариту, поэтому контур
+  /// растягивается относительно центра своего габарита: ширина становится
+  /// `filmCutWidth + allowanceWidthMm`, высота —
+  /// `filmCutHeight + effectiveAllowanceHeightMm`, то есть ровно
+  /// `filmCutWidthWithAllowance × filmCutHeightWithAllowance` у обычного окна.
+  ///
+  /// Полоса молнии уже учтена в [filmCutWidth]: до припуска контур сжимается
+  /// по ширине на [zipperBandTotalMm] (у ПВХ и у скрина одинаково).
   List<List<Offset>> get filmCutPolygons {
     final polygons = layers.filmPolygons;
     if (polygons.isEmpty) return const [];
@@ -2073,12 +2071,13 @@ class WindowSpec {
   List<Offset> get filmCutPolygonWithShrinkage =>
       filmCutPolygonsWithShrinkage.first;
 
-  /// Площадь ЗАГОТОВКИ к раскрою по контуру: припуск, без усадки, минус
-  /// вырезы, м².
+  /// Площадь ЗАГОТОВКИ к раскрою: припуск, без усадки, минус вырезы, м².
   ///
-  /// Считается по площади полигонов [filmCutPolygons] (это `filmEdge` с
-  /// припуском), а не по габаритному прямоугольнику. У Т-окна складываются
-  /// площади прямоугольных заготовок частей.
+  /// Считается по площади прямоугольников [filmCutPolygons]: ширина
+  /// заготовки × высота заготовки — как у прямоугольного окна. Никакой
+  /// площади по полигону трапеции нет: косое окно кроится прямоугольником,
+  /// и «пустые» углы честно входят в расход. У Т-окна складываются площади
+  /// прямоугольных заготовок частей.
   double get filmCutAreaM2 {
     var area = 0.0;
     for (final polygon in filmCutPolygons) {

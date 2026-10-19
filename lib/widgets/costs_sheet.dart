@@ -186,7 +186,7 @@ class CostsSheet extends StatelessWidget {
         '${formatMm(spec.filmCutWidthWithShrinkage)} × '
             '${formatMm(spec.filmCutHeightWithShrinkage)}',
         formatMeters(spec.productAreaM2),
-        // Заготовка по контуру к раскрою, с усадкой.
+        // Заготовка-прямоугольник к раскрою, с усадкой.
         formatMeters(spec.filmCutAreaWithShrinkageM2),
         '${spec.eyeletCount}',
         spec.params.isScreen
@@ -203,7 +203,7 @@ class CostsSheet extends StatelessWidget {
       'Размеры полотна, мм',
       'Полотно в раскрое с усадкой, мм',
       'Площадь изделия, м²',
-      'Площадь заготовки по контуру, м²',
+      'Площадь заготовки-прямоугольника, м²',
       'Люверсы, шт',
       'Окантовка / подворот',
       'Спецэлементы',
@@ -283,9 +283,9 @@ class CostsSheet extends StatelessWidget {
         'Полотно (плёнка)',
         [
           ...summary.filmByMaterialLabels,
-          'Итого заготовки по контуру: '
+          'Итого заготовки-прямоугольника: '
               '${formatMeters(summary.filmAreaWithShrinkageM2)} м²',
-          'Заготовки по контуру без усадки: '
+          'Заготовки-прямоугольника без усадки: '
               '${formatMeters(summary.filmAreaM2)} м²',
           'Площадь полотна изделий (без припуска): '
               '${formatMeters(summary.filmNetAreaM2)} м²',
@@ -488,7 +488,7 @@ class _CostsTitleBlock extends StatelessWidget {
           Expanded(
             flex: 3,
             child: _cell(
-              'Заготовки по контуру с усадкой',
+              'Заготовки-прямоугольника с усадкой',
               '${formatMeters(summary.filmAreaWithShrinkageM2)} м²',
             ),
           ),

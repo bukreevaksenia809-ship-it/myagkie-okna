@@ -203,8 +203,10 @@ void main() {
       }
     });
 
-    test('трапеция: заготовка — фактический контур, а не прямоугольник', () {
-      // Окно 2000/1000 × 1000 с запайкой 25 мм: заготовка — трапеция.
+    test('трапеция: заготовка — прямоугольник по габариту', () {
+      // Окно 2000/1000 × 1000 с запайкой 25 мм. Изделие остаётся трапецией,
+      // но плёнка кроится прямоугольником: вычет 50 − 25 = 25 мм с каждой
+      // стороны, ширина 2000 − 50 = 1950, высота 1000 − 50 = 950.
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 1000,
@@ -217,20 +219,23 @@ void main() {
 
       expect(piece.hasContour, isTrue);
       expect(piece.outline, hasLength(4));
+      // Все четыре стороны попарно равны: это прямоугольник, а не трапеция.
       final sides = piece.sideLengths;
-      // По всем четырём сторонам свои длины: низ и верх разные.
-      expect(sides[0], isNot(closeTo(sides[2], 1)));
-      expect(sides[0], closeTo(1919.0983, 1e-3));
-      expect(sides[2], closeTo(969.0983, 1e-3));
-      // Площадь — по контуру и совпадает с моделью.
+      expect(sides[0], closeTo(1950, 1e-9));
+      expect(sides[1], closeTo(960, 1e-9));
+      expect(sides[2], closeTo(1950, 1e-9));
+      expect(sides[3], closeTo(960, 1e-9));
+      expect(piece.widthMm, closeTo(1950, 1e-9));
+      expect(piece.heightMm, closeTo(960, 1e-9));
+      // Площадь — ширина × высота, ровно как у прямоугольного окна.
       expect(
         piece.areaMm2 / 1000000,
         closeTo(spec.filmCutAreaM2, 1e-9),
       );
+      expect(piece.areaMm2 / 1000000, closeTo(1.872, 1e-9));
       expect(piece.areaM2, closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9));
-      // Меньше габаритного прямоугольника: пустые углы не считаются.
-      expect(piece.areaMm2, lessThan(piece.widthMm * piece.heightMm));
-      // Раскладка по-прежнему пакует по габариту — это упаковка.
+      expect(piece.areaMm2, closeTo(piece.widthMm * piece.heightMm, 1e-6));
+      // Раскладка пакует по габариту — это упаковка.
       final layout = CutLayout.place([piece], const Size(1632, 460));
       expect(
         layout.placements.single.rect.width,
@@ -513,7 +518,7 @@ void main() {
       expect(find.text('ЗАГОТОВОК'), findsOneWidget);
       // «Площадь заготовок с усадкой» есть и в итогах, и в штампе.
       expect(find.text('ПЛОЩАДЬ ЗАГОТОВОК С УСАДКОЙ'), findsWidgets);
-      expect(find.text('БЕЗ УСАДКИ (ПО КОНТУРУ)'), findsOneWidget);
+      expect(find.text('БЕЗ УСАДКИ (ПРЯМОУГОЛЬНИК)'), findsOneWidget);
     });
 
     testWidgets('не падает на пустом заказе', (tester) async {

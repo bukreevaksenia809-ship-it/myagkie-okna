@@ -1704,13 +1704,14 @@ void _allowanceRules() {
 
 // --- Площадь косого окна -----------------------------------------------------
 //
-// Заготовка косого окна считается по фактическому контуру, а не по габаритному
-// прямоугольнику: filmCutAreaM2 = площадь полигона filmCutPolygon (filmEdge с
-// припуском) минус вырезы. Габарит остаётся только для упаковки на рулоне.
+// Раскрой трапеции считается ПРЯМОУГОЛЬНИКОМ, как у обычного окна:
+// filmCutAreaM2 = ширина заготовки × высота заготовки (минус вырезы).
+// Изделие на чертеже остаётся фактической формы, но плёнка кроится
+// прямоугольником по габариту, поэтому «пустые» углы честно входят в расход.
 
 void _obliqueAreaRules() {
-  group('Площадь косого окна по контуру', () {
-    test('трапеция 2000/1000 × 1000: меньше габарита на 0,456 м²', () {
+  group('Площадь косого окна — прямоугольником', () {
+    test('трапеция 2000/1000 × 1000: заготовка 1950 × 960', () {
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 1000,
@@ -1720,40 +1721,37 @@ void _obliqueAreaRules() {
       );
       final spec = WindowSpec.of(params);
 
-      // Ручной расчёт filmEdge. Трапеция: A = 1 500 000 мм²,
-      // P = 2000 + 1000 + 2 × √(500² + 1000²) = 5 236,06798 мм,
-      // d = 50 − 25 = 25 мм. Для inward-offset:
-      // A(d) = A − d·P + d²·Σcot(θ/2) = 1 371 893,39 мм².
-      const d = 25.0;
-      final perimeter = 2000 + 1000 + 2 * math.sqrt(500 * 500 + 1000 * 1000);
-      const sumCot = 2 * (1.618033988749895 + 0.6180339887498949);
-      final edgeAreaMm2 = 1500000 - d * perimeter + d * d * sumCot;
-      // Заготовка: контур растянут на авто-припуск +10 мм к высоте.
-      final blankHeight = spec.filmCutHeight + pvcHeightAllowanceMm;
-      final expectedCutAreaM2 =
-          edgeAreaMm2 * blankHeight / spec.filmCutHeight / 1000000;
+      // Вычет с каждой стороны: окантовка 50 − запайка 25 = 25 мм.
+      // Габарит 2000 × 1000 → заготовка 1950 × 950.
+      expect(spec.filmCutWidth, closeTo(1950, 1e-9));
+      expect(spec.filmCutHeight, closeTo(950, 1e-9));
+      expect(spec.filmAreaM2, closeTo(1950 * 950 / 1000000, 1e-9));
+      expect(spec.filmAreaM2, closeTo(1.8525, 1e-9));
 
-      expect(spec.filmAreaM2, closeTo(edgeAreaMm2 / 1000000, 1e-6));
-      expect(spec.filmCutAreaM2, closeTo(expectedCutAreaM2, 1e-6));
-      expect(spec.filmCutAreaM2, closeTo(1.386334, 1e-6),
-          reason: '1 371 893,39 × 960 / 950 = 1 386 334,37 мм²');
-      // Совпадает с площадью полигона filmCutPolygon.
+      // К раскрою: авто-припуск +10 мм к высоте → 1950 × 960 = 1,872 м².
+      expect(spec.filmCutHeightWithAllowance, closeTo(960, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(1.872, 1e-9));
+      expect(
+        spec.filmCutAreaM2,
+        closeTo(
+          spec.filmCutWidthWithAllowance *
+              spec.filmCutHeightWithAllowance /
+              1000000,
+          1e-9,
+        ),
+      );
+      // Контур заготовки — прямоугольник из четырёх вершин.
+      expect(spec.filmCutPolygon, hasLength(4));
       expect(
         spec.filmCutAreaM2,
         closeTo(polygonArea(spec.filmCutPolygon).abs() / 1000000, 1e-9),
       );
-      // Меньше габаритного прямоугольника: 1919,0983 × 960 = 1,842334 м².
-      final boundingAreaM2 =
-          spec.filmCutWidthWithAllowance * spec.filmCutHeightWithAllowance /
-              1000000;
-      expect(spec.filmCutAreaM2, lessThan(boundingAreaM2));
-      // Ожидаемая разница вручную: 960 × (1919,0983 − 1444,0983) = 456 000 мм².
-      expect(boundingAreaM2 - spec.filmCutAreaM2, closeTo(0.456, 1e-6));
-      expect(spec.filmCutWidth, closeTo(1919.0983, 1e-3));
-      expect(spec.filmCutHeight, closeTo(950, 1e-9));
+      // Площадь полотна по контуру трапеции остаётся справочной и больше не
+      // подменяет прямоугольную заготовку: 1,872 ≠ 1,27.
+      expect(spec.filmAreaM2, greaterThan(1.8));
     });
 
-    test('разные высоты слева и справа: площадь тоже по контуру', () {
+    test('разные высоты слева и справа: тоже прямоугольник', () {
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 2000,
@@ -1763,35 +1761,26 @@ void _obliqueAreaRules() {
       );
       final spec = WindowSpec.of(params);
 
-      // Контур filmEdge — многоугольник, а не прямоугольник: площадь по
-      // формуле inward-offset. Внешний контур: A = 2 400 000 мм²,
-      // P = 2000 + 1400 + √(2000² + 400²) + 1000 = 6 439,60798 мм,
-      // d = 25 мм.
-      const d = 25.0;
-      final perimeter = 2000.0 +
-          1400.0 +
-          math.sqrt(2000.0 * 2000.0 + 400.0 * 400.0) +
-          1000.0;
-      final slopeAngle = math.atan(400 / 2000);
-      final sumCot = 2.0 +
-          _cot((math.pi / 2 - slopeAngle) / 2) +
-          _cot((math.pi / 2 + slopeAngle) / 2);
-      final edgeAreaMm2 = 2400000 - d * perimeter + d * d * sumCot;
-      final blankHeight = spec.filmCutHeight + pvcHeightAllowanceMm;
-      final expectedCutAreaM2 =
-          edgeAreaMm2 * blankHeight / spec.filmCutHeight / 1000000;
-
-      expect(spec.filmAreaM2, closeTo(edgeAreaMm2 / 1000000, 1e-6));
-      expect(spec.filmCutAreaM2, closeTo(expectedCutAreaM2, 1e-6));
+      // Габарит по высоте — 1400; вычет 25 с каждой стороны:
+      // 1950 × 1350 = 2,6325 м²; к раскрою 1950 × 1360 = 2,652 м².
+      expect(spec.filmCutWidth, closeTo(1950, 1e-9));
+      expect(spec.filmCutHeight, closeTo(1350, 1e-9));
+      expect(spec.filmAreaM2, closeTo(2.6325, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(2.652, 1e-9));
+      expect(
+        spec.filmCutAreaM2,
+        closeTo(
+          spec.filmCutWidthWithAllowance *
+              spec.filmCutHeightWithAllowance /
+              1000000,
+          1e-9,
+        ),
+      );
+      expect(spec.filmCutPolygon, hasLength(4));
       expect(
         spec.filmCutAreaM2,
         closeTo(polygonArea(spec.filmCutPolygon).abs() / 1000000, 1e-9),
       );
-      final boundingAreaM2 =
-          spec.filmCutWidthWithAllowance * spec.filmCutHeightWithAllowance /
-              1000000;
-      expect(spec.filmCutAreaM2, lessThan(boundingAreaM2),
-          reason: 'скошенный верх не должен списываться как прямоугольник');
     });
 
     test('прямоугольник: площадь не изменилась', () {
@@ -1821,9 +1810,6 @@ void _obliqueAreaRules() {
     });
   });
 }
-
-/// Котангенс угла — для ручного расчёта inward-offset многоугольника.
-double _cot(double angle) => math.cos(angle) / math.sin(angle);
 
 // --- Усадка ПВХ и авто-припуск +10 мм к высоте ------------------------------
 

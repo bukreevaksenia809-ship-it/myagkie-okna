@@ -133,13 +133,13 @@ class Estimate {
           // них. У ПВХ полоса (спайка) вычитается из ширины так же — подпись
           // показывает это человеку прямо в смете.
           note: entry.key == FilmMaterial.screen
-              ? 'скрин: заготовка по контуру ${formatMeters(entry.value)} м² × '
+              ? 'скрин: заготовка-прямоугольник ${formatMeters(entry.value)} м² × '
                     '${_unitPriceLabel(pricePerM2)} ₽/м² — готовый размер плюс '
                     'среднее подворотов по оси + 20 мм'
                     '${summary.screenZipperCount > 0 ? ', ширина кроя уменьшена на '
                               'полосу молнии '
                               '${formatMm(summary.screenZipperBandWidthMm)} мм' : ''}'
-              : '${entry.key.thickness}; заготовка по контуру'
+              : '${entry.key.thickness}; заготовка-прямоугольник'
                     '${hasTShape ? ' (Т-окно: основное полотно + пристройки)' : ''}'
                     '${summary.hasShrinkage ? ' с компенсацией усадки' : ''}'
                     '${summary.hasAutoHeightAllowance ? '${summary.hasShrinkage ? ' и' : ' с'} авто-припуском '
@@ -358,7 +358,7 @@ class Estimate {
       lines.add(
         EstimateLine(
           title: 'Раскрой плёнки и разметка',
-          note: 'по площади заготовки по контуру с усадкой',
+          note: 'по площади заготовки-прямоугольника с усадкой',
           quantity: summary.filmAreaWithShrinkageM2,
           unit: 'м²',
           unitPrice: prices.cuttingPerM2,

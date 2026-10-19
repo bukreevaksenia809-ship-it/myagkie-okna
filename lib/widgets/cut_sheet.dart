@@ -1043,7 +1043,7 @@ class _CutTotalsBlock extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: _statTile(
-                  'Без усадки (по контуру)',
+                  'Без усадки (прямоугольник)',
                   '${formatMeters(totals.filmAreaM2)} м²',
                 ),
               ),

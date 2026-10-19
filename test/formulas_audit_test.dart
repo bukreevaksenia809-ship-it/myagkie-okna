@@ -536,7 +536,7 @@ void _areaAudit() {
       expectClose(estimate.filmAreaM2, 4.24535118, 'площадь плёнки в смете');
     });
 
-    test('трапеция: площадь заготовки — по контуру, а не по габариту', () {
+    test('трапеция: площадь заготовки — прямоугольник по габариту', () {
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 1000,
@@ -546,61 +546,38 @@ void _areaAudit() {
       );
       final spec = WindowSpec.of(params);
 
-      // Ручной расчёт. Трапеция 2000/1000 × 1000: площадь 1,5 м²,
-      // периметр 2000 + 1000 + 2 × √(500² + 1000²) = 5 236,06798 мм.
-      // Запайка d = готовая окантовка 50 − запайка 25 = 25 мм.
-      // Для многоугольника, сдвинутого внутрь на d:
-      //   A(d) = A − d·P + d²·Σcot(θᵢ/2),
-      // где у трапеции два угла по 63,43495° (cot 1,618034) и два по
-      // 116,56505° (cot 0,618034), сумма = 4,47213596.
-      // A = 1 500 000 − 25 × 5 236,06798 + 625 × 4,47213596
-      //   = 1 371 893,39 мм² = 1,371893 м².
-      const edgeAreaMm2 = 1371893.3855;
-      expectClose(spec.filmAreaM2, 1.371893, 'площадь полотна 1,371893',
-          tol: 1e-6);
-
-      // Заготовка = контур полотна, растянутый на авто-припуск +10 мм к
-      // высоте: 1 371 893,39 × 960 / 950 = 1 386 334,37 мм².
+      // Ручной расчёт по правилу «как прямоугольник». Габарит изделия
+      // 2000 × 1000; вычет с каждой стороны — окантовка 50 минус запайка 25,
+      // то есть 25 мм. Заготовка: 1950 × 950 = 1,8525 м².
+      expectClose(spec.filmCutWidth, 1950, 'ширина заготовки 1950');
+      expectClose(spec.filmCutHeight, 950, 'высота заготовки 950');
+      expectClose(spec.filmAreaM2, 1.8525, 'площадь полотна 1,8525',
+          tol: 1e-9);
+      // К раскрою: авто-припуск +10 мм к высоте → 1950 × 960 = 1,872 м².
       expectClose(
         spec.filmCutAreaM2,
-        1.386334,
-        'площадь заготовки по контуру 1,386334 м²',
-        tol: 1e-6,
-      );
-      // Она действительно равна площади полигона, а не прямоугольника.
-      expectClose(
-        spec.filmCutAreaM2,
-        polygonArea(spec.filmCutPolygon).abs() / 1000000,
-        'заготовка = площадь полигона filmCutPolygon',
+        1.872,
+        'площадь заготовки-прямоугольника 1,872 м²',
         tol: 1e-9,
       );
-      // Габаритный прямоугольник той же заготовки — 1919,0983 × 960 мм =
-      // 1,842334 м². Разница 0,456000 м² — это «пустые» углы трапеции,
-      // которые раньше списывались в расход.
-      final boundingAreaM2 =
-          spec.filmCutWidthWithAllowance * spec.filmCutHeightWithAllowance /
-              1000000;
-      expectClose(boundingAreaM2, 1.842334, 'габарит заготовки 1,842334',
-          tol: 1e-6);
+      // Она равна прямоугольнику, а не площади полигона трапеции.
       expectClose(
-        boundingAreaM2 - spec.filmCutAreaM2,
-        0.456,
-        'экономия против габарита 0,456 м²',
-        tol: 1e-6,
-      );
-      expect(
         spec.filmCutAreaM2,
-        lessThan(boundingAreaM2),
-        reason: 'косое окно кроится по контуру: площадь меньше габарита',
+        spec.filmCutWidthWithAllowance *
+            spec.filmCutHeightWithAllowance /
+            1000000,
+        'заготовка = ширина × высота',
+        tol: 1e-9,
       );
-      expect(
-        spec.filmCutAreaM2,
-        greaterThan(edgeAreaMm2 / 1000000),
-        reason: 'заготовка выше полотна на авто-припуск +10 мм',
-      );
+      expect(spec.filmCutPolygon, hasLength(4));
+      // У прямоугольника все четыре стороны попарно равны.
+      expectClose(spec.filmCutPolygon[0].dx, 25, 'левый край заготовки',
+          tol: 1e-9);
+      expectClose(spec.filmCutPolygon[2].dx, 1975, 'правый край заготовки',
+          tol: 1e-9);
     });
 
-    test('трапеция: смета считает площадь по контуру', () {
+    test('трапеция: смета считает площадь по прямоугольнику', () {
       // Та же трапеция 2000/1000 × 1000 мм с запайкой 25 мм.
       const params = WindowParams(
         bottomWidth: 2000,
@@ -615,20 +592,12 @@ void _areaAudit() {
       final cutting = estimate.lines
           .firstWhere((line) => line.title.startsWith('Раскрой'));
 
-      // Площадь по контуру: 1,386334 м².
-      expectClose(film.quantity, 1.386334, 'плёнка в смете', tol: 1e-6);
-      expectClose(film.amount, 1317.02, '1,386334 × 950');
-      expectClose(cutting.quantity, 1.386334, 'раскрой в смете', tol: 1e-6);
-      expectClose(cutting.amount, 346.58, '1,386334 × 250');
-      // По старому габариту 1,842334 м² было бы 1750,22 + 460,58 = 2210,80,
-      // то есть на 547,20 ₽ больше до НДС.
-      expectClose(
-        (1750.22 + 460.58) - (film.amount + cutting.amount),
-        547.20,
-        'экономия против габарита до НДС 547,20 ₽',
-        tol: 0.01,
-      );
-      expectClose(estimate.total, 6187.98, 'итого с НДС 6187,98 ₽', tol: 0.01);
+      // Площадь прямоугольной заготовки: 1,872 м².
+      expectClose(film.quantity, 1.872, 'плёнка в смете', tol: 1e-9);
+      expectClose(film.amount, 1778.40, '1,872 × 950');
+      expectClose(cutting.quantity, 1.872, 'раскрой в смете', tol: 1e-9);
+      expectClose(cutting.amount, 468.00, '1,872 × 250');
+      expectClose(estimate.total, 6887.34, 'итого с НДС 6887,34 ₽', tol: 0.01);
     });
   });
 }

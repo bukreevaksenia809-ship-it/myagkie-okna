@@ -326,17 +326,17 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
                         '${formatMm(spec.filmCutWidth)} мм)' : ''}',
         ),
         TechMaterial(
-          name: 'Площадь заготовки по контуру в раскрое',
+          name: 'Площадь заготовки-прямоугольника в раскрое',
           size: '${formatMeters(spec.filmCutAreaWithShrinkageM2)} м²',
-          note: 'по фактическому контуру, без площади вырезов',
+          note: 'ширина × высота заготовки, без площади вырезов',
         ),
       ],
       tool: 'Раскроечный стол, дисковый нож, рулетка, угольник, маркер',
       control:
           'Габарит ${formatMm(spec.filmCutWidthWithAllowance)} × '
           '${formatMm(spec.filmCutHeightWithAllowance)} мм (±5 мм), '
-          'длины сторон и углы — по контуру чертежа, кромка ровная без задиров '
-          'и волн',
+          'заготовка прямоугольная — четыре прямых угла, кромка ровная без '
+          'задиров и волн',
       source:
           'WindowSpec.filmCutWidthWithAllowance / filmCutHeightWithAllowance '
           '(готовый размер + среднее подворотов по оси + '
@@ -384,12 +384,12 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         ),
         TechMaterial(
           name: params.hasShrinkage
-              ? 'Площадь заготовки по контуру с усадкой'
-              : 'Площадь заготовки по контуру',
+              ? 'Площадь заготовки-прямоугольника с усадкой'
+              : 'Площадь заготовки-прямоугольника',
           size: '${formatMeters(spec.filmCutAreaWithShrinkageM2)} м²',
           note: params.hasShrinkage
-              ? 'по фактическому контуру, с припуском и усадкой, без вырезов'
-              : 'по фактическому контуру, с припуском, без площади вырезов',
+              ? 'ширина × высота заготовки, с припуском и усадкой, без вырезов'
+              : 'ширина × высота заготовки, с припуском, без площади вырезов',
         ),
         if (params.isTShape && spec.filmPartBounds.length >= 2) ...[
           TechMaterial(
@@ -417,8 +417,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       control:
           'Габарит ${formatMm(spec.filmCutWidthWithShrinkage)} × '
           '${formatMm(spec.filmCutHeightWithShrinkage)} мм (±5 мм), '
-          'длины сторон и углы — по контуру чертежа, кромка ровная без задиров '
-          'и волн',
+          'заготовка прямоугольная — четыре прямых угла, кромка ровная без '
+          'задиров и волн',
       source:
           'WindowSpec.filmCutWidthWithShrinkage / filmCutHeightWithShrinkage '
           '(видимый размер + запайка − полоса молнии + припуск на раскрой + '
