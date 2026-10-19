@@ -79,6 +79,8 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'allowanceHeightMm': p.allowanceHeightMm,
       'topAlign': p.topAlign.name,
       'topOffsetMm': p.topOffsetMm,
+      // Какая кромка горизонтальна: bottom / top / none.
+      'levelEdge': p.levelEdge.name,
       // Т-образное окно: сторона, размеры приставки, смещение и спайка.
       'tSide': p.tSide.name,
       'tWidth': p.tWidth,
@@ -156,6 +158,13 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
         _double(json['allowanceHeightMm'], fallback.allowanceHeightMm),
     topAlign: _enumByName(TopAlign.values, json['topAlign'], fallback.topAlign),
     topOffsetMm: _double(json['topOffsetMm'], fallback.topOffsetMm),
+    // Старые заказы без поля читаются как bottom: это в точности прежняя
+    // геометрия (низ горизонтален, верх наклонён), поэтому расчёты не меняются.
+    levelEdge: _enumByName(
+      LevelEdge.values,
+      json['levelEdge'],
+      LevelEdge.bottom,
+    ),
     tSide: _enumByName(TShapeSide.values, json['tSide'], fallback.tSide),
     tWidth: _double(json['tWidth'], fallback.tWidth),
     tHeight: _double(json['tHeight'], fallback.tHeight),

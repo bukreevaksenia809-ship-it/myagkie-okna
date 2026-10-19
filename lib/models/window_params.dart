@@ -27,6 +27,29 @@ enum WindowType {
   };
 }
 
+/// Какая кромка окна остаётся строго горизонтальной при разных высотах
+/// сторон.
+///
+/// [bottom] — низ горизонтален, весь перепад уходит на верхнюю кромку;
+/// [top] — верх горизонтален на максимальной высоте, нижние углы смещены;
+/// [none] — перепад делится поровну: верх и низ наклоняются в разные стороны.
+enum LevelEdge {
+  bottom('Низ ровно'),
+  top('Верх ровно'),
+  none('Нет');
+
+  const LevelEdge(this.label);
+
+  final String label;
+
+  /// Короткая подпись для компактного переключателя.
+  String get shortLabel => switch (this) {
+    LevelEdge.bottom => 'Низ',
+    LevelEdge.top => 'Верх',
+    LevelEdge.none => 'Нет',
+  };
+}
+
 /// Сторона основного полотна, к которой приваривается приставка Т-окна.
 ///
 /// [right] — приставка справа (общая сторона вертикальная), [left] — слева,
@@ -567,6 +590,7 @@ class WindowParams {
     this.allowanceHeightMm = 0,
     this.topAlign = TopAlign.center,
     this.topOffsetMm = 0,
+    this.levelEdge = LevelEdge.bottom,
     this.tSide = TShapeSide.right,
     this.tWidth = 800,
     this.tHeight = 600,
@@ -645,6 +669,13 @@ class WindowParams {
 
   final TopAlign topAlign;
   final double topOffsetMm;
+
+  /// Какая кромка остаётся горизонтальной при разных высотах сторон.
+  ///
+  /// По умолчанию [LevelEdge.bottom] — низ ровно: низ горизонтален, верх
+  /// наклонён (прежняя геометрия). [LevelEdge.top] фиксирует верх, [none]
+  /// делит перепад поровну между верхом и низом.
+  final LevelEdge levelEdge;
 
   // --- Т-образное окно (windowType == WindowType.tShape) -------------------
   //
@@ -1065,6 +1096,7 @@ class WindowParams {
     double? allowanceHeightMm,
     TopAlign? topAlign,
     double? topOffsetMm,
+    LevelEdge? levelEdge,
     TShapeSide? tSide,
     double? tWidth,
     double? tHeight,
@@ -1115,6 +1147,7 @@ class WindowParams {
       allowanceHeightMm: allowanceHeightMm ?? this.allowanceHeightMm,
       topAlign: topAlign ?? this.topAlign,
       topOffsetMm: topOffsetMm ?? this.topOffsetMm,
+      levelEdge: levelEdge ?? this.levelEdge,
       tSide: tSide ?? this.tSide,
       tWidth: tWidth ?? this.tWidth,
       tHeight: tHeight ?? this.tHeight,

@@ -46,10 +46,11 @@ void main() {
   _screenAndWeldRules();
   _eyeletIntervalPanelRules();
   _roundEyeletTogglePanelRules();
+  _tShapePanelRules();
   _rollWidthsAndEyeletsPanelRules();
   _screenZipperBlankRules();
   _screenHemPresetsRules();
-  _equalizeButtonsRules();
+  _levelEdgePanelRules();
   testWidgets('панель 420: спайка добавляет окно, припуски идут в модель', (
     WidgetTester tester,
   ) async {
@@ -119,8 +120,10 @@ void main() {
     expect(withAllowance.effectiveBottomWidth, withAllowance.bottomWidth + 120);
     // По высоте к ручным 80 мм добавляется авто +10 мм для ПВХ.
     expect(withAllowance.effectiveLeftHeight, withAllowance.leftHeight + 90);
-    expect(withAllowance.heightAllowanceBreakdownLabel,
-        'Припуск по высоте: 10 мм (авто) + 80 мм (вручную) = 90 мм');
+    expect(
+      withAllowance.heightAllowanceBreakdownLabel,
+      'Припуск по высоте: 10 мм (авто) + 80 мм (вручную) = 90 мм',
+    );
 
     // Строка-итог показывает заготовку плёнки с припуском, а не изделие:
     // припуск влияет только на раскрой.
@@ -181,10 +184,12 @@ void main() {
     expect(tester.takeException(), isNull);
 
     final params = hostKey.currentState!.project.selected;
-    expect(
-      [params.rollBottom, params.rollTop, params.rollLeft, params.rollRight],
-      containsAll(<double>[80, 120]),
-    );
+    expect([
+      params.rollBottom,
+      params.rollTop,
+      params.rollLeft,
+      params.rollRight,
+    ], containsAll(<double>[80, 120]));
     // Цена такого рулона берётся из прайса, а не интерполяцией.
     final prices = PriceList.defaults();
     expect(prices.edgePerMeterForWidth(80), 120);
@@ -246,8 +251,7 @@ void main() {
     var params = hostKey.currentState!.project.selected;
     expect(params.pvcHeightAllowanceEnabled, isTrue);
     expect(params.autoHeightAllowanceMm, pvcHeightAllowanceMm);
-    final onHeight =
-        WindowSpec.of(params).filmCutHeightWithAllowance;
+    final onHeight = WindowSpec.of(params).filmCutHeightWithAllowance;
 
     // Блок «Припуски на раскрой» по умолчанию свёрнут — раскрываем его.
     await tester.ensureVisible(find.text('Припуски на раскрой'));
@@ -345,24 +349,32 @@ void _screenAndWeldRules() {
     params = hostKey.currentState!.project.selected;
     final mixedSpec = WindowSpec.of(params);
     // Ширина: 1500 + (40 + 50) / 2 + 20 = 1565.
-    expect(mixedSpec.filmCutWidthWithAllowance,
-        closeTo(params.bottomWidth + 65, 1e-9));
+    expect(
+      mixedSpec.filmCutWidthWithAllowance,
+      closeTo(params.bottomWidth + 65, 1e-9),
+    );
     // Высота: 2520 + (40 + 60) / 2 + 20 = 2590.
-    expect(mixedSpec.filmCutHeightWithAllowance,
-        closeTo(params.leftHeight + 70, 1e-9));
+    expect(
+      mixedSpec.filmCutHeightWithAllowance,
+      closeTo(params.leftHeight + 70, 1e-9),
+    );
     // Панель показывает человеческий расчёт по правилу.
     expect(
-      find.text('Высота: ${formatMm(2520)} + ${formatMm(70)} '
-          '(среднее (${formatMm(40)} + ${formatMm(60)}) / 2 + '
-          '${formatMm(screenHemAxisExtraMm)} = ${formatMm(70)}) = '
-          '${formatMm(2590)} мм'),
+      find.text(
+        'Высота: ${formatMm(2520)} + ${formatMm(70)} '
+        '(среднее (${formatMm(40)} + ${formatMm(60)}) / 2 + '
+        '${formatMm(screenHemAxisExtraMm)} = ${formatMm(70)}) = '
+        '${formatMm(2590)} мм',
+      ),
       findsOneWidget,
     );
     expect(
-      find.text('Ширина: ${formatMm(1500)} + ${formatMm(65)} '
-          '(среднее (${formatMm(40)} + ${formatMm(50)}) / 2 + '
-          '${formatMm(screenHemAxisExtraMm)} = ${formatMm(65)}) = '
-          '${formatMm(1565)} мм'),
+      find.text(
+        'Ширина: ${formatMm(1500)} + ${formatMm(65)} '
+        '(среднее (${formatMm(40)} + ${formatMm(50)}) / 2 + '
+        '${formatMm(screenHemAxisExtraMm)} = ${formatMm(65)}) = '
+        '${formatMm(1565)} мм',
+      ),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
@@ -383,8 +395,9 @@ void _screenAndWeldRules() {
       isFalse,
     );
     expect(
-      fastenerSpec.layers.movableSideEyelets
-          .every((eyelet) => eyelet.side != WindowSide.top),
+      fastenerSpec.layers.movableSideEyelets.every(
+        (eyelet) => eyelet.side != WindowSide.top,
+      ),
       isTrue,
     );
     expect(fastenerSpec.fastenerSummary, contains('французский замок'));
@@ -427,14 +440,19 @@ void _screenAndWeldRules() {
     expect(params.pocket, isFalse);
     expect(params.pocketTop, isTrue);
     expect(
-      find.descendant(of: bottomApron, matching: find.byIcon(Icons.check_circle)),
+      find.descendant(
+        of: bottomApron,
+        matching: find.byIcon(Icons.check_circle),
+      ),
       findsNothing,
     );
 
     // Ширина фартука — общая для обеих сторон и уходит в модель.
     expect(find.text('Ширина фартука, мм'), findsOneWidget);
     expect(
-      find.text('Фартук идёт от внутреннего края окантовки наружу и ниже кромки'),
+      find.text(
+        'Фартук идёт от внутреннего края окантовки наружу и ниже кромки',
+      ),
       findsOneWidget,
     );
     await tester.enterText(find.byKey(const Key('apron-width-field')), '120');
@@ -565,20 +583,14 @@ void _rollWidthsAndEyeletsPanelRules() {
     await tester.tap(topSwitch);
     await tester.pumpAndSettle();
     expect(hostKey.currentState!.project.selected.noEyeletsTop, isTrue);
-    expect(
-      find.textContaining('без сторон: верх'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('без сторон: верх'), findsOneWidget);
 
     final bottomSwitch = find.byKey(const Key('no-eyelets-bottom'));
     await tester.ensureVisible(bottomSwitch);
     await tester.tap(bottomSwitch);
     await tester.pumpAndSettle();
     expect(hostKey.currentState!.project.selected.noEyeletsBottom, isTrue);
-    expect(
-      find.textContaining('без сторон: низ и верх'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('без сторон: низ и верх'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     // --- Овальный люверс доступен на любом окне (скрине) ---
@@ -681,8 +693,8 @@ void _pricePanelRules() {
 
 /// Кнопки выравнивания размеров: видны только при расхождении, одним тапом
 /// приравнивают сторону и сразу исчезают; геометрия пересчитывается.
-void _equalizeButtonsRules() {
-  testWidgets('панель 420: кнопки выравнивания высот и ширин', (
+void _levelEdgePanelRules() {
+  testWidgets('панель 420: «Ровно» низ/верх/нет вместо кнопок выравнивания', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(420, 9000);
@@ -690,106 +702,96 @@ void _equalizeButtonsRules() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    // Скрин: у него заготовка зависит от размеров и подворотов, поэтому
-    // пересчёт геометрии после выравнивания видно прямо по WindowSpec.
-    const order = OrderProject(
-      windows: [
-        WindowParams(
-          material: FilmMaterial.screen,
-          bottomWidth: 1400,
-          topWidth: 1400,
-          leftHeight: 2000,
-          rightHeight: 2000,
-          hemBottomMm: 40,
-          hemRightMm: 40,
-          hemTopMm: 40,
-          hemLeftMm: 40,
-        ),
-      ],
-    );
     final hostKey = GlobalKey<_PanelHostState>();
-    await tester.pumpWidget(_PanelHost(key: hostKey, initial: order));
+    await tester.pumpWidget(_PanelHost(key: hostKey));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    // У нового окна ширины и высоты равны — кнопок нет.
-    var params = hostKey.currentState!.project.selected;
-    expect(params.bottomWidth, params.topWidth);
-    expect(params.leftHeight, params.rightHeight);
-    expect(find.byKey(const Key('equalize-widths')), findsNothing);
-    expect(find.byKey(const Key('equalize-heights')), findsNothing);
-
-    // Развели ширины — появились обе кнопки, подписи по-русски.
-    await tester.enterText(find.byKey(const Key('bottomWidth-field')), '1500');
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('topWidth-field')), '1600');
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('equalize-widths')), findsOneWidget);
-    expect(find.byKey(const Key('equalize-widths-back')), findsOneWidget);
-    expect(find.text('верх = низ'), findsOneWidget);
-    expect(find.text('низ = верх'), findsOneWidget);
-    expect(find.byKey(const Key('equalize-heights')), findsNothing);
-
-    // «верх = низ»: верх становится 1500, кнопки исчезают.
-    await tester.tap(find.byKey(const Key('equalize-widths')));
-    await tester.pumpAndSettle();
-    params = hostKey.currentState!.project.selected;
-    expect(params.bottomWidth, 1500);
-    expect(params.topWidth, 1500);
+    // Прежних кнопок выравнивания в интерфейсе больше нет.
     expect(find.byKey(const Key('equalize-widths')), findsNothing);
     expect(find.byKey(const Key('equalize-widths-back')), findsNothing);
-    expect(WindowSpec.of(params).filmCutWidth, closeTo(1560, 1e-9));
-
-    // Обратное направление: «низ = верх».
-    await tester.enterText(find.byKey(const Key('topWidth-field')), '1700');
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('equalize-widths-back')));
-    await tester.pumpAndSettle();
-    params = hostKey.currentState!.project.selected;
-    expect(params.bottomWidth, 1700);
-    expect(params.topWidth, 1700);
-    expect(find.byKey(const Key('equalize-widths')), findsNothing);
-    final widthSpec = WindowSpec.of(params);
-    expect(widthSpec.filmCutWidth, closeTo(1760, 1e-9));
-    // Контур заготовки на чертеже — тоже новой ширины.
-    expect(boundsOf(widthSpec.layers.filmEdge).width, closeTo(1760, 1e-9));
-
-    // Теперь высоты: «правая = левая».
-    await tester.enterText(find.byKey(const Key('leftHeight-field')), '2000');
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('rightHeight-field')), '2100');
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('equalize-heights')), findsOneWidget);
-    expect(find.byKey(const Key('equalize-heights-back')), findsOneWidget);
-    expect(find.text('правая = левая'), findsOneWidget);
-    expect(find.text('левая = правая'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('equalize-heights')));
-    await tester.pumpAndSettle();
-    params = hostKey.currentState!.project.selected;
-    expect(params.leftHeight, 2000);
-    expect(params.rightHeight, 2000);
     expect(find.byKey(const Key('equalize-heights')), findsNothing);
-    expect(WindowSpec.of(params).filmCutHeight, closeTo(2060, 1e-9));
+    expect(find.byKey(const Key('equalize-heights-back')), findsNothing);
 
-    // Обратное направление: «левая = правая».
-    await tester.enterText(find.byKey(const Key('rightHeight-field')), '2200');
+    // Новый выбор на месте кнопок, по умолчанию «Низ».
+    expect(find.byKey(const Key('level-edge-bottom')), findsOneWidget);
+    expect(find.byKey(const Key('level-edge-top')), findsOneWidget);
+    expect(find.byKey(const Key('level-edge-none')), findsOneWidget);
+    expect(hostKey.currentState!.project.selected.levelEdge, LevelEdge.bottom);
+
+    // Ширины 1200, высоты 1000/1400.
+    await tester.enterText(find.byKey(const Key('bottomWidth-field')), '1200');
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('equalize-heights-back')));
+    await tester.enterText(find.byKey(const Key('topWidth-field')), '1200');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('leftHeight-field')), '1000');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('rightHeight-field')), '1400');
+    await tester.pumpAndSettle();
+
+    // Низ ровно: нижние углы на y = 0, верх наклонён.
+    var params = hostKey.currentState!.project.selected;
+    var geometry = WindowSpec.of(params).geometry;
+    expect(params.levelEdge, LevelEdge.bottom);
+    expect(geometry.bottomLeft.dy, 0);
+    expect(geometry.bottomRight.dy, 0);
+    expect(geometry.topLeft.dy, 1000);
+    expect(geometry.topRight.dy, 1400);
+    expect(geometry.areaM2, closeTo(1.44, 1e-9));
+
+    // Верх ровно: верхняя кромка на 1400, нижняя наклонена.
+    await tester.tap(find.byKey(const Key('level-edge-top')));
     await tester.pumpAndSettle();
     params = hostKey.currentState!.project.selected;
-    expect(params.leftHeight, 2200);
-    expect(params.rightHeight, 2200);
-    expect(find.byKey(const Key('equalize-heights')), findsNothing);
-    final heightSpec = WindowSpec.of(params);
-    expect(heightSpec.filmCutHeight, closeTo(2260, 1e-9));
-    // Контур заготовки на чертеже — тоже новой высоты.
-    expect(boundsOf(heightSpec.layers.filmEdge).height, closeTo(2260, 1e-9));
-    expect(tester.takeException(), isNull);
+    geometry = WindowSpec.of(params).geometry;
+    expect(params.levelEdge, LevelEdge.top);
+    expect(geometry.topLeft.dy, 1400);
+    expect(geometry.topRight.dy, 1400);
+    expect(geometry.bottomLeft.dy, 400);
+    expect(geometry.bottomRight.dy, 0);
+    expect(geometry.areaM2, closeTo(1.44, 1e-9));
+    expect(geometry.leftEdgeLength, closeTo(1000, 1e-9));
+    expect(geometry.rightEdgeLength, closeTo(1400, 1e-9));
+
+    // Нет: перепад делится поровну — верх +200, низ −200.
+    await tester.tap(find.byKey(const Key('level-edge-none')));
+    await tester.pumpAndSettle();
+    params = hostKey.currentState!.project.selected;
+    geometry = WindowSpec.of(params).geometry;
+    expect(params.levelEdge, LevelEdge.none);
+    expect(geometry.bottomLeft.dy, 0);
+    expect(geometry.bottomRight.dy, closeTo(-200, 1e-9));
+    expect(geometry.topLeft.dy, 1000);
+    expect(geometry.topRight.dy, closeTo(1200, 1e-9));
+    expect(geometry.areaM2, closeTo(1.44, 1e-9));
+
+    // Ширины 1200/1000: выбранная горизонтальная кромка остаётся
+    // горизонтальной, разница уходит в боковые кромки (верх по центру).
+    await tester.enterText(find.byKey(const Key('leftHeight-field')), '1200');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('rightHeight-field')), '1200');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('topWidth-field')), '1000');
+    await tester.pumpAndSettle();
+
+    for (final key in const [
+      'level-edge-bottom',
+      'level-edge-top',
+      'level-edge-none',
+    ]) {
+      await tester.tap(find.byKey(Key(key)));
+      await tester.pumpAndSettle();
+      params = hostKey.currentState!.project.selected;
+      geometry = WindowSpec.of(params).geometry;
+      expect(geometry.bottomLeft.dy, geometry.bottomRight.dy);
+      expect(geometry.topLeft.dy, geometry.topRight.dy);
+      expect(geometry.spanX, closeTo(1200, 1e-9));
+      expect(geometry.areaM2, closeTo(1.32, 1e-9));
+      expect(tester.takeException(), isNull);
+    }
   });
 }
 
-/// Панель: молния у скрина сужает заготовку, подписи это показывают,
-/// а панель 420 px не переполняется.
 void _screenZipperBlankRules() {
   testWidgets('панель 420: молния скрина сужает заготовку в подписях', (
     WidgetTester tester,
@@ -802,20 +804,22 @@ void _screenZipperBlankRules() {
 
     // Скрин 2000 × 2000, подворот 40 на все стороны, одна молния с полосой
     // 50 мм: заготовка 2010 × 2060 мм вместо 2060 × 2060.
-    const order = OrderProject(windows: [
-      WindowParams(
-        material: FilmMaterial.screen,
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 2000,
-        rightHeight: 2000,
-        hemBottomMm: 40,
-        hemRightMm: 40,
-        hemTopMm: 40,
-        hemLeftMm: 40,
-        zippers: [ZipperSpec(centered: true)],
-      ),
-    ]);
+    const order = OrderProject(
+      windows: [
+        WindowParams(
+          material: FilmMaterial.screen,
+          bottomWidth: 2000,
+          topWidth: 2000,
+          leftHeight: 2000,
+          rightHeight: 2000,
+          hemBottomMm: 40,
+          hemRightMm: 40,
+          hemTopMm: 40,
+          hemLeftMm: 40,
+          zippers: [ZipperSpec(centered: true)],
+        ),
+      ],
+    );
     final hostKey = GlobalKey<_PanelHostState>();
     await tester.pumpWidget(_PanelHost(key: hostKey, initial: order));
     await tester.pumpAndSettle();
@@ -826,20 +830,23 @@ void _screenZipperBlankRules() {
     expect(spec.filmCutHeightWithAllowance, closeTo(2060, 1e-9));
 
     // Подпись подворотного блока: обе ширины и виновник — полоса молнии.
-    final blankLabel =
-        tester.widget<Text>(find.byKey(const Key('hem-blank-label'))).data!;
+    final blankLabel = tester
+        .widget<Text>(find.byKey(const Key('hem-blank-label')))
+        .data!;
     expect(blankLabel, contains(formatMm(2010)));
     expect(blankLabel, contains('полосу молнии 50'));
     expect(blankLabel, contains('${formatMm(2060)} → ${formatMm(2010)}'));
 
     // Формула по ширине показывает вычет отдельным слагаемым.
-    final widthFormula =
-        tester.widget<Text>(find.byKey(const Key('hem-width-formula'))).data!;
+    final widthFormula = tester
+        .widget<Text>(find.byKey(const Key('hem-width-formula')))
+        .data!;
     expect(widthFormula, contains('− полоса молнии 50'));
     expect(widthFormula, contains('= ${formatMm(2010)} мм'));
     // Высота полосой не меняется: 2000 + 40 + 20 = 2060.
-    final heightFormula =
-        tester.widget<Text>(find.byKey(const Key('hem-height-formula'))).data!;
+    final heightFormula = tester
+        .widget<Text>(find.byKey(const Key('hem-height-formula')))
+        .data!;
     expect(heightFormula, contains('= ${formatMm(2060)} мм'));
     expect(tester.takeException(), isNull);
   });
@@ -854,15 +861,17 @@ void _screenZipperBlankRules() {
 
     // ПВХ 2000 × 2000, окантовка 100 (готовая 50), запайка 5:
     // ширина 1910 мм, с полосой 50 мм — 1860 мм.
-    const order = OrderProject(windows: [
-      WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 2000,
-        rightHeight: 2000,
-        zippers: [ZipperSpec(centered: true)],
-      ),
-    ]);
+    const order = OrderProject(
+      windows: [
+        WindowParams(
+          bottomWidth: 2000,
+          topWidth: 2000,
+          leftHeight: 2000,
+          rightHeight: 2000,
+          zippers: [ZipperSpec(centered: true)],
+        ),
+      ],
+    );
     final hostKey = GlobalKey<_PanelHostState>();
     await tester.pumpWidget(_PanelHost(key: hostKey, initial: order));
     await tester.pumpAndSettle();
@@ -877,7 +886,8 @@ void _screenZipperBlankRules() {
       find.text('Минус полоса молнии на ширину кроя (1 шт)'),
       findsOneWidget,
     );
-    final reduction = '−${formatMm(50)} мм: '
+    final reduction =
+        '−${formatMm(50)} мм: '
         '${formatMm(1910)} → ${formatMm(1860)} мм до припуска';
     expect(find.text(reduction), findsOneWidget);
 
@@ -904,19 +914,21 @@ void _screenHemPresetsRules() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     // Скрин 2000 × 2000, подворот 40 на все стороны — стартовое значение.
-    const order = OrderProject(windows: [
-      WindowParams(
-        material: FilmMaterial.screen,
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 2000,
-        rightHeight: 2000,
-        hemBottomMm: 40,
-        hemRightMm: 40,
-        hemTopMm: 40,
-        hemLeftMm: 40,
-      ),
-    ]);
+    const order = OrderProject(
+      windows: [
+        WindowParams(
+          material: FilmMaterial.screen,
+          bottomWidth: 2000,
+          topWidth: 2000,
+          leftHeight: 2000,
+          rightHeight: 2000,
+          hemBottomMm: 40,
+          hemRightMm: 40,
+          hemTopMm: 40,
+          hemLeftMm: 40,
+        ),
+      ],
+    );
     final hostKey = GlobalKey<_PanelHostState>();
     await tester.pumpWidget(_PanelHost(key: hostKey, initial: order));
     await tester.pumpAndSettle();
@@ -980,54 +992,119 @@ void _screenHemPresetsRules() {
 
 /// Имя поля подворота в ключе кнопки: hemBottom/hemRight/hemTop/hemLeft.
 String _sideName(EdgeSide side) => switch (side) {
-      EdgeSide.bottom => 'Bottom',
-      EdgeSide.right => 'Right',
-      EdgeSide.top => 'Top',
-      EdgeSide.left => 'Left',
-    };
+  EdgeSide.bottom => 'Bottom',
+  EdgeSide.right => 'Right',
+  EdgeSide.top => 'Top',
+  EdgeSide.left => 'Left',
+};
 
 // --- Круглые люверсы в углах -----------------------------------------------
 
 /// Тумблер в панели: выключение убирает угловые точки из модели.
 void _roundEyeletTogglePanelRules() {
-  testWidgets('панель: тумблер «Круглые люверсы в углах» по умолчанию включён',
-      (WidgetTester tester) async {
-    tester.view.physicalSize = const Size(420, 6000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'панель: тумблер «Круглые люверсы в углах» по умолчанию включён',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(420, 6000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    final hostKey = GlobalKey<_PanelHostState>();
-    await tester.pumpWidget(_PanelHost(key: hostKey));
-    await tester.pumpAndSettle();
+      final hostKey = GlobalKey<_PanelHostState>();
+      await tester.pumpWidget(_PanelHost(key: hostKey));
+      await tester.pumpAndSettle();
 
-    final toggle = find.byKey(const Key('round-eyelets-corners'));
-    await tester.ensureVisible(toggle);
-    expect(tester.takeException(), isNull);
-    expect(
-      tester.widget<SwitchListTile>(toggle).value,
-      isTrue,
-      reason: 'по умолчанию круглые люверсы в углах включены',
-    );
-    expect(
-      hostKey.currentState!.project.selected.roundEyeletsEnabled,
-      isTrue,
-    );
+      final toggle = find.byKey(const Key('round-eyelets-corners'));
+      await tester.ensureVisible(toggle);
+      expect(tester.takeException(), isNull);
+      expect(
+        tester.widget<SwitchListTile>(toggle).value,
+        isTrue,
+        reason: 'по умолчанию круглые люверсы в углах включены',
+      );
+      expect(
+        hostKey.currentState!.project.selected.roundEyeletsEnabled,
+        isTrue,
+      );
 
-    await tester.tap(toggle);
-    await tester.pumpAndSettle();
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
 
-    final params = hostKey.currentState!.project.selected;
-    expect(params.roundEyeletsEnabled, isFalse);
-    // Тип по сторонам может быть любым (по умолчанию круглый), но угловых
-    // точек нет: именно их убирает тумблер.
-    expect(WindowSpec.of(params).layers.cornerEyelets, isEmpty);
-    expect(
-      find.text(
-        'Круглых люверсов нет: углы остаются без крепёжных точек.',
-      ),
-      findsOneWidget,
-    );
-    expect(tester.takeException(), isNull);
-  });
+      final params = hostKey.currentState!.project.selected;
+      expect(params.roundEyeletsEnabled, isFalse);
+      // Тип по сторонам может быть любым (по умолчанию круглый), но угловых
+      // точек нет: именно их убирает тумблер.
+      expect(WindowSpec.of(params).layers.cornerEyelets, isEmpty);
+      expect(
+        find.text('Круглых люверсов нет: углы остаются без крепёжных точек.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+}
+
+// --- Т-образное окно --------------------------------------------------------
+
+/// Раздел «Т-образное окно»: перевод в Т, поля приставки и спайка.
+void _tShapePanelRules() {
+  testWidgets(
+    'панель 420: Т-окно включается и настраивается без переполнений',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(420, 6000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final hostKey = GlobalKey<_PanelHostState>();
+      await tester.pumpWidget(_PanelHost(key: hostKey));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      final makeT = find.byKey(const Key('make-t-shape'));
+      await tester.ensureVisible(makeT);
+      await tester.tap(makeT);
+      await tester.pumpAndSettle();
+
+      var params = hostKey.currentState!.project.selected;
+      expect(params.windowType, WindowType.tShape);
+      expect(params.isTShape, isTrue);
+      // Основное полотно выровнено в прямоугольник.
+      expect(params.topWidth, params.bottomWidth);
+      expect(params.rightHeight, params.leftHeight);
+      expect(find.text('Т-образное окно'), findsOneWidget);
+      expect(find.text('Сторона приставки'), findsOneWidget);
+      expect(find.byKey(const Key('t-welded')), findsOneWidget);
+
+      // Сторона приставки: снизу.
+      final bottomSide = find.text('Снизу');
+      await tester.ensureVisible(bottomSide);
+      await tester.tap(bottomSide);
+      await tester.pumpAndSettle();
+      params = hostKey.currentState!.project.selected;
+      expect(params.tSide, TShapeSide.bottom);
+
+      // Спайку выключаем — два отдельных окна.
+      final welded = find.byKey(const Key('t-welded'));
+      await tester.ensureVisible(welded);
+      await tester.tap(welded);
+      await tester.pumpAndSettle();
+      params = hostKey.currentState!.project.selected;
+      expect(params.tWelded, isFalse);
+      expect(WindowSpec.of(params).layers.filmPolygons, hasLength(2));
+      expect(tester.takeException(), isNull);
+
+      // Возврат к обычному окну.
+      final plain = find.byKey(const Key('make-plain-window'));
+      // Кнопка может быть частично перекрыта прокруткой панели — вызываем её
+      // обработчик напрямую: проверяем модель, а не хит-тест.
+      tester.widget<TextButton>(plain).onPressed!();
+      await tester.pumpAndSettle();
+      expect(
+        hostKey.currentState!.project.selected.windowType,
+        WindowType.fixed,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

@@ -286,8 +286,16 @@ class WindowGeometry {
     required this.topOffset,
     this.pocketDrop = 0,
     this.pocketTopRise = 0,
+    this.levelEdge = LevelEdge.bottom,
     this.tLayout,
-  });
+    double? bottomLeftY,
+    double? bottomRightY,
+    double? topLeftY,
+    double? topRightY,
+  }) : bottomLeftY = bottomLeftY ?? 0,
+       bottomRightY = bottomRightY ?? 0,
+       topLeftY = topLeftY ?? leftHeight,
+       topRightY = topRightY ?? rightHeight;
 
   factory WindowGeometry.of(WindowParams params) {
     // Геометрия строится по ОСНОВНЫМ размерам изделия (замеру). Припуск на
@@ -305,12 +313,42 @@ class WindowGeometry {
     final pocketWidth = params.pocketWidth.isFinite && params.pocketWidth > 0
         ? params.pocketWidth
         : 0.0;
+    final leftHeight = _positive(params.leftHeight);
+    final rightHeight = _positive(params.rightHeight);
+    // «Ровно»: какая кромка остаётся горизонтальной. Прежняя геометрия —
+    // низ ровно (bottom): низ горизонтален, верх наклонён. Для top верх
+    // фиксируется на максимальной высоте, нижние углы смещаются. Для none
+    // перепад делится поровну: правую сторону сдвигаем вниз на половину
+    // разницы, тогда низ и верх наклонены в разные стороны одинаково.
+    var bottomLeftY = 0.0;
+    var bottomRightY = 0.0;
+    var topLeftY = leftHeight;
+    var topRightY = rightHeight;
+    switch (params.levelEdge) {
+      case LevelEdge.bottom:
+        break;
+      case LevelEdge.top:
+        final maxHeight = math.max(leftHeight, rightHeight);
+        topLeftY = maxHeight;
+        topRightY = maxHeight;
+        bottomLeftY = maxHeight - leftHeight;
+        bottomRightY = maxHeight - rightHeight;
+      case LevelEdge.none:
+        final delta = rightHeight - leftHeight;
+        bottomRightY = -delta / 2;
+        topRightY = rightHeight - delta / 2;
+    }
     return WindowGeometry(
       bottomWidth: bottom,
       topWidth: top,
-      leftHeight: _positive(params.leftHeight),
-      rightHeight: _positive(params.rightHeight),
+      leftHeight: leftHeight,
+      rightHeight: rightHeight,
       topOffset: offset,
+      levelEdge: params.levelEdge,
+      bottomLeftY: bottomLeftY,
+      bottomRightY: bottomRightY,
+      topLeftY: topLeftY,
+      topRightY: topRightY,
       pocketDrop: params.pocket && !params.isScreen ? pocketWidth : 0,
       pocketTopRise: params.pocketTop && !params.isScreen ? pocketWidth : 0,
       // Т-образное окно: контур строится объединением основного полотна и
@@ -335,6 +373,16 @@ class WindowGeometry {
   /// кромки, мм.
   final double pocketTopRise;
 
+  /// Какая кромка горизонтальна (см. [LevelEdge]).
+  final LevelEdge levelEdge;
+
+  /// Вертикальные координаты углов: низ может быть смещён при levelEdge.top,
+  /// а верх/низ наклонены при levelEdge.none.
+  final double bottomLeftY;
+  final double bottomRightY;
+  final double topLeftY;
+  final double topRightY;
+
   /// Геометрия Т-образного окна (null у обычного окна).
   final TShapeLayout? tLayout;
 
@@ -344,10 +392,10 @@ class WindowGeometry {
   static double _positive(double value) =>
       (!value.isFinite || value <= 0) ? 100 : value;
 
-  Offset get bottomLeft => const Offset(0, 0);
-  Offset get bottomRight => Offset(bottomWidth, 0);
-  Offset get topLeft => Offset(topOffset, leftHeight);
-  Offset get topRight => Offset(topOffset + topWidth, rightHeight);
+  Offset get bottomLeft => Offset(0, bottomLeftY);
+  Offset get bottomRight => Offset(bottomWidth, bottomRightY);
+  Offset get topLeft => Offset(topOffset, topLeftY);
+  Offset get topRight => Offset(topOffset + topWidth, topRightY);
 
   /// Углы против часовой стрелки (в координатах с осью Y вверх), начиная
   /// с левого нижнего. Порядок важен для [insetPolygonPerSide].
@@ -414,7 +462,11 @@ class WindowGeometry {
   double get spanY => topBound - minY;
 
   /// Габаритная высота изделия (у Т-окна — вместе с приставкой).
-  double get overallHeight => isTShape ? productBounds.height : maxY;
+  ///
+  /// Считается по фактическому контуру: при режиме «Нет» низ и верх наклонены
+  /// в разные стороны, и высота — это расстояние между крайними кромками, а не
+  /// только верхняя координата.
+  double get overallHeight => productBounds.height;
 
   /// Насколько верхняя кромка выходит за нижнюю справа (мм).
   double get rightOverhang => isTShape ? 0 : topOffset + topWidth - bottomWidth;
