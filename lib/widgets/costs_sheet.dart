@@ -176,8 +176,11 @@ class CostsSheet extends StatelessWidget {
         window.isTShape
             ? [
                 '${formatMm(window.bottomWidth)}×${formatMm(window.leftHeight)}',
-                for (final annex in window.tAnnexes)
-                  '${formatMm(annex.width)}×${formatMm(annex.height)} '
+                // Берём ФАКТИЧЕСКИ построенные пристройки: если две стоят на
+                // одной стороне, вторая в расчёте не участвует — и в
+                // ведомости её быть не должно.
+                for (final annex in spec.layers.tAnnexes)
+                  '${formatMm(annex.rect.width)}×${formatMm(annex.rect.height)} '
                       '${annex.side.label.toLowerCase()}',
               ].join(' + ')
             : '${formatMm(window.bottomWidth)}/${formatMm(window.topWidth)} · '
