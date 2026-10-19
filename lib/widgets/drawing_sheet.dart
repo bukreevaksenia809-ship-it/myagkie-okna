@@ -92,6 +92,33 @@ class DrawingSheet extends StatelessWidget {
     return [for (var page = 1; page < pages; page++) page / pages];
   }
 
+  /// Метрики листа: рамка чертежа, поле листа, масштаб и габарит изделия.
+  ///
+  /// Считаются ровно так же, как при отрисовке ([_drawingFrame] и
+  /// [_drawingLayout]), поэтому тесты и превью проверяют фактический лист, а
+  /// не приблизительную формулу. По ним видно, какую долю листа занимает
+  /// чертёж: у обычного окна, у Т-окна с одной и с двумя пристройками она
+  /// должна быть сопоставимой.
+  static DrawingSheetMetrics metricsFor(OrderProject project) {
+    final sheet = DrawingSheet(project: project);
+    final spec = WindowSpec.of(project.selected);
+    final area = Size(
+      math.max(a4Width - sidePanelWidth - 1, 160.0),
+      math.max(a4Height - titleBlockHeight - _captionHeight, 120.0),
+    );
+    final frame = sheet._drawingFrame(area, spec);
+    final layout = sheet._drawingLayout(frame, spec);
+    return DrawingSheetMetrics(
+      frame: frame,
+      area: area,
+      scaleDenominator: layout.scaleDenominator,
+      productSize: Size(
+        spec.geometry.spanX * layout.scale * _paintScale,
+        spec.geometry.spanY * layout.scale * _paintScale,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Фото французского замка догружается один раз. Как только оно готово,
@@ -1592,4 +1619,47 @@ class _LegendPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _LegendPainter oldDelegate) =>
       oldDelegate.kind != kind || oldDelegate.edgeColor != edgeColor;
+}
+
+/// Размеры листа чертежа и масштаб — для тестов, превью и диагностики.
+///
+/// Рамка — прямоугольник, в котором нарисован чертёж с полями под размеры;
+/// поле — свободная часть страницы A4 без боковой панели и штампа.
+class DrawingSheetMetrics {
+  const DrawingSheetMetrics({
+    required this.frame,
+    required this.area,
+    required this.scaleDenominator,
+    required this.productSize,
+  });
+
+  /// Рамка чертежа на листе, точки.
+  final Size frame;
+
+  /// Свободное поле страницы A4 под чертёж, точки.
+  final Size area;
+
+  /// Знаменатель масштаба: 20 для «М 1:20».
+  final double scaleDenominator;
+
+  /// Габарит изделия на листе, точки.
+  final Size productSize;
+
+  /// Доля поля листа, занятая рамкой чертежа (0…1).
+  ///
+  /// По ней сравнивают листы: у обычного окна, Т-окна с одной и с двумя
+  /// пристройками она должна быть сопоставимой — иначе при добавлении
+  /// пристройки масштаб «прыгает» и чертёж становится мелким.
+  double get frameFill => frame.width * frame.height / (area.width * area.height);
+
+  /// Доля поля листа, занятая самим изделием (0…1).
+  double get productFill =>
+      productSize.width * productSize.height / (area.width * area.height);
+
+  @override
+  String toString() =>
+      'DrawingSheetMetrics(1:${scaleDenominator.toStringAsFixed(0)}, '
+      'frame=${frame.width.toStringAsFixed(0)}×'
+      '${frame.height.toStringAsFixed(0)}, '
+      'fill=${(frameFill * 100).toStringAsFixed(1)}%)';
 }

@@ -55,22 +55,64 @@ class DrawingLayout {
   String get scaleLabel => scaleLabelOverride;
 }
 
+/// Кегль обычных подписей чертежа (стороны, размеры, выноски) в точках
+/// листа 96 dpi. На бумаге А4 одна точка листа — 0,75 pt, то есть 11 точек
+/// дают 8,25 pt: читается на печати.
+const double drawingLabelFontPx = 11;
+
+/// Кегль крупных подписей (масштабная линейка, габариты) в точках листа.
+const double drawingTitleFontPx = 13.5;
+
+/// Кегль обычных подписей на бумаге А4, pt.
+const double drawingLabelFontPt = drawingLabelFontPx * 0.75;
+
+/// Минимальный кегль, который считается читаемым на печати А4, pt.
+const double minDrawingLabelPt = 7;
+
+/// Стандартные знаменатели масштаба чертежа.
+///
+/// Ряд гостовский (1:1, 1:2, 1:2,5, 1:5, 1:10, 1:15, 1:20, 1:25, 1:50 …), но
+/// с промежуточными ступенями. Раньше между 1:25 и 1:50 был провал: у
+/// Т-окна с пристройками габарит 3 300 мм требует ровно 1:27,7, масштаб
+/// округлялся до 1:50 — и чертёж разом уменьшался вдвое, хотя изделие выросло
+/// всего на 100 мм («добавил вторую пристройку — чертёж стал мелким, а
+/// надписи обычные»).
+///
+/// Теперь соседние ступени отличаются не больше чем в 1,33 раза, поэтому при
+/// добавлении пристройки чертёж остаётся крупным и заполняет лист так же, как
+/// обычное окно. Ступени 30, 40, 60, 125 и т. п. — обычные «круглые»
+/// масштабы; честность чертежа не страдает: подпись «М 1:30» и масштабная
+/// линейка считаются от фактического знаменателя.
 const List<double> _niceScales = [
   1.0,
+  1.5,
   2.0,
   2.5,
+  3.0,
+  4.0,
   5.0,
+  6.0,
+  7.5,
   10.0,
+  12.5,
   15.0,
   20.0,
   25.0,
+  30.0,
+  40.0,
   50.0,
+  60.0,
   75.0,
   100.0,
+  125.0,
   150.0,
   200.0,
   250.0,
+  300.0,
+  400.0,
   500.0,
+  600.0,
+  750.0,
   1000.0,
 ];
 
@@ -531,18 +573,30 @@ class WindowDrawingPainter extends CustomPainter {
       final a = outer[index];
       final b = outer[(index + 1) % outer.length];
       final side = entry.key;
-      final middle = (layout.toPxPoint(a) + layout.toPxPoint(b)) / 2;
-      final normal = _uprightNormal(layout.toPxPoint(a), layout.toPxPoint(b));
+      final aPx = layout.toPxPoint(a);
+      final bPx = layout.toPxPoint(b);
+      final normal = _uprightNormal(aPx, bPx);
       final text = params.isScreen
           ? '${side.label}: подворот ${formatMm(layers.hemWidthFor(side))} мм'
           : '${side.label}: окантовка ${formatMm(layers.finishedWidthFor(side))} мм';
-      _label(
-        canvas,
+      final halfLength = _textPainter(
         text,
-        middle + normal * 20,
-        small: true,
         color: _metalDark,
-      );
+        small: true,
+      ).width / 2;
+      // Подпись стороны уступает место размерам между креплениями: на
+      // Т-окне у пристроек стороны короткие, и две подписи на середине
+      // налезали бы друг на друга.
+      Offset? position;
+      for (final fraction in const [0.5, 0.3, 0.7, 0.18, 0.82]) {
+        final point = Offset.lerp(aPx, bPx, fraction)! + normal * 20;
+        if (!_spanClashesAt(_spans(), index, point, halfLength)) {
+          position = point;
+          break;
+        }
+      }
+      if (position == null) continue;
+      _label(canvas, text, position, small: true, color: _metalDark);
     }
   }
 
@@ -2925,7 +2979,9 @@ class WindowDrawingPainter extends CustomPainter {
         text: text,
         style: TextStyle(
           color: color,
-          fontSize: fontSize ?? (small ? 11 : 13.5) * labelScale,
+          fontSize:
+              fontSize ??
+              (small ? drawingLabelFontPx : drawingTitleFontPx) * labelScale,
           fontWeight: small ? FontWeight.w500 : FontWeight.w600,
           fontFamily: labelFontFamily,
         ),
