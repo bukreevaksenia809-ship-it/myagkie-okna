@@ -677,9 +677,16 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// Выбор «Ровно: низ · верх · нет» — какая кромка остаётся горизонтальной
   /// при разных высотах сторон. Заменяет прежние кнопки выравнивания.
   ///
+  /// Раньше здесь стоял [SegmentedButton]: он НЕ вызывает обработчик, если
+  /// нажали уже выбранный сегмент (при `emptySelectionAllowed == false`), и
+  /// вообще не пишет в модель, когда выбранный набор не изменился. Из-за
+  /// этого нажатие «иногда не работало». Теперь каждая кнопка — обычный
+  /// [OutlinedButton]: нажатие на любой сегмент ВСЕГДА пишет в модель и
+  /// перерисовывает панель, даже если значение не поменялось.
+  ///
   /// Для Т-образного окна основное полотно — прямоугольник по низу и левой
-  /// высоте, поэтому режим на его контур не влияет; переключатель выключен
-  /// с пояснением.
+  /// высоте, поэтому режим на его контур не влияет: контрол заблокирован и
+  /// это явно написано с замком, а не просто «серые кнопки».
   Widget _levelEdgeSelector(WindowParams params) {
     final enabled = !params.isTShape;
     return Container(
@@ -692,55 +699,113 @@ class _ParamsPanelState extends State<ParamsPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Ровно',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          Row(
+            children: [
+              const Text(
+                'Ровно',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              if (!enabled) ...[
+                const SizedBox(width: 6),
+                const Icon(
+                  Icons.lock_outline,
+                  key: Key('level-edge-lock'),
+                  size: 14,
+                  color: Color(0xFF8A5200),
+                ),
+              ],
+              const Spacer(),
+              if (!enabled)
+                Text(
+                  'недоступно',
+                  key: const Key('level-edge-locked'),
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    color: Color(0xFF8A5200),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 6),
-          SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<LevelEdge>(
-              key: const Key('level-edge'),
-              segments: [
-                for (final edge in LevelEdge.values)
-                  ButtonSegment<LevelEdge>(
-                    value: edge,
-                    label: Text(
-                      edge.shortLabel,
-                      key: Key('level-edge-${edge.name}'),
-                      style: const TextStyle(fontSize: 11.5),
-                    ),
-                  ),
+          Row(
+            children: [
+              for (final edge in LevelEdge.values) ...[
+                if (edge != LevelEdge.values.first) const SizedBox(width: 6),
+                Expanded(child: _levelEdgeButton(params, edge, enabled)),
               ],
-              selected: {params.levelEdge},
-              showSelectedIcon: false,
-              style: const ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                padding: WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                ),
-              ),
-              onSelectionChanged: enabled
-                  ? (selection) => _updateWindow(
-                      params.copyWith(levelEdge: selection.first),
-                    )
-                  : null,
-            ),
+            ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             enabled
-                ? 'При разных размерах одна кромка остаётся горизонтальной: '
-                      '«Низ» — низ ровно, «Верх» — верх ровно, «Нет» — перепад '
-                      'делится поровну.'
-                : 'Для Т-образного окна основное полотно прямоугольное — '
-                      'режим «Ровно» на контур не влияет.',
+                ? 'При разных размерах одна кромка остаётся горизонтальной. '
+                      'Нажатие на любой сегмент всегда применяется: «Низ» — низ '
+                      'ровно, «Верх» — верх ровно, «Нет» — перепад делится '
+                      'поровну.'
+                : 'Для Т-образного окна основное полотно прямоугольное — режим '
+                      '«Ровно» на контур не влияет, поэтому переключатель '
+                      'заблокирован.',
             style: const TextStyle(fontSize: 10.5, color: Color(0xFF66748A)),
           ),
         ],
       ),
     );
+  }
+
+  /// Одна кнопка переключателя «Ровно».
+  ///
+  /// Выбранная кнопка залита цветом и помечена галочкой — по этой галочке
+  /// видно фактическое состояние модели, а не «нажатость».
+  Widget _levelEdgeButton(WindowParams params, LevelEdge edge, bool enabled) {
+    final selected = params.levelEdge == edge;
+    return OutlinedButton(
+      key: Key('level-edge-${edge.name}'),
+      onPressed: enabled ? () => _selectLevelEdge(edge) : null,
+      style: OutlinedButton.styleFrom(
+        backgroundColor: selected && enabled
+            ? const Color(0xFF0B62C4)
+            : (enabled ? Colors.white : const Color(0xFFEDF0F5)),
+        foregroundColor: selected && enabled
+            ? Colors.white
+            : const Color(0xFF33465E),
+        side: BorderSide(
+          color: selected && enabled
+              ? const Color(0xFF0B62C4)
+              : const Color(0xFFC3CCDA),
+        ),
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (selected && enabled) ...[
+            const Icon(Icons.check, key: Key('level-edge-check'), size: 14),
+            const SizedBox(width: 2),
+          ],
+          Flexible(
+            child: Text(
+              edge.shortLabel,
+              key: Key('level-edge-${edge.name}-label'),
+              style: const TextStyle(fontSize: 11.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Запись режима «Ровно» в модель.
+  ///
+  /// Пишем ВСЕГДА: даже нажатие на уже выбранный сегмент обновляет модель и
+  /// перерисовывает панель. `setState` страхует перерисовку, если родитель
+  /// почему-то не отреагирует на `onChanged`.
+  void _selectLevelEdge(LevelEdge edge) {
+    final next = _params.copyWith(levelEdge: edge);
+    setState(() {});
+    _updateWindow(next);
   }
 
   /// Блок «Подворот, мм»: четыре строки — низ, право, верх, лево.
