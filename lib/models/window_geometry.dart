@@ -963,6 +963,14 @@ class WindowLayers {
       return result.isFinite && result > 1 ? result : 1.0;
     }
 
+    // Каждая кромка сдвигается на СВОЙ вычет: низ — вверх (у скрина вниз),
+    // верх — вниз (у скрина вверх), бока — внутрь/наружу. Иначе при «Ровно:
+    // верх» и «Ровно: нет» заготовка снова получала бы горизонтальный низ:
+    // конструктор WindowGeometry сам режим «Ровно» не применяет — он лишь
+    // хранит координаты углов, которые сюда надо передать явно.
+    final bottomDeduction = blankSideDeduction(WindowSide.bottom);
+    final topDeduction = blankSideDeduction(WindowSide.top);
+
     return WindowGeometry(
       bottomWidth: side(geometry.bottomWidth, widthDeduction),
       topWidth: side(geometry.topWidth, widthDeduction),
@@ -972,6 +980,11 @@ class WindowLayers {
       // форма, только меньше по каждой стороне.
       topOffset: geometry.topOffset,
       levelEdge: geometry.levelEdge,
+      // Координаты углов повторяют изделие с поправкой на вычет кромки.
+      bottomLeftY: geometry.bottomLeftY + bottomDeduction,
+      bottomRightY: geometry.bottomRightY + bottomDeduction,
+      topLeftY: geometry.topLeftY - topDeduction,
+      topRightY: geometry.topRightY - topDeduction,
     );
   }
 

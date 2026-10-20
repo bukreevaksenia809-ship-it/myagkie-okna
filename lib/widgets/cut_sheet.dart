@@ -323,6 +323,27 @@ class CutPiece {
   double get aspect => heightMm <= 0 ? 1 : widthMm / heightMm;
 }
 
+/// Контуры заготовки в координатах листа (точки), без отрисовки.
+///
+/// Именно эти точки обводит лист «Раскрой»: контур в мм масштабируется в
+/// прямоугольник [rect], а ось Y зеркалится (в модели Y вверх, на листе —
+/// вниз). Функция вынесена из painter, чтобы тесты сверяли контур раскроя с
+/// контуром чертежа без запуска отрисовки.
+List<List<Offset>> cutSheetContours(Rect rect, CutPiece piece) {
+  final contours = piece.allContours;
+  if (contours.isEmpty) return const [];
+  return [
+    for (final contour in contours)
+      [
+        for (final point in contour)
+          Offset(
+            rect.left + point.dx / piece.widthMm * rect.width,
+            rect.bottom - point.dy / piece.heightMm * rect.height,
+          ),
+      ],
+  ];
+}
+
 /// Место заготовки на листе: прямоугольник в точках листа.
 class CutPlacement {
   const CutPlacement({
@@ -702,7 +723,7 @@ class CutSheetPainter extends CustomPainter {
       path.addRect(rect);
       return path;
     }
-    final contours = _screenContours(rect, piece);
+    final contours = cutSheetContours(rect, piece);
     if (contours.isEmpty) {
       path.addRect(rect);
       return path;
@@ -716,22 +737,6 @@ class CutSheetPainter extends CustomPainter {
       path.close();
     }
     return path;
-  }
-
-  /// Все контуры в координатах листа (у Т-окна без спайки их два).
-  List<List<Offset>> _screenContours(Rect rect, CutPiece piece) {
-    final contours = piece.allContours;
-    if (contours.isEmpty) return const [];
-    return [
-      for (final contour in contours)
-        [
-          for (final point in contour)
-            Offset(
-              rect.left + point.dx / piece.widthMm * rect.width,
-              rect.bottom - point.dy / piece.heightMm * rect.height,
-            ),
-        ],
-    ];
   }
 
   /// Мелкая клетка москитной сетки — только линии внутри контура.
@@ -822,7 +827,7 @@ class CutSheetPainter extends CustomPainter {
   /// наклонные стороны — наклонную размерную линию.
   void _paintDimensions(Canvas canvas, Rect rect, CutPlacement placement) {
     final piece = placement.piece;
-    final contours = _screenContours(rect, piece);
+    final contours = cutSheetContours(rect, piece);
     if (contours.isEmpty) return;
 
     final paint = Paint()
