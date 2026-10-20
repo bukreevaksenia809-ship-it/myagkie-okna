@@ -27,6 +27,23 @@ class DrawingLayout {
     scaleLabelOverride = formatScaleLabel(scale);
   }
 
+  /// Лист с ЗАДАННЫМ знаменателем масштаба — для превью и проверок.
+  ///
+  /// Обычный конструктор подбирает масштаб по размеру листа; здесь масштаб
+  /// известен заранее (1:20, 1:30, 1:50), и по нему выставляются поля.
+  DrawingLayout.forScaleDenominator({
+    required this.size,
+    required this.geometry,
+    required this.scaleDenominator,
+    this.padLeft = 84,
+    this.padRight = 84,
+    this.padTop = 60,
+    this.padBottom = 76,
+  }) {
+    scale = (96 / 25.4) / scaleDenominator;
+    scaleLabelOverride = formatScaleLabel(scale);
+  }
+
   /// Подпись масштаба для этого листа.
   late final String scaleLabelOverride;
 
@@ -154,6 +171,171 @@ String formatScaleLabel(double pxPerMm) {
   return 'М 1:$text';
 }
 
+/// Минимальный внешний диаметр люверса на листе, точки.
+///
+/// На мелком масштабе (1:20, 1:30, 1:50) настоящий люверс Ø22–42 мм
+/// превращается в 1–4 точки и перестаёт читаться: заказчик видел вместо
+/// кольца «просто точки». Поэтому символ не рисуется меньше этого размера —
+/// кольцо с отверстием остаётся кольцом даже на обзорном листе.
+const double minEyeletOuterPx = 7.0;
+
+/// Минимальный диаметр отверстия люверса на листе, точки.
+const double minEyeletHolePx = 2.5;
+
+/// Минимальный размер крепежа (скоба, замок, ремень, фото замка) по большей
+/// стороне, точки. Меньше — и на 1:20–1:30 крепёж уже не узнать.
+const double minFastenerPx = 16.0;
+
+/// Внешний диаметр круглого люверса по умолчанию, мм (см. [EyeletType]).
+const double _defaultEyeletOuterMm = 22.0;
+
+/// Размер символа люверса на листе, точки: внешний диаметр.
+///
+/// [pxPerMm] — масштаб листа (например, 0,189 при 1:20). [actualDiameterMm] —
+/// фактический внешний диаметр по модели, [spacingPx] — расстояние до
+/// ближайшего соседнего люверса на листе.
+///
+/// Правила:
+/// 1. Символ не меньше [minEyeletOuterPx] — иначе вместо кольца точка.
+/// 2. Если люверсы стоят плотнее, чем 1,6 минимального диаметра, символ
+///    ужимается до минимума (но не меньше): кольца не должны сливаться.
+/// 3. На крупном масштабе возвращается честный расчётный размер, без
+///    искусственного увеличения.
+double eyeletDrawSize(
+  double pxPerMm, {
+  double actualDiameterMm = _defaultEyeletOuterMm,
+  double? spacingPx,
+}) {
+  final scale = pxPerMm.isFinite ? pxPerMm.abs() : 0.0;
+  final diameter = actualDiameterMm.isFinite && actualDiameterMm > 0
+      ? actualDiameterMm
+      : _defaultEyeletOuterMm;
+  var size = math.max(diameter * scale, minEyeletOuterPx);
+  if (spacingPx != null && spacingPx.isFinite && spacingPx > 0) {
+    // 1,6 диаметра — тот зазор, при котором два кольца ещё видны раздельно.
+    final fit = spacingPx / 1.6;
+    if (fit < size) size = math.max(fit, minEyeletOuterPx);
+  }
+  return size;
+}
+
+/// Диаметр отверстия люверса на листе, точки.
+///
+/// Отверстие не меньше [minEyeletHolePx], но всегда оставляет металлическое
+/// кольцо: не больше половины внешнего диаметра. На крупном масштабе
+/// возвращается фактический размер.
+double eyeletHoleDrawSize(
+  double outerPx, {
+  double actualHoleMm = 10.0,
+  double pxPerMm = 0.0,
+}) {
+  final outer = outerPx.isFinite && outerPx > 0 ? outerPx : minEyeletOuterPx;
+  final holeMm = actualHoleMm.isFinite && actualHoleMm > 0 ? actualHoleMm : 10.0;
+  final scale = pxPerMm.isFinite ? pxPerMm.abs() : 0.0;
+  final actual = holeMm * scale;
+  return math.min(math.max(actual, minEyeletHolePx), outer * 0.5);
+}
+
+/// Наибольший размер символа крепежа на листе, точки.
+///
+/// [bandWidthMm] — ширина полосы (окантовка или подворот), [factor] — доля
+/// полосы, которую крепёж занимает в норме. На мелком масштабе возвращается
+/// [minFastenerPx], чтобы скобу/замок можно было узнать; на крупном —
+/// честный расчётный размер.
+double fastenerDrawSize(
+  double pxPerMm, {
+  double bandWidthMm = 50.0,
+  double factor = 0.7,
+}) {
+  final scale = pxPerMm.isFinite ? pxPerMm.abs() : 0.0;
+  final band = bandWidthMm.isFinite && bandWidthMm > 0 ? bandWidthMm : 50.0;
+  final actual = band * factor * scale;
+  return math.max(actual, minFastenerPx);
+}
+
+/// Одна сторона окантовки: четырёхугольник между наружной и внутренней
+/// линией стороны.
+///
+/// Сторона рисуется ОДНИМ четырёхугольником, а не набором сегментов: иначе
+/// на наклонной стороне трапеции градиент, фактура и строчка повторяются на
+/// каждом куске и получается «частокол» коричневых полос.
+class EdgeBandQuad {
+  const EdgeBandQuad({
+    required this.edgeIndex,
+    required this.outerStart,
+    required this.outerEnd,
+    required this.innerEnd,
+    required this.innerStart,
+    required this.widthMm,
+  });
+
+  /// Номер стороны в обходе контура (0 — низ, 1 — право, …).
+  final int edgeIndex;
+
+  /// Углы четырёхугольника в координатах модели, мм.
+  final Offset outerStart;
+  final Offset outerEnd;
+  final Offset innerEnd;
+  final Offset innerStart;
+
+  /// Ширина полосы на этой стороне, мм.
+  final double widthMm;
+
+  /// Четырёхугольник в порядке обхода: наружная кромка → внутренняя.
+  List<Offset> get points => [outerStart, outerEnd, innerEnd, innerStart];
+
+  /// Длина наружной кромки, мм.
+  double get lengthMm => (outerEnd - outerStart).distance;
+
+  /// Длина внутренней кромки, мм.
+  double get innerLengthMm => (innerEnd - innerStart).distance;
+
+  /// Угол наружной кромки, радианы (экранные координаты).
+  double get angle => math.atan2(
+    outerEnd.dy - outerStart.dy,
+    outerEnd.dx - outerStart.dx,
+  );
+
+  /// Угол внутренней кромки, радианы.
+  double get innerAngle => math.atan2(
+    innerEnd.dy - innerStart.dy,
+    innerEnd.dx - innerStart.dx,
+  );
+}
+
+/// Четырёхугольники полосы окантовки — по одному на сторону контура.
+///
+/// Раньше полоса на наклонной стороне могла собираться из сегментов: на
+/// каждом сегменте заново рисовались градиент, тканевая фактура и строчка,
+/// из-за чего на косом окне появлялись лишние коричневые полосы. Теперь
+/// функция возвращает ровно один четырёхугольник на сторону (у трапеции и
+/// окна с разными высотами — четыре), и painter рисует его целиком.
+///
+/// [widths] — ширина полосы по сторонам, мм. Если не задана, берётся
+/// готовая ширина окантовки из модели (без минимальной «читаемой» ширины,
+/// которую добавляет painter).
+List<EdgeBandQuad> edgeBandQuads(WindowSpec spec, {List<double>? widths}) {
+  final outer = spec.layers.outer;
+  if (outer.length < 3) return const [];
+  final bandWidths = widths ?? [
+    for (var i = 0; i < outer.length; i++)
+      spec.layers.finishedWidthFor(spec.layers.sideOfEdge(outer, i)),
+  ];
+  if (bandWidths.length != outer.length) return const [];
+  final inner = insetPolygonPerSide(outer, bandWidths);
+  return [
+    for (var i = 0; i < outer.length; i++)
+      EdgeBandQuad(
+        edgeIndex: i,
+        outerStart: outer[i],
+        outerEnd: outer[(i + 1) % outer.length],
+        innerEnd: inner[(i + 1) % inner.length],
+        innerStart: inner[i],
+        widthMm: bandWidths[i],
+      ),
+  ];
+}
+
 /// Рисует мягкое окно слоями: окантовка, шов (напайка), плёнка, крепёж.
 /// Все углы прямые.
 class WindowDrawingPainter extends CustomPainter {
@@ -205,8 +387,12 @@ class WindowDrawingPainter extends CustomPainter {
   /// поэтому слегка утрируем — чертёж должен читаться без лупы.
   static const double _minBandPx = 5.0;
 
-  /// Минимальный радиус люверса, пиксели.
-  static const double _minEyeletPx = 2.6;
+  /// Минимальная ширина канта, когда на нём стоят люверсы, пиксели.
+  ///
+  /// Символ люверса не меньше [minEyeletOuterPx], и кольцо должно помещаться
+  /// ВНУТРИ полосы, а не свисать с неё. На 1:50 настоящие 50–100 мм канта —
+  /// это 4–8 точек, поэтому полосу слегка расширяем только в этом случае.
+  static const double _minBandWithEyeletsPx = 8.0;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -244,6 +430,10 @@ class WindowDrawingPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant WindowDrawingPainter oldDelegate) =>
       oldDelegate.params.signature != params.signature ||
+      // Тип крепежа сравниваем отдельно: signature его включает, но
+      // перерисовка при смене «скоба → французский замок» не должна
+      // зависеть от того, как собран signature.
+      oldDelegate.params.fastenerType != params.fastenerType ||
       oldDelegate.options.signature != options.signature ||
       oldDelegate.layout.size != layout.size ||
       oldDelegate.layout.scale != layout.scale ||
@@ -300,20 +490,25 @@ class WindowDrawingPainter extends CustomPainter {
     if (params.isScreen) {
       _paintTShapeHem(canvas);
     } else {
+      final minBandPx = layers.eyelets.isEmpty
+          ? _minBandPx
+          : _minBandWithEyeletsPx;
       final widths = [
         for (var i = 0; i < layers.outer.length; i++)
           math.max(
             layers.finishedWidthFor(layers.sideOfEdge(layers.outer, i)),
-            _minBandPx / layout.scale,
+            minBandPx / layout.scale,
           ),
       ];
-      final inner = insetPolygonPerSide(layers.outer, widths);
-      for (var i = 0; i < layers.outer.length; i++) {
-        final side = layers.sideOfEdge(layers.outer, i);
+      final spec = WindowSpec(params, layout.geometry, layers);
+      // Ровно один четырёхугольник на сторону: на наклонной стороне
+      // Т-окна полоса не распадается на сегменты.
+      for (final quad in edgeBandQuads(spec, widths: widths)) {
+        final side = layers.sideOfEdge(layers.outer, quad.edgeIndex);
         if (params.isWelded(WindowLayers.edgeSideOf(side))) {
           continue;
         }
-        _paintTentBand(canvas, i, layers.outer, inner, widths);
+        _paintTentQuad(canvas, quad);
       }
       canvas.drawPath(
         _polygonPath(layers.outer),
@@ -757,10 +952,13 @@ class WindowDrawingPainter extends CustomPainter {
   }
 
   /// Толщина окантовки для рисования: настоящая, но не тоньше пары точек.
-  List<double> get _drawWidths => [
-    for (final width in layers.finishedWidths)
-      math.max(width, _minBandPx / layout.scale),
-  ];
+  List<double> get _drawWidths {
+    final minPx = layers.eyelets.isEmpty ? _minBandPx : _minBandWithEyeletsPx;
+    return [
+      for (final width in layers.finishedWidths)
+        math.max(width, minPx / layout.scale),
+    ];
+  }
 
   /// Внутренний контур окантовки для рисования.
   List<Offset> get _drawInner => insetPolygonPerSide(layers.outer, _drawWidths);
@@ -772,16 +970,16 @@ class WindowDrawingPainter extends CustomPainter {
   /// шов добавляет [_paintScreenHem].
   void _paintEdgeBand(Canvas canvas) {
     final outer = layers.outer;
-    final inner = _drawInner;
     final widths = _drawWidths;
 
     if (!params.isScreen) {
-      for (var i = 0; i < outer.length; i++) {
-        if (layers.isSideWelded(i)) {
-          _paintWeldSeam(canvas, i, widths);
+      final spec = WindowSpec(params, layout.geometry, layers);
+      for (final quad in edgeBandQuads(spec, widths: widths)) {
+        if (layers.isSideWelded(quad.edgeIndex)) {
+          _paintWeldSeam(canvas, quad.edgeIndex, widths);
           continue;
         }
-        _paintTentBand(canvas, i, outer, inner, widths);
+        _paintTentQuad(canvas, quad);
       }
     }
 
@@ -986,20 +1184,15 @@ class WindowDrawingPainter extends CustomPainter {
 
   /// Одна сторона окантовки: полоса тента со сгибом пополам.
   ///
-  /// Полоса строится в локальной системе стороны: по X — длина кромки,
-  /// по Y — толщина окантовки. Все точки сначала переводятся в экранные,
-  /// иначе модельные координаты дают растянутые полосы.
-  void _paintTentBand(
-    Canvas canvas,
-    int index,
-    List<Offset> outer,
-    List<Offset> inner,
-    List<double> widths,
-  ) {
-    final start = layout.toPxPoint(outer[index]);
-    final finish = layout.toPxPoint(outer[(index + 1) % outer.length]);
-    final innerStart = layout.toPxPoint(inner[index]);
-    final innerFinish = layout.toPxPoint(inner[(index + 1) % inner.length]);
+  /// Сторона рисуется ОДНИМ четырёхугольником [band] между наружной и
+  /// внутренней линией. Полоса строится в локальной системе стороны: по X —
+  /// длина кромки, по Y — толщина окантовки. Все точки сначала переводятся
+  /// в экранные, иначе модельные координаты дают растянутые полосы.
+  void _paintTentQuad(Canvas canvas, EdgeBandQuad band) {
+    final start = layout.toPxPoint(band.outerStart);
+    final finish = layout.toPxPoint(band.outerEnd);
+    final innerStart = layout.toPxPoint(band.innerStart);
+    final innerFinish = layout.toPxPoint(band.innerEnd);
 
     final direction = finish - start;
     final length = direction.distance;
@@ -1748,21 +1941,100 @@ class WindowDrawingPainter extends CustomPainter {
     }
   }
 
+  /// Центр люверса с поправкой на минимальную ширину канта.
+  ///
+  /// Если кант на мелком масштабе расширен до [minBandWithEyeletsPx], центр
+  /// полосы смещается внутрь. Сдвигаем туда и люверс, иначе кольцо свисало
+  /// бы с наружной кромки.
+  Offset _eyeletDrawCenter(EyeletPlacement eyelet) {
+    final center = layout.toPxPoint(eyelet.center);
+    if (params.isScreen) return center;
+    final actual = layout.px(layers.finishedWidthFor(eyelet.side));
+    final drawn = math.max(actual, _minBandWithEyeletsPx);
+    final shift = (drawn - actual) / 2;
+    if (shift <= 0.05) return center;
+    return center - _outwardNormal(eyelet) * shift;
+  }
+
   void _paintEyelets(Canvas canvas) {
-    for (final eyelet in layers.eyelets) {
+    final eyelets = layers.eyelets;
+    if (eyelets.isEmpty) return;
+
+    // Расстояние до ближайшего соседнего люверса на листе: по нему решаем,
+    // можно ли рисовать кольца крупно или они уже сливаются в кашу.
+    final centers = [
+      for (final eyelet in eyelets) _eyeletDrawCenter(eyelet),
+    ];
+    final spacing = List<double>.filled(centers.length, double.infinity);
+    for (var i = 0; i < centers.length; i++) {
+      for (var j = i + 1; j < centers.length; j++) {
+        final distance = (centers[i] - centers[j]).distance;
+        if (distance < spacing[i]) spacing[i] = distance;
+        if (distance < spacing[j]) spacing[j] = distance;
+      }
+    }
+
+    for (var i = 0; i < eyelets.length; i++) {
+      final eyelet = eyelets[i];
       // В углах круглый люверс (если тумблер включён): угол тянет по
       // диагонали, овальный там не держит.
       final type = layers.typeFor(eyelet);
+      final actualWidth = layout.px(type.outerWidth);
+      final actualHeight = layout.px(type.outerHeight);
+      // Минимальный символ считается по меньшей стороне: кольцо должно
+      // читаться, даже если овальный люверс стоит боком.
+      final symbolSize = eyeletDrawSize(
+        layout.scale,
+        actualDiameterMm: math.min(type.outerWidth, type.outerHeight),
+        spacingPx: spacing[i],
+      );
+      // Овал сохраняет пропорции: меньшая сторона не меньше минимума,
+      // большая растягивается во столько же раз.
+      final actualMin = math.min(actualWidth, actualHeight);
+      final grow = math.max(symbolSize / math.max(actualMin, 0.01), 1.0);
+      final outerWidth = actualWidth * grow;
+      final outerHeight = actualHeight * grow;
+      // Плотная расстановка: кольца почти касаются. Убираем тень и блеск,
+      // оставляем только металл, отверстие и тонкий контур — иначе каша.
+      final dense =
+          spacing[i].isFinite && spacing[i] < 1.6 * minEyeletOuterPx;
       _drawEyelet(
         canvas,
-        layout.toPxPoint(eyelet.center),
+        centers[i],
         -eyelet.angle,
-        layout.px(type.outerWidth),
-        layout.px(type.outerHeight),
-        layout.px(type.holeWidth),
-        layout.px(type.holeHeight),
+        outerWidth,
+        outerHeight,
+        _eyeletHolePx(
+          type.holeWidth,
+          type.outerWidth,
+          outerWidth,
+        ),
+        _eyeletHolePx(
+          type.holeHeight,
+          type.outerHeight,
+          outerHeight,
+        ),
+        simple: dense || symbolSize <= minEyeletOuterPx + 0.4,
       );
     }
+  }
+
+  /// Отверстие люверса на листе: фактическая доля внешнего размера, но не
+  /// меньше [minEyeletHolePx] и не больше 45 % — кольцо обязано остаться.
+  double _eyeletHolePx(
+    double actualHoleMm,
+    double actualOuterMm,
+    double outerPx,
+  ) {
+    final pxPerMm = actualOuterMm > 0.01 ? outerPx / actualOuterMm : 0.0;
+    return math.min(
+      eyeletHoleDrawSize(
+        outerPx,
+        actualHoleMm: actualHoleMm,
+        pxPerMm: pxPerMm,
+      ),
+      outerPx * 0.45,
+    );
   }
 
   /// Люверс: металлическое кольцо с блеском, фаской и отверстием.
@@ -1773,65 +2045,64 @@ class WindowDrawingPainter extends CustomPainter {
     double outerWidth,
     double outerHeight,
     double holeWidth,
-    double holeHeight,
-  ) {
-    final radius = math.max(
-      math.min(outerWidth, outerHeight) / 2,
-      _minEyeletPx,
-    );
-    if (radius <= _minEyeletPx + 0.01) {
-      // На мелком масштабе люверс — просто плотная точка металла.
-      canvas.drawCircle(center, radius, Paint()..color = _metal);
-      canvas.drawCircle(
-        center,
-        radius,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 0.8
-          ..color = _metalDark,
-      );
-      return;
-    }
-
+    double holeHeight, {
+    bool simple = false,
+  }) {
+    // Даже если расчёт дал меньше минимума, рисуем символ по минимуму:
+    // на 1:20–1:50 люверс остаётся кольцом, а не точкой.
+    final width = math.max(outerWidth, minEyeletOuterPx);
+    final height = math.max(outerHeight, minEyeletOuterPx);
     final oval = Rect.fromCenter(
       center: center,
-      width: math.max(outerWidth, _minEyeletPx * 2),
-      height: math.max(outerHeight, _minEyeletPx * 2),
+      width: width,
+      height: height,
     );
+    final radius = math.min(width, height) / 2;
 
     canvas.save();
     canvas.translate(center.dx, center.dy);
     canvas.rotate(angle);
     canvas.translate(-center.dx, -center.dy);
 
-    // Тень под кольцом.
-    canvas.drawOval(
-      oval.shift(Offset(0, radius * 0.14)),
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.25)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, radius * 0.35),
-    );
+    // Тень под кольцом — только на крупном масштабе: у 7-точечного символа
+    // размытие превращается в грязное пятно.
+    if (!simple) {
+      canvas.drawOval(
+        oval.shift(Offset(0, radius * 0.14)),
+        Paint()
+          ..color = Colors.black.withValues(alpha: 0.25)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, radius * 0.35),
+      );
+    }
 
-    // Само кольцо металла.
+    // Само кольцо металла: градиент сохраняется и на мелком масштабе.
     canvas.drawOval(oval, Paint()..shader = _metalShader(oval));
     canvas.drawOval(
       oval,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(radius * 0.16, 0.9)
+        ..strokeWidth = simple ? 0.8 : math.max(radius * 0.16, 0.9)
         ..color = _metalDark,
     );
 
     // Люфт вокруг отверстия — металл утолщается к центру.
     final hole = Rect.fromCenter(
       center: center,
-      width: math.max(holeWidth, radius * 0.7),
-      height: math.max(holeHeight, radius * 0.7),
+      width: math.min(
+        math.max(holeWidth, minEyeletHolePx),
+        width * 0.5,
+      ),
+      height: math.min(
+        math.max(holeHeight, minEyeletHolePx),
+        height * 0.5,
+      ),
     );
-    canvas.drawOval(
-      hole.inflate(radius * 0.34),
-      Paint()..color = Colors.black.withValues(alpha: 0.22),
-    );
+    if (!simple) {
+      canvas.drawOval(
+        hole.inflate(radius * 0.30),
+        Paint()..color = Colors.black.withValues(alpha: 0.20),
+      );
+    }
 
     // Отверстие: сквозь него видно светлую подложку листа.
     canvas.drawOval(hole, Paint()..color = const Color(0xFFF1F5FA));
@@ -1839,18 +2110,20 @@ class WindowDrawingPainter extends CustomPainter {
       hole,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(radius * 0.14, 0.8)
+        ..strokeWidth = simple ? 0.7 : math.max(radius * 0.14, 0.8)
         ..color = _metalDark,
     );
-    canvas.drawOval(
-      hole.deflate(radius * 0.1),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(radius * 0.08, 0.6)
-        ..color = Colors.white.withValues(alpha: 0.85),
-    );
+    if (!simple) {
+      canvas.drawOval(
+        hole.deflate(radius * 0.1),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(radius * 0.08, 0.6)
+          ..color = Colors.white.withValues(alpha: 0.85),
+      );
+    }
 
-    // Блик сверху слева.
+    // Блик сверху слева: он и делает люверс металлическим кольцом.
     canvas.drawArc(
       oval.deflate(radius * 0.26),
       math.pi * 1.05,
@@ -1858,9 +2131,9 @@ class WindowDrawingPainter extends CustomPainter {
       false,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(radius * 0.2, 0.8)
+        ..strokeWidth = simple ? 0.7 : math.max(radius * 0.2, 0.8)
         ..strokeCap = StrokeCap.round
-        ..color = Colors.white.withValues(alpha: 0.8),
+        ..color = Colors.white.withValues(alpha: simple ? 0.75 : 0.8),
     );
     canvas.restore();
   }
@@ -2152,7 +2425,14 @@ class WindowDrawingPainter extends CustomPainter {
     double bandWidth,
   ) {
     final angle = math.atan2(normal.dy, normal.dx);
-    final size = (layout.px(bandWidth * 0.7)).clamp(9.0, 20.0);
+    // Наибольшая сторона символа — не меньше 16 точек листа; на крупном
+    // масштабе размер честный, прежний.
+    final overall = fastenerDrawSize(
+      layout.scale,
+      bandWidthMm: bandWidth,
+      factor: 0.7,
+    );
+    final size = (overall / 1.6).clamp(5.6, 20.0);
 
     canvas.save();
     canvas.translate(center.dx, center.dy);
@@ -2271,18 +2551,40 @@ class WindowDrawingPainter extends CustomPainter {
     double bandWidth,
   ) {
     final angle = math.atan2(normal.dy, normal.dx);
-    final size = layout.px(bandWidth * 0.62).clamp(10.0, 20.0);
+    // Наибольшая сторона символа — не меньше 16 точек листа. У мелкого
+    // масштаба длинную сторону кладём ВДОЛЬ канта: так фото остаётся
+    // узнаваемым и не вылезает за полосу.
+    final overall = fastenerDrawSize(
+      layout.scale,
+      bandWidthMm: bandWidth,
+      factor: 0.62,
+    );
+    final size = (overall / 2.1).clamp(5.0, 20.0);
     final bandPx = layout.px(bandWidth);
     final image = fastenerImage;
 
     // Фото заказчика: металлическая овальная пластина с коричневым
-    // ремешком. Длинная ось пластины ложится ПОПЕРЁК канта (это и есть
-    // ширина полосы), ремешок идёт вдоль кромки, поэтому картинка
-    // поворачивается вместе со стороной — так же, как раньше рисовался
-    // векторный замок. Размер ограничен полосой: за окантовку не вылезаем.
-    final across = math.min(bandPx * 0.92, 20.0);
-    if (image != null && image.height > 0 && across >= 6) {
-      final along = across * image.width / image.height;
+    // ремешком. На крупном масштабе длинная ось идёт ПОПЕРЁК канта, как
+    // раньше; на мелком — вдоль, чтобы 16 точек поместились в полосу.
+    // Картинка поворачивается вместе со стороной.
+    final acrossLimit = math.min(math.max(bandPx * 0.92, 1.0), 20.0);
+    final imageAspect = (image != null && image.width > 0)
+        ? image.height / image.width
+        : 1.47;
+    final naturalAcross = acrossLimit;
+    final naturalAlong = naturalAcross / imageAspect;
+    final double across;
+    final double along;
+    if (math.max(naturalAlong, naturalAcross) >= minFastenerPx) {
+      across = naturalAcross;
+      along = naturalAlong;
+    } else {
+      // Символ дорос до минимума по длине вдоль канта; по ширине полосы
+      // он остаётся внутри окантовки.
+      along = minFastenerPx;
+      across = math.min(acrossLimit, along * imageAspect);
+    }
+    if (image != null && image.height > 0) {
       final destination = Rect.fromCenter(
         center: Offset.zero,
         width: along,
