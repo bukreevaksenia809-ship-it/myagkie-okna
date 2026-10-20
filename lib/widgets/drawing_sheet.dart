@@ -7,6 +7,7 @@ import '../models/order_project.dart';
 import '../models/window_geometry.dart';
 import '../models/window_params.dart';
 import '../services/fastener_artwork.dart';
+import '../services/label_settings.dart';
 import 'window_painter.dart';
 
 /// Лист чертежа: одно окно подробно или несколько окон заказа с нумерацией.
@@ -125,9 +126,12 @@ class DrawingSheet extends StatelessWidget {
     // ValueListenableBuilder перерисует лист — и в снимок для печати/PDF
     // замок попадёт уже картинкой.
     FastenerArtwork.ensureFrenchLock();
-    return ValueListenableBuilder<ui.Image?>(
-      valueListenable: FastenerArtwork.frenchLock,
-      builder: (context, fastenerImage, _) => _buildSheet(fastenerImage),
+    return ValueListenableBuilder<LabelSettings>(
+      valueListenable: LabelSettings.current,
+      builder: (context, labelSettings, _) => ValueListenableBuilder<ui.Image?>(
+        valueListenable: FastenerArtwork.frenchLock,
+        builder: (context, fastenerImage, _) => _buildSheet(fastenerImage),
+      ),
     );
   }
 
@@ -400,7 +404,9 @@ class DrawingSheet extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(child: _buildGridRow(page, columns, fastenerImage)),
+                      Expanded(
+                        child: _buildGridRow(page, columns, fastenerImage),
+                      ),
                       const VerticalDivider(
                         width: 1,
                         thickness: 1,
@@ -465,11 +471,7 @@ class DrawingSheet extends StatelessWidget {
     return 4;
   }
 
-  Widget _buildCell(
-    int index,
-    Size cellSize,
-    ui.Image? fastenerImage,
-  ) {
+  Widget _buildCell(int index, Size cellSize, ui.Image? fastenerImage) {
     if (index >= project.windows.length) return const SizedBox.shrink();
     final params = project.windows[index];
     final spec = WindowSpec.of(params);
@@ -805,6 +807,10 @@ class _TitleBlock extends StatelessWidget {
     // Двухстрочное значение (размеры с припуском) набираем мельче и с
     // меньшими отступами, чтобы клетка штампа не переполнялась.
     final dense = maxLines > 1;
+    // Штамп ограничен 20 точками: клетки фиксированной высоты, иначе
+    // крупный кегль рвёт нижнюю полосу A4. FittedBox дополнительно
+    // подгоняет длинную строку.
+    final stampPx = math.min(LabelSettings.value.pxFor(LabelKind.stamp), 20.0);
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12, vertical: dense ? 5 : 9),
       decoration: const BoxDecoration(
@@ -814,28 +820,40 @@ class _TitleBlock extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            label.toUpperCase(),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 8.5,
-              height: 1.15,
-              letterSpacing: 0.4,
-              color: Color(0xFF7C8798),
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                label.toUpperCase(),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: stampPx * 0.68,
+                  height: 1.15,
+                  letterSpacing: 0.4,
+                  color: const Color(0xFF7C8798),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            value.isEmpty ? '—' : value,
-            maxLines: maxLines,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: dense ? 11.5 : 12.5,
-              height: dense ? 1.15 : null,
-              color: const Color(0xFF1B1F27),
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value.isEmpty ? '—' : value,
+                maxLines: maxLines,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: dense ? stampPx * 0.92 : stampPx,
+                  height: dense ? 1.15 : null,
+                  color: const Color(0xFF1B1F27),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
@@ -866,11 +884,11 @@ class _SidePanel extends StatelessWidget {
   final double scaleDenominator;
 
   /// Название люверса в текущей единице: «Круглый Ø10 мм» / «Круглый Ø1,0 см».
-  String _eyeletLabel(WindowParams params) =>
-      params.eyeletType.displayLabel;
+  String _eyeletLabel(WindowParams params) => params.eyeletType.displayLabel;
 
   @override
   Widget build(BuildContext context) {
+    final labelSettings = LabelSettings.value;
     final windows = project.windows;
     final params = windows.first;
     final anyLifting = windows.any((window) => window.isLifting);
@@ -883,7 +901,8 @@ class _SidePanel extends StatelessWidget {
     final anyCutout = windows.any((window) => window.cutouts.isNotEmpty);
     final anyWeld = windows.any(
       (window) =>
-          window.weldedSides.isNotEmpty || (window.isTShape && window.tAnyWelded),
+          window.weldedSides.isNotEmpty ||
+          (window.isTShape && window.tAnyWelded),
     );
     final anyPocket = windows.any((window) => window.pocket);
     final anyDrain = windows.any((window) => window.drainHoles);
@@ -899,8 +918,14 @@ class _SidePanel extends StatelessWidget {
               '${formatMm(screenSeamMm)} ${unitSuffix()}',
         )
       else ...[
-        (LegendKind.edge, 'Окантовка по сторонам: ${_widthList(windows)} ${unitSuffix()}'),
-        (LegendKind.seam, 'Запайка ${formatMm(params.weldOverlapMm)} ${unitSuffix()}'),
+        (
+          LegendKind.edge,
+          'Окантовка по сторонам: ${_widthList(windows)} ${unitSuffix()}',
+        ),
+        (
+          LegendKind.seam,
+          'Запайка ${formatMm(params.weldOverlapMm)} ${unitSuffix()}',
+        ),
       ],
       if (windows.any((window) => window.isTShape))
         (
@@ -969,8 +994,10 @@ class _SidePanel extends StatelessWidget {
       if (anyCutout)
         (LegendKind.cutout, 'Вырез в полотне с окантовкой по контуру'),
       if (anyWeld)
-        (LegendKind.weld,
-            'Спайка с соседним окном ${formatMm(windowWeldWidth)} ${unitSuffix()}'),
+        (
+          LegendKind.weld,
+          'Спайка с соседним окном ${formatMm(windowWeldWidth)} ${unitSuffix()}',
+        ),
       if (anyPocket)
         (
           LegendKind.pocket,
@@ -1012,9 +1039,12 @@ class _SidePanel extends StatelessWidget {
                   Expanded(
                     child: Text(
                       entry.$2,
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        color: Color(0xFF2B3440),
+                      style: TextStyle(
+                        fontSize: math.min(
+                          labelSettings.pxFor(LabelKind.legend),
+                          14.0,
+                        ),
+                        color: const Color(0xFF2B3440),
                       ),
                     ),
                   ),
@@ -1093,13 +1123,16 @@ class _SidePanel extends StatelessWidget {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Padding(
-                            padding: EdgeInsets.only(top: 1.5),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1.5),
                             child: Text(
                               '•',
                               style: TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF7C8798),
+                                fontSize: math.min(
+                                  labelSettings.pxFor(LabelKind.notes),
+                                  13.0,
+                                ),
+                                color: const Color(0xFF7C8798),
                               ),
                             ),
                           ),
@@ -1107,10 +1140,13 @@ class _SidePanel extends StatelessWidget {
                           Expanded(
                             child: Text(
                               note,
-                              style: const TextStyle(
-                                fontSize: 10.5,
+                              style: TextStyle(
+                                fontSize: math.min(
+                                  labelSettings.pxFor(LabelKind.notes),
+                                  13.0,
+                                ),
                                 height: 1.25,
-                                color: Color(0xFF4A5563),
+                                color: const Color(0xFF4A5563),
                               ),
                             ),
                           ),
@@ -1669,7 +1705,8 @@ class DrawingSheetMetrics {
   /// По ней сравнивают листы: у обычного окна, Т-окна с одной и с двумя
   /// пристройками она должна быть сопоставимой — иначе при добавлении
   /// пристройки масштаб «прыгает» и чертёж становится мелким.
-  double get frameFill => frame.width * frame.height / (area.width * area.height);
+  double get frameFill =>
+      frame.width * frame.height / (area.width * area.height);
 
   /// Доля поля листа, занятая самим изделием (0…1).
   double get productFill =>

@@ -53,8 +53,9 @@ const _differentHeights = WindowParams(
   weldOverlapMm: 5,
 );
 
-/// Проверяет прямоугольную заготовку и её четыре стороны.
-void _expectRectangular(WindowParams params) {
+/// Проверяет косую заготовку: четыре стороны по формуле заказчика и
+/// площадь по контуру (формула Гаусса), а не прямоугольник по габариту.
+void _expectOblique(WindowParams params) {
   final spec = WindowSpec.of(params);
   final piece = CutPiece.ofSpec(spec);
 
@@ -63,29 +64,21 @@ void _expectRectangular(WindowParams params) {
   expect(piece.hasContour, isTrue, reason: 'контур есть — лист не пустой');
   expect(piece.allContours, hasLength(1));
   expect(piece.sideLengths, hasLength(4));
-  final sides = piece.sideLengths;
-  expect(sides[0], closeTo(piece.widthMm, 1e-9), reason: 'низ');
-  expect(sides[1], closeTo(piece.heightMm, 1e-9), reason: 'право');
-  expect(sides[2], closeTo(piece.widthMm, 1e-9), reason: 'верх');
-  expect(sides[3], closeTo(piece.heightMm, 1e-9), reason: 'лево');
-  // Площадь прямоугольника = ширина × высота (это и есть раскрой).
+  // Подписи сторон — номинальные стороны заготовки по формуле заказчика.
+  expect(piece.sideLengths, spec.filmCutSideLengths);
+  expect(piece.sideLengths[0], closeTo(piece.widthMm, 1e-9), reason: 'низ');
   expect(
-    piece.areaMm2,
-    closeTo(piece.widthMm * piece.heightMm, 1e-6),
+    piece.sideLengths[2],
+    lessThan(piece.widthMm + 1e-9),
+    reason: 'верх уже низа',
   );
-  expect(
-    piece.areaM2,
-    closeTo(piece.widthMm * piece.heightMm / 1000000, 1e-9),
-  );
+  // Габарит к раскрою — те же числа, что в документах.
+  expect(piece.widthMm, closeTo(spec.filmCutWidthWithShrinkage, 1e-9));
+  expect(piece.heightMm, closeTo(spec.filmCutHeightWithShrinkage, 1e-9));
+  // Площадь — по контуру, а не ширина × высота.
   expect(piece.areaM2, closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9));
-  expect(
-    piece.widthMm,
-    closeTo(spec.filmCutWidthWithShrinkage, 1e-9),
-  );
-  expect(
-    piece.heightMm,
-    closeTo(spec.filmCutHeightWithShrinkage, 1e-9),
-  );
+  expect(piece.areaMm2, closeTo(spec.filmCutAreaM2 * 1000000, 1e-6));
+  expect(piece.areaMm2, lessThan(piece.widthMm * piece.heightMm));
 
   final layout = CutLayout.place([piece], const Size(1600, 600));
   final placement = layout.placements.single;
@@ -116,15 +109,15 @@ void main() {
   setUpAll(loadRealFonts);
 
   group('CutPiece косого окна', () {
-    test('трапеция: прямоугольник, четыре стороны, площадь = ширина × высота', () {
-      _expectRectangular(_trapezoid);
+    test('трапеция: косая заготовка, четыре стороны, площадь по контуру', () {
+      _expectOblique(_trapezoid);
     });
 
-    test('окно с разными высотами: прямоугольник и четыре стороны', () {
-      _expectRectangular(_differentHeights);
+    test('окно с разными высотами: косая заготовка и четыре стороны', () {
+      _expectOblique(_differentHeights);
     });
 
-    test('припуск и усадка входят в прямоугольник заготовки', () {
+    test('припуск и усадка сохраняют косую форму заготовки', () {
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 1000,
@@ -140,14 +133,8 @@ void main() {
       final piece = CutPiece.ofSpec(spec);
       expect(piece.widthMm, greaterThan(0));
       expect(piece.heightMm, greaterThan(0));
-      expect(
-        piece.areaM2,
-        closeTo(piece.widthMm * piece.heightMm / 1000000, 1e-9),
-      );
-      expect(
-        piece.areaM2,
-        closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9),
-      );
+      expect(piece.areaM2, closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9));
+      expect(piece.areaMm2, lessThan(piece.widthMm * piece.heightMm));
     });
   });
 
@@ -182,8 +169,9 @@ void main() {
     expect(find.text('Заготовок: 2 шт'), findsOneWidget);
 
     final bytes = await tester.runAsync(() async {
-      final boundary = captureKey.currentContext!.findRenderObject()!
-          as RenderRepaintBoundary;
+      final boundary =
+          captureKey.currentContext!.findRenderObject()!
+              as RenderRepaintBoundary;
       final image = await boundary.toImage(pixelRatio: 2);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       image.dispose();
@@ -233,9 +221,7 @@ void main() {
     );
     expect(count, greaterThanOrEqualTo(1));
     expect(pages, isNotEmpty);
-    final colored = await tester.runAsync(
-      () => _nonWhitePixels(pages.first),
-    );
+    final colored = await tester.runAsync(() => _nonWhitePixels(pages.first));
     expect(
       colored,
       greaterThan(30000),

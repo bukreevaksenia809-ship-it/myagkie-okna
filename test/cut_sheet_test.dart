@@ -100,23 +100,25 @@ const _screenZipper = WindowParams(
 
 /// Заказ заказчика: скрин без молнии и с молнией — видно, что заготовка
 /// справа уже на полосу (2 080 → 2 030 мм).
-const _screenZipperOrder = OrderProject(windows: [
-  WindowParams(
-    projectName: 'Мягкое окно террасы',
-    customer: 'Иванов И. И.',
-    drawingNumber: 'МО-051',
-    material: FilmMaterial.screen,
-    bottomWidth: 2000,
-    topWidth: 2000,
-    leftHeight: 2000,
-    rightHeight: 2000,
-    hemBottomMm: 40,
-    hemRightMm: 40,
-    hemTopMm: 40,
-    hemLeftMm: 40,
-  ),
-  _screenZipper,
-]);
+const _screenZipperOrder = OrderProject(
+  windows: [
+    WindowParams(
+      projectName: 'Мягкое окно террасы',
+      customer: 'Иванов И. И.',
+      drawingNumber: 'МО-051',
+      material: FilmMaterial.screen,
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      hemBottomMm: 40,
+      hemRightMm: 40,
+      hemTopMm: 40,
+      hemLeftMm: 40,
+    ),
+    _screenZipper,
+  ],
+);
 
 /// Порядок для превью: трапеция рядом с прямоугольником — видно, что лист
 /// рисует фактическую форму, а не габарит.
@@ -203,10 +205,10 @@ void main() {
       }
     });
 
-    test('трапеция: заготовка — прямоугольник по габариту', () {
-      // Окно 2000/1000 × 1000 с запайкой 25 мм. Изделие остаётся трапецией,
-      // но плёнка кроится прямоугольником: вычет 50 − 25 = 25 мм с каждой
-      // стороны, ширина 2000 − 50 = 1950, высота 1000 − 50 = 950.
+    test('трапеция: заготовка — косой четырёхугольник по формуле', () {
+      // Окно 2000/1000 × 1000 с запайкой 25 мм: вычет 50 − 25 = 25 мм
+      // с каждой стороны. Стороны заготовки считаются по формуле заказчика:
+      // низ 2000 − 50 = 1950, верх 1000 − 50 = 950, высоты по 950.
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 1000,
@@ -219,22 +221,20 @@ void main() {
 
       expect(piece.hasContour, isTrue);
       expect(piece.outline, hasLength(4));
-      // Все четыре стороны попарно равны: это прямоугольник, а не трапеция.
+      // Это трапеция: низ шире верха, боковые стороны уже не прямоугольник.
+      expect(spec.blankSideLengths, [1950, 950, 950, 950]);
       final sides = piece.sideLengths;
       expect(sides[0], closeTo(1950, 1e-9));
       expect(sides[1], closeTo(960, 1e-9));
-      expect(sides[2], closeTo(1950, 1e-9));
+      expect(sides[2], closeTo(950, 1e-9));
       expect(sides[3], closeTo(960, 1e-9));
       expect(piece.widthMm, closeTo(1950, 1e-9));
       expect(piece.heightMm, closeTo(960, 1e-9));
-      // Площадь — ширина × высота, ровно как у прямоугольного окна.
-      expect(
-        piece.areaMm2 / 1000000,
-        closeTo(spec.filmCutAreaM2, 1e-9),
-      );
-      expect(piece.areaMm2 / 1000000, closeTo(1.872, 1e-9));
+      // Площадь — по формуле Гаусса для трапеции, а не габарит 1950 × 960.
+      expect(piece.areaMm2 / 1000000, closeTo(spec.filmCutAreaM2, 1e-9));
+      expect(piece.areaMm2 / 1000000, closeTo(1.392, 1e-9));
       expect(piece.areaM2, closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9));
-      expect(piece.areaMm2, closeTo(piece.widthMm * piece.heightMm, 1e-6));
+      expect(piece.areaMm2, lessThan(piece.widthMm * piece.heightMm));
       // Раскладка пакует по габариту — это упаковка.
       final layout = CutLayout.place([piece], const Size(1632, 460));
       expect(
@@ -254,15 +254,21 @@ void main() {
       final second = layout.placements[1].rect;
       // 2000 × 2000 против 1500 × 2000: шире, значит и площадь на листе больше.
       expect(first.width, greaterThan(second.width));
-      expect(first.width * first.height, greaterThan(second.width * second.height));
+      expect(
+        first.width * first.height,
+        greaterThan(second.width * second.height),
+      );
     });
 
     test('заготовки не пересекаются и не выходят за ширину листа', () {
       for (final width in <double>[900, 1280, 1632]) {
         final layout = CutLayout.place(pieces, Size(width, 460));
         _expectNoOverlaps(layout);
-        expect(layout.contentWidth, lessThanOrEqualTo(width + 1e-6),
-            reason: 'ширина листа $width');
+        expect(
+          layout.contentWidth,
+          lessThanOrEqualTo(width + 1e-6),
+          reason: 'ширина листа $width',
+        );
         for (final placement in layout.placements) {
           expect(placement.rect.left, greaterThanOrEqualTo(-1e-6));
           expect(placement.rect.right, lessThanOrEqualTo(width + 1e-6));
@@ -283,13 +289,18 @@ void main() {
         [0, 1, 2],
       );
       // Второй ряд ниже первого.
-      expect(narrow.placements[2].rect.top,
-          greaterThan(narrow.placements[0].rect.bottom));
+      expect(
+        narrow.placements[2].rect.top,
+        greaterThan(narrow.placements[0].rect.bottom),
+      );
     });
 
     test('мелкие заготовки остаются различимыми', () {
       final layout = CutLayout.place(pieces, const Size(1632, 460));
-      expect(layout.smallestSidePx, greaterThanOrEqualTo(CutLayout.minSmallSidePx));
+      expect(
+        layout.smallestSidePx,
+        greaterThanOrEqualTo(CutLayout.minSmallSidePx),
+      );
     });
 
     test('самая крупная заготовка занимает около 75 % полосы ряда', () {
@@ -312,12 +323,16 @@ void main() {
     });
 
     test('нулевые размеры окна не роняют раскладку', () {
-      final zero = CutPiece.ofSpec(WindowSpec.of(const WindowParams(
-        bottomWidth: 0,
-        topWidth: 0,
-        leftHeight: 0,
-        rightHeight: 0,
-      )));
+      final zero = CutPiece.ofSpec(
+        WindowSpec.of(
+          const WindowParams(
+            bottomWidth: 0,
+            topWidth: 0,
+            leftHeight: 0,
+            rightHeight: 0,
+          ),
+        ),
+      );
 
       expect(zero.widthMm, greaterThan(0));
       expect(zero.heightMm, greaterThan(0));
@@ -349,9 +364,9 @@ void main() {
       expect(without.heightMm, closeTo(2060, 1e-9));
       expect(without.areaM2, closeTo(4.2436, 1e-9));
 
-      final spec = WindowSpec.of(screen2000.copyWith(
-        zippers: const [ZipperSpec(centered: true)],
-      ));
+      final spec = WindowSpec.of(
+        screen2000.copyWith(zippers: const [ZipperSpec(centered: true)]),
+      );
       final piece = CutPiece.ofSpec(spec);
 
       // Заготовка на листе «Раскрой» уже на полосу: 2060 − 50 = 2010 мм.
@@ -360,10 +375,7 @@ void main() {
       expect(piece.heightMm, closeTo(2060, 1e-9));
       // Площадь пересчитана от новой ширины: 2010 × 2060 = 4,1406 м².
       expect(piece.areaM2, closeTo(4.1406, 1e-9));
-      expect(
-        without.areaM2 - piece.areaM2,
-        closeTo(50 * 2060 / 1000000, 1e-9),
-      );
+      expect(without.areaM2 - piece.areaM2, closeTo(50 * 2060 / 1000000, 1e-9));
       expect(piece.areaMm2 / 1000000, closeTo(piece.areaM2, 1e-9));
     });
 
@@ -382,9 +394,9 @@ void main() {
       expect(plain.heightMm, closeTo(1920, 1e-9));
       expect(plain.areaM2, closeTo(1910 * 1920 / 1e6, 1e-9));
 
-      final spec = WindowSpec.of(pvc.copyWith(
-        zippers: const [ZipperSpec(centered: true)],
-      ));
+      final spec = WindowSpec.of(
+        pvc.copyWith(zippers: const [ZipperSpec(centered: true)]),
+      );
       final piece = CutPiece.ofSpec(spec);
       // На листе «Раскрой» ширина уже без полосы молнии.
       expect(spec.zipperBandTotalMm, closeTo(50, 1e-9));
@@ -392,10 +404,7 @@ void main() {
       expect(piece.widthMm, closeTo(spec.filmCutWidthWithShrinkage, 1e-9));
       expect(piece.heightMm, closeTo(1920, 1e-9));
       expect(piece.areaM2, closeTo(1860 * 1920 / 1e6, 1e-9));
-      expect(
-        plain.areaM2 - piece.areaM2,
-        closeTo(50 * 1920 / 1000000, 1e-9),
-      );
+      expect(plain.areaM2 - piece.areaM2, closeTo(50 * 1920 / 1000000, 1e-9));
       // Та же подпись вычета, что у скрина, — её печатает лист «Раскрой».
       expect(
         spec.zipperWidthReductionLabel,
@@ -418,25 +427,25 @@ void main() {
       );
       final withoutSpec = WindowSpec.of(trapezoid);
       final without = CutPiece.ofSpec(withoutSpec);
-      final spec = WindowSpec.of(trapezoid.copyWith(
-        zippers: const [ZipperSpec(centered: true)],
-      ));
+      final spec = WindowSpec.of(
+        trapezoid.copyWith(zippers: const [ZipperSpec(centered: true)]),
+      );
       final piece = CutPiece.ofSpec(spec);
 
       expect(without.hasContour, isTrue);
       expect(piece.hasContour, isTrue);
       // Габаритная ширина заготовки уменьшена ровно на полосу молнии: 50 мм.
-      expect(
-        without.widthMm - piece.widthMm,
-        closeTo(50, 1e-9),
-      );
+      expect(without.widthMm - piece.widthMm, closeTo(50, 1e-9));
       expect(piece.widthMm, closeTo(spec.filmCutWidthWithShrinkage, 1e-9));
       expect(piece.heightMm, closeTo(without.heightMm, 1e-9));
       // Площадь трапеции пересчитана: контур сжат по ширине пропорционально,
       // поэтому площадь уменьшилась в (W − 50) / W раз.
       expect(
         piece.areaM2,
-        closeTo(without.areaM2 * (without.widthMm - 50) / without.widthMm, 1e-9),
+        closeTo(
+          without.areaM2 * (without.widthMm - 50) / without.widthMm,
+          1e-9,
+        ),
       );
       expect(piece.areaM2, closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9));
       // Раскладка по-прежнему пакует по габариту, но уже узкому.
@@ -465,9 +474,7 @@ void main() {
 
     test('лист растёт, когда заготовок много', () {
       const single = OrderProject(windows: [_w2000]);
-      final many = OrderProject(
-        windows: [for (var i = 0; i < 24; i++) _w2000],
-      );
+      final many = OrderProject(windows: [for (var i = 0; i < 24; i++) _w2000]);
 
       final oneSize = CutSheet.sheetSize(single, const Size(1720, 1080));
       final manySize = CutSheet.sheetSize(many, const Size(1720, 1080));
@@ -482,10 +489,10 @@ void main() {
       final many = OrderProject(windows: [for (var i = 0; i < 24; i++) _w2000]);
       final size = CutSheet.sheetSize(many, const Size(1720, 1080))!;
       final contentWidth = size.width - 80;
-      final layout = CutLayout.natural(
-        [for (final window in many.windows) CutPiece.ofSpec(WindowSpec.of(window))],
-        contentWidth,
-      );
+      final layout = CutLayout.natural([
+        for (final window in many.windows)
+          CutPiece.ofSpec(WindowSpec.of(window)),
+      ], contentWidth);
 
       // Лист ровно вмещает раскладку: заготовки не обрезаны, обвязка — это
       // подпись листа, итоги, штамп и поля вокруг.
@@ -501,10 +508,12 @@ void main() {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1720, 1080);
 
-      await tester.pumpWidget(const MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(body: CutSheet(project: _order)),
-      ));
+      await tester.pumpWidget(
+        const MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: Scaffold(body: CutSheet(project: _order)),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
@@ -518,17 +527,21 @@ void main() {
       expect(find.text('ЗАГОТОВОК'), findsOneWidget);
       // «Площадь заготовок с усадкой» есть и в итогах, и в штампе.
       expect(find.text('ПЛОЩАДЬ ЗАГОТОВОК С УСАДКОЙ'), findsWidgets);
-      expect(find.text('БЕЗ УСАДКИ (ПРЯМОУГОЛЬНИК)'), findsOneWidget);
+      expect(find.text('БЕЗ УСАДКИ (ПО КОНТУРУ)'), findsOneWidget);
     });
 
     testWidgets('не падает на пустом заказе', (tester) async {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(body: CutSheet(project: OrderProject(windows: []))),
-      ));
+      await tester.pumpWidget(
+        const MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: Scaffold(
+            body: CutSheet(project: OrderProject(windows: [])),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
@@ -542,14 +555,17 @@ void main() {
 
       final many = OrderProject(windows: [for (var i = 0; i < 24; i++) _w2000]);
       final viewport =
-          CutSheet.sheetSize(many, const Size(1720, 1080)) ?? const Size(1720, 1080);
+          CutSheet.sheetSize(many, const Size(1720, 1080)) ??
+          const Size(1720, 1080);
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = viewport;
 
-      await tester.pumpWidget(MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(body: CutSheet(project: many)),
-      ));
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: Scaffold(body: CutSheet(project: many)),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
@@ -562,25 +578,26 @@ void main() {
       await loadRealFonts();
 
       final many = OrderProject(windows: [for (var i = 0; i < 12; i++) _w2000]);
-      const allowanceOrder =
-          OrderProject(windows: [_w2000, _w2000Allowance]);
+      const allowanceOrder = OrderProject(windows: [_w2000, _w2000Allowance]);
       final cases = <String, ({Size viewport, OrderProject project})>{
         'raskroy': (
           viewport:
-              CutSheet.sheetSize(_order, const Size(1720, 1080)) ?? const Size(1720, 1080),
+              CutSheet.sheetSize(_order, const Size(1720, 1080)) ??
+              const Size(1720, 1080),
           project: _order,
         ),
         // Припуск на раскрой: заготовка справа крупнее изделия слева.
         'raskroy-pripusk': (
           viewport:
               CutSheet.sheetSize(allowanceOrder, const Size(1720, 1080)) ??
-                  const Size(1720, 1080),
+              const Size(1720, 1080),
           project: allowanceOrder,
         ),
         // Заказ на несколько рядов: лист растёт, заготовки не обрезаются.
         'raskroy-zakaz': (
           viewport:
-              CutSheet.sheetSize(many, const Size(1720, 1080)) ?? const Size(1720, 1080),
+              CutSheet.sheetSize(many, const Size(1720, 1080)) ??
+              const Size(1720, 1080),
           project: many,
         ),
         // Трапеция рядом с прямоугольником: форма, все четыре стороны и
@@ -588,7 +605,7 @@ void main() {
         'raskroy-trapetsiya': (
           viewport:
               CutSheet.sheetSize(_trapezoidOrder, const Size(1720, 1080)) ??
-                  const Size(1720, 1080),
+              const Size(1720, 1080),
           project: _trapezoidOrder,
         ),
         // Скрин с молнией: заготовка уже на полосу — 2010 × 2060 мм, под
@@ -596,7 +613,7 @@ void main() {
         'raskroy-skrin-molniya': (
           viewport:
               CutSheet.sheetSize(_screenZipperOrder, const Size(1720, 1080)) ??
-                  const Size(1720, 1080),
+              const Size(1720, 1080),
           project: _screenZipperOrder,
         ),
       };
@@ -608,22 +625,25 @@ void main() {
         tester.view.devicePixelRatio = 1;
         tester.view.physicalSize = entry.value.viewport;
 
-        await tester.pumpWidget(MaterialApp(
-          debugShowCheckedModeBanner: false,
-          home: Scaffold(
-            body: CutSheet(
-              project: entry.value.project,
-              captureKey: captureKey,
-              labelFontFamily: testFontFamily,
+        await tester.pumpWidget(
+          MaterialApp(
+            debugShowCheckedModeBanner: false,
+            home: Scaffold(
+              body: CutSheet(
+                project: entry.value.project,
+                captureKey: captureKey,
+                labelFontFamily: testFontFamily,
+              ),
             ),
           ),
-        ));
+        );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
 
         final bytes = await tester.runAsync(() async {
-          final boundary = captureKey.currentContext!.findRenderObject()!
-              as RenderRepaintBoundary;
+          final boundary =
+              captureKey.currentContext!.findRenderObject()!
+                  as RenderRepaintBoundary;
           final image = await boundary.toImage(pixelRatio: 2.0);
           final data = await image.toByteData(format: ui.ImageByteFormat.png);
           return data!.buffer.asUint8List();

@@ -326,7 +326,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
                         '${formatMm(spec.filmCutWidth)} ${unitSuffix()})' : ''}',
         ),
         TechMaterial(
-          name: 'Площадь заготовки-прямоугольника в раскрое',
+          name: 'Площадь заготовки по контуру в раскрое',
           size: '${formatMeters(spec.filmCutAreaWithShrinkageM2)} м²',
           note: 'ширина × высота заготовки, без площади вырезов',
         ),
@@ -384,10 +384,14 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         ),
         TechMaterial(
           name: params.hasShrinkage
-              ? 'Площадь заготовки-прямоугольника с усадкой'
-              : 'Площадь заготовки-прямоугольника',
+              ? 'Площадь заготовки по контуру с усадкой'
+              : 'Площадь заготовки по контуру',
           size: '${formatMeters(spec.filmCutAreaWithShrinkageM2)} м²',
-          note: params.hasShrinkage
+          note: spec.isObliqueBlank
+              ? 'площадь по контуру косой заготовки '
+                    '(${spec.filmCutSidesLabel}), с припуском'
+                    '${params.hasShrinkage ? ' и усадкой' : ''}, без вырезов'
+              : params.hasShrinkage
               ? 'ширина × высота заготовки, с припуском и усадкой, без вырезов'
               : 'ширина × высота заготовки, с припуском, без площади вырезов',
         ),
@@ -401,8 +405,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           ),
           for (var index = 0; index < spec.layers.tAnnexes.length; index++)
             TechMaterial(
-              name:
-                  'Пристройка ${spec.layers.tAnnexes[index].number} (Т-окно)',
+              name: 'Пристройка ${spec.layers.tAnnexes[index].number} (Т-окно)',
               size:
                   '${formatMm(spec.filmPartBounds[index + 1].width)} × '
                   '${formatMm(spec.filmPartBounds[index + 1].height)} ${unitSuffix()}',
@@ -414,11 +417,16 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         ],
       ],
       tool: 'Раскроечный стол, дисковый нож, рулетка, угольник, маркер',
-      control:
-          'Габарит ${formatMm(spec.filmCutWidthWithShrinkage)} × '
-          '${formatMm(spec.filmCutHeightWithShrinkage)} ${unitSuffix()} (±5 мм), '
-          'заготовка прямоугольная — четыре прямых угла, кромка ровная без '
-          'задиров и волн',
+      control: spec.isObliqueBlank
+          ? 'Габарит ${formatMm(spec.filmCutWidthWithShrinkage)} × '
+                '${formatMm(spec.filmCutHeightWithShrinkage)} ${unitSuffix()} (±5 мм); '
+                'стороны заготовки: ${spec.filmCutSidesLabel} (±5 мм); '
+                'форма — косой четырёхугольник, углы и наклон как у изделия, '
+                'кромка ровная без задиров и волн'
+          : 'Габарит ${formatMm(spec.filmCutWidthWithShrinkage)} × '
+                '${formatMm(spec.filmCutHeightWithShrinkage)} ${unitSuffix()} (±5 мм), '
+                'заготовка прямоугольная — четыре прямых угла, кромка ровная без '
+                'задиров и волн',
       source:
           'WindowSpec.filmCutWidthWithShrinkage / filmCutHeightWithShrinkage '
           '(видимый размер + запайка − полоса молнии + припуск на раскрой + '
@@ -506,7 +514,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         TechMaterial(
           name: 'Припуск плёнки под окантовку (запайка)',
           size: '${formatMm(params.weldOverlapMm)} ${unitSuffix()} на сторону',
-          note: 'периметр окна ${formatMm(spec.edgePerimeterMm)} ${unitSuffix()}',
+          note:
+              'периметр окна ${formatMm(spec.edgePerimeterMm)} ${unitSuffix()}',
         ),
       ],
       tool: isWeldedEdge
@@ -572,7 +581,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       control:
           'Шов по всей длине ${formatMm(layers.weldLengthMm)} ${unitSuffix()}, без '
           'расслоения; плоскости полотен совпадают, зазоров нет',
-      source: 'WindowParams.tWelded + t2Welded / weldedSides / WindowLayers.weldLengthMm',
+      source:
+          'WindowParams.tWelded + t2Welded / weldedSides / WindowLayers.weldLengthMm',
     );
   }
 
@@ -786,7 +796,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
             name: isScreen
                 ? 'Полоса скрина под молнию №${i + 1}'
                 : 'Полоса тента под молнию №${i + 1}',
-            size: '${formatMm(band.width)} × ${formatMm(band.height)} ${unitSuffix()}',
+            size:
+                '${formatMm(band.width)} × ${formatMm(band.height)} ${unitSuffix()}',
             note: isScreen
                 ? 'шов ${formatMm(screenSeamMm)} ${unitSuffix()} по краям полосы; подворот '
                       'или накладная полоса из скрина; ширина кроя полотна '
@@ -944,7 +955,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       materials: [
         TechMaterial(
           name: 'Подъёмный ремень (заготовка)',
-          size: '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} ${unitSuffix()}',
+          size:
+              '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} ${unitSuffix()}',
           quantity: spec.strapCount.toDouble(),
           unit: 'шт',
         ),

@@ -57,12 +57,14 @@ void main() {
     });
 
     test('трапеция по центру: смещение верха и длины кромок', () {
-      final geometry = WindowGeometry.of(const WindowParams(
-        bottomWidth: 3000,
-        topWidth: 2400,
-        leftHeight: 2500,
-        rightHeight: 2500,
-      ));
+      final geometry = WindowGeometry.of(
+        const WindowParams(
+          bottomWidth: 3000,
+          topWidth: 2400,
+          leftHeight: 2500,
+          rightHeight: 2500,
+        ),
+      );
 
       expect(geometry.topOffset, closeTo(300, 1e-9));
       expect(geometry.areaM2, closeTo(6.75, 1e-9));
@@ -70,12 +72,14 @@ void main() {
     });
 
     test('нулевые размеры заменяются безопасным значением', () {
-      final geometry = WindowGeometry.of(const WindowParams(
-        bottomWidth: 0,
-        topWidth: -100,
-        leftHeight: 0,
-        rightHeight: 0,
-      ));
+      final geometry = WindowGeometry.of(
+        const WindowParams(
+          bottomWidth: 0,
+          topWidth: -100,
+          leftHeight: 0,
+          rightHeight: 0,
+        ),
+      );
 
       expect(geometry.bottomWidth, 100);
       expect(geometry.areaMm2, greaterThan(0));
@@ -84,8 +88,7 @@ void main() {
 
   group('Материал полотна', () {
     test('доступные ширины рулонов по материалам', () {
-      expect(FilmMaterial.clearPvc.rollWidths,
-          [1400, 1800, 2000, 2400, 2600]);
+      expect(FilmMaterial.clearPvc.rollWidths, [1400, 1800, 2000, 2400, 2600]);
       expect(FilmMaterial.tintedPvc.maxRollWidth, 2400);
       expect(FilmMaterial.mosquitoNet.maxRollWidth, 3000);
       expect(FilmMaterial.clearPvc.defaultRollWidth, 2000);
@@ -104,20 +107,24 @@ void main() {
     });
 
     test('материалы заказа перечисляются без повторов', () {
-      const project = OrderProject(windows: [
-        _rect,
-        WindowParams(
-          material: FilmMaterial.mosquitoNet,
-          bottomWidth: 1000,
-          topWidth: 1000,
-          leftHeight: 1000,
-          rightHeight: 1000,
-        ),
-        _example,
-      ]);
+      const project = OrderProject(
+        windows: [
+          _rect,
+          WindowParams(
+            material: FilmMaterial.mosquitoNet,
+            bottomWidth: 1000,
+            topWidth: 1000,
+            leftHeight: 1000,
+            rightHeight: 1000,
+          ),
+          _example,
+        ],
+      );
 
-      expect(project.materialsInOrder,
-          [FilmMaterial.clearPvc, FilmMaterial.mosquitoNet]);
+      expect(project.materialsInOrder, [
+        FilmMaterial.clearPvc,
+        FilmMaterial.mosquitoNet,
+      ]);
     });
   });
 
@@ -161,22 +168,27 @@ void main() {
       expect(edgeBandLabel(150, short: true), '150 мм');
     });
 
-    test('расход окантовки совпадает с примером заказчика (6 540 + 1 500 мм)', () {
-      const params = WindowParams(
-        bottomWidth: 1500,
-        topWidth: 1500,
-        leftHeight: 2520,
-        rightHeight: 2520,
-        rollBottom: 100,
-        rollLeft: 100,
-        rollRight: 100,
-        rollTop: 200,
-      );
-      final spec = WindowSpec.of(params);
+    test(
+      'расход окантовки совпадает с примером заказчика (6 540 + 1 500 мм)',
+      () {
+        const params = WindowParams(
+          bottomWidth: 1500,
+          topWidth: 1500,
+          leftHeight: 2520,
+          rightHeight: 2520,
+          rollBottom: 100,
+          rollLeft: 100,
+          rollRight: 100,
+          rollTop: 200,
+        );
+        final spec = WindowSpec.of(params);
 
-      expect(spec.edgeConsumptionLabels,
-          ['Тент 100 мм — 6\u202F540 мм', 'Тент 200 мм — 1\u202F500 мм']);
-    });
+        expect(spec.edgeConsumptionLabels, [
+          'Тент 100 мм — 6\u202F540 мм',
+          'Тент 200 мм — 1\u202F500 мм',
+        ]);
+      },
+    );
 
     test('площадь готового изделия считается по наружному контуру', () {
       // Окно 1500 × 2520 мм → 3,78 м².
@@ -192,10 +204,14 @@ void main() {
       );
       final trapezoidSpec = WindowSpec.of(trapezoid);
       expect(trapezoidSpec.productAreaM2, closeTo(6.75, 1e-9));
-      expect(trapezoidSpec.productAreaM2,
-          lessThan(trapezoidSpec.geometry.spanX *
+      expect(
+        trapezoidSpec.productAreaM2,
+        lessThan(
+          trapezoidSpec.geometry.spanX *
               trapezoidSpec.geometry.overallHeight /
-              1000000));
+              1000000,
+        ),
+      );
     });
 
     test('напайка 25 мм и усадка увеличивают раскрой плёнки', () {
@@ -282,9 +298,12 @@ void main() {
       expect(layers.eyeletCount, 24);
 
       // Нижний люверс сбоку поднят на 50 мм от угла (25 + 50 = 75).
-      final rightLowest =
-          right.reduce((a, b) => a.center.dy < b.center.dy ? a : b);
-      final leftLowest = left.reduce((a, b) => a.center.dy < b.center.dy ? a : b);
+      final rightLowest = right.reduce(
+        (a, b) => a.center.dy < b.center.dy ? a : b,
+      );
+      final leftLowest = left.reduce(
+        (a, b) => a.center.dy < b.center.dy ? a : b,
+      );
       expect(rightLowest.center.dy, closeTo(75, 0.02));
       expect(leftLowest.center.dy, closeTo(75, 0.02));
     });
@@ -309,10 +328,16 @@ void main() {
       // (y = 0) на ширину фартука.
       // Rect.top — это МИНИМАЛЬНЫЙ Y (наружная сторона), Rect.bottom —
       // максимальный Y (внутренний край окантовки).
-      expect(rect.bottom, closeTo(finishedEdge, 0.01),
-          reason: 'верх полосы — внутренний край нижней окантовки');
-      expect(rect.top, closeTo(-pocketFinishedWidth, 0.01),
-          reason: 'низ полосы — на pocketWidth ниже внешнего края');
+      expect(
+        rect.bottom,
+        closeTo(finishedEdge, 0.01),
+        reason: 'верх полосы — внутренний край нижней окантовки',
+      );
+      expect(
+        rect.top,
+        closeTo(-pocketFinishedWidth, 0.01),
+        reason: 'низ полосы — на pocketWidth ниже внешнего края',
+      );
       expect(rect.height, closeTo(finishedEdge + pocketFinishedWidth, 0.01));
       expect(rect.width, closeTo(2000, 0.01));
       // Нижняя граница листа опускается под фартук.
@@ -336,8 +361,11 @@ void main() {
 
       expect(zipper, isNotNull);
       expect(zipper!.start.dx, closeTo(1000, 0.02));
-      expect(zipper.start.dx, closeTo(zipper.end.dx, 1e-9),
-          reason: 'вертикальная линия — одна и та же координата X');
+      expect(
+        zipper.start.dx,
+        closeTo(zipper.end.dx, 1e-9),
+        reason: 'вертикальная линия — одна и та же координата X',
+      );
       expect(zipper.start.dy, lessThan(zipper.end.dy));
     });
 
@@ -495,10 +523,7 @@ void main() {
       final withCutout = WindowSpec.of(rectCutout);
 
       expect(withCutout.layers.cutoutAreaMm2, closeTo(90000, 1e-6));
-      expect(
-        withCutout.filmAreaM2,
-        closeTo(plain.filmAreaM2 - 0.09, 1e-6),
-      );
+      expect(withCutout.filmAreaM2, closeTo(plain.filmAreaM2 - 0.09, 1e-6));
     });
 
     test('круглый вырез Ø200 уменьшает плёнку на π·0,1² м²', () {
@@ -507,10 +532,7 @@ void main() {
       final expected = math.pi * 0.1 * 0.1;
 
       expect(expected, closeTo(0.0314, 0.0001));
-      expect(
-        withCutout.filmAreaM2,
-        closeTo(plain.filmAreaM2 - expected, 1e-6),
-      );
+      expect(withCutout.filmAreaM2, closeTo(plain.filmAreaM2 - expected, 1e-6));
     });
 
     test('расход окантовки растёт на периметр выреза', () {
@@ -597,8 +619,8 @@ void main() {
       );
       final plain = WindowSpec.of(_rect);
       final withWeld = WindowSpec.of(welded);
-      final expected = withWeld.geometry.rightEdgeLength +
-          withWeld.geometry.leftEdgeLength;
+      final expected =
+          withWeld.geometry.rightEdgeLength + withWeld.geometry.leftEdgeLength;
 
       expect(withWeld.layers.isSideWelded(1), isTrue);
       expect(withWeld.layers.isSideWelded(3), isTrue);
@@ -615,10 +637,10 @@ void main() {
   group('Подъёмное окно', () {
     test('подъёмные ремни: 2 до 2 м, дальше +1 на метр', () {
       WindowParams lifting(double width) => WindowParams(
-            windowType: WindowType.lifting,
-            bottomWidth: width,
-            topWidth: width,
-          );
+        windowType: WindowType.lifting,
+        bottomWidth: width,
+        topWidth: width,
+      );
 
       expect(lifting(1500).liftStrapCount, 2);
       expect(lifting(2000).liftStrapCount, 2);
@@ -640,7 +662,9 @@ void main() {
 
       expect(straps.length, 2);
       expect(
-          straps.first.bottom, closeTo(layers.filmVisibleBounds.bottom, 0.01));
+        straps.first.bottom,
+        closeTo(layers.filmVisibleBounds.bottom, 0.01),
+      );
       expect(straps.first.width, liftStrapWidth);
     });
 
@@ -669,8 +693,10 @@ void main() {
   group('Заказ и вид листа', () {
     test('нумерация окон и подписи', () {
       const project = OrderProject();
-      final withThree =
-          project.updateSelected(_example).addWindow().addWindow();
+      final withThree = project
+          .updateSelected(_example)
+          .addWindow()
+          .addWindow();
 
       expect(withThree.windowCount, 3);
       expect(withThree.labelFor(0), 'Окно №1');
@@ -728,10 +754,7 @@ void main() {
         viewport,
       );
       expect(two, isNotNull);
-      expect(
-        two!.height,
-        closeTo(DrawingSheet.a4Height * 3 + padding, 0.01),
-      );
+      expect(two!.height, closeTo(DrawingSheet.a4Height * 3 + padding, 0.01));
       expect(two.height, lessThan(size.height));
       expect(two.width, closeTo(size.width, 0.01));
 
@@ -741,16 +764,15 @@ void main() {
       );
       expect(single, isNotNull);
       // Лист одного окна — одна страница A4, выше окна программы.
-      expect(
-        single!.height,
-        closeTo(DrawingSheet.a4Height + padding, 0.01),
-      );
+      expect(single!.height, closeTo(DrawingSheet.a4Height + padding, 0.01));
       expect(single.height, greaterThan(viewport.height));
       expect(single.width, lessThan(viewport.width + 200));
 
       // Одно окно — резать нечего; размер листа не зависит от окна программы.
-      expect(DrawingSheet.safeBreakFractions(const OrderProject(), viewport),
-          isNull);
+      expect(
+        DrawingSheet.safeBreakFractions(const OrderProject(), viewport),
+        isNull,
+      );
       expect(
         DrawingSheet.detailedSheetSize(
           const OrderProject(),
@@ -777,16 +799,19 @@ void main() {
 
       expect(hasBlockingIssues(issues), isFalse);
       expect(
-        issues.any((issue) =>
-            issue.field == ParamField.eyeletStep &&
-            issue.severity == ParamIssueSeverity.info),
+        issues.any(
+          (issue) =>
+              issue.field == ParamField.eyeletStep &&
+              issue.severity == ParamIssueSeverity.info,
+        ),
         isTrue,
       );
     });
 
     test('нулевая ширина — ошибка', () {
-      final issues =
-          validateParams(const WindowParams(bottomWidth: 0, topWidth: 0));
+      final issues = validateParams(
+        const WindowParams(bottomWidth: 0, topWidth: 0),
+      );
 
       expect(hasBlockingIssues(issues), isTrue);
     });
@@ -803,26 +828,25 @@ void main() {
       // Отдельного поля ParamField для ширины спайки больше нет — ищем
       // предупреждение по тексту и проверяем, что оно не блокирующее.
       expect(
-        issues.any((issue) => issue.message.contains('спайки') && !issue.isError),
+        issues.any(
+          (issue) => issue.message.contains('спайки') && !issue.isError,
+        ),
         isTrue,
       );
     });
 
     test('верх шире низа — предупреждение, а не ошибка', () {
-      final issues = validateParams(const WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2400,
-      ));
+      final issues = validateParams(
+        const WindowParams(bottomWidth: 2000, topWidth: 2400),
+      );
 
       expect(hasBlockingIssues(issues), isFalse);
     });
 
     test('ширина окантовки 20 мм даёт замечание', () {
-      final issues = validateParams(const WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        rollBottom: 20,
-      ));
+      final issues = validateParams(
+        const WindowParams(bottomWidth: 2000, topWidth: 2000, rollBottom: 20),
+      );
 
       expect(
         issues.any((issue) => issue.message.contains('вне диапазона')),
@@ -832,14 +856,16 @@ void main() {
     });
 
     test('нестандартная ширина окантовки — без замечаний', () {
-      final issues = validateParams(const WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        rollBottom: 150,
-        rollTop: 210,
-        rollLeft: 240,
-        rollRight: 100,
-      ));
+      final issues = validateParams(
+        const WindowParams(
+          bottomWidth: 2000,
+          topWidth: 2000,
+          rollBottom: 150,
+          rollTop: 210,
+          rollLeft: 240,
+          rollRight: 100,
+        ),
+      );
 
       expect(
         issues.any((issue) => issue.message.contains('Окантовка')),
@@ -937,50 +963,55 @@ void _eyeletRules() {
 void _freeEyeletStepRules() {
   /// Окно 2000 × 1500 с окантовкой 100 мм (линия люверсов 1950 × 1450).
   WindowParams rect(double step) => WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 1500,
-        rightHeight: 1500,
-        eyeletStep: step,
-      );
+    bottomWidth: 2000,
+    topWidth: 2000,
+    leftHeight: 1500,
+    rightHeight: 1500,
+    eyeletStep: step,
+  );
 
   WindowLayers layersOf(WindowParams params) =>
       WindowLayers(params, WindowGeometry.of(params));
 
   group('Свободный интервал люверсов', () {
-    test('шаг 280 на 2000 × 1500: факт не больше 280, число по ручному расчёту',
-        () {
-      final layers = layersOf(rect(280));
+    test(
+      'шаг 280 на 2000 × 1500: факт не больше 280, число по ручному расчёту',
+      () {
+        final layers = layersOf(rect(280));
 
-      // Линия люверсов — середина окантовки: 2000 − 2×25 = 1950,
-      // 1500 − 2×25 = 1450. Интервалы: ceil(1950/280) = 7, ceil(1450/280) = 6.
-      const longSide = 1950.0;
-      const shortSide = 1450.0;
-      const longIntervals = 7;
-      const shortIntervals = 6;
-      expect((longSide / 280).ceil(), longIntervals);
-      expect((shortSide / 280).ceil(), shortIntervals);
+        // Линия люверсов — середина окантовки: 2000 − 2×25 = 1950,
+        // 1500 − 2×25 = 1450. Интервалы: ceil(1950/280) = 7, ceil(1450/280) = 6.
+        const longSide = 1950.0;
+        const shortSide = 1450.0;
+        const longIntervals = 7;
+        const shortIntervals = 6;
+        expect((longSide / 280).ceil(), longIntervals);
+        expect((shortSide / 280).ceil(), shortIntervals);
 
-      expect(layers.eyeletSteps.length, 4, reason: 'по записи на сторону');
-      for (final step in layers.eyeletSteps) {
-        expect(step, lessThanOrEqualTo(280 + 1e-9),
-            reason: 'фактический интервал не больше заданного');
-        // Гарантия алгоритма: ceil даёт факт в пределах (заданный/2, заданный].
-        expect(step, greaterThan(140));
-      }
+        expect(layers.eyeletSteps.length, 4, reason: 'по записи на сторону');
+        for (final step in layers.eyeletSteps) {
+          expect(
+            step,
+            lessThanOrEqualTo(280 + 1e-9),
+            reason: 'фактический интервал не больше заданного',
+          );
+          // Гарантия алгоритма: ceil даёт факт в пределах (заданный/2, заданный].
+          expect(step, greaterThan(140));
+        }
 
-      // Длинные стороны: 1950/7 ≈ 278,6 мм; короткие: 1450/6 ≈ 241,7 мм.
-      final sorted = [...layers.eyeletSteps]..sort();
-      expect(sorted[0], closeTo(shortSide / shortIntervals, 1e-9));
-      expect(sorted[1], closeTo(shortSide / shortIntervals, 1e-9));
-      expect(sorted[2], closeTo(longSide / longIntervals, 1e-9));
-      expect(sorted[3], closeTo(longSide / longIntervals, 1e-9));
+        // Длинные стороны: 1950/7 ≈ 278,6 мм; короткие: 1450/6 ≈ 241,7 мм.
+        final sorted = [...layers.eyeletSteps]..sort();
+        expect(sorted[0], closeTo(shortSide / shortIntervals, 1e-9));
+        expect(sorted[1], closeTo(shortSide / shortIntervals, 1e-9));
+        expect(sorted[2], closeTo(longSide / longIntervals, 1e-9));
+        expect(sorted[3], closeTo(longSide / longIntervals, 1e-9));
 
-      // Уникальных люверсов: (7+1) + (6+1) + (7+1) + (6+1) − 4 общих угла.
-      const manual = 8 + 7 + 8 + 7 - 4;
-      expect(manual, 26);
-      expect(layers.eyeletCount, manual);
-    });
+        // Уникальных люверсов: (7+1) + (6+1) + (7+1) + (6+1) − 4 общих угла.
+        const manual = 8 + 7 + 8 + 7 - 4;
+        expect(manual, 26);
+        expect(layers.eyeletCount, manual);
+      },
+    );
 
     test('шаг 280 на скрине 2000 × 1500: факт ровно 250 по всем сторонам', () {
       // У скрина линия люверсов — сам контур (без окантовки): 2000 и 1500.
@@ -1156,8 +1187,7 @@ void _costsSummaryRules() {
       );
       // Расход тента на спайку молний тоже удваивается.
       expect(
-        twoSummary.edgeByRoll[100.0]! -
-            oneSummary.edgeByRoll[100.0]!,
+        twoSummary.edgeByRoll[100.0]! - oneSummary.edgeByRoll[100.0]!,
         closeTo(oneSummary.zipperBandLengthMm, 0.01),
       );
     });
@@ -1171,7 +1201,9 @@ void _costsSummaryRules() {
         drainHoles: true,
         drainCount: 3,
       );
-      final summary = CostsSummary(const OrderProject(windows: [window, window]));
+      final summary = CostsSummary(
+        const OrderProject(windows: [window, window]),
+      );
       expect(summary.drainTotal, 6);
     });
   });
@@ -1191,11 +1223,14 @@ void _weldedWindowRules() {
         material: FilmMaterial.tintedPvc,
         rollBottom: 150,
         zippers: [ZipperSpec(centered: false, offsetMm: 500)],
-        cutouts: [Cutout(width: 300, height: 200, centerXMm: 700, centerYMm: 600)],
+        cutouts: [
+          Cutout(width: 300, height: 200, centerXMm: 700, centerYMm: 600),
+        ],
         pocket: true,
       );
-      final welded = const OrderProject(windows: [source])
-          .addWeldedWindow(EdgeSide.right);
+      final welded = const OrderProject(
+        windows: [source],
+      ).addWeldedWindow(EdgeSide.right);
 
       expect(welded.windowCount, 2);
       expect(welded.selectedIndex, 1);
@@ -1222,16 +1257,17 @@ void _weldedWindowRules() {
       expect(copy.drawingNumber, isEmpty);
     });
 
-    test('спайка сверху: копия варится снизу; спайка снизу — копия сверху',
-        () {
-      final top = const OrderProject(windows: [_rect])
-          .addWeldedWindow(EdgeSide.top);
+    test('спайка сверху: копия варится снизу; спайка снизу — копия сверху', () {
+      final top = const OrderProject(
+        windows: [_rect],
+      ).addWeldedWindow(EdgeSide.top);
       expect(top.windowCount, 2);
       expect(top.windows[0].weldedSides, [EdgeSide.top]);
       expect(top.windows[1].weldedSides, [EdgeSide.bottom]);
 
-      final bottom = const OrderProject(windows: [_rect])
-          .addWeldedWindow(EdgeSide.bottom);
+      final bottom = const OrderProject(
+        windows: [_rect],
+      ).addWeldedWindow(EdgeSide.bottom);
       expect(bottom.windows[0].weldedSides, [EdgeSide.bottom]);
       expect(bottom.windows[1].weldedSides, [EdgeSide.top]);
     });
@@ -1244,8 +1280,9 @@ void _weldedWindowRules() {
         rightHeight: 1500,
         weldedSides: [EdgeSide.right],
       );
-      final welded = const OrderProject(windows: [source])
-          .addWeldedWindow(EdgeSide.right);
+      final welded = const OrderProject(
+        windows: [source],
+      ).addWeldedWindow(EdgeSide.right);
 
       // У текущего окна сторона уже была — второй раз её не добавляем.
       expect(welded.windows[0].weldedSides, [EdgeSide.right]);
@@ -1263,8 +1300,9 @@ void _weldedWindowRules() {
     });
 
     test('расход окантовки уменьшается ровно на длину общей стороны', () {
-      final project = const OrderProject(windows: [_rect])
-          .addWeldedWindow(EdgeSide.bottom);
+      final project = const OrderProject(
+        windows: [_rect],
+      ).addWeldedWindow(EdgeSide.bottom);
       final plain = WindowSpec.of(_rect);
       final bottomLength = plain.geometry.sideLengths[0];
 
@@ -1286,16 +1324,19 @@ void _weldedWindowRules() {
     test('все четыре стороны спаяны: расход не уходит в минус', () {
       final params = _rect.copyWith(weldedSides: EdgeSide.values);
       final spec = WindowSpec.of(params);
-      final total =
-          spec.edgeConsumption.values.fold(0.0, (sum, value) => sum + value);
+      final total = spec.edgeConsumption.values.fold(
+        0.0,
+        (sum, value) => sum + value,
+      );
 
       expect(total, 0);
       expect(spec.layers.weldLengthMm, closeTo(spec.geometry.perimeter, 1e-6));
     });
 
     test('JSON round-trip заказа с вертикальной спайкой', () {
-      final project = const OrderProject(windows: [_rect])
-          .addWeldedWindow(EdgeSide.top);
+      final project = const OrderProject(
+        windows: [_rect],
+      ).addWeldedWindow(EdgeSide.top);
       final restored = orderFromJson(orderToJson(project));
 
       expect(restored.windowCount, 2);
@@ -1309,7 +1350,10 @@ void _weldedWindowRules() {
         after.edgeConsumption[100.0],
         closeTo(before.edgeConsumption[100.0]!, 1e-6),
       );
-      expect(after.layers.weldLengthMm, closeTo(before.layers.weldLengthMm, 1e-6));
+      expect(
+        after.layers.weldLengthMm,
+        closeTo(before.layers.weldLengthMm, 1e-6),
+      );
     });
   });
 }
@@ -1388,12 +1432,14 @@ void _allowanceRules() {
       expect(geometry.overallHeight, closeTo(plain.overallHeight, 1e-9));
 
       // Трапеция: припуск не сдвигает верх и не растягивает стороны.
-      final trapezoid = WindowGeometry.of(measured.copyWith(
-        bottomWidth: 3000,
-        topWidth: 2400,
-        leftHeight: 2500,
-        rightHeight: 2500,
-      ));
+      final trapezoid = WindowGeometry.of(
+        measured.copyWith(
+          bottomWidth: 3000,
+          topWidth: 2400,
+          leftHeight: 2500,
+          rightHeight: 2500,
+        ),
+      );
       expect(trapezoid.spanX, closeTo(3000, 1e-9));
       expect(trapezoid.overallHeight, closeTo(2500, 1e-9));
       expect(trapezoid.topOffset, closeTo(300, 1e-9));
@@ -1435,10 +1481,12 @@ void _allowanceRules() {
 
       // Включаем усадку 1,5 %: она считается от заготовки с припуском по
       // обеим сторонам, поэтому площадь — произведение усадочных сторон.
-      final shrunk = WindowSpec.of(product.copyWith(
-        shrinkageEnabled: true,
-        shrinkagePercent: defaultShrinkagePercent,
-      ));
+      final shrunk = WindowSpec.of(
+        product.copyWith(
+          shrinkageEnabled: true,
+          shrinkagePercent: defaultShrinkagePercent,
+        ),
+      );
       final factor = 1 + defaultShrinkagePercent / 100;
       expect(shrunk.filmCutWidthWithShrinkage, closeTo(2050 * factor, 1e-9));
       expect(shrunk.filmCutHeightWithShrinkage, closeTo(2060 * factor, 1e-9));
@@ -1466,14 +1514,18 @@ void _allowanceRules() {
       expect(spec.edgeConsumption, plain.edgeConsumption);
       expect(spec.edgeConsumptionLabels, plain.edgeConsumptionLabels);
       expect(spec.outerPerimeter, closeTo(plain.outerPerimeter, 1e-9));
-      expect(spec.layers.weldLengthMm, closeTo(plain.layers.weldLengthMm, 1e-9));
+      expect(
+        spec.layers.weldLengthMm,
+        closeTo(plain.layers.weldLengthMm, 1e-9),
+      );
       // Вырезы и их окантовка — по изделию.
       expect(spec.layers.cutoutPerimeterMm, plain.layers.cutoutPerimeterMm);
     });
 
     test('расход в CostsSummary растёт только по плёнке', () {
-      final plain =
-          CostsSummary(const OrderProject(windows: [withoutAllowance]));
+      final plain = CostsSummary(
+        const OrderProject(windows: [withoutAllowance]),
+      );
       final cost = CostsSummary(const OrderProject(windows: [product]));
 
       // Площадь изделий не изменилась — припуск её не раздувает.
@@ -1540,9 +1592,9 @@ void _allowanceRules() {
       expect(restored.effectiveLeftHeight, 2090);
 
       // Заказ целиком тоже.
-      final project = orderFromJson(orderToJson(
-        const OrderProject(windows: [measured, withoutAllowance]),
-      ));
+      final project = orderFromJson(
+        orderToJson(const OrderProject(windows: [measured, withoutAllowance])),
+      );
       expect(project.windows[0].allowanceWidthMm, 120);
       expect(project.windows[0].allowanceHeightMm, 80);
       expect(project.windows[1].allowanceWidthMm, 0);
@@ -1566,8 +1618,9 @@ void _allowanceRules() {
     test('припуск больше 500 мм и отрицательный — предупреждения', () {
       final tooBig = validateParams(measured.copyWith(allowanceWidthMm: 600));
       expect(
-        tooBig.any((issue) =>
-            issue.field == ParamField.allowanceWidth && !issue.isError),
+        tooBig.any(
+          (issue) => issue.field == ParamField.allowanceWidth && !issue.isError,
+        ),
         isTrue,
       );
       expect(hasBlockingIssues(tooBig), isFalse);
@@ -1576,10 +1629,14 @@ void _allowanceRules() {
         isTrue,
       );
 
-      final negative = validateParams(measured.copyWith(allowanceHeightMm: -40));
+      final negative = validateParams(
+        measured.copyWith(allowanceHeightMm: -40),
+      );
       expect(
-        negative.any((issue) =>
-            issue.field == ParamField.allowanceHeight && !issue.isError),
+        negative.any(
+          (issue) =>
+              issue.field == ParamField.allowanceHeight && !issue.isError,
+        ),
         isTrue,
       );
       expect(hasBlockingIssues(negative), isFalse);
@@ -1632,24 +1689,24 @@ void _allowanceRules() {
         plainNotes,
         contains('Припуск на раскрой: ширина 0 мм, высота +10 мм'),
       );
-      expect(
-        plainNotes,
-        contains('плёнка кроится 1\u202F950 × 1\u202F960 мм'),
-      );
+      expect(plainNotes, contains('плёнка кроится 1\u202F950 × 1\u202F960 мм'));
 
       // У скрина авто-припуска нет: примечания не содержат «Припуск».
-      final screenNotes = WindowSpec.of(const WindowParams(
-        material: FilmMaterial.screen,
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 2000,
-        rightHeight: 2000,
-      )).notes.join('\n');
+      final screenNotes = WindowSpec.of(
+        const WindowParams(
+          material: FilmMaterial.screen,
+          bottomWidth: 2000,
+          topWidth: 2000,
+          leftHeight: 2000,
+          rightHeight: 2000,
+        ),
+      ).notes.join('\n');
       expect(screenNotes.contains('Припуск на раскрой'), isFalse);
     });
 
-    testWidgets('чертёж показывает чистое изделие, припуск — в примечаниях',
-        (WidgetTester tester) async {
+    testWidgets('чертёж показывает чистое изделие, припуск — в примечаниях', (
+      WidgetTester tester,
+    ) async {
       tester.view.physicalSize = const Size(1500, 1000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -1659,17 +1716,19 @@ void _allowanceRules() {
         const MaterialApp(
           home: Scaffold(
             body: DrawingSheet(
-              project: OrderProject(windows: [
-                WindowParams(
-                  bottomWidth: 2000,
-                  topWidth: 2000,
-                  leftHeight: 2000,
-                  rightHeight: 2000,
-                  weldOverlapMm: 25,
-                  allowanceWidthMm: 120,
-                  allowanceHeightMm: 80,
-                ),
-              ]),
+              project: OrderProject(
+                windows: [
+                  WindowParams(
+                    bottomWidth: 2000,
+                    topWidth: 2000,
+                    leftHeight: 2000,
+                    rightHeight: 2000,
+                    weldOverlapMm: 25,
+                    allowanceWidthMm: 120,
+                    allowanceHeightMm: 80,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1690,7 +1749,8 @@ void _allowanceRules() {
       // (+80 вручную и +10 авто для ПВХ).
       expect(
         find.textContaining(
-            'Припуск на раскрой: ширина +120 мм, высота +90 мм'),
+          'Припуск на раскрой: ширина +120 мм, высота +90 мм',
+        ),
         findsOneWidget,
       );
       expect(
@@ -1704,14 +1764,13 @@ void _allowanceRules() {
 
 // --- Площадь косого окна -----------------------------------------------------
 //
-// Раскрой трапеции считается ПРЯМОУГОЛЬНИКОМ, как у обычного окна:
-// filmCutAreaM2 = ширина заготовки × высота заготовки (минус вырезы).
-// Изделие на чертеже остаётся фактической формы, но плёнка кроится
-// прямоугольником по габариту, поэтому «пустые» углы честно входят в расход.
+// Раскрой трапеции считается по формуле заказчика: каждая сторона заготовки
+// уменьшена на свой вычет, а площадь — по формуле Гаусса для косой формы.
+// «Пустые» углы габаритного прямоугольника в расход НЕ входят.
 
 void _obliqueAreaRules() {
-  group('Площадь косого окна — прямоугольником', () {
-    test('трапеция 2000/1000 × 1000: заготовка 1950 × 960', () {
+  group('Площадь косого окна — по контуру', () {
+    test('трапеция 2000/1000 × 1000: заготовка 1950/950 × 950', () {
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 1000,
@@ -1722,23 +1781,20 @@ void _obliqueAreaRules() {
       final spec = WindowSpec.of(params);
 
       // Вычет с каждой стороны: окантовка 50 − запайка 25 = 25 мм.
-      // Габарит 2000 × 1000 → заготовка 1950 × 950.
+      // Стороны заготовки: низ 1950, верх 950, высоты 950.
       expect(spec.filmCutWidth, closeTo(1950, 1e-9));
       expect(spec.filmCutHeight, closeTo(950, 1e-9));
-      expect(spec.filmAreaM2, closeTo(1950 * 950 / 1000000, 1e-9));
-      expect(spec.filmAreaM2, closeTo(1.8525, 1e-9));
+      // Площадь трапеции: (1950 + 950) / 2 × 950 = 1,3775 м².
+      expect(spec.filmAreaM2, closeTo(1.3775, 1e-9));
+      expect(spec.filmAreaM2, lessThan(1950 * 950 / 1000000));
 
-      // К раскрою: авто-припуск +10 мм к высоте → 1950 × 960 = 1,872 м².
+      // К раскрою: авто-припуск +10 мм к высоте → высоты 960,
+      // площадь (1950 + 950) / 2 × 960 = 1,392 м².
       expect(spec.filmCutHeightWithAllowance, closeTo(960, 1e-9));
-      expect(spec.filmCutAreaM2, closeTo(1.872, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(1.392, 1e-9));
       expect(
         spec.filmCutAreaM2,
-        closeTo(
-          spec.filmCutWidthWithAllowance *
-              spec.filmCutHeightWithAllowance /
-              1000000,
-          1e-9,
-        ),
+        closeTo(polygonArea(spec.filmCutPolygon).abs() / 1000000, 1e-9),
       );
       // Контур заготовки — прямоугольник из четырёх вершин.
       expect(spec.filmCutPolygon, hasLength(4));
@@ -1746,12 +1802,11 @@ void _obliqueAreaRules() {
         spec.filmCutAreaM2,
         closeTo(polygonArea(spec.filmCutPolygon).abs() / 1000000, 1e-9),
       );
-      // Площадь полотна по контуру трапеции остаётся справочной и больше не
-      // подменяет прямоугольную заготовку: 1,872 ≠ 1,27.
-      expect(spec.filmAreaM2, greaterThan(1.8));
+      // Площадь заготовки — по контуру, а не 1950 × 960 = 1,872.
+      expect(spec.filmAreaM2, lessThan(1950 * 950 / 1000000));
     });
 
-    test('разные высоты слева и справа: тоже прямоугольник', () {
+    test('разные высоты слева и справа: тоже косой четырёхугольник', () {
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 2000,
@@ -1761,20 +1816,16 @@ void _obliqueAreaRules() {
       );
       final spec = WindowSpec.of(params);
 
-      // Габарит по высоте — 1400; вычет 25 с каждой стороны:
-      // 1950 × 1350 = 2,6325 м²; к раскрою 1950 × 1360 = 2,652 м².
+      // Стороны заготовки: низ 1950, верх 1950, высоты 950/1350.
+      // Площадь (950 + 1350) / 2 × 1950 = 2,2425 м².
       expect(spec.filmCutWidth, closeTo(1950, 1e-9));
       expect(spec.filmCutHeight, closeTo(1350, 1e-9));
-      expect(spec.filmAreaM2, closeTo(2.6325, 1e-9));
-      expect(spec.filmCutAreaM2, closeTo(2.652, 1e-9));
+      expect(spec.filmAreaM2, closeTo(2.2425, 1e-9));
+      // К раскрою высота растянута до 1360: площадь 2,2425 × 1360 / 1350.
+      expect(spec.filmCutAreaM2, closeTo(2.2425 * 1360 / 1350, 1e-9));
       expect(
         spec.filmCutAreaM2,
-        closeTo(
-          spec.filmCutWidthWithAllowance *
-              spec.filmCutHeightWithAllowance /
-              1000000,
-          1e-9,
-        ),
+        closeTo(polygonArea(spec.filmCutPolygon).abs() / 1000000, 1e-9),
       );
       expect(spec.filmCutPolygon, hasLength(4));
       expect(
@@ -1867,11 +1918,11 @@ void _shrinkageAndPvcAllowanceRules() {
       expect(screen.autoHeightAllowanceMm, 0);
       expect(screen.pvcHeightAllowanceEnabled, isTrue);
       // Заготовка скрина — готовый размер плюс среднее подворотов + 20 мм.
+      expect(spec.filmCutHeight, closeTo(2500 + defaultScreenHemMm + 20, 1e-9));
       expect(
-        spec.filmCutHeight,
-        closeTo(2500 + defaultScreenHemMm + 20, 1e-9),
+        spec.filmCutHeightWithAllowance,
+        closeTo(spec.filmCutHeight, 1e-9),
       );
-      expect(spec.filmCutHeightWithAllowance, closeTo(spec.filmCutHeight, 1e-9));
     });
 
     test('ручной припуск складывается с авто: 20 вручную → 30 по высоте', () {
@@ -1943,8 +1994,9 @@ void _shrinkageAndPvcAllowanceRules() {
     });
 
     test('старый заказ с нулевой усадкой читается как «выключена»', () {
-      final old =
-          windowFromJson(const <String, dynamic>{'shrinkagePercent': 0});
+      final old = windowFromJson(const <String, dynamic>{
+        'shrinkagePercent': 0,
+      });
 
       expect(old.shrinkageEnabled, isFalse);
       expect(old.shrinkagePercent, 0);
@@ -2044,9 +2096,9 @@ void _weldOverlapRules() {
       expect(spec.filmCutHeightWithShrinkage, closeTo(2400, 1e-9));
 
       // С выключенным тумблером авто-припуска высота снова 2390 мм.
-      final off = WindowSpec.of(control.copyWith(
-        pvcHeightAllowanceEnabled: false,
-      ));
+      final off = WindowSpec.of(
+        control.copyWith(pvcHeightAllowanceEnabled: false),
+      );
       expect(off.filmCutWidthWithShrinkage, closeTo(1930, 1e-9));
       expect(off.filmCutHeightWithShrinkage, closeTo(2390, 1e-9));
     });
@@ -2073,8 +2125,7 @@ void _weldOverlapRules() {
       expect(thin.filmCutWidth, closeTo(1910, 1e-9));
       expect(thick.filmCutWidth, closeTo(1980, 1e-9));
       expect(thick.filmCutWidth - thin.filmCutWidth, closeTo(2 * 35, 1e-9));
-      expect(thick.filmCutHeight - thin.filmCutHeight,
-          closeTo(2 * 35, 1e-9));
+      expect(thick.filmCutHeight - thin.filmCutHeight, closeTo(2 * 35, 1e-9));
     });
 
     test('валидация: запайка вне 5…60 мм — замечание', () {
@@ -2084,10 +2135,7 @@ void _weldOverlapRules() {
         isTrue,
       );
       final ok = validateParams(customer);
-      expect(
-        ok.any((issue) => issue.field == ParamField.weldOverlap),
-        isFalse,
-      );
+      expect(ok.any((issue) => issue.field == ParamField.weldOverlap), isFalse);
     });
   });
 }
@@ -2096,20 +2144,23 @@ void _weldOverlapRules() {
 
 void _screenRules() {
   group('Скрин', () {
-    WindowParams screenWith(double hem, {bool pocket = false, bool top = false}) =>
-        WindowParams(
-          material: FilmMaterial.screen,
-          bottomWidth: 2000,
-          topWidth: 2000,
-          leftHeight: 2000,
-          rightHeight: 2000,
-          hemBottomMm: hem,
-          hemRightMm: hem,
-          hemTopMm: hem,
-          hemLeftMm: hem,
-          pocket: pocket,
-          pocketTop: top,
-        );
+    WindowParams screenWith(
+      double hem, {
+      bool pocket = false,
+      bool top = false,
+    }) => WindowParams(
+      material: FilmMaterial.screen,
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      hemBottomMm: hem,
+      hemRightMm: hem,
+      hemTopMm: hem,
+      hemLeftMm: hem,
+      pocket: pocket,
+      pocketTop: top,
+    );
 
     /// Скрин с разными подворотами по сторонам: низ, право, верх, лево.
     WindowParams screenWithSides(
@@ -2117,18 +2168,17 @@ void _screenRules() {
       double right,
       double top,
       double left,
-    ) =>
-        WindowParams(
-          material: FilmMaterial.screen,
-          bottomWidth: 2000,
-          topWidth: 2000,
-          leftHeight: 2000,
-          rightHeight: 2000,
-          hemBottomMm: bottom,
-          hemRightMm: right,
-          hemTopMm: top,
-          hemLeftMm: left,
-        );
+    ) => WindowParams(
+      material: FilmMaterial.screen,
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      hemBottomMm: bottom,
+      hemRightMm: right,
+      hemTopMm: top,
+      hemLeftMm: left,
+    );
 
     test('технология выводится из материала, а не из отдельного поля', () {
       expect(const WindowParams().isScreen, isFalse);
@@ -2137,17 +2187,26 @@ void _screenRules() {
       expect(screen.isScreen, isTrue);
       expect(screen.tech, WindowTech.screen);
       // Смена материала переключает технологию.
-      expect(screen.copyWith(material: FilmMaterial.clearPvc).tech,
-          WindowTech.pvcTent);
+      expect(
+        screen.copyWith(material: FilmMaterial.clearPvc).tech,
+        WindowTech.pvcTent,
+      );
     });
 
     test('одинаковый подворот 40/50/60: заготовка 2060 / 2070 / 2080', () {
       // Подвороты равны: прибавка по оси = (h + h) / 2 + 20 = h + 20,
       // поэтому заготовка = 2000 + подворот + 20.
-      for (final (hem, blank) in [(40.0, 2060.0), (50.0, 2070.0), (60.0, 2080.0)]) {
+      for (final (hem, blank) in [
+        (40.0, 2060.0),
+        (50.0, 2070.0),
+        (60.0, 2080.0),
+      ]) {
         final spec = WindowSpec.of(screenWith(hem));
-        expect(spec.filmCutWidth, closeTo(blank, 1e-9),
-            reason: 'подворот $hem мм');
+        expect(
+          spec.filmCutWidth,
+          closeTo(blank, 1e-9),
+          reason: 'подворот $hem мм',
+        );
         expect(spec.filmCutHeight, closeTo(blank, 1e-9));
         // Готовое изделие остаётся 2000 × 2000.
         expect(spec.productAreaM2, closeTo(4.0, 1e-9));
@@ -2197,17 +2256,29 @@ void _screenRules() {
         final params = screenWithSides(hem, hem, hem, hem);
         final spec = WindowSpec.of(params);
         // (hem + hem) / 2 + 20 = hem + 20.
-        expect(params.hemAxisBottomTopIncrease, closeTo(hem + 20, 1e-9),
-            reason: 'низ/верх $hem');
-        expect(params.hemAxisLeftRightIncrease, closeTo(hem + 20, 1e-9),
-            reason: 'лево/право $hem');
-        expect(spec.filmCutWidth, closeTo(2000 + hem + 20, 1e-9),
-            reason: 'подворот $hem');
+        expect(
+          params.hemAxisBottomTopIncrease,
+          closeTo(hem + 20, 1e-9),
+          reason: 'низ/верх $hem',
+        );
+        expect(
+          params.hemAxisLeftRightIncrease,
+          closeTo(hem + 20, 1e-9),
+          reason: 'лево/право $hem',
+        );
+        expect(
+          spec.filmCutWidth,
+          closeTo(2000 + hem + 20, 1e-9),
+          reason: 'подворот $hem',
+        );
         expect(spec.filmCutHeight, closeTo(2000 + hem + 20, 1e-9));
         // Ограничение maxScreenHemMm поднято до 200 — 80/100/120 проходят.
         expect(hem, lessThanOrEqualTo(maxScreenHemMm));
-        expect(hasBlockingIssues(validateParams(params)), isFalse,
-            reason: 'подворот $hem не должен быть ошибкой');
+        expect(
+          hasBlockingIssues(validateParams(params)),
+          isFalse,
+          reason: 'подворот $hem не должен быть ошибкой',
+        );
         expect(
           spec.screenBlankWidthFormulaLabel,
           contains('= ${formatMm(2000 + hem + 20)} мм'),
@@ -2315,8 +2386,12 @@ void _screenRules() {
       );
       // Припуск на раскрой — отдельным слагаемым.
       final withAllowance = WindowSpec.of(
-        screenWithSides(40, 40, 60, 40)
-            .copyWith(allowanceWidthMm: 20, allowanceHeightMm: 30),
+        screenWithSides(
+          40,
+          40,
+          60,
+          40,
+        ).copyWith(allowanceWidthMm: 20, allowanceHeightMm: 30),
       );
       expect(
         withAllowance.screenBlankHeightFormulaLabel,
@@ -2370,8 +2445,7 @@ void _screenRules() {
     test('подворот по сторонам читается во всех подписях', () {
       final params = screenWithSides(40, 50, 60, 40);
       final spec = WindowSpec.of(params);
-      expect(spec.edgeBySideSummary,
-          contains(params.hemBySideLabel));
+      expect(spec.edgeBySideSummary, contains(params.hemBySideLabel));
       expect(spec.edgeBySideSummary, contains('низ 40'));
       expect(spec.edgeBySideSummary, contains('право 50'));
       expect(spec.edgeBySideSummary, contains('верх 60'));
@@ -2392,10 +2466,9 @@ void _screenRules() {
     });
 
     test('усадка скрину не задаётся даже при включённом тумблере', () {
-      final params = screenWith(40).copyWith(
-        shrinkageEnabled: true,
-        shrinkagePercent: 2,
-      );
+      final params = screenWith(
+        40,
+      ).copyWith(shrinkageEnabled: true, shrinkagePercent: 2);
       final spec = WindowSpec.of(params);
       expect(spec.params.effectiveShrinkagePercent, 0);
       expect(spec.filmCutHeightWithShrinkage, closeTo(2060, 1e-9));
@@ -2469,8 +2542,9 @@ void _screenRules() {
       // подъёмного ПВХ-окна, а не игнорируется.
       expect(spec.layers.movableSideEyelets, isNotEmpty);
       expect(
-        spec.layers.movableSideEyelets
-            .every((eyelet) => eyelet.side != WindowSide.top),
+        spec.layers.movableSideEyelets.every(
+          (eyelet) => eyelet.side != WindowSide.top,
+        ),
         isTrue,
         reason: 'верх остаётся на саморезах',
       );
@@ -2487,39 +2561,50 @@ void _screenRules() {
       expect(spec.eyeletCount, greaterThan(0));
       // Все люверсы лежат на линии подворота — на наружном контуре 2000 × 2000.
       for (final eyelet in spec.layers.eyelets) {
-        final onOuter = eyelet.center.dx.abs() < 1e-6 ||
+        final onOuter =
+            eyelet.center.dx.abs() < 1e-6 ||
             (eyelet.center.dx - 2000).abs() < 1e-6 ||
             eyelet.center.dy.abs() < 1e-6 ||
             (eyelet.center.dy - 2000).abs() < 1e-6;
-        expect(onOuter, isTrue, reason: 'люверс ${eyelet.center} не на подвороте');
+        expect(
+          onOuter,
+          isTrue,
+          reason: 'люверс ${eyelet.center} не на подвороте',
+        );
       }
     });
 
-    test('скрин со скобами: крепёж по низу и бокам, в углах круглые люверсы', () {
-      final params = screenWith(40).copyWith(
-        fastenerType: FastenerType.turnBuckles,
-      );
-      final spec = WindowSpec.of(params);
+    test(
+      'скрин со скобами: крепёж по низу и бокам, в углах круглые люверсы',
+      () {
+        final params = screenWith(
+          40,
+        ).copyWith(fastenerType: FastenerType.turnBuckles);
+        final spec = WindowSpec.of(params);
 
-      // Тип окна не важен: глухой скрин тоже получает крепёж.
-      expect(params.windowType, WindowType.fixed);
-      expect(spec.layers.movableSideEyelets, isNotEmpty);
-      final sides = spec.layers.movableSideEyelets
-          .map((eyelet) => eyelet.side)
-          .toSet();
-      expect(sides, isNot(contains(WindowSide.top)));
-      expect(spec.layers.movableSideEyelets.any((eyelet) => eyelet.isCorner),
-          isFalse);
-      expect(spec.fastenerSummary, contains('поворотные скобы'));
-      expect(spec.fastenerSummary, contains('по подвороту'));
-      // Угловые люверсы остаются круглыми.
-      final corners =
-          spec.layers.eyelets.where((eyelet) => eyelet.isCorner).toList();
-      expect(corners, isNotEmpty);
-      for (final corner in corners) {
-        expect(spec.layers.typeFor(corner), EyeletType.round10);
-      }
-    });
+        // Тип окна не важен: глухой скрин тоже получает крепёж.
+        expect(params.windowType, WindowType.fixed);
+        expect(spec.layers.movableSideEyelets, isNotEmpty);
+        final sides = spec.layers.movableSideEyelets
+            .map((eyelet) => eyelet.side)
+            .toSet();
+        expect(sides, isNot(contains(WindowSide.top)));
+        expect(
+          spec.layers.movableSideEyelets.any((eyelet) => eyelet.isCorner),
+          isFalse,
+        );
+        expect(spec.fastenerSummary, contains('поворотные скобы'));
+        expect(spec.fastenerSummary, contains('по подвороту'));
+        // Угловые люверсы остаются круглыми.
+        final corners = spec.layers.eyelets
+            .where((eyelet) => eyelet.isCorner)
+            .toList();
+        expect(corners, isNotEmpty);
+        for (final corner in corners) {
+          expect(spec.layers.typeFor(corner), EyeletType.round10);
+        }
+      },
+    );
 
     test('скрин с ремнями и скрин «только люверсы»', () {
       final straps = WindowSpec.of(
@@ -2536,22 +2621,27 @@ void _screenRules() {
       );
       expect(eyeletsOnly.fastenerSummary, contains('Только люверсы'));
       expect(eyeletsOnly.fastenerSummary, contains('по подвороту'));
-      expect(eyeletsOnly.fastenerSummary,
-          isNot(contains('поворотные скобы')));
+      expect(eyeletsOnly.fastenerSummary, isNot(contains('поворотные скобы')));
     });
 
     test('JSON хранит тип крепежа скрина и читает его обратно', () {
       for (final type in FastenerType.values) {
-        final params = screenWithSides(40, 50, 60, 40)
-            .copyWith(fastenerType: type, windowType: WindowType.lifting);
+        final params = screenWithSides(
+          40,
+          50,
+          60,
+          40,
+        ).copyWith(fastenerType: type, windowType: WindowType.lifting);
         final restored = windowFromJson(windowToJson(params));
         expect(restored.fastenerType, type, reason: 'тип крепежа $type');
         expect(restored.isScreen, isTrue);
         final original = WindowSpec.of(params);
         final restoredSpec = WindowSpec.of(restored);
         expect(restoredSpec.fastenerSummary, original.fastenerSummary);
-        expect(restoredSpec.layers.movableSideEyelets.length,
-            original.layers.movableSideEyelets.length);
+        expect(
+          restoredSpec.layers.movableSideEyelets.length,
+          original.layers.movableSideEyelets.length,
+        );
       }
     });
 
@@ -2598,8 +2688,7 @@ void _screenRules() {
       expect(restored.hemLeftMm, 60);
       expect(restored.hasUniformHem, isTrue);
       // Новые поля имеют приоритет над старым.
-      final partial = Map<String, dynamic>.from(legacy)
-        ..['hemTopMm'] = 25;
+      final partial = Map<String, dynamic>.from(legacy)..['hemTopMm'] = 25;
       expect(windowFromJson(partial).hemTopMm, 25);
       expect(windowFromJson(partial).hemBottomMm, 60);
     });
@@ -2607,8 +2696,9 @@ void _screenRules() {
     test('валидация: подворот вне обычного диапазона — замечание', () {
       final issues = validateParams(screenWith(200));
       expect(
-        issues.any((issue) =>
-            issue.field == ParamField.hemBottom && !issue.isError),
+        issues.any(
+          (issue) => issue.field == ParamField.hemBottom && !issue.isError,
+        ),
         isTrue,
       );
       // Замечание адресуется каждой стороне отдельно.
@@ -2700,10 +2790,8 @@ void _pocketRules() {
       final right = layers.eyelets
           .where((eyelet) => eyelet.side == WindowSide.right)
           .toList();
-      final lowest =
-          right.reduce((a, b) => a.center.dy < b.center.dy ? a : b);
-      final highest =
-          right.reduce((a, b) => a.center.dy > b.center.dy ? a : b);
+      final lowest = right.reduce((a, b) => a.center.dy < b.center.dy ? a : b);
+      final highest = right.reduce((a, b) => a.center.dy > b.center.dy ? a : b);
       expect(lowest.center.dy, closeTo(75, 0.02));
       expect(highest.center.dy, closeTo(1500 - 75, 0.02));
     });
@@ -2741,17 +2829,19 @@ void _pocketRules() {
     });
 
     test('расход и подписи: фартуки считаются оба', () {
-      const project = OrderProject(windows: [
-        WindowParams(
-          bottomWidth: 2000,
-          topWidth: 2000,
-          leftHeight: 1500,
-          rightHeight: 1500,
-          pocket: true,
-          pocketTop: true,
-          pocketWidth: 100,
-        ),
-      ]);
+      const project = OrderProject(
+        windows: [
+          WindowParams(
+            bottomWidth: 2000,
+            topWidth: 2000,
+            leftHeight: 1500,
+            rightHeight: 1500,
+            pocket: true,
+            pocketTop: true,
+            pocketWidth: 100,
+          ),
+        ],
+      );
       final summary = CostsSummary(project);
 
       expect(summary.pocketCount, 2);
@@ -2773,10 +2863,15 @@ void _pocketRules() {
 void _rollWidthRules() {
   group('Ширины рулонов скрина', () {
     test('в списке скрина есть 2500 и 5000 мм, предел — 5000', () {
-      expect(
-        FilmMaterial.screen.rollWidths,
-        [1400, 1800, 2000, 2400, 2500, 2600, 5000],
-      );
+      expect(FilmMaterial.screen.rollWidths, [
+        1400,
+        1800,
+        2000,
+        2400,
+        2500,
+        2600,
+        5000,
+      ]);
       // Прежние ширины сохранены, добавились две новые.
       for (final width in [1400, 1800, 2000, 2400, 2600]) {
         expect(FilmMaterial.screen.rollWidths, contains(width));
@@ -2800,23 +2895,26 @@ void _rollWidthRules() {
       );
     });
 
-    test('выбор ширины 2500 и 5000 мм сохраняется в JSON и читается обратно', () {
-      const project = OrderProject();
-      for (final width in [2500.0, 5000.0]) {
-        final chosen = project
-            .updateSelected(const WindowParams(material: FilmMaterial.screen))
-            .setRollWidth(FilmMaterial.screen, width);
+    test(
+      'выбор ширины 2500 и 5000 мм сохраняется в JSON и читается обратно',
+      () {
+        const project = OrderProject();
+        for (final width in [2500.0, 5000.0]) {
+          final chosen = project
+              .updateSelected(const WindowParams(material: FilmMaterial.screen))
+              .setRollWidth(FilmMaterial.screen, width);
 
-        expect(chosen.rollWidthFor(FilmMaterial.screen), width);
-        final json = orderToJson(chosen);
-        expect(json['rollWidths'], isA<Map<String, dynamic>>());
+          expect(chosen.rollWidthFor(FilmMaterial.screen), width);
+          final json = orderToJson(chosen);
+          expect(json['rollWidths'], isA<Map<String, dynamic>>());
 
-        final restored = orderFromJson(json);
-        expect(restored.rollWidths[FilmMaterial.screen], width);
-        expect(restored.rollWidthFor(FilmMaterial.screen), width);
-        expect(restored.windows.first.material, FilmMaterial.screen);
-      }
-    });
+          final restored = orderFromJson(json);
+          expect(restored.rollWidths[FilmMaterial.screen], width);
+          expect(restored.rollWidthFor(FilmMaterial.screen), width);
+          expect(restored.windows.first.material, FilmMaterial.screen);
+        }
+      },
+    );
 
     test('раскладка на рулоне пользуется новой шириной', () {
       // Скрин 4000 × 2000: заготовка 4060 × 2060 шире рулона 2000 мм.
@@ -2835,13 +2933,15 @@ void _rollWidthRules() {
 
       final narrow = CostsSummary(project).rollPlans.single;
       expect(narrow.rollWidth, 2000);
-      expect(narrow.layout.warnings, isNotEmpty,
-          reason: 'заготовка 4060 мм шире рулона 2000 мм');
+      expect(
+        narrow.layout.warnings,
+        isNotEmpty,
+        reason: 'заготовка 4060 мм шире рулона 2000 мм',
+      );
 
-      final wide =
-          CostsSummary(project.setRollWidth(FilmMaterial.screen, 5000))
-              .rollPlans
-              .single;
+      final wide = CostsSummary(
+        project.setRollWidth(FilmMaterial.screen, 5000),
+      ).rollPlans.single;
       expect(wide.rollWidth, 5000);
       expect(wide.layout.warnings, isEmpty);
       expect(wide.layout.placements.single.width, lessThanOrEqualTo(5000));
@@ -2857,13 +2957,13 @@ void _eyeletlessSideRules() {
     // шаг 300 мм: 24 люверса, из них внизу 8 (оба нижних угла — её),
     // справа 5, сверху 7 (левый верхний угол — её), слева 4.
     WindowParams base({bool top = false, bool bottom = false}) => WindowParams(
-          bottomWidth: 2000,
-          topWidth: 2000,
-          leftHeight: 1500,
-          rightHeight: 1500,
-          noEyeletsTop: top,
-          noEyeletsBottom: bottom,
-        );
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 1500,
+      rightHeight: 1500,
+      noEyeletsTop: top,
+      noEyeletsBottom: bottom,
+    );
 
     WindowLayers layersOf(WindowParams params) =>
         WindowLayers(params, WindowGeometry.of(params));
@@ -2891,10 +2991,12 @@ void _eyeletlessSideRules() {
       );
       // Правый верхний угол принадлежит правой стороне — он остаётся.
       expect(
-        layers.eyelets.any((e) =>
-            e.side == WindowSide.right &&
-            (e.center.dy - 1475).abs() < 1 &&
-            (e.center.dx - 1975).abs() < 1),
+        layers.eyelets.any(
+          (e) =>
+              e.side == WindowSide.right &&
+              (e.center.dy - 1475).abs() < 1 &&
+              (e.center.dx - 1975).abs() < 1,
+        ),
         isTrue,
         reason: 'соседняя сторона свои углы сохраняет',
       );
@@ -2921,14 +3023,8 @@ void _eyeletlessSideRules() {
       final layers = layersOf(params);
 
       expect(layers.eyeletCount, 9);
-      expect(
-        layers.eyelets.where((e) => e.side == WindowSide.right).length,
-        5,
-      );
-      expect(
-        layers.eyelets.where((e) => e.side == WindowSide.left).length,
-        4,
-      );
+      expect(layers.eyelets.where((e) => e.side == WindowSide.right).length, 5);
+      expect(layers.eyelets.where((e) => e.side == WindowSide.left).length, 4);
       expect(layers.eyeletSteps, hasLength(2));
       expect(params.eyeletlessSidesLabel, 'низ и верх');
       expect(layers.eyeletlessSidesLabel, 'низ и верх');
@@ -2937,8 +3033,9 @@ void _eyeletlessSideRules() {
     test('расход и подписи честно уменьшаются', () {
       final plain = WindowSpec.of(base());
       final topOff = WindowSpec.of(base(top: true));
-      final summary =
-          CostsSummary(OrderProject(windows: [base(top: true), base()]));
+      final summary = CostsSummary(
+        OrderProject(windows: [base(top: true), base()]),
+      );
 
       expect(plain.eyeletCount, 24);
       expect(topOff.eyeletCount, 17);
@@ -2965,14 +3062,8 @@ void _eyeletlessSideRules() {
     });
 
     test('подпись состояния меняется от кнопок', () {
-      expect(
-        base(top: true).signature,
-        isNot(base().signature),
-      );
-      expect(
-        base(bottom: true).signature,
-        isNot(base(top: true).signature),
-      );
+      expect(base(top: true).signature, isNot(base().signature));
+      expect(base(bottom: true).signature, isNot(base(top: true).signature));
     });
   });
 }
@@ -2999,7 +3090,9 @@ void _anyEyeletTypeRules() {
       expect(spec.eyeletType, oval);
       expect(spec.eyeletCount, 24);
       final sides = layers.eyelets.where((eyelet) => !eyelet.isCorner).toList();
-      final corners = layers.eyelets.where((eyelet) => eyelet.isCorner).toList();
+      final corners = layers.eyelets
+          .where((eyelet) => eyelet.isCorner)
+          .toList();
       expect(sides, isNotEmpty);
       expect(corners, isNotEmpty);
       for (final eyelet in sides) {
@@ -3011,8 +3104,7 @@ void _anyEyeletTypeRules() {
     });
 
     test('в расходе овальный люверс учитывается по своему типу', () {
-      final summary =
-          CostsSummary(const OrderProject(windows: [fixedOval]));
+      final summary = CostsSummary(const OrderProject(windows: [fixedOval]));
 
       // По сторонам — овальные, четыре угла — круглые: расход сходится
       // с чертежом и с техкартой.
@@ -3038,19 +3130,18 @@ void _screenZipperRules() {
       List<ZipperSpec> zippers = const [ZipperSpec(centered: true)],
       double bottom = 2000,
       double top = 2000,
-    }) =>
-        WindowParams(
-          material: FilmMaterial.screen,
-          bottomWidth: bottom,
-          topWidth: top,
-          leftHeight: 2000,
-          rightHeight: 2000,
-          hemBottomMm: 40,
-          hemRightMm: 40,
-          hemTopMm: 40,
-          hemLeftMm: 40,
-          zippers: zippers,
-        );
+    }) => WindowParams(
+      material: FilmMaterial.screen,
+      bottomWidth: bottom,
+      topWidth: top,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      hemBottomMm: 40,
+      hemRightMm: 40,
+      hemTopMm: 40,
+      hemLeftMm: 40,
+      zippers: zippers,
+    );
 
     test('молния больше не игнорируется: линия, полоса и зазоры есть', () {
       final spec = WindowSpec.of(screen());
@@ -3133,16 +3224,16 @@ void _screenZipperRules() {
     test('валидация: полоса не выходит за заготовку и не ближе 100 мм', () {
       // По центру — замечаний о кромке нет.
       expect(
-        validateParams(screen()).any(
-          (issue) => issue.message.contains('кромки подворота'),
-        ),
+        validateParams(
+          screen(),
+        ).any((issue) => issue.message.contains('кромки подворота')),
         isFalse,
       );
 
       // Смещение 100 мм: полоса в 75 мм от кромки — замечание.
-      final near = screen(zippers: const [
-        ZipperSpec(centered: false, offsetMm: 100),
-      ]);
+      final near = screen(
+        zippers: const [ZipperSpec(centered: false, offsetMm: 100)],
+      );
       final nearIssues = validateParams(near);
       final nearIssue = nearIssues.firstWhere(
         (issue) => issue.message.contains('кромки подворота'),
@@ -3151,9 +3242,9 @@ void _screenZipperRules() {
       expect(nearIssue.message, contains('меньше 100 мм'));
 
       // Смещение 20 мм уводит полосу за заготовку — ошибка.
-      final outside = screen(zippers: const [
-        ZipperSpec(centered: false, offsetMm: 20),
-      ]);
+      final outside = screen(
+        zippers: const [ZipperSpec(centered: false, offsetMm: 20)],
+      );
       expect(
         validateParams(outside).any(
           (issue) =>
@@ -3189,20 +3280,19 @@ void _screenZipperWidthRules() {
       List<ZipperSpec> zippers = const [],
       double hem = 40,
       double allowanceWidth = 0,
-    }) =>
-        WindowParams(
-          material: FilmMaterial.screen,
-          bottomWidth: width,
-          topWidth: width,
-          leftHeight: height,
-          rightHeight: height,
-          hemBottomMm: hem,
-          hemRightMm: hem,
-          hemTopMm: hem,
-          hemLeftMm: hem,
-          allowanceWidthMm: allowanceWidth,
-          zippers: zippers,
-        );
+    }) => WindowParams(
+      material: FilmMaterial.screen,
+      bottomWidth: width,
+      topWidth: width,
+      leftHeight: height,
+      rightHeight: height,
+      hemBottomMm: hem,
+      hemRightMm: hem,
+      hemTopMm: hem,
+      hemLeftMm: hem,
+      allowanceWidthMm: allowanceWidth,
+      zippers: zippers,
+    );
 
     test('базовый кейс: 2000 × 2000, подворот 40 → 2060, молния 50 → 2010', () {
       final without = WindowSpec.of(screen(width: 2000, height: 2000));
@@ -3213,11 +3303,13 @@ void _screenZipperWidthRules() {
       expect(without.filmCutHeight, closeTo(2060, 1e-9));
       expect(without.filmCutAreaM2, closeTo(4.2436, 1e-9));
 
-      final withZipper = WindowSpec.of(screen(
-        width: 2000,
-        height: 2000,
-        zippers: const [ZipperSpec(centered: true)],
-      ));
+      final withZipper = WindowSpec.of(
+        screen(
+          width: 2000,
+          height: 2000,
+          zippers: const [ZipperSpec(centered: true)],
+        ),
+      );
       // Одна молния с полосой 50 мм: 2060 − 50 = 2010 мм.
       expect(withZipper.zipperBandTotalMm, closeTo(50, 1e-9));
       expect(withZipper.filmCutWidthBeforeZipper, closeTo(2060, 1e-9));
@@ -3232,19 +3324,23 @@ void _screenZipperWidthRules() {
         closeTo(50 * 2060 / 1000000, 1e-9),
       );
       // Формула для панели показывает вычет теми же числами.
-      expect(withZipper.screenBlankWidthFormulaLabel,
-          contains('+ ${formatMm(60)} − полоса молнии 50'));
+      expect(
+        withZipper.screenBlankWidthFormulaLabel,
+        contains('+ ${formatMm(60)} − полоса молнии 50'),
+      );
       expect(
         withZipper.screenBlankWidthFormulaLabel,
         contains('= ${formatMm(2010)} мм'),
       );
       // Заготовка с припуском: припуск прибавляется ПОСЛЕ вычета полосы.
-      final withAllowance = WindowSpec.of(screen(
-        width: 2000,
-        height: 2000,
-        zippers: const [ZipperSpec(centered: true)],
-        allowanceWidth: 30,
-      ));
+      final withAllowance = WindowSpec.of(
+        screen(
+          width: 2000,
+          height: 2000,
+          zippers: const [ZipperSpec(centered: true)],
+          allowanceWidth: 30,
+        ),
+      );
       expect(withAllowance.filmCutWidthWithAllowance, closeTo(2040, 1e-9));
     });
 
@@ -3259,9 +3355,9 @@ void _screenZipperWidthRules() {
       expect(without.filmCutAreaM2, closeTo(2510 * 2060 / 1000000, 1e-9));
 
       // Добавили молнию с полосой 50 мм — ширина кроя 2 460 мм.
-      final withZipper = WindowSpec.of(params.copyWith(
-        zippers: const [ZipperSpec(centered: true)],
-      ));
+      final withZipper = WindowSpec.of(
+        params.copyWith(zippers: const [ZipperSpec(centered: true)]),
+      );
       expect(withZipper.filmCutWidth, closeTo(2460, 1e-9));
       expect(withZipper.filmCutHeight, closeTo(2060, 1e-9));
       expect(withZipper.filmCutAreaM2, closeTo(2460 * 2060 / 1000000, 1e-9));
@@ -3270,9 +3366,13 @@ void _screenZipperWidthRules() {
         closeTo(0.103, 1e-9),
       );
       // Смета и расход подхватывают новую ширину через WindowSpec.
-      final summary = CostsSummary(OrderProject(windows: [
-        params.copyWith(zippers: const [ZipperSpec(centered: true)]),
-      ]));
+      final summary = CostsSummary(
+        OrderProject(
+          windows: [
+            params.copyWith(zippers: const [ZipperSpec(centered: true)]),
+          ],
+        ),
+      );
       expect(summary.filmAreaM2, closeTo(5.0676, 1e-9));
       expect(summary.specs.single.filmCutWidth, closeTo(2460, 1e-9));
       // Раскладка на рулон тоже берёт суженную заготовку.
@@ -3282,24 +3382,28 @@ void _screenZipperWidthRules() {
     });
 
     test('две молнии по 50 → минус 100 мм, полоса 100 → минус 100 мм', () {
-      final two = WindowSpec.of(screen(
-        width: 2000,
-        height: 2000,
-        zippers: const [
-          ZipperSpec(centered: false, offsetMm: 700),
-          ZipperSpec(centered: false, offsetMm: 1400),
-        ],
-      ));
+      final two = WindowSpec.of(
+        screen(
+          width: 2000,
+          height: 2000,
+          zippers: const [
+            ZipperSpec(centered: false, offsetMm: 700),
+            ZipperSpec(centered: false, offsetMm: 1400),
+          ],
+        ),
+      );
       expect(two.zipperBandTotalMm, closeTo(100, 1e-9));
       expect(two.filmCutWidth, closeTo(1960, 1e-9));
       expect(two.filmCutAreaM2, closeTo(1960 * 2060 / 1000000, 1e-9));
 
       // Одна молния с широкой полосой 100 мм даёт тот же вычет.
-      final wide = WindowSpec.of(screen(
-        width: 2000,
-        height: 2000,
-        zippers: const [ZipperSpec(centered: true, bandWidth: 100)],
-      ));
+      final wide = WindowSpec.of(
+        screen(
+          width: 2000,
+          height: 2000,
+          zippers: const [ZipperSpec(centered: true, bandWidth: 100)],
+        ),
+      );
       expect(wide.zipperBandTotalMm, closeTo(100, 1e-9));
       expect(wide.filmCutWidth, closeTo(1960, 1e-9));
       expect(wide.filmCutAreaM2, closeTo(two.filmCutAreaM2, 1e-9));
@@ -3315,9 +3419,9 @@ void _screenZipperWidthRules() {
         weldOverlapMm: 25,
       );
       final plain = WindowSpec.of(pvc);
-      final withZipper = WindowSpec.of(pvc.copyWith(
-        zippers: const [ZipperSpec(centered: true)],
-      ));
+      final withZipper = WindowSpec.of(
+        pvc.copyWith(zippers: const [ZipperSpec(centered: true)]),
+      );
 
       expect(plain.filmCutWidth, closeTo(1950, 1e-9));
       expect(withZipper.zipperBandTotalMm, closeTo(50, 1e-9));
@@ -3333,9 +3437,13 @@ void _screenZipperWidthRules() {
         closeTo(50 * 1960 / 1e6, 1e-9),
       );
       // Полоса тента по-прежнему идёт в расход окантовки.
-      final summary = CostsSummary(OrderProject(windows: [
-        pvc.copyWith(zippers: const [ZipperSpec(centered: true)]),
-      ]));
+      final summary = CostsSummary(
+        OrderProject(
+          windows: [
+            pvc.copyWith(zippers: const [ZipperSpec(centered: true)]),
+          ],
+        ),
+      );
       expect(summary.screenZipperCount, 0);
       expect(summary.pvcZipperCount, 1);
       expect(summary.pvcZipperBandWidthMm, closeTo(50, 1e-9));
@@ -3358,29 +3466,33 @@ void _screenZipperWidthRules() {
       expect(plain.filmCutWidth, closeTo(1910, 1e-9));
       expect(plain.filmCutHeight, closeTo(1910, 1e-9));
 
-      final one = WindowSpec.of(pvc.copyWith(
-        zippers: const [ZipperSpec(centered: true)],
-      ));
+      final one = WindowSpec.of(
+        pvc.copyWith(zippers: const [ZipperSpec(centered: true)]),
+      );
       expect(one.zipperBandTotalMm, closeTo(50, 1e-9));
       expect(one.filmCutWidth, closeTo(1860, 1e-9));
       // Высота не меняется — ни до припуска, ни с авто +10 мм.
       expect(one.filmCutHeight, closeTo(1910, 1e-9));
       expect(one.filmCutHeightWithAllowance, closeTo(1920, 1e-9));
 
-      final two = WindowSpec.of(pvc.copyWith(
-        zippers: const [
-          ZipperSpec(centered: false, offsetMm: 600),
-          ZipperSpec(centered: false, offsetMm: 1300),
-        ],
-      ));
+      final two = WindowSpec.of(
+        pvc.copyWith(
+          zippers: const [
+            ZipperSpec(centered: false, offsetMm: 600),
+            ZipperSpec(centered: false, offsetMm: 1300),
+          ],
+        ),
+      );
       expect(two.zipperBandTotalMm, closeTo(100, 1e-9));
       expect(two.filmCutWidth, closeTo(1810, 1e-9));
       expect(two.filmCutHeight, closeTo(1910, 1e-9));
       // Вычет идёт ДО припуска на раскрой: 1910 − 50 + 30 = 1890.
-      final withAllowance = WindowSpec.of(pvc.copyWith(
-        allowanceWidthMm: 30,
-        zippers: const [ZipperSpec(centered: true)],
-      ));
+      final withAllowance = WindowSpec.of(
+        pvc.copyWith(
+          allowanceWidthMm: 30,
+          zippers: const [ZipperSpec(centered: true)],
+        ),
+      );
       expect(withAllowance.filmCutWidthWithAllowance, closeTo(1890, 1e-9));
       // Подпись вычета — та же формулировка, что у скрина.
       expect(
@@ -3401,53 +3513,50 @@ void _screenZipperWidthRules() {
 /// число интервалов по стороне = ceil(длина / 300), округление вверх.
 void _roundEyeletToggleRules() {
   WindowParams window({double offset = 0, bool round = true}) => WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 1500,
-        rightHeight: 1500,
-        eyeletStep: 300,
-        eyeletCornerOffset: offset,
-        roundEyeletsEnabled: round,
-        fastenerType: FastenerType.frenchLocks,
-        eyeletType: EyeletType.oval42x22,
-      );
+    bottomWidth: 2000,
+    topWidth: 2000,
+    leftHeight: 1500,
+    rightHeight: 1500,
+    eyeletStep: 300,
+    eyeletCornerOffset: offset,
+    roundEyeletsEnabled: round,
+    fastenerType: FastenerType.frenchLocks,
+    eyeletType: EyeletType.oval42x22,
+  );
 
   WindowSpec specOf({double offset = 0, bool round = true}) =>
       WindowSpec.of(window(offset: offset, round: round));
 
   group('Круглые люверсы в углах: тумблер и детерминизм', () {
-    test('французский замок, тумблер выключен: круглых ноль, числа по отступу',
-        () {
-      // Линия люверсов 1950 × 1450. Отступ 0: по стороне 7 и 5 интервалов,
-      // угловые точки не ставятся → (7−1) + (5−1) + (7−1) + (5−1) = 20.
-      // Отступ 50: отрезок 1850/1350 → 7 и 5 интервалов, углов нет вовсе →
-      // (7+1) + (5+1) + (7+1) + (5+1) = 28.
-      // Отступ 100: 1750/1250 → 6 и 5 интервалов → 7 + 6 + 7 + 6 = 26.
-      // Отступ 150: 1650/1150 → 6 и 4 интервала → 7 + 5 + 7 + 5 = 24.
-      const expected = <(double, int)>[
-        (0, 20),
-        (50, 28),
-        (100, 26),
-        (150, 24),
-      ];
-      for (final (offset, count) in expected) {
-        final spec = specOf(offset: offset, round: false);
-        expect(
-          spec.layers.eyeletCount,
-          count,
-          reason: 'отступ $offset мм',
-        );
-        expect(spec.layers.roundEyeletCount, 0);
-        expect(spec.eyeletCount, count);
-        for (final eyelet in spec.layers.eyelets) {
-          expect(eyelet.isCorner, isFalse);
-          expect(spec.layers.typeFor(eyelet), EyeletType.oval42x22);
+    test(
+      'французский замок, тумблер выключен: круглых ноль, числа по отступу',
+      () {
+        // Линия люверсов 1950 × 1450. Отступ 0: по стороне 7 и 5 интервалов,
+        // угловые точки не ставятся → (7−1) + (5−1) + (7−1) + (5−1) = 20.
+        // Отступ 50: отрезок 1850/1350 → 7 и 5 интервалов, углов нет вовсе →
+        // (7+1) + (5+1) + (7+1) + (5+1) = 28.
+        // Отступ 100: 1750/1250 → 6 и 5 интервалов → 7 + 6 + 7 + 6 = 26.
+        // Отступ 150: 1650/1150 → 6 и 4 интервала → 7 + 5 + 7 + 5 = 24.
+        const expected = <(double, int)>[
+          (0, 20),
+          (50, 28),
+          (100, 26),
+          (150, 24),
+        ];
+        for (final (offset, count) in expected) {
+          final spec = specOf(offset: offset, round: false);
+          expect(spec.layers.eyeletCount, count, reason: 'отступ $offset мм');
+          expect(spec.layers.roundEyeletCount, 0);
+          expect(spec.eyeletCount, count);
+          for (final eyelet in spec.layers.eyelets) {
+            expect(eyelet.isCorner, isFalse);
+            expect(spec.layers.typeFor(eyelet), EyeletType.oval42x22);
+          }
         }
-      }
-    });
+      },
+    );
 
-    test('тумблер включён: при отступе 0 ровно 4 круглых, по одному в углу',
-        () {
+    test('тумблер включён: при отступе 0 ровно 4 круглых, по одному в углу', () {
       final spec = specOf(offset: 0);
       // 8 + 6 + 8 + 6 − 4 общих угла = 24, из них 4 круглых.
       expect(spec.eyeletCount, 24);
@@ -3457,15 +3566,12 @@ void _roundEyeletToggleRules() {
       final corners = spec.layers.cornerEyelets;
       expect(corners, hasLength(4));
       // Углы линии люверсов: окантовка 100 мм → отступ 25 мм с каждой стороны.
-      expect(
-        corners.map((eyelet) => eyelet.center).toSet(),
-        {
-          const Offset(25, 25),
-          const Offset(1975, 25),
-          const Offset(1975, 1475),
-          const Offset(25, 1475),
-        },
-      );
+      expect(corners.map((eyelet) => eyelet.center).toSet(), {
+        const Offset(25, 25),
+        const Offset(1975, 25),
+        const Offset(1975, 1475),
+        const Offset(25, 1475),
+      });
       for (final corner in corners) {
         expect(spec.layers.typeFor(corner), EyeletType.round10);
       }
@@ -3484,23 +3590,34 @@ void _roundEyeletToggleRules() {
         for (final round in const [true, false]) {
           final first = specOf(offset: offset, round: round);
           final second = specOf(offset: offset, round: round);
-          final firstCenters =
-              first.layers.eyelets.map((eyelet) => eyelet.center).toList();
-          final secondCenters =
-              second.layers.eyelets.map((eyelet) => eyelet.center).toList();
-          expect(firstCenters, secondCenters,
-              reason: 'расстановка не должна зависеть от порядка вызовов');
+          final firstCenters = first.layers.eyelets
+              .map((eyelet) => eyelet.center)
+              .toList();
+          final secondCenters = second.layers.eyelets
+              .map((eyelet) => eyelet.center)
+              .toList();
+          expect(
+            firstCenters,
+            secondCenters,
+            reason: 'расстановка не должна зависеть от порядка вызовов',
+          );
 
           final unique = firstCenters.toSet();
-          expect(unique.length, firstCenters.length,
-              reason: 'дублей координат быть не должно');
+          expect(
+            unique.length,
+            firstCenters.length,
+            reason: 'дублей координат быть не должно',
+          );
 
           // На каждой стороне соседние точки отстоят на один и тот же шаг.
           for (final side in WindowSide.values) {
-            final points = first.layers.eyelets
-                .where((eyelet) => eyelet.side == side)
-                .toList()
-              ..sort((a, b) => a.positionInEdge.compareTo(b.positionInEdge));
+            final points =
+                first.layers.eyelets
+                    .where((eyelet) => eyelet.side == side)
+                    .toList()
+                  ..sort(
+                    (a, b) => a.positionInEdge.compareTo(b.positionInEdge),
+                  );
             for (var i = 1; i < points.length; i++) {
               final step = (points[i].center - points[i - 1].center).distance;
               final expected = first.layers.eyeletSteps[side.index];
@@ -3513,8 +3630,7 @@ void _roundEyeletToggleRules() {
       }
     });
 
-    test('рост отступа не увеличивает число интервалов ни на одной стороне',
-        () {
+    test('рост отступа не увеличивает число интервалов ни на одной стороне', () {
       final offsets = [0.0, 50.0, 100.0, 150.0];
       final intervalsByOffset = <double, List<int>>{};
       for (final offset in offsets) {
@@ -3567,8 +3683,11 @@ void _roundEyeletToggleRules() {
           0,
           (sum, line) => sum + line.quantity,
         );
-        expect(roundQuantity, spec.layers.roundEyeletCount.toDouble(),
-            reason: 'смета должна совпасть с чертежом');
+        expect(
+          roundQuantity,
+          spec.layers.roundEyeletCount.toDouble(),
+          reason: 'смета должна совпасть с чертежом',
+        );
       }
     });
 

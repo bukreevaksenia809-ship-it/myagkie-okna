@@ -115,12 +115,12 @@ List<Offset> unionOutlineOfRects(List<Rect> rects, {Offset? start}) {
   ];
   if (parts.isEmpty) return const [];
 
-  final xs = <double>{for (final rect in parts) ...[rect.left, rect.right]}
-      .toList()
-    ..sort();
-  final ys = <double>{for (final rect in parts) ...[rect.top, rect.bottom]}
-      .toList()
-    ..sort();
+  final xs = <double>{
+    for (final rect in parts) ...[rect.left, rect.right],
+  }.toList()..sort();
+  final ys = <double>{
+    for (final rect in parts) ...[rect.top, rect.bottom],
+  }.toList()..sort();
   bool covered(double x, double y) => parts.any(
     (rect) =>
         x > rect.left + _unionEps &&
@@ -505,8 +505,7 @@ class TShapeLayout {
   final bool ignoredOverlap;
 
   /// Первая пристройка (для обратной совместимости и подписей).
-  TShapeAnnexLayout? get firstAnnex =>
-      annexes.isEmpty ? null : annexes.first;
+  TShapeAnnexLayout? get firstAnnex => annexes.isEmpty ? null : annexes.first;
 
   bool get hasAnnexes => annexes.isNotEmpty;
 
@@ -521,9 +520,8 @@ class TShapeLayout {
       annexes.where((annex) => annex.welded).toList(growable: false);
 
   /// Отдельные (несваренные) пристройки.
-  List<TShapeAnnexLayout> get separateAnnexes => annexes
-      .where((annex) => !annex.welded)
-      .toList(growable: false);
+  List<TShapeAnnexLayout> get separateAnnexes =>
+      annexes.where((annex) => !annex.welded).toList(growable: false);
 
   /// Суммарная длина швов по всем пристройкам, мм.
   double get allSeamsLength =>
@@ -920,13 +918,94 @@ class WindowLayers {
       ? -hemOutsetFor(side)
       : math.max(finishedWidthFor(side) - params.weldOverlapMm, 0.0);
 
+  /// Вычет с кромки для заготовки полотна, мм.
+  ///
+  /// Это и есть заказчиково `d = готовая полоса − запайка`: у ПВХ
+  /// [WindowParams.finishedEdgeWidth] минус [WindowParams.weldOverlapMm].
+  /// У скрина вычет отрицательный — заготовка БОЛЬШЕ готового изделия на
+  /// половину прибавки по оси ([hemOutsetFor]).
+  double blankSideDeduction(WindowSide side) => _blankAmount(side);
+
+  /// Геометрия заготовки полотна: та же форма, что у изделия, но каждая
+  /// сторона уменьшена на свой вычет.
+  ///
+  /// Заказчик: «каждая сторона заготовки = сторона изделия − 2 × (готовая
+  /// полоса) + 2 × запайка», причём считается по длине КАЖДОЙ стороны
+  /// отдельно. Поэтому у трапеции и окна с разными высотами заготовка —
+  /// не прямоугольник по габариту, а такой же косой четырёхугольник:
+  /// низ 2 990, право 2 740, верх 2 990, лево 2 080 при изделии
+  /// 3 050/3 050 × 2 140/2 800, полосе 50 и запайке 20 мм.
+  ///
+  /// Ширины уменьшаются на вычеты левой и правой сторон, высоты — на вычеты
+  /// нижней и верхней. При одинаковой полосе по всем сторонам это ровно
+  /// «сторона − 2d» из примера заказчика.
+  late final WindowGeometry blankGeometry = _buildBlankGeometry();
+
+  WindowGeometry _buildBlankGeometry() {
+    // У Т-окна заготовка строится по прямоугольникам частей
+    // ([partBlankRects]); отдельная косоугольная геометрия там не нужна.
+    if (isTShape) return geometry;
+    final widthDeduction =
+        blankSideDeduction(WindowSide.left) +
+        blankSideDeduction(WindowSide.right);
+    final heightDeduction =
+        blankSideDeduction(WindowSide.bottom) +
+        blankSideDeduction(WindowSide.top);
+    double side(double value, double deduction) {
+      final result = value - deduction;
+      return result.isFinite && result > 1 ? result : 1.0;
+    }
+
+    return WindowGeometry(
+      bottomWidth: side(geometry.bottomWidth, widthDeduction),
+      topWidth: side(geometry.topWidth, widthDeduction),
+      leftHeight: side(geometry.leftHeight, heightDeduction),
+      rightHeight: side(geometry.rightHeight, heightDeduction),
+      // Наклон и выравнивание кромок сохраняются: заготовка — та же косая
+      // форма, только меньше по каждой стороне.
+      topOffset: geometry.topOffset,
+      levelEdge: geometry.levelEdge,
+    );
+  }
+
+  /// Длины сторон заготовки по обходу: низ, право, верх, лево (мм).
+  ///
+  /// Это НОМИНАЛЬНЫЕ стороны заготовки — ровно те числа, которые заказчик
+  /// называет в примере (2 990 / 2 740 / 2 990 / 2 080). У наклонной верхней
+  /// кромки фактическая длина отрезка на чертеже чуть больше (как и у самого
+  /// изделия, где «верх 3 050» — это ширина, а не длина наклонной кромки),
+  /// поэтому подписи и документы берут именно эти значения.
+  List<double> get blankSideLengths => [
+    blankGeometry.bottomWidth,
+    blankGeometry.rightHeight,
+    blankGeometry.topWidth,
+    blankGeometry.leftHeight,
+  ];
+
+  /// Вершины заготовки, совмещённые по центру с изделием.
+  ///
+  /// Размеры сторон — из [blankGeometry], но контур сдвинут так, чтобы его
+  /// габарит был вписан в изделие симметрично. Для ПВХ это тот же вычет по
+  /// каждой кромке; для скрина, наоборот, прибавка на подворот уходит на обе
+  /// кромки оси, поэтому фартук и линия подворота остаются на своих местах.
+  late final List<Offset> blankCorners = _buildBlankCorners();
+
+  List<Offset> _buildBlankCorners() {
+    final corners = blankGeometry.corners;
+    if (corners.isEmpty) return const [];
+    final shift = geometry.productBounds.center - boundsOf(corners).center;
+    return [for (final point in corners) point + shift];
+  }
+
+  /// Площадь заготовки по формуле Гаусса (по контуру косой формы), мм².
+  double get blankAreaMm2 => polygonArea(blankCorners).abs();
+
   /// Прямоугольник заготовки с подрезкой по сторонам.
   ///
   /// [shared] — стороны, по которым припуска нет: там шов спайки.
   Rect _blankRect(Rect rect, Set<EdgeSide> shared) {
-    double value(EdgeSide side) => shared.contains(side)
-        ? 0.0
-        : _blankAmount(windowSideOf(side));
+    double value(EdgeSide side) =>
+        shared.contains(side) ? 0.0 : _blankAmount(windowSideOf(side));
     return Rect.fromLTRB(
       rect.left + value(EdgeSide.left),
       rect.top + value(EdgeSide.bottom),
@@ -935,13 +1014,14 @@ class WindowLayers {
     );
   }
 
-  /// Габарит заготовки всего окна по ПРЯМОУГОЛЬНИКУ изделия.
+  /// Габарит заготовки всего окна.
   ///
   /// Для прямоугольного окна это ровно прежняя формула «габарит минус
   /// окантовка (плюс запайка) по сторонам»; для трапеции и окна с разными
-  /// высотами сторон заготовка тоже считается прямоугольником по габариту —
-  /// никакой площади по полигону (см. [filmCutAreaM2]).
+  /// высотами сторон — габарит косой заготовки ([blankGeometry]), а площадь
+  /// считается по её контуру, а не по этому прямоугольнику.
   Rect get blankRect {
+    if (!isTShape) return boundsOf(blankCorners);
     final bounds = geometry.productBounds;
     return _blankRect(bounds, const <EdgeSide>{});
   }
@@ -970,15 +1050,16 @@ class WindowLayers {
 
   /// Контуры заготовки полотна.
   ///
-  /// У обычного окна — один прямоугольник (и для трапеции: заготовка кроится
-  /// прямоугольником по габариту). У Т-окна сваренные пристройки объединены
+  /// У обычного окна — контур фактической формы: прямоугольник у
+  /// прямоугольного окна и косой четырёхугольник у трапеции или окна с
+  /// разными высотами сторон. У Т-окна сваренные пристройки объединены
   /// с основным полотном в общий контур, а пристройки без спайки — отдельные
   /// прямоугольники.
   late final List<List<Offset>> filmPolygons = _buildFilmPolygons();
 
   List<List<Offset>> _buildFilmPolygons() {
     final t = tLayout;
-    if (t == null) return [_rectPolygon(blankRect)];
+    if (t == null) return [List<Offset>.of(blankCorners)];
     final welded = t.weldedAnnexes;
     final polygons = <List<Offset>>[];
     final mainBlank = partBlankRects.first;
@@ -989,9 +1070,7 @@ class WindowLayers {
         mainBlank,
         for (final annex in welded) partBlankRects[annex.number],
       ], start: Offset(mainBlank.left, mainBlank.top));
-      polygons.add(
-        merged.length >= 3 ? merged : _rectPolygon(mainBlank),
-      );
+      polygons.add(merged.length >= 3 ? merged : _rectPolygon(mainBlank));
     }
     for (final annex in t.separateAnnexes) {
       polygons.add(_rectPolygon(partBlankRects[annex.number]));
@@ -1048,8 +1127,9 @@ class WindowLayers {
   /// Линия подворота (сгиба) скрина: готовый контур изделия.
   ///
   /// У ПВХ подворота нет — список пуст. У Т-окна — по группам частей.
-  late final List<List<Offset>> screenHemPolygons =
-      isScreen ? groupPolygons : const [];
+  late final List<List<Offset>> screenHemPolygons = isScreen
+      ? groupPolygons
+      : const [];
 
   /// Линия шва [screenSeamMm] внутри подворота скрина.
   late final List<List<Offset>> screenSeamPolygons = [
@@ -1834,12 +1914,65 @@ class WindowSpec {
 
   /// Площадь ЗАГОТОВКИ ПОЛОТНА (с напайкой/подворотом, без припуска), м².
   ///
-  /// Считается как прямоугольник (прямоугольники частей у Т-окна), а не по
-  /// площади полигона: для трапеции и окна с разными высотами сторон
-  /// заготовка кроится прямоугольником по габариту, поэтому в расход идёт
-  /// именно прямоугольная площадь. Для денег берётся заготовка
+  /// Считается по формуле Гаусса для фактического контура заготовки
+  /// ([WindowLayers.blankGeometry]): у косого окна это трапеция, а не
+  /// прямоугольник по габариту. Для денег берётся заготовка
   /// ([filmCutAreaWithShrinkageM2]) — она же плюс припуск и усадка.
   double get filmAreaM2 => layers.filmAreaM2;
+
+  /// Стороны заготовки по обходу: низ, право, верх, лево (мм).
+  ///
+  /// Номинальные значения по формуле заказчика:
+  /// `сторона изделия − 2 × (готовая полоса) + 2 × запайка`.
+  List<double> get blankSideLengths => layers.blankSideLengths;
+
+  /// Стороны заготовки К РАСКРОЮ с припуском и усадкой, мм.
+  ///
+  /// Порядок прежний: низ, право, верх, лево. Ширины (низ/верх) растянуты на
+  /// припуск по ширине, высоты (право/лево) — на припуск по высоте; усадка
+  /// умножает обе оси. Для прямоугольного окна это ровно прежние
+  /// `[ширина, высота, ширина, высота]`.
+  List<double> get filmCutSideLengths {
+    final blank = layers.blankGeometry;
+    final bounds = layers.filmCutBounds;
+    final targetWidth = filmCutWidth + params.allowanceWidthMm;
+    final targetHeight = bounds.height + params.effectiveAllowanceHeightMm;
+    final sx = bounds.width > 1e-9 ? targetWidth / bounds.width : 1.0;
+    final sy = bounds.height > 1e-9 ? targetHeight / bounds.height : 1.0;
+    final shrink = 1 + params.effectiveShrinkagePercent / 100;
+    final fx = sx.isFinite && sx > 0.05 ? sx : 1.0;
+    final fy = sy.isFinite && sy > 0.05 ? sy : 1.0;
+    return [
+      blank.bottomWidth * fx * shrink,
+      blank.rightHeight * fy * shrink,
+      blank.topWidth * fx * shrink,
+      blank.leftHeight * fy * shrink,
+    ];
+  }
+
+  /// Заготовка косой формы: стороны низа/верха или высоты слева/справа
+  /// отличаются. Прямоугольное окно по-прежнему кроится прямоугольником.
+  bool get isObliqueBlank =>
+      !isTShape &&
+      ((params.bottomWidth - params.topWidth).abs() > 0.5 ||
+          (params.leftHeight - params.rightHeight).abs() > 0.5);
+
+  /// Подпись сторон заготовки: «низ 2 990, право 2 740, верх 2 990,
+  /// лево 2 080 мм».
+  String get blankSidesLabel {
+    final sides = blankSideLengths;
+    return 'низ ${formatMm(sides[0])}, право ${formatMm(sides[1])}, '
+        'верх ${formatMm(sides[2])}, лево ${formatMm(sides[3])} '
+        '${unitSuffix()}';
+  }
+
+  /// Подпись сторон заготовки К РАСКРОЮ (с припуском и усадкой).
+  String get filmCutSidesLabel {
+    final sides = filmCutSideLengths;
+    return 'низ ${formatMm(sides[0])}, право ${formatMm(sides[1])}, '
+        'верх ${formatMm(sides[2])}, лево ${formatMm(sides[3])} '
+        '${unitSuffix()}';
+  }
 
   /// Видимый размер плёнки (по внутренней границе окантовки).
   double get filmVisibleWidth => layers.filmVisibleBounds.width;
@@ -2003,14 +2136,13 @@ class WindowSpec {
   /// Контур заготовки к раскрою: [WindowLayers.filmEdge], растянутый на
   /// припуск на раскрой.
   ///
-  /// Заготовка ВСЕГДА прямоугольная: у обычного окна (в том числе у трапеции
-  /// и у окна с разными высотами сторон) — один прямоугольник по габариту,
-  /// у Т-окна — прямоугольники частей (сваренные объединены в общий контур).
-  /// Припуск по ширине и высоте — прибавка к габариту, поэтому контур
-  /// растягивается относительно центра своего габарита: ширина становится
+  /// Форма сохраняется: у прямоугольного окна это прямоугольник, у трапеции
+  /// и окна с разными высотами — косой четырёхугольник, у Т-окна —
+  /// прямоугольники частей (сваренные объединены в общий контур). Припуск по
+  /// ширине и высоте — прибавка к габариту, поэтому контур растягивается
+  /// относительно центра своего габарита: ширина становится
   /// `filmCutWidth + allowanceWidthMm`, высота —
-  /// `filmCutHeight + effectiveAllowanceHeightMm`, то есть ровно
-  /// `filmCutWidthWithAllowance × filmCutHeightWithAllowance` у обычного окна.
+  /// `filmCutHeight + effectiveAllowanceHeightMm`.
   ///
   /// Полоса молнии уже учтена в [filmCutWidth]: до припуска контур сжимается
   /// по ширине на [zipperBandTotalMm] (у ПВХ и у скрина одинаково).
@@ -2073,11 +2205,9 @@ class WindowSpec {
 
   /// Площадь ЗАГОТОВКИ к раскрою: припуск, без усадки, минус вырезы, м².
   ///
-  /// Считается по площади прямоугольников [filmCutPolygons]: ширина
-  /// заготовки × высота заготовки — как у прямоугольного окна. Никакой
-  /// площади по полигону трапеции нет: косое окно кроится прямоугольником,
-  /// и «пустые» углы честно входят в расход. У Т-окна складываются площади
-  /// прямоугольных заготовок частей.
+  /// Считается по формуле Гаусса для контуров [filmCutPolygons]: у косого
+  /// окна площадь трапеции, а не габаритного прямоугольника. У Т-окна
+  /// складываются площади заготовок частей.
   double get filmCutAreaM2 {
     var area = 0.0;
     for (final polygon in filmCutPolygons) {
@@ -2086,12 +2216,12 @@ class WindowSpec {
     return math.max(area - layers.cutoutAreaMm2, 0) / 1000000;
   }
 
-  /// Площадь заготовки-прямоугольника к раскрою С учётом усадки, м².
+  /// Площадь заготовки к раскрою С учётом усадки, м².
   ///
   /// Контуры заготовки растягиваются в `1 + s/100` раз по обеим осям, поэтому
-  /// площадь растёт в `(1 + s/100)²`. Для Т-окна без спайки складываются
-  /// площади двух растянутых заготовок. Именно эта площадь идёт в расход,
-  /// смету и ведомость.
+  /// площадь растёт в `(1 + s/100)²`, а форма остаётся косой. Для Т-окна без
+  /// спайки складываются площади двух растянутых заготовок. Именно эта
+  /// площадь идёт в расход, смету и ведомость.
   double get filmCutAreaWithShrinkageM2 {
     var area = 0.0;
     for (final polygon in filmCutPolygonsWithShrinkage) {
@@ -2643,15 +2773,9 @@ List<ParamIssue> validateParams(WindowParams params) {
     final annexes = params.tAnnexes;
     for (var index = 0; index < annexes.length; index++) {
       final annex = annexes[index];
-      final widthField = index == 0
-          ? ParamField.tWidth
-          : ParamField.t2Width;
-      final heightField = index == 0
-          ? ParamField.tHeight
-          : ParamField.t2Height;
-      final offsetField = index == 0
-          ? ParamField.tOffset
-          : ParamField.t2Offset;
+      final widthField = index == 0 ? ParamField.tWidth : ParamField.t2Width;
+      final heightField = index == 0 ? ParamField.tHeight : ParamField.t2Height;
+      final offsetField = index == 0 ? ParamField.tOffset : ParamField.t2Offset;
       checkPositive(widthField, annex.width);
       checkPositive(heightField, annex.height);
       if (!annex.offset.isFinite || annex.offset < 0) {

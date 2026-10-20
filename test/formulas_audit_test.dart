@@ -19,7 +19,8 @@ import 'package:soft_window_drawer/models/price_list.dart';
 import 'package:soft_window_drawer/models/window_geometry.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/costs_summary.dart';
-import 'package:soft_window_drawer/services/estimate.dart' show Estimate, roundMoney;
+import 'package:soft_window_drawer/services/estimate.dart'
+    show Estimate, roundMoney;
 import 'package:soft_window_drawer/services/roll_plan.dart';
 
 /// Сравнение чисел аудита: миллиметры, м², рубли. Ожидание — литерал.
@@ -90,35 +91,51 @@ void _filamentBlankAudit() {
 
     test('тот же пример с припуском +100/+100, авто +10 мм к высоте и '
         'усадкой 1,5 % → 2020 × 2040 → 2050,3 × 2070,6', () {
-      final params = const WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 2000,
-        rightHeight: 2000,
-        rollBottom: 100,
-        rollRight: 100,
-        rollLeft: 100,
-        rollTop: 80,
-        weldOverlapMm: 10,
-      ).copyWith(
-        allowanceWidthMm: 100,
-        allowanceHeightMm: 100,
-        // Усадка по умолчанию выключена — включаем явно.
-        shrinkageEnabled: true,
-        shrinkagePercent: defaultShrinkagePercent,
-      );
+      final params =
+          const WindowParams(
+            bottomWidth: 2000,
+            topWidth: 2000,
+            leftHeight: 2000,
+            rightHeight: 2000,
+            rollBottom: 100,
+            rollRight: 100,
+            rollLeft: 100,
+            rollTop: 80,
+            weldOverlapMm: 10,
+          ).copyWith(
+            allowanceWidthMm: 100,
+            allowanceHeightMm: 100,
+            // Усадка по умолчанию выключена — включаем явно.
+            shrinkageEnabled: true,
+            shrinkagePercent: defaultShrinkagePercent,
+          );
       final spec = WindowSpec.of(params);
 
       // Вручную: ширина 1920 + 100 = 2020;
       // высота 1930 + 100 (ручной) + 10 (авто ПВХ) = 2040.
-      expectClose(spec.filmCutWidthWithAllowance, 2020, 'заготовка с припуском');
-      expectClose(spec.filmCutHeightWithAllowance, 2040,
-          'заготовка с припуском и авто +10');
+      expectClose(
+        spec.filmCutWidthWithAllowance,
+        2020,
+        'заготовка с припуском',
+      );
+      expectClose(
+        spec.filmCutHeightWithAllowance,
+        2040,
+        'заготовка с припуском и авто +10',
+      );
       // Вручную: 2020 × 1,015 = 2050,3; 2040 × 1,015 = 2070,6.
-      expectClose(spec.filmCutWidthWithShrinkage, 2050.3, 'ширина с усадкой',
-          tol: 1e-9);
-      expectClose(spec.filmCutHeightWithShrinkage, 2070.6, 'высота с усадкой',
-          tol: 1e-9);
+      expectClose(
+        spec.filmCutWidthWithShrinkage,
+        2050.3,
+        'ширина с усадкой',
+        tol: 1e-9,
+      );
+      expectClose(
+        spec.filmCutHeightWithShrinkage,
+        2070.6,
+        'высота с усадкой',
+        tol: 1e-9,
+      );
       // Площадь заготовки без усадки: 2020 × 2040 = 4 120 800 мм² = 4,1208 м².
       expectClose(spec.filmCutAreaM2, 4.1208, 'площадь заготовки 4,1208 м²');
     });
@@ -140,22 +157,23 @@ void _filamentBlankAudit() {
 
     test('площадь с усадкой считается из линейных размеров: '
         '2050,3 × 2070,6 = 4,245351 м²', () {
-      final params = const WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 2000,
-        rightHeight: 2000,
-        rollBottom: 100,
-        rollRight: 100,
-        rollLeft: 100,
-        rollTop: 80,
-        weldOverlapMm: 10,
-      ).copyWith(
-        allowanceWidthMm: 100,
-        allowanceHeightMm: 100,
-        shrinkageEnabled: true,
-        shrinkagePercent: defaultShrinkagePercent,
-      );
+      final params =
+          const WindowParams(
+            bottomWidth: 2000,
+            topWidth: 2000,
+            leftHeight: 2000,
+            rightHeight: 2000,
+            rollBottom: 100,
+            rollRight: 100,
+            rollLeft: 100,
+            rollTop: 80,
+            weldOverlapMm: 10,
+          ).copyWith(
+            allowanceWidthMm: 100,
+            allowanceHeightMm: 100,
+            shrinkageEnabled: true,
+            shrinkagePercent: defaultShrinkagePercent,
+          );
       final spec = WindowSpec.of(params);
 
       // Вручную: 2050,3 × 2070,6 = 4 245 351,18 мм² = 4,245351 м². Усадка
@@ -181,8 +199,7 @@ void _filamentBlankAudit() {
 // 2. Скрин: размер заготовки
 // ---------------------------------------------------------------------------
 void _screenBlankAudit() {
-  group('2. Скрин: заготовка = готовый размер + среднее подворотов + 20 мм',
-      () {
+  group('2. Скрин: заготовка = готовый размер + среднее подворотов + 20 мм', () {
     for (final hem in <double>[40, 50, 60]) {
       final expected = 2000 + hem + 20;
       test('подворот ${hem.toStringAsFixed(0)} на все стороны → '
@@ -205,14 +222,23 @@ void _screenBlankAudit() {
         expectClose(spec.filmCutHeight, expected, 'заготовка по высоте');
         // Шов 3 мм на сторону не входит в габарит заготовки, усадки у скрина
         // нет: с «усадкой» те же размеры.
-        expectClose(spec.filmCutWidthWithShrinkage, expected,
-            'у скрина усадки нет');
-        expectClose(spec.filmCutHeightWithShrinkage, expected,
-            'у скрина усадки нет');
+        expectClose(
+          spec.filmCutWidthWithShrinkage,
+          expected,
+          'у скрина усадки нет',
+        );
+        expectClose(
+          spec.filmCutHeightWithShrinkage,
+          expected,
+          'у скрина усадки нет',
+        );
         // Видимый размер скрина — готовый контур изделия.
         expectClose(spec.filmVisibleWidth, 2000, 'видимый размер 2000');
-        expect(params.hasUniformHem, isTrue,
-            reason: 'подворот одинаков со всех сторон');
+        expect(
+          params.hasUniformHem,
+          isTrue,
+          reason: 'подворот одинаков со всех сторон',
+        );
       });
     }
 
@@ -236,15 +262,27 @@ void _screenBlankAudit() {
       // высота = 2000 + (40 + 60) / 2 + 20 = 2000 + 70 = 2070.
       expectClose(spec.filmCutWidth, 2065, 'ширина 2065');
       expectClose(spec.filmCutHeight, 2070, 'высота 2070');
-      expectClose(params.hemAxisLeftRightIncrease, 65,
-          'ширина: (40 + 50) / 2 + 20 = 65');
-      expectClose(params.hemAxisBottomTopIncrease, 70,
-          'высота: (40 + 60) / 2 + 20 = 70');
+      expectClose(
+        params.hemAxisLeftRightIncrease,
+        65,
+        'ширина: (40 + 50) / 2 + 20 = 65',
+      );
+      expectClose(
+        params.hemAxisBottomTopIncrease,
+        70,
+        'высота: (40 + 60) / 2 + 20 = 70',
+      );
       expect(params.hasUniformHem, isFalse, reason: 'подвороты разные');
-      expectClose(spec.filmCutWidthWithShrinkage, 2065,
-          'у скрина усадки нет (ширина)');
-      expectClose(spec.filmCutHeightWithShrinkage, 2070,
-          'у скрина усадки нет (высота)');
+      expectClose(
+        spec.filmCutWidthWithShrinkage,
+        2065,
+        'у скрина усадки нет (ширина)',
+      );
+      expectClose(
+        spec.filmCutHeightWithShrinkage,
+        2070,
+        'у скрина усадки нет (высота)',
+      );
     });
   });
 }
@@ -259,33 +297,53 @@ void _edgeConsumptionAudit() {
 
       // Вручную: 2 × (2000 + 2500) = 9000.
       expectClose(spec.geometry.perimeter, 9000, 'периметр 9000');
-      expect(spec.geometry.sideLengths, [2000.0, 2500.0, 2000.0, 2500.0],
-          reason: 'стороны: низ, право, верх, лево');
-      expectClose(spec.edgeConsumption[100.0]!, 9000, 'весь периметр в рулон 100');
-      expect(spec.edgeConsumption.length, 1, reason: 'одна ширина рулона — 100');
+      expect(spec.geometry.sideLengths, [
+        2000.0,
+        2500.0,
+        2000.0,
+        2500.0,
+      ], reason: 'стороны: низ, право, верх, лево');
+      expectClose(
+        spec.edgeConsumption[100.0]!,
+        9000,
+        'весь периметр в рулон 100',
+      );
+      expect(
+        spec.edgeConsumption.length,
+        1,
+        reason: 'одна ширина рулона — 100',
+      );
     });
 
     test('спайка правой стороны убирает 2500: 9000 − 2500 = 6500', () {
-      final params =
-          _rect2000x2500.copyWith(weldedSides: const [EdgeSide.right]);
+      final params = _rect2000x2500.copyWith(
+        weldedSides: const [EdgeSide.right],
+      );
       final spec = WindowSpec.of(params);
 
       // Вручную: правая сторона = 2500, окантовка на ней не ставится:
       // 9000 − 2500 = 6500. (В задании указано 7500 = 9000 − 1500; для
       // прямоугольника 2000 × 2500 ни одна сторона не равна 1500, поэтому
       // 7500 не соответствует ни одному варианту спайки.)
-      expectClose(spec.edgeConsumption[100.0]!, 6500,
-          'низ 2000 + верх 2000 + лево 2500 = 6500');
+      expectClose(
+        spec.edgeConsumption[100.0]!,
+        6500,
+        'низ 2000 + верх 2000 + лево 2500 = 6500',
+      );
       expectClose(spec.layers.weldLengthMm, 2500, 'длина спайки 2500');
     });
 
     test('спайка низа убирает 2000: 9000 − 2000 = 7000', () {
-      final params =
-          _rect2000x2500.copyWith(weldedSides: const [EdgeSide.bottom]);
+      final params = _rect2000x2500.copyWith(
+        weldedSides: const [EdgeSide.bottom],
+      );
       final spec = WindowSpec.of(params);
 
-      expectClose(spec.edgeConsumption[100.0]!, 7000,
-          'право 2500 + верх 2000 + лево 2500 = 7000');
+      expectClose(
+        spec.edgeConsumption[100.0]!,
+        7000,
+        'право 2500 + верх 2000 + лево 2500 = 7000',
+      );
     });
 
     test('вырез 300 × 300 добавляет контур 1200: 9000 + 1200 = 10200', () {
@@ -313,10 +371,16 @@ void _edgeConsumptionAudit() {
       final spec = WindowSpec.of(params);
 
       // Вручную: π × 300 = 942,4777961.
-      expectClose(spec.layers.cutoutPerimeterMm, math.pi * 300,
-          'контур круга π×300');
-      expectClose(spec.edgeConsumption[100.0]!, 9000 + math.pi * 300,
-          '9000 + π×300');
+      expectClose(
+        spec.layers.cutoutPerimeterMm,
+        math.pi * 300,
+        'контур круга π×300',
+      );
+      expectClose(
+        spec.edgeConsumption[100.0]!,
+        9000 + math.pi * 300,
+        '9000 + π×300',
+      );
     });
 
     test('вырез на спаянном низу всё равно идёт в рулон низа', () {
@@ -328,8 +392,11 @@ void _edgeConsumptionAudit() {
 
       // Вручную: стороны без низа = 2500 + 2000 + 2500 = 7000; контур выреза
       // относится к нижнему рулону (rolls[0]) = 100 → 7000 + 1200 = 8200.
-      expectClose(spec.edgeConsumption[100.0]!, 8200,
-          'низ спаян, но контур выреза по-прежнему в рулоне низа');
+      expectClose(
+        spec.edgeConsumption[100.0]!,
+        8200,
+        'низ спаян, но контур выреза по-прежнему в рулоне низа',
+      );
     });
   });
 }
@@ -351,11 +418,18 @@ void _eyeletAudit() {
       // право/лево: ceil(1450 / 300) = 5 интервалов, шаг 1450 / 5 = 290.
       // Уникальных люверсов = 7 + 5 + 7 + 5 = 24 (углы не дублируются).
       expect(layers.eyeletCount, 24, reason: '7+5+7+5 = 24 без дублей углов');
-      expect(layers.eyeletSteps.length, 4, reason: 'по одной записи на сторону');
+      expect(
+        layers.eyeletSteps.length,
+        4,
+        reason: 'по одной записи на сторону',
+      );
 
       for (final step in layers.eyeletSteps) {
-        expect(step, inInclusiveRange(250, 400),
-            reason: 'фактический шаг $step должен быть в 250…400 мм');
+        expect(
+          step,
+          inInclusiveRange(250, 400),
+          reason: 'фактический шаг $step должен быть в 250…400 мм',
+        );
       }
       final sorted = [...layers.eyeletSteps]..sort();
       expectClose(sorted[0], 1950 / 7, 'шаг низа/верха 1950/7');
@@ -386,9 +460,12 @@ void _eyeletAudit() {
       final left = layers.eyelets
           .where((eyelet) => eyelet.side == WindowSide.left)
           .toList();
-      final rightLowest =
-          right.reduce((a, b) => a.center.dy < b.center.dy ? a : b);
-      final leftLowest = left.reduce((a, b) => a.center.dy < b.center.dy ? a : b);
+      final rightLowest = right.reduce(
+        (a, b) => a.center.dy < b.center.dy ? a : b,
+      );
+      final leftLowest = left.reduce(
+        (a, b) => a.center.dy < b.center.dy ? a : b,
+      );
       expectClose(rightLowest.center.dy, 75, 'боковой люверс поднят до 75');
       expectClose(leftLowest.center.dy, 75, 'боковой люверс поднят до 75');
     });
@@ -410,8 +487,11 @@ void _areaAudit() {
       // 1950 × 1460 = 2 847 000 мм² = 2,847 м².
       expectClose(spec.filmCutAreaM2, 2.847, 'заготовка с авто +10 = 2,847 м²');
       // Справочная площадь полотна — без припуска: 1950 × 1450 = 2,8275 м².
-      expectClose(spec.filmAreaM2, 2.8275,
-          'справочная площадь полотна 2,8275 м²');
+      expectClose(
+        spec.filmAreaM2,
+        2.8275,
+        'справочная площадь полотна 2,8275 м²',
+      );
     });
 
     test('припуск +100/+100: заготовка 2050 × 1560 = 3,198 м²', () {
@@ -424,119 +504,154 @@ void _areaAudit() {
       // Вручную: 2050 × (1550 + 10 авто) = 2050 × 1560 = 3 198 000 мм² =
       // 3,198 м².
       expectClose(spec.filmCutWidthWithAllowance, 2050, 'ширина с припуском');
-      expectClose(spec.filmCutHeightWithAllowance, 1560,
-          'высота с припуском и авто +10');
+      expectClose(
+        spec.filmCutHeightWithAllowance,
+        1560,
+        'высота с припуском и авто +10',
+      );
       expectClose(spec.filmCutAreaM2, 3.198, 'площадь с припуском 3,198 м²');
     });
 
-    test('скрин 2000 × 2000, подворот 40: заготовка 2060 × 2060 = 4,2436 м²',
-        () {
-      const params = WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 2000,
-        rightHeight: 2000,
-        material: FilmMaterial.screen,
-        hemBottomMm: 40,
-        hemRightMm: 40,
-        hemTopMm: 40,
-        hemLeftMm: 40,
-      );
-      final spec = WindowSpec.of(params);
+    test(
+      'скрин 2000 × 2000, подворот 40: заготовка 2060 × 2060 = 4,2436 м²',
+      () {
+        const params = WindowParams(
+          bottomWidth: 2000,
+          topWidth: 2000,
+          leftHeight: 2000,
+          rightHeight: 2000,
+          material: FilmMaterial.screen,
+          hemBottomMm: 40,
+          hemRightMm: 40,
+          hemTopMm: 40,
+          hemLeftMm: 40,
+        );
+        final spec = WindowSpec.of(params);
 
-      // Вручную: 2060 × 2060 = 4 243 600 мм² = 4,2436 м².
-      expectClose(spec.filmCutAreaM2, 4.2436, 'площадь заготовки скрина');
-    });
+        // Вручную: 2060 × 2060 = 4 243 600 мм² = 4,2436 м².
+        expectClose(spec.filmCutAreaM2, 4.2436, 'площадь заготовки скрина');
+      },
+    );
 
-    test('вырезы: прямоугольник 300 × 300 = 0,09 м², круг Ø300 = 0,070686 м²',
-        () {
-      final params = _rect2000x1500.copyWith(
-        cutouts: const [
-          Cutout(
-            shape: CutoutShape.rect,
-            width: 300,
-            height: 300,
-            centerXMm: 500,
-            centerYMm: 400,
-          ),
-          Cutout(
-            shape: CutoutShape.circle,
-            width: 300,
-            height: 300,
-            centerXMm: 1500,
-            centerYMm: 400,
-          ),
-        ],
-      );
-      final spec = WindowSpec.of(params);
+    test(
+      'вырезы: прямоугольник 300 × 300 = 0,09 м², круг Ø300 = 0,070686 м²',
+      () {
+        final params = _rect2000x1500.copyWith(
+          cutouts: const [
+            Cutout(
+              shape: CutoutShape.rect,
+              width: 300,
+              height: 300,
+              centerXMm: 500,
+              centerYMm: 400,
+            ),
+            Cutout(
+              shape: CutoutShape.circle,
+              width: 300,
+              height: 300,
+              centerXMm: 1500,
+              centerYMm: 400,
+            ),
+          ],
+        );
+        final spec = WindowSpec.of(params);
 
-      // Вручную: прямоугольник 300 × 300 = 90 000 мм²; круг π×300²/4 =
-      // 70 685,8347 мм²; сумма 160 685,8347 мм².
-      expectClose(spec.layers.cutoutAreaMm2, 90000 + math.pi * 300 * 300 / 4,
-          'суммарная площадь вырезов');
-      // Площадь плёнки в ведомости = площадь заготовки минус вырезы:
-      // 1950 × 1460 − 160 685,8347 = 2 686 314,1653 мм² = 2,686314 м².
-      expectClose(
-        spec.filmCutAreaM2,
-        (1950 * 1460 - 90000 - math.pi * 300 * 300 / 4) / 1000000,
-        'ведомость: заготовка минус вырезы',
-      );
-      // То же число отдаёт сводка расхода (ведомость заказа).
-      final summary = CostsSummary(OrderProject(windows: [params]));
-      expectClose(summary.filmAreaM2, spec.filmCutAreaM2,
-          'площадь плёнки в ведомости = площадь заготовки минус вырезы');
-    });
+        // Вручную: прямоугольник 300 × 300 = 90 000 мм²; круг π×300²/4 =
+        // 70 685,8347 мм²; сумма 160 685,8347 мм².
+        expectClose(
+          spec.layers.cutoutAreaMm2,
+          90000 + math.pi * 300 * 300 / 4,
+          'суммарная площадь вырезов',
+        );
+        // Площадь плёнки в ведомости = площадь заготовки минус вырезы:
+        // 1950 × 1460 − 160 685,8347 = 2 686 314,1653 мм² = 2,686314 м².
+        expectClose(
+          spec.filmCutAreaM2,
+          (1950 * 1460 - 90000 - math.pi * 300 * 300 / 4) / 1000000,
+          'ведомость: заготовка минус вырезы',
+        );
+        // То же число отдаёт сводка расхода (ведомость заказа).
+        final summary = CostsSummary(OrderProject(windows: [params]));
+        expectClose(
+          summary.filmAreaM2,
+          spec.filmCutAreaM2,
+          'площадь плёнки в ведомости = площадь заготовки минус вырезы',
+        );
+      },
+    );
 
     test('смета берёт площадь заготовки С усадкой (расход и деньги)', () {
-      final params = const WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 2000,
-        rightHeight: 2000,
-        rollBottom: 100,
-        rollRight: 100,
-        rollLeft: 100,
-        rollTop: 80,
-        weldOverlapMm: 10,
-      ).copyWith(
-        allowanceWidthMm: 100,
-        allowanceHeightMm: 100,
-        shrinkageEnabled: true,
-        shrinkagePercent: defaultShrinkagePercent,
-      );
+      final params =
+          const WindowParams(
+            bottomWidth: 2000,
+            topWidth: 2000,
+            leftHeight: 2000,
+            rightHeight: 2000,
+            rollBottom: 100,
+            rollRight: 100,
+            rollLeft: 100,
+            rollTop: 80,
+            weldOverlapMm: 10,
+          ).copyWith(
+            allowanceWidthMm: 100,
+            allowanceHeightMm: 100,
+            shrinkageEnabled: true,
+            shrinkagePercent: defaultShrinkagePercent,
+          );
       final spec = WindowSpec.of(params);
       final summary = CostsSummary(OrderProject(windows: [params]));
       final estimate = Estimate.ofWindow(params, PriceList.defaults());
 
       // Вручную: заготовка 2020 × 2040 (высота включает авто +10 мм ПВХ),
       // плёнка кроится 2050,3 × 2070,6 мм = 4,24535118 м².
-      expectClose(spec.filmCutAreaWithShrinkageM2, 4.24535118,
-          'фактическая площадь заготовки с усадкой', tol: 1e-9);
+      expectClose(
+        spec.filmCutAreaWithShrinkageM2,
+        4.24535118,
+        'фактическая площадь заготовки с усадкой',
+        tol: 1e-9,
+      );
       // Сводка расхода отдаёт именно её — и в итог, и по материалам.
-      expectClose(summary.filmAreaWithShrinkageM2, 4.24535118,
-          'ведомость: заготовка с усадкой', tol: 1e-9);
-      expectClose(summary.filmAreaByMaterialWithShrinkage[FilmMaterial.clearPvc]!,
-          4.24535118, 'ведомость: заготовка с усадкой по материалу',
-          tol: 1e-9);
+      expectClose(
+        summary.filmAreaWithShrinkageM2,
+        4.24535118,
+        'ведомость: заготовка с усадкой',
+        tol: 1e-9,
+      );
+      expectClose(
+        summary.filmAreaByMaterialWithShrinkage[FilmMaterial.clearPvc]!,
+        4.24535118,
+        'ведомость: заготовка с усадкой по материалу',
+        tol: 1e-9,
+      );
       // Габарит без усадки остаётся справочным числом: 2020 × 2040 = 4,1208 м².
       expectClose(summary.filmAreaM2, 4.1208, 'габарит без усадки 4,1208 м²');
 
       // Смета: позиция плёнки — площадь с усадкой, 4,24535118 × 950 =
       // 4033,0836 → 4033,08 ₽; раскрой 4,24535118 × 250 = 1061,3378 → 1061,34.
-      final film = estimate.lines
-          .firstWhere((line) => line.title.startsWith('Полотно'));
-      expectClose(film.quantity, 4.24535118, 'плёнка в смете с усадкой',
-          tol: 1e-9);
+      final film = estimate.lines.firstWhere(
+        (line) => line.title.startsWith('Полотно'),
+      );
+      expectClose(
+        film.quantity,
+        4.24535118,
+        'плёнка в смете с усадкой',
+        tol: 1e-9,
+      );
       expectClose(film.amount, 4033.08, '4,24535118 × 950');
-      final cutting = estimate.lines
-          .firstWhere((line) => line.title.startsWith('Раскрой'));
-      expectClose(cutting.quantity, 4.24535118,
-          'раскрой по площади с усадкой', tol: 1e-9);
+      final cutting = estimate.lines.firstWhere(
+        (line) => line.title.startsWith('Раскрой'),
+      );
+      expectClose(
+        cutting.quantity,
+        4.24535118,
+        'раскрой по площади с усадкой',
+        tol: 1e-9,
+      );
       expectClose(cutting.amount, 1061.34, '4,24535118 × 250');
       expectClose(estimate.filmAreaM2, 4.24535118, 'площадь плёнки в смете');
     });
 
-    test('трапеция: площадь заготовки — прямоугольник по габариту', () {
+    test('трапеция: площадь заготовки — по контуру косой формы', () {
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 1000,
@@ -546,38 +661,40 @@ void _areaAudit() {
       );
       final spec = WindowSpec.of(params);
 
-      // Ручной расчёт по правилу «как прямоугольник». Габарит изделия
-      // 2000 × 1000; вычет с каждой стороны — окантовка 50 минус запайка 25,
-      // то есть 25 мм. Заготовка: 1950 × 950 = 1,8525 м².
+      // Ручной расчёт по формуле заказчика. Стороны заготовки:
+      // низ 2000 − 50 = 1950, верх 1000 − 50 = 950, высоты 1000 − 50 = 950.
+      // Площадь трапеции: (1950 + 950) / 2 × 950 = 1,3775 м².
       expectClose(spec.filmCutWidth, 1950, 'ширина заготовки 1950');
       expectClose(spec.filmCutHeight, 950, 'высота заготовки 950');
-      expectClose(spec.filmAreaM2, 1.8525, 'площадь полотна 1,8525',
-          tol: 1e-9);
-      // К раскрою: авто-припуск +10 мм к высоте → 1950 × 960 = 1,872 м².
+      expectClose(spec.filmAreaM2, 1.3775, 'площадь полотна 1,3775', tol: 1e-9);
+      // К раскрою: авто-припуск +10 мм к высоте — высоты 960,
+      // площадь (1950 + 950) / 2 × 960 = 1,392 м².
       expectClose(
         spec.filmCutAreaM2,
-        1.872,
-        'площадь заготовки-прямоугольника 1,872 м²',
+        1.392,
+        'площадь заготовки по контуру 1,392 м²',
         tol: 1e-9,
       );
-      // Она равна прямоугольнику, а не площади полигона трапеции.
-      expectClose(
+      // Площадь МЕНЬШЕ габаритного прямоугольника: пустые углы не в расходе.
+      expect(
         spec.filmCutAreaM2,
-        spec.filmCutWidthWithAllowance *
-            spec.filmCutHeightWithAllowance /
-            1000000,
-        'заготовка = ширина × высота',
-        tol: 1e-9,
+        lessThan(
+          spec.filmCutWidthWithAllowance *
+              spec.filmCutHeightWithAllowance /
+              1000000,
+        ),
       );
       expect(spec.filmCutPolygon, hasLength(4));
-      // У прямоугольника все четыре стороны попарно равны.
-      expectClose(spec.filmCutPolygon[0].dx, 25, 'левый край заготовки',
-          tol: 1e-9);
-      expectClose(spec.filmCutPolygon[2].dx, 1975, 'правый край заготовки',
-          tol: 1e-9);
+      // Верх уже низа: это трапеция, а не прямоугольник.
+      final bounds = boundsOf(spec.filmCutPolygon);
+      expectClose(bounds.left, 25, 'левый край заготовки', tol: 1e-9);
+      expectClose(bounds.right, 1975, 'правый край заготовки', tol: 1e-9);
+      final top = (spec.filmCutPolygon[3] - spec.filmCutPolygon[2]).distance;
+      final bottom = (spec.filmCutPolygon[1] - spec.filmCutPolygon[0]).distance;
+      expect(top, lessThan(bottom));
     });
 
-    test('трапеция: смета считает площадь по прямоугольнику', () {
+    test('трапеция: смета считает площадь по контуру', () {
       // Та же трапеция 2000/1000 × 1000 мм с запайкой 25 мм.
       const params = WindowParams(
         bottomWidth: 2000,
@@ -587,17 +704,19 @@ void _areaAudit() {
         weldOverlapMm: 25,
       );
       final estimate = Estimate.ofWindow(params, PriceList.defaults());
-      final film = estimate.lines
-          .firstWhere((line) => line.title.startsWith('Полотно'));
-      final cutting = estimate.lines
-          .firstWhere((line) => line.title.startsWith('Раскрой'));
+      final film = estimate.lines.firstWhere(
+        (line) => line.title.startsWith('Полотно'),
+      );
+      final cutting = estimate.lines.firstWhere(
+        (line) => line.title.startsWith('Раскрой'),
+      );
 
-      // Площадь прямоугольной заготовки: 1,872 м².
-      expectClose(film.quantity, 1.872, 'плёнка в смете', tol: 1e-9);
-      expectClose(film.amount, 1778.40, '1,872 × 950');
-      expectClose(cutting.quantity, 1.872, 'раскрой в смете', tol: 1e-9);
-      expectClose(cutting.amount, 468.00, '1,872 × 250');
-      expectClose(estimate.total, 6887.34, 'итого с НДС 6887,34 ₽', tol: 0.01);
+      // Площадь косой заготовки по контуру: 1,392 м².
+      expectClose(film.quantity, 1.392, 'плёнка в смете', tol: 1e-9);
+      expectClose(film.amount, 1322.40, '1,392 × 950');
+      expectClose(cutting.quantity, 1.392, 'раскрой в смете', tol: 1e-9);
+      expectClose(cutting.amount, 348.00, '1,392 × 250');
+      expectClose(estimate.total, 6196.14, 'итого с НДС 6196.14 ₽', tol: 0.01);
     });
   });
 }
@@ -650,8 +769,7 @@ void _pocketAudit() {
       final prices = PriceList.defaults();
       final params = _rect2000x1500.copyWith(pocket: true, pocketTop: true);
       final estimate = Estimate.ofWindow(params, prices);
-      final line = estimate.lines
-          .firstWhere(
+      final line = estimate.lines.firstWhere(
         (candidate) => candidate.itemKey == PriceItemKeys.pocket,
       );
 
@@ -692,45 +810,61 @@ void _estimateAudit() {
       // Люверсы: низ/верх ceil(1950/300)=7, право/лево ceil(2450/300)=9
       // → 7+9+7+9 = 32 шт.
       expect(estimate.windowCount, 1);
-      expect(estimate.lines.length, 5,
-          reason: 'плёнка, окантовка, люверсы, сварка, раскрой');
+      expect(
+        estimate.lines.length,
+        5,
+        reason: 'плёнка, окантовка, люверсы, сварка, раскрой',
+      );
       expectClose(estimate.productAreaM2, 5.0, 'площадь изделия 5,0 м²');
-      expectClose(estimate.filmAreaM2, 4.941989325,
-          'площадь заготовки с усадкой 4,941989325 м²', tol: 1e-9);
+      expectClose(
+        estimate.filmAreaM2,
+        4.941989325,
+        'площадь заготовки с усадкой 4,941989325 м²',
+        tol: 1e-9,
+      );
 
-      final film = estimate.lines
-          .firstWhere((line) => line.title.startsWith('Полотно'));
+      final film = estimate.lines.firstWhere(
+        (line) => line.title.startsWith('Полотно'),
+      );
       // 4,941989325 × 950 = 4694,8899 → 4694,89 (округление до копейки).
       expectClose(film.quantity, 4.941989325, 'плёнка с усадкой', tol: 1e-9);
       expectClose(film.unitPrice, 950, 'ПВХ прозрачный 950 ₽/м²');
       expectClose(film.amount, 4694.89, '4,941989325 × 950');
 
-      final edge = estimate.lines
-          .firstWhere((line) => line.title.startsWith('Окантовка'));
+      final edge = estimate.lines.firstWhere(
+        (line) => line.title.startsWith('Окантовка'),
+      );
       // 9 × 140 = 1260.
       expectClose(edge.quantity, 9.0, 'окантовка 9 м');
       expectClose(edge.unitPrice, 140, 'рулон 100 мм — 140 ₽/м');
       expectClose(edge.amount, 1260, '9 × 140');
 
-      final eyelets = estimate.lines
-          .firstWhere((line) => line.title.startsWith('Люверсы'));
+      final eyelets = estimate.lines.firstWhere(
+        (line) => line.title.startsWith('Люверсы'),
+      );
       // 32 × (65 + 25) = 32 × 90 = 2880.
       expectClose(eyelets.quantity, 32, '32 люверса');
       expectClose(eyelets.unitPrice, 90, '65 + 25 установка');
       expectClose(eyelets.amount, 2880, '32 × 90');
 
       final labor = estimate.lines.firstWhere(
-          (line) => line.title.startsWith('Сварка'));
+        (line) => line.title.startsWith('Сварка'),
+      );
       // 5,0 × 700 = 3500.
       expectClose(labor.quantity, 5.0, 'сварка по изделию 5 м²');
       expectClose(labor.unitPrice, 700, 'сборка 700 ₽/м²');
       expectClose(labor.amount, 3500, '5 × 700');
 
-      final cutting = estimate.lines
-          .firstWhere((line) => line.title.startsWith('Раскрой'));
+      final cutting = estimate.lines.firstWhere(
+        (line) => line.title.startsWith('Раскрой'),
+      );
       // 4,941989325 × 250 = 1235,4973 → 1235,50.
-      expectClose(cutting.quantity, 4.941989325, 'раскрой с усадкой',
-          tol: 1e-9);
+      expectClose(
+        cutting.quantity,
+        4.941989325,
+        'раскрой с усадкой',
+        tol: 1e-9,
+      );
       expectClose(cutting.unitPrice, 250, 'раскрой 250 ₽/м²');
       expectClose(cutting.amount, 1235.50, '4,941989325 × 250');
 
@@ -760,7 +894,8 @@ void _estimateAudit() {
       expect(
         estimate.total,
         closeTo(naive, 0.011),
-        reason: 'округление по позициям отличается от наивной формулы на '
+        reason:
+            'округление по позициям отличается от наивной формулы на '
             'одну копейку (17587,22 против 17587,23) — это округление '
             'наценки, скидки и НДС на каждом шаге',
       );
@@ -775,14 +910,16 @@ void _edgePriceAudit() {
   group('8. Цена окантовки по ширине рулона', () {
     final prices = PriceList.defaults();
 
-    test('пресеты: 80 → 120, 100 → 140, 120 → 165, 200 → 230, 240 → 270 ₽/м',
-        () {
-      expectClose(prices.edgePerMeterForWidth(80), 120, 'пресет 80');
-      expectClose(prices.edgePerMeterForWidth(100), 140, 'пресет 100');
-      expectClose(prices.edgePerMeterForWidth(120), 165, 'пресет 120');
-      expectClose(prices.edgePerMeterForWidth(200), 230, 'пресет 200');
-      expectClose(prices.edgePerMeterForWidth(240), 270, 'пресет 240');
-    });
+    test(
+      'пресеты: 80 → 120, 100 → 140, 120 → 165, 200 → 230, 240 → 270 ₽/м',
+      () {
+        expectClose(prices.edgePerMeterForWidth(80), 120, 'пресет 80');
+        expectClose(prices.edgePerMeterForWidth(100), 140, 'пресет 100');
+        expectClose(prices.edgePerMeterForWidth(120), 165, 'пресет 120');
+        expectClose(prices.edgePerMeterForWidth(200), 230, 'пресет 200');
+        expectClose(prices.edgePerMeterForWidth(240), 270, 'пресет 240');
+      },
+    );
 
     test('150 мм — между 120 и 200: 165 + 65 × 30/80 = 189,375 ₽/м', () {
       // Вручную: наклон (230 − 165) / (200 − 120) = 0,8125 ₽/мм;
@@ -808,10 +945,16 @@ void _edgePriceAudit() {
     });
 
     test('нечисловая ширина не роняет расчёт', () {
-      expectClose(prices.edgePerMeterForWidth(double.nan), 120,
-          'запасное значение — цена первого пресета (80 мм)');
-      expectClose(prices.edgePerMeterForWidth(double.infinity), 120,
-          'запасное значение — цена первого пресета (80 мм)');
+      expectClose(
+        prices.edgePerMeterForWidth(double.nan),
+        120,
+        'запасное значение — цена первого пресета (80 мм)',
+      );
+      expectClose(
+        prices.edgePerMeterForWidth(double.infinity),
+        120,
+        'запасное значение — цена первого пресета (80 мм)',
+      );
     });
   });
 }
@@ -849,50 +992,75 @@ void _rollLayoutAudit() {
       expect(plan.rollWidth, 2000, reason: 'выбранный рулон 2000');
       expect(plan.layout.warnings, isEmpty, reason: 'заготовка уже рулона');
       for (final placement in plan.layout.placements) {
-        expect(placement.width, lessThanOrEqualTo(plan.rollWidth + 1e-9),
-            reason: 'заготовка не должна быть шире рулона');
+        expect(
+          placement.width,
+          lessThanOrEqualTo(plan.rollWidth + 1e-9),
+          reason: 'заготовка не должна быть шире рулона',
+        );
       }
     });
 
-    test('заготовка шире рулона: есть предупреждение, отход не отрицательный',
-        () {
-      const params = WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 2000,
-        rightHeight: 2000,
-        // Запайка 25 мм — как в ручном расчёте ниже (по умолчанию 5 мм).
-        weldOverlapMm: 25,
-      );
-      final project = OrderProject(
-        windows: const [params],
-        rollWidths: const {FilmMaterial.clearPvc: 1400},
-      );
-      final summary = CostsSummary(project);
-      final plan = summary.rollPlans.single;
+    test(
+      'заготовка шире рулона: есть предупреждение, отход не отрицательный',
+      () {
+        const params = WindowParams(
+          bottomWidth: 2000,
+          topWidth: 2000,
+          leftHeight: 2000,
+          rightHeight: 2000,
+          // Запайка 25 мм — как в ручном расчёте ниже (по умолчанию 5 мм).
+          weldOverlapMm: 25,
+        );
+        final project = OrderProject(
+          windows: const [params],
+          rollWidths: const {FilmMaterial.clearPvc: 1400},
+        );
+        final summary = CostsSummary(project);
+        final plan = summary.rollPlans.single;
 
-      // Вручную: заготовка 1950 × 1960 мм (высота с авто +10 мм ПВХ) > 1400,
-      // усадка выключена. В рулон не влезает ни одна ориентация, поэтому
-      // раскладка ставит повёрнутую (более низкую) заготовку: поперёк рулона
-      // 1960 мм, вдоль — 1950 мм.
-      expectClose(plan.layout.placements.single.width, 1960, '1960 мм');
-      expectClose(plan.layout.requiredLength, 1950, 'длина 1950 мм');
-      expect(plan.layout.warnings, isNotEmpty,
-          reason: 'признак проблемы: заготовка шире рулона');
-      expect(plan.layout.warnings.first, contains('шире рулона'),
-          reason: 'РАСХОЖДЕНИЕ (ожидаемое поведение): предупреждение '
-              '«нужна сшивка» есть');
-      // Отход не отрицательный: clamp 0…100.
-      expect(plan.layout.wastePercent, inInclusiveRange(0, 100),
-          reason: 'отход в пределах 0…100 %');
-      expect(plan.wastePercent, inInclusiveRange(0, 100),
-          reason: 'отход плана в пределах 0…100 %');
-      expect(summary.rollWastePercent, inInclusiveRange(0, 100),
-          reason: 'сводный отход в пределах 0…100 %');
-      // Площадь заготовки (1950 × 1960) больше площади рулона
-      // (1400 × 1960), поэтому отход зажат ровно в 0, а не в минус.
-      expectClose(plan.wastePercent, 0, 'отход зажат в 0, а не отрицательный');
-    });
+        // Вручную: заготовка 1950 × 1960 мм (высота с авто +10 мм ПВХ) > 1400,
+        // усадка выключена. В рулон не влезает ни одна ориентация, поэтому
+        // раскладка ставит повёрнутую (более низкую) заготовку: поперёк рулона
+        // 1960 мм, вдоль — 1950 мм.
+        expectClose(plan.layout.placements.single.width, 1960, '1960 мм');
+        expectClose(plan.layout.requiredLength, 1950, 'длина 1950 мм');
+        expect(
+          plan.layout.warnings,
+          isNotEmpty,
+          reason: 'признак проблемы: заготовка шире рулона',
+        );
+        expect(
+          plan.layout.warnings.first,
+          contains('шире рулона'),
+          reason:
+              'РАСХОЖДЕНИЕ (ожидаемое поведение): предупреждение '
+              '«нужна сшивка» есть',
+        );
+        // Отход не отрицательный: clamp 0…100.
+        expect(
+          plan.layout.wastePercent,
+          inInclusiveRange(0, 100),
+          reason: 'отход в пределах 0…100 %',
+        );
+        expect(
+          plan.wastePercent,
+          inInclusiveRange(0, 100),
+          reason: 'отход плана в пределах 0…100 %',
+        );
+        expect(
+          summary.rollWastePercent,
+          inInclusiveRange(0, 100),
+          reason: 'сводный отход в пределах 0…100 %',
+        );
+        // Площадь заготовки (1950 × 1960) больше площади рулона
+        // (1400 × 1960), поэтому отход зажат ровно в 0, а не в минус.
+        expectClose(
+          plan.wastePercent,
+          0,
+          'отход зажат в 0, а не отрицательный',
+        );
+      },
+    );
   });
 }
 
@@ -900,103 +1068,151 @@ void _rollLayoutAudit() {
 // 10. Материалы
 // ---------------------------------------------------------------------------
 void _materialsAudit() {
-  group('10. Материалы: состав, подписи, рулоны, цены, отсутствие оксфорда',
-      () {
-    final prices = PriceList.defaults();
+  group(
+    '10. Материалы: состав, подписи, рулоны, цены, отсутствие оксфорда',
+    () {
+      final prices = PriceList.defaults();
 
-    test('FilmMaterial: у каждого подпись, толщина, рулоны и цена', () {
-      // Вручную из прайса по умолчанию: 950 / 1150 / 420 / 520 ₽/м².
-      const expectedPrices = <FilmMaterial, double>{
-        FilmMaterial.clearPvc: 950,
-        FilmMaterial.tintedPvc: 1150,
-        FilmMaterial.mosquitoNet: 420,
-        FilmMaterial.screen: 520,
-      };
-      expect(FilmMaterial.values.toSet(), expectedPrices.keys.toSet(),
-          reason: 'перечислены ровно эти материалы');
-
-      for (final entry in expectedPrices.entries) {
-        final material = entry.key;
-        expect(material.label.trim(), isNotEmpty,
-            reason: '${material.name}: пустая подпись');
-        expect(material.thickness.trim(), isNotEmpty,
-            reason: '${material.name}: пустая строка толщины');
-        expect(material.rollWidths, isNotEmpty,
-            reason: '${material.name}: нет ширин рулонов');
+      test('FilmMaterial: у каждого подпись, толщина, рулоны и цена', () {
+        // Вручную из прайса по умолчанию: 950 / 1150 / 420 / 520 ₽/м².
+        const expectedPrices = <FilmMaterial, double>{
+          FilmMaterial.clearPvc: 950,
+          FilmMaterial.tintedPvc: 1150,
+          FilmMaterial.mosquitoNet: 420,
+          FilmMaterial.screen: 520,
+        };
         expect(
-          material.rollWidths,
-          orderedEquals([...material.rollWidths]..sort()),
-          reason: '${material.name}: ширины рулонов не по возрастанию',
+          FilmMaterial.values.toSet(),
+          expectedPrices.keys.toSet(),
+          reason: 'перечислены ровно эти материалы',
         );
-        expect(material.rollWidthsLabel.trim(), isNotEmpty,
-            reason: '${material.name}: пустая подпись ширин');
-        expectClose(prices.filmPerM2(material), entry.value,
-            '${material.name}: цена в прайсе');
-      }
-    });
 
-    test('EdgeMaterial: только ПВХ-тент', () {
-      expect(EdgeMaterial.values, [EdgeMaterial.pvcTent630],
-          reason: 'в проекте один материал окантовки');
-      expect(EdgeMaterial.pvcTent630.label.trim(), isNotEmpty);
-      expect(EdgeMaterial.pvcTent630.isWelded, isTrue,
-          reason: 'ПВХ-тент сваривают');
-      expect(EdgeMaterial.pvcTent630.joining, contains('400'),
-          reason: 'режим сварки 400–500 °C');
-    });
+        for (final entry in expectedPrices.entries) {
+          final material = entry.key;
+          expect(
+            material.label.trim(),
+            isNotEmpty,
+            reason: '${material.name}: пустая подпись',
+          );
+          expect(
+            material.thickness.trim(),
+            isNotEmpty,
+            reason: '${material.name}: пустая строка толщины',
+          );
+          expect(
+            material.rollWidths,
+            isNotEmpty,
+            reason: '${material.name}: нет ширин рулонов',
+          );
+          expect(
+            material.rollWidths,
+            orderedEquals([...material.rollWidths]..sort()),
+            reason: '${material.name}: ширины рулонов не по возрастанию',
+          );
+          expect(
+            material.rollWidthsLabel.trim(),
+            isNotEmpty,
+            reason: '${material.name}: пустая подпись ширин',
+          );
+          expectClose(
+            prices.filmPerM2(material),
+            entry.value,
+            '${material.name}: цена в прайсе',
+          );
+        }
+      });
 
-    test('EdgeRoll: каждому пресету соответствует цена', () {
-      // Вручную: рулоны 80/100/120/200/240 мм, готовые полосы
-      // 40/50/60/100/120 мм, цены 120/140/165/230/270 ₽/м.
-      const expected = <EdgeRoll, (double, double)>{
-        EdgeRoll.roll80: (80, 120),
-        EdgeRoll.roll100: (100, 140),
-        EdgeRoll.roll120: (120, 165),
-        EdgeRoll.roll200: (200, 230),
-        EdgeRoll.roll240: (240, 270),
-      };
-      expect(EdgeRoll.values.toSet(), expected.keys.toSet());
+      test('EdgeMaterial: только ПВХ-тент', () {
+        expect(EdgeMaterial.values, [
+          EdgeMaterial.pvcTent630,
+        ], reason: 'в проекте один материал окантовки');
+        expect(EdgeMaterial.pvcTent630.label.trim(), isNotEmpty);
+        expect(
+          EdgeMaterial.pvcTent630.isWelded,
+          isTrue,
+          reason: 'ПВХ-тент сваривают',
+        );
+        expect(
+          EdgeMaterial.pvcTent630.joining,
+          contains('400'),
+          reason: 'режим сварки 400–500 °C',
+        );
+      });
 
-      for (final entry in expected.entries) {
-        final roll = entry.key;
-        expect(roll.label.trim(), isNotEmpty, reason: '${roll.name}: подпись');
-        expectClose(roll.rawWidth, entry.value.$1, '${roll.name}: ширина рулона');
-        expectClose(roll.finishedWidth, entry.value.$1 / 2,
-            '${roll.name}: готовая полоса — половина рулона');
-        expectClose(prices.edgePerMeter(roll), entry.value.$2,
-            '${roll.name}: цена в прайсе');
-      }
-    });
+      test('EdgeRoll: каждому пресету соответствует цена', () {
+        // Вручную: рулоны 80/100/120/200/240 мм, готовые полосы
+        // 40/50/60/100/120 мм, цены 120/140/165/230/270 ₽/м.
+        const expected = <EdgeRoll, (double, double)>{
+          EdgeRoll.roll80: (80, 120),
+          EdgeRoll.roll100: (100, 140),
+          EdgeRoll.roll120: (120, 165),
+          EdgeRoll.roll200: (200, 230),
+          EdgeRoll.roll240: (240, 270),
+        };
+        expect(EdgeRoll.values.toSet(), expected.keys.toSet());
 
-    test('в lib/ не осталось функциональных упоминаний оксфорда', () {
-      final pattern = RegExp('oxford|оксфорд', caseSensitive: false);
-      final codeHits = <String>[];
-      final commentHits = <String>[];
+        for (final entry in expected.entries) {
+          final roll = entry.key;
+          expect(
+            roll.label.trim(),
+            isNotEmpty,
+            reason: '${roll.name}: подпись',
+          );
+          expectClose(
+            roll.rawWidth,
+            entry.value.$1,
+            '${roll.name}: ширина рулона',
+          );
+          expectClose(
+            roll.finishedWidth,
+            entry.value.$1 / 2,
+            '${roll.name}: готовая полоса — половина рулона',
+          );
+          expectClose(
+            prices.edgePerMeter(roll),
+            entry.value.$2,
+            '${roll.name}: цена в прайсе',
+          );
+        }
+      });
 
-      for (final entity in Directory('lib').listSync(recursive: true)) {
-        if (entity is! File || !entity.path.endsWith('.dart')) continue;
-        final lines = entity.readAsLinesSync();
-        for (var i = 0; i < lines.length; i++) {
-          if (!pattern.hasMatch(lines[i])) continue;
-          final trimmed = lines[i].trimLeft();
-          final isComment = trimmed.startsWith('//') ||
-              trimmed.startsWith('*') ||
-              trimmed.startsWith('/*');
-          final hit = '${entity.path}:${i + 1}: ${lines[i].trim()}';
-          if (isComment) {
-            commentHits.add(hit);
-          } else {
-            codeHits.add(hit);
+      test('в lib/ не осталось функциональных упоминаний оксфорда', () {
+        final pattern = RegExp('oxford|оксфорд', caseSensitive: false);
+        final codeHits = <String>[];
+        final commentHits = <String>[];
+
+        for (final entity in Directory('lib').listSync(recursive: true)) {
+          if (entity is! File || !entity.path.endsWith('.dart')) continue;
+          final lines = entity.readAsLinesSync();
+          for (var i = 0; i < lines.length; i++) {
+            if (!pattern.hasMatch(lines[i])) continue;
+            final trimmed = lines[i].trimLeft();
+            final isComment =
+                trimmed.startsWith('//') ||
+                trimmed.startsWith('*') ||
+                trimmed.startsWith('/*');
+            final hit = '${entity.path}:${i + 1}: ${lines[i].trim()}';
+            if (isComment) {
+              commentHits.add(hit);
+            } else {
+              codeHits.add(hit);
+            }
           }
         }
-      }
 
-      expect(codeHits, isEmpty,
-          reason: 'РАСХОЖДЕНИЕ (если не пусто): оксфорд в коде: $codeHits');
-      // Информационно: допустимо единственное упоминание — комментарий о том,
-      // что ткани Oxford в проекте больше нет.
-      expect(commentHits.length, lessThanOrEqualTo(1),
-          reason: 'упоминания оксфорда в комментариях: $commentHits');
-    });
-  });
+        expect(
+          codeHits,
+          isEmpty,
+          reason: 'РАСХОЖДЕНИЕ (если не пусто): оксфорд в коде: $codeHits',
+        );
+        // Информационно: допустимо единственное упоминание — комментарий о том,
+        // что ткани Oxford в проекте больше нет.
+        expect(
+          commentHits.length,
+          lessThanOrEqualTo(1),
+          reason: 'упоминания оксфорда в комментариях: $commentHits',
+        );
+      });
+    },
+  );
 }

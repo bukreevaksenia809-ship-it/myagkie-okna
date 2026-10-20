@@ -1922,7 +1922,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 label: const Text('Сбросить'),
               ),
             ],
-          ),        ],
+          ),
+        ],
       ),
     );
   }
@@ -1996,8 +1997,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
     final parts = <String>[
       ?zipperPart,
       if (params.cutouts.isNotEmpty) 'вырезов ${params.cutouts.length}',
-      if (params.pocket) 'фартук снизу ${formatMm(params.pocketWidth)} ${unitSuffix()}',
-      if (params.pocketTop) 'фартук сверху ${formatMm(params.pocketWidth)} ${unitSuffix()}',
+      if (params.pocket)
+        'фартук снизу ${formatMm(params.pocketWidth)} ${unitSuffix()}',
+      if (params.pocketTop)
+        'фартук сверху ${formatMm(params.pocketWidth)} ${unitSuffix()}',
       if (params.drainHoles && !params.isScreen)
         'дренаж ${params.drainCount.round()} шт',
     ];
@@ -3119,11 +3122,11 @@ class _CuttingCard extends StatelessWidget {
       // Габарит заготовки и площадь полотна — разные числа: у трапеции
       // заготовка кроится прямоугольником и больше полотна.
       (
-        'Площадь заготовки-прямоугольника без усадки',
+        'Площадь заготовки по контуру без усадки',
         '${formatMeters(spec.filmCutAreaM2)} м²',
       ),
       (
-        'Площадь заготовки-прямоугольника с усадкой',
+        'Площадь заготовки по контуру с усадкой',
         '${formatMeters(spec.filmCutAreaWithShrinkageM2)} м²',
       ),
       (

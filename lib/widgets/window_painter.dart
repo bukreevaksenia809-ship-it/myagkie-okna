@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../models/fastener_spans.dart';
 import '../models/window_geometry.dart';
 import '../models/window_params.dart';
+import '../services/label_settings.dart';
 
 /// Перевод миллиметров модели в пиксели листа.
 class DrawingLayout {
@@ -230,7 +231,9 @@ double eyeletHoleDrawSize(
   double pxPerMm = 0.0,
 }) {
   final outer = outerPx.isFinite && outerPx > 0 ? outerPx : minEyeletOuterPx;
-  final holeMm = actualHoleMm.isFinite && actualHoleMm > 0 ? actualHoleMm : 10.0;
+  final holeMm = actualHoleMm.isFinite && actualHoleMm > 0
+      ? actualHoleMm
+      : 10.0;
   final scale = pxPerMm.isFinite ? pxPerMm.abs() : 0.0;
   final actual = holeMm * scale;
   return math.min(math.max(actual, minEyeletHolePx), outer * 0.5);
@@ -291,16 +294,12 @@ class EdgeBandQuad {
   double get innerLengthMm => (innerEnd - innerStart).distance;
 
   /// Угол наружной кромки, радианы (экранные координаты).
-  double get angle => math.atan2(
-    outerEnd.dy - outerStart.dy,
-    outerEnd.dx - outerStart.dx,
-  );
+  double get angle =>
+      math.atan2(outerEnd.dy - outerStart.dy, outerEnd.dx - outerStart.dx);
 
   /// Угол внутренней кромки, радианы.
-  double get innerAngle => math.atan2(
-    innerEnd.dy - innerStart.dy,
-    innerEnd.dx - innerStart.dx,
-  );
+  double get innerAngle =>
+      math.atan2(innerEnd.dy - innerStart.dy, innerEnd.dx - innerStart.dx);
 }
 
 /// Четырёхугольники полосы окантовки — по одному на сторону контура.
@@ -317,10 +316,12 @@ class EdgeBandQuad {
 List<EdgeBandQuad> edgeBandQuads(WindowSpec spec, {List<double>? widths}) {
   final outer = spec.layers.outer;
   if (outer.length < 3) return const [];
-  final bandWidths = widths ?? [
-    for (var i = 0; i < outer.length; i++)
-      spec.layers.finishedWidthFor(spec.layers.sideOfEdge(outer, i)),
-  ];
+  final bandWidths =
+      widths ??
+      [
+        for (var i = 0; i < outer.length; i++)
+          spec.layers.finishedWidthFor(spec.layers.sideOfEdge(outer, i)),
+      ];
   if (bandWidths.length != outer.length) return const [];
   final inner = insetPolygonPerSide(outer, bandWidths);
   return [
@@ -349,7 +350,9 @@ class WindowDrawingPainter extends CustomPainter {
     this.labelScale = 1,
     this.fastenerImage,
     LengthUnit? unit,
-  }) : unit = unit ?? DisplayUnits.unit;
+    LabelSettings? labelSettings,
+  }) : unit = unit ?? DisplayUnits.unit,
+       labelSettings = labelSettings ?? LabelSettings.value;
 
   final WindowParams params;
   final DrawingLayout layout;
@@ -373,6 +376,34 @@ class WindowDrawingPainter extends CustomPainter {
   /// [shouldRepaint]: при переключении мм/см лист перерисовывается, даже
   /// если размеры изделия не менялись.
   final LengthUnit unit;
+
+  /// Размеры подписей на момент создания пейнтера.
+  ///
+  /// Хранится снимок настройки: [shouldRepaint] сравнивает его и
+  /// перерисовывает лист, когда в диалоге «Настройки подписей» меняется
+  /// кегль любого из восьми типов.
+  final LabelSettings labelSettings;
+
+  /// Кегль подписи заданного типа в точках листа (с учётом мелкой ячейки).
+  // Максимальный рост подписи относительно стандартной. На листе А4 поля
+  // под размеры ограничены (52–104 точки), поэтому очень крупный кегль из
+  // настроек подрезается: подпись становится заметно больше обычной, но не
+  // вылезает за лист и не рвёт рамку. Пользователь видит рост до ~12 pt.
+  static const double _maxLabelGrowth = 1.45;
+
+  /// Кегль подписи заданного типа в точках листа.
+  ///
+  /// [LabelKind.fastenerChain] по умолчанию мельче остальных (7,5 pt), у него
+  /// и предел роста ниже — иначе цифры цепочки наезжают на размерные линии.
+  double _labelPx(LabelKind kind) {
+    final base = kind == LabelKind.fastenerChain
+        ? fastenerSpanFontSizePx(0)
+        : drawingLabelFontPx;
+    return math.min(
+      labelSettings.pxFor(kind) * labelScale,
+      base * _maxLabelGrowth,
+    );
+  }
 
   // Цвета по ТЗ: размеры чёрные, плёнка голубая полупрозрачная,
   // окантовка — цвет материала, люверсы — серый металл.
@@ -447,6 +478,7 @@ class WindowDrawingPainter extends CustomPainter {
       oldDelegate.showScaleBar != showScaleBar ||
       oldDelegate.labelScale != labelScale ||
       oldDelegate.unit != unit ||
+      oldDelegate.labelSettings != labelSettings ||
       // Картинка крепежа догружается после первой сборки листа — по этому
       // сравнению лист один раз перерисуется уже с фотографией.
       oldDelegate.fastenerImage != fastenerImage;
@@ -611,9 +643,7 @@ class WindowDrawingPainter extends CustomPainter {
       final paint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = annex.welded ? 4.2 : 2.0
-        ..color = annex.welded
-            ? _special.withValues(alpha: 0.85)
-            : _metalDark;
+        ..color = annex.welded ? _special.withValues(alpha: 0.85) : _metalDark;
       _dashedLine(canvas, a, b, paint, dash: 9, gap: 5);
       // Подпись ставим не на середину шва, а ближе к началу: у угловой формы
       // два шва рядом, и подписи на серединах пересекались бы.
@@ -700,7 +730,10 @@ class WindowDrawingPainter extends CustomPainter {
           : const Offset(36, 0);
       _dimension(
         canvas,
-        layout.toPx(side == TShapeSide.left ? annexLeft : annexRight, annexBottom),
+        layout.toPx(
+          side == TShapeSide.left ? annexLeft : annexRight,
+          annexBottom,
+        ),
         layout.toPx(side == TShapeSide.left ? annexLeft : annexRight, annexTop),
         heightOffset,
         formatMm(annex.rect.height),
@@ -781,11 +814,8 @@ class WindowDrawingPainter extends CustomPainter {
       final text = params.isScreen
           ? '${side.label}: подворот ${formatMm(layers.hemWidthFor(side))} ${unitSuffix()}'
           : '${side.label}: окантовка ${formatMm(layers.finishedWidthFor(side))} ${unitSuffix()}';
-      final halfLength = _textPainter(
-        text,
-        color: _metalDark,
-        small: true,
-      ).width / 2;
+      final halfLength =
+          _textPainter(text, color: _metalDark, small: true).width / 2;
       // Подпись стороны уступает место размерам между креплениями: на
       // Т-окне у пристроек стороны короткие, и две подписи на середине
       // налезали бы друг на друга.
@@ -798,7 +828,14 @@ class WindowDrawingPainter extends CustomPainter {
         }
       }
       if (position == null) continue;
-      _label(canvas, text, position, small: true, color: _metalDark);
+      _label(
+        canvas,
+        text,
+        position,
+        small: true,
+        color: _metalDark,
+        fontSize: _labelPx(LabelKind.sideLabel),
+      );
     }
   }
 
@@ -1969,9 +2006,7 @@ class WindowDrawingPainter extends CustomPainter {
 
     // Расстояние до ближайшего соседнего люверса на листе: по нему решаем,
     // можно ли рисовать кольца крупно или они уже сливаются в кашу.
-    final centers = [
-      for (final eyelet in eyelets) _eyeletDrawCenter(eyelet),
-    ];
+    final centers = [for (final eyelet in eyelets) _eyeletDrawCenter(eyelet)];
     final spacing = List<double>.filled(centers.length, double.infinity);
     for (var i = 0; i < centers.length; i++) {
       for (var j = i + 1; j < centers.length; j++) {
@@ -2003,24 +2038,15 @@ class WindowDrawingPainter extends CustomPainter {
       final outerHeight = actualHeight * grow;
       // Плотная расстановка: кольца почти касаются. Убираем тень и блеск,
       // оставляем только металл, отверстие и тонкий контур — иначе каша.
-      final dense =
-          spacing[i].isFinite && spacing[i] < 1.6 * minEyeletOuterPx;
+      final dense = spacing[i].isFinite && spacing[i] < 1.6 * minEyeletOuterPx;
       _drawEyelet(
         canvas,
         centers[i],
         -eyelet.angle,
         outerWidth,
         outerHeight,
-        _eyeletHolePx(
-          type.holeWidth,
-          type.outerWidth,
-          outerWidth,
-        ),
-        _eyeletHolePx(
-          type.holeHeight,
-          type.outerHeight,
-          outerHeight,
-        ),
+        _eyeletHolePx(type.holeWidth, type.outerWidth, outerWidth),
+        _eyeletHolePx(type.holeHeight, type.outerHeight, outerHeight),
         simple: dense || symbolSize <= minEyeletOuterPx + 0.4,
       );
     }
@@ -2035,11 +2061,7 @@ class WindowDrawingPainter extends CustomPainter {
   ) {
     final pxPerMm = actualOuterMm > 0.01 ? outerPx / actualOuterMm : 0.0;
     return math.min(
-      eyeletHoleDrawSize(
-        outerPx,
-        actualHoleMm: actualHoleMm,
-        pxPerMm: pxPerMm,
-      ),
+      eyeletHoleDrawSize(outerPx, actualHoleMm: actualHoleMm, pxPerMm: pxPerMm),
       outerPx * 0.45,
     );
   }
@@ -2059,11 +2081,7 @@ class WindowDrawingPainter extends CustomPainter {
     // на 1:20–1:50 люверс остаётся кольцом, а не точкой.
     final width = math.max(outerWidth, minEyeletOuterPx);
     final height = math.max(outerHeight, minEyeletOuterPx);
-    final oval = Rect.fromCenter(
-      center: center,
-      width: width,
-      height: height,
-    );
+    final oval = Rect.fromCenter(center: center, width: width, height: height);
     final radius = math.min(width, height) / 2;
 
     canvas.save();
@@ -2095,14 +2113,8 @@ class WindowDrawingPainter extends CustomPainter {
     // Люфт вокруг отверстия — металл утолщается к центру.
     final hole = Rect.fromCenter(
       center: center,
-      width: math.min(
-        math.max(holeWidth, minEyeletHolePx),
-        width * 0.5,
-      ),
-      height: math.min(
-        math.max(holeHeight, minEyeletHolePx),
-        height * 0.5,
-      ),
+      width: math.min(math.max(holeWidth, minEyeletHolePx), width * 0.5),
+      height: math.min(math.max(holeHeight, minEyeletHolePx), height * 0.5),
     );
     if (!simple) {
       canvas.drawOval(
@@ -2185,9 +2197,10 @@ class WindowDrawingPainter extends CustomPainter {
   /// скоба/замок получали бы минимальный размер.
   double _fastenerBandWidth(WindowSide side) {
     if (!params.isScreen) {
-      return layers.finishedWidths.isEmpty
-          ? 50.0
-          : layers.finishedWidths.reduce(math.min);
+      // Ширина окантовки своей стороны: у окна с разными рулонами полоса
+      // снизу и сверху может отличаться, и цепочка должна стоять сбоку
+      // именно от своего канта.
+      return layers.finishedWidthFor(side);
     }
     return switch (side) {
       WindowSide.bottom => params.hemBottomMm,
@@ -2250,10 +2263,7 @@ class WindowDrawingPainter extends CustomPainter {
       final intoBand = params.isScreen ? outward : -outward;
       // Середина полосы занята крепежом и подписью окантовки, поэтому
       // размерную линию сдвигаем к краю полосы, но оставляем внутри канта.
-      final offset = math.min(
-        bandPx * 0.40,
-        math.max(bandPx / 2 - 1, 1.0),
-      );
+      final offset = math.min(bandPx * 0.40, math.max(bandPx / 2 - 1, 1.0));
       final fontSize = fastenerSpanFontSizePx(bandPx);
       final painter = _textPainter(
         label.text,
@@ -2314,70 +2324,112 @@ class WindowDrawingPainter extends CustomPainter {
   ) {
     for (final span in spans) {
       if (span.label.edgeIndex != edgeIndex) continue;
-      if ((span.center - point).distance <
-          span.halfLength + halfLength + 5) {
+      if ((span.center - point).distance < span.halfLength + halfLength + 5) {
         return true;
       }
     }
     return false;
   }
 
-  /// Расстояние между центрами креплений: маленькие стрелки и цифра.
+  /// Накопительная цепочка расстояний между креплениями.
   ///
-  /// Всё рисуется ВНУТРИ канта (полосы окантовки/подворота): выносные штрихи
-  /// идут от центров креплений к размерной линии, линия — тонкая, подпись —
-  /// на белой подложке, чтобы читалась поверх штриховки и на печати А4.
+  /// Заказчик: цифры пишутся НЕ на люверсе, а немного сбоку от канта, вдоль
+  /// стороны. На первом креплении — 0 (если оно в углу) или величина отступа,
+  /// на каждом следующем — накопленное расстояние от угла. Поэтому цепочка
+  /// не спорит с люверсами и читается как сумма, а не как набор промежутков.
+  ///
+  /// Подписи стоят между кантом и размерной цепочкой чертежа: снаружи
+  /// контура, но заметно ближе к нему, чем размерные линии (52–62 точки).
   void _paintFastenerSpans(Canvas canvas) {
-    final spans = _measureSpans();
-    if (spans.isEmpty) return;
-
-    final tickPaint = Paint()
-      ..color = _ink.withValues(alpha: 0.45)
-      ..strokeWidth = 0.8;
-    final linePaint = Paint()
-      ..color = _spanInk
-      ..strokeWidth = 0.9
-      ..strokeCap = StrokeCap.round;
-
-    for (final span in spans) {
-      final a = span.start + span.intoBand * span.offset;
-      final b = span.end + span.intoBand * span.offset;
-      // Выносные штрихи от центров люверсов к размерной линии.
-      if (span.offset > 1.5) {
-        canvas.drawLine(span.start, a, tickPaint);
-        canvas.drawLine(span.end, b, tickPaint);
-      }
-      canvas.drawLine(a, b, linePaint);
-
-      final direction = b - a;
-      final length = direction.distance;
-      if (length > 3) {
-        final unit = direction / length;
-        _spanArrow(canvas, a, -unit, span.fontSize);
-        _spanArrow(canvas, b, unit, span.fontSize);
-      }
+    for (final item in _chainPx()) {
       _spanLabel(
         canvas,
-        span.label.text,
-        span.center + span.intoBand * span.offset,
-        span.angle,
-        span.fontSize,
+        item.label.text,
+        item.position,
+        item.angle,
+        item.fontSize,
       );
     }
   }
 
-  /// Стрелка размерной линии между креплениями.
-  void _spanArrow(Canvas canvas, Offset tip, Offset direction, double fontSize) {
-    final length = math.max(fontSize * 0.5, 5.0);
-    final halfWidth = math.max(fontSize * 0.17, 1.7);
-    final back = tip - direction * length;
-    final normal = Offset(-direction.dy, direction.dx) * halfWidth;
-    final path = Path()
-      ..moveTo(tip.dx, tip.dy)
-      ..lineTo(back.dx + normal.dx, back.dy + normal.dy)
-      ..lineTo(back.dx - normal.dx, back.dy - normal.dy)
-      ..close();
-    canvas.drawPath(path, Paint()..color = _spanInk);
+  /// Подписи цепочки в пикселях листа. Считаются один раз на отрисовку:
+  /// по ним же подписи окантовки и сторон ищут свободное место, чтобы не
+  /// наехать на цифры.
+  List<_ChainPx>? _chainCache;
+
+  List<_ChainPx> _chainPx() => _chainCache ??= _measureChainPx();
+
+  List<_ChainPx> _measureChainPx() {
+    final chain = fastenerChainLabels(
+      WindowSpec(params, layout.geometry, layers),
+    );
+    if (chain.isEmpty) return const [];
+    final fontSize = _labelPx(LabelKind.fastenerChain);
+    // Ниже 7 pt на А4 цифры уже не читаются — цепочку не рисуем.
+    if (fontSize < minFastenerSpanPt / 0.75) return const [];
+    final outline = _polygonPath(layers.outer);
+    final result = <_ChainPx>[];
+    final drawn = <Offset>[];
+
+    for (final label in chain) {
+      final side = label.side;
+      if (side == null) continue;
+      final bandPx = layout.px(_fastenerBandWidth(side));
+      if (bandPx < minFastenerSpanBandPx) continue;
+
+      // Направление кромки на листе и её наружная нормаль.
+      final index = label.edgeIndex;
+      final a = layout.toPxPoint(layers.outer[index]);
+      final b = layout.toPxPoint(
+        layers.outer[(index + 1) % layers.outer.length],
+      );
+      final direction = b - a;
+      final length = direction.distance;
+      if (length < 1) continue;
+      final unit = direction / length;
+      var normal = Offset(-unit.dy, unit.dx);
+      final middle = (a + b) / 2;
+      if (outline.contains(middle + normal * 3)) normal = -normal;
+
+      // Точка крепления и сдвиг подписи наружу, за кант.
+      final point = layout.toPxPoint(label.pointMm);
+      final gap = math.max(bandPx / 2 + fontSize * 0.55, 8.0);
+      var position = point + normal * gap;
+
+      // Угловая «0» не должна свисать за угол: сдвигаем её вдоль стороны,
+      // чтобы соседние стороны не накладывали цифры друг на друга.
+      final textHalf =
+          _textPainter(label.text, color: _spanInk, fontSize: fontSize).width /
+          2;
+      final along = (position - a).dx * unit.dx + (position - a).dy * unit.dy;
+      if (along < textHalf + 2) {
+        position += unit * (textHalf + 2 - along);
+      } else if (along > length - textHalf - 2) {
+        position -= unit * (along - (length - textHalf - 2));
+      }
+
+      // Две стороны могут дать подписи почти в одной точке (угол) — вторую
+      // не рисуем, чтобы цифры не сливались.
+      if (drawn.any((other) => (other - position).distance < fontSize * 0.7)) {
+        continue;
+      }
+      drawn.add(position);
+
+      var angle = math.atan2(unit.dy, unit.dx);
+      if (angle > math.pi / 2 + 1e-6 || angle < -math.pi / 2 - 1e-6) {
+        angle += math.pi;
+      }
+      result.add(
+        _ChainPx(
+          label: label,
+          position: position,
+          halfLength: textHalf,
+          angle: angle,
+          fontSize: fontSize,
+        ),
+      );
+    }
+    return result;
   }
 
   /// Подпись размера между креплениями: компактная, на белой подложке.
@@ -2886,6 +2938,7 @@ class WindowDrawingPainter extends CustomPainter {
       text,
       middle + outward * 13,
       angle: math.atan2(unit.dy, unit.dx),
+      fontSize: _labelPx(LabelKind.dimensionChain),
     );
   }
 
@@ -2922,11 +2975,8 @@ class WindowDrawingPainter extends CustomPainter {
         : -normal;
     // Середину стороны занимает подпись шага между креплениями, а «кромка» —
     // вспомогательная подпись: ищем для неё свободное место вдоль кромки.
-    final halfLength = _textPainter(
-      text,
-      color: _filmEdge,
-      small: true,
-    ).width / 2;
+    final halfLength =
+        _textPainter(text, color: _filmEdge, small: true).width / 2;
     final position = edgeIndex == null
         ? middle + inward * 20
         : _freeSpotOnEdge(
@@ -2945,6 +2995,7 @@ class WindowDrawingPainter extends CustomPainter {
       angle: math.atan2(unit.dy, unit.dx),
       small: true,
       color: _filmEdge,
+      fontSize: _labelPx(LabelKind.sideLabel),
     );
   }
 
@@ -2964,7 +3015,7 @@ class WindowDrawingPainter extends CustomPainter {
     if (params.isScreen) {
       final hemLine = layers.screenHemLine;
       final center = layout.toPxPoint(boundsOf(layers.outer).center);
-      const offset = 24.0;
+      const offset = 30.0;
       for (var i = 0; i < hemLine.length; i++) {
         final a = layout.toPxPoint(hemLine[i]);
         final b = layout.toPxPoint(hemLine[(i + 1) % hemLine.length]);
@@ -2981,11 +3032,13 @@ class WindowDrawingPainter extends CustomPainter {
           b: b,
           normal: outward,
           depth: offset,
-          halfLength: _textPainter(
-            text,
-            color: const Color(0xFF5B6B80),
-            small: true,
-          ).width / 2,
+          halfLength:
+              _textPainter(
+                text,
+                color: const Color(0xFF5B6B80),
+                small: true,
+              ).width /
+              2,
         );
         if (position == null) continue;
         _label(
@@ -2995,6 +3048,7 @@ class WindowDrawingPainter extends CustomPainter {
           angle: vertical ? _uprightAngle(b - a) : 0,
           small: true,
           color: const Color(0xFF5B6B80),
+          fontSize: _labelPx(LabelKind.edgeLabel),
         );
       }
     }
@@ -3030,32 +3084,37 @@ class WindowDrawingPainter extends CustomPainter {
         b: layout.toPxPoint(b),
         // inward посчитан в модели (ось Y вверх), на листе Y смотрит вниз.
         normal: Offset(inward.dx, -inward.dy),
-        depth: layout.px(depth / 2),
-        halfLength: _textPainter(
-          text,
-          color: _ink,
-          small: true,
-        ).width / 2,
+        // Подпись окантовки — снаружи канта, но БЛИЖЕ к нему, чем цифры
+        // накопительной цепочки (они идут сразу за кантом). На узкой
+        // окантовке (1:20, 50 мм — 2,5 точки) текст в полосу не влезает,
+        // поэтому минимальный отступ 28 точек: цифры цепочки остаются
+        // между кантом и этой подписью и не перекрываются.
+        depth: math.max(layout.px(depth / 2), 40.0),
+        halfLength: _textPainter(text, color: _ink, small: true).width / 2,
       );
       if (position == null) continue;
       _label(
         canvas,
         text,
         position,
-        angle: math.atan2(inward.dy, inward.dx),
+        angle: math.atan2(unit.dy, unit.dx),
         small: true,
+        fontSize: _labelPx(LabelKind.edgeLabel),
       );
     }
 
     // Запайка на верхней стороне. У скрина шов уже подписан на каждой
     // стороне в _paintScreenHem — второй выноски не нужно.
-    if (!params.isScreen) {
+    if (!params.isScreen && _chainPx().isEmpty) {
+      // Если на верхней стороне стоит накопительная цепочка, выноска
+      // «запайка» уступает ей место: ширина запайки есть в легенде и
+      // примечаниях, а цифры цепочки важнее и не должны перекрываться.
       final seamOuter = (edgeInner[3] + edgeInner[2]) / 2;
       final seamInner = (filmEdge[3] + filmEdge[2]) / 2;
       _callout(
         canvas,
         layout.toPxPoint((seamOuter + seamInner) / 2),
-        layout.toPxPoint(seamOuter) + const Offset(10, -24),
+        layout.toPxPoint(seamOuter) + const Offset(10, -38),
         'запайка ${formatMm(params.weldOverlapMm)}',
       );
     }
@@ -3081,13 +3140,20 @@ class WindowDrawingPainter extends CustomPainter {
               '${formatMm(zipperBand)} ${unitSuffix()}'
         : '';
     final edgeHint = params.isScreen ? ' (пунктир — край заготовки)' : '';
+    // Косое окно: показываем не только габарит, но и все четыре стороны
+    // заготовки — именно по ним идёт раскрой по формуле заказчика.
+    final spec = WindowSpec(params, layout.geometry, layers);
+    final sideNote = spec.isObliqueBlank
+        ? ' · стороны: ${spec.filmCutSidesLabel}'
+        : '';
     _label(
       canvas,
       'заготовка ${formatMm(blankWidth)} × ${formatMm(blankHeight)} ${unitSuffix()}'
-      '$edgeHint$zipperNote',
+      '$sideNote$edgeHint$zipperNote',
       Offset(size.width / 2, size.height - 10),
       small: true,
       color: const Color(0xFF3E4C60),
+      fontSize: _labelPx(LabelKind.notes),
     );
   }
 
@@ -3307,8 +3373,14 @@ class WindowDrawingPainter extends CustomPainter {
     double angle = 0,
     bool small = false,
     Color color = _ink,
+    double? fontSize,
   }) {
-    final painter = _textPainter(text, color: color, small: small);
+    final painter = _textPainter(
+      text,
+      color: color,
+      small: small,
+      fontSize: fontSize,
+    );
     var rotation = angle;
     if (rotation > math.pi / 2 + 1e-6 || rotation < -math.pi / 2 - 1e-6) {
       rotation += math.pi;
@@ -3367,4 +3439,27 @@ class _SpanPx {
 
   /// Угол кромки на листе.
   final double angle;
+}
+
+/// Подпись накопительной цепочки, пересчитанная в пиксели листа.
+class _ChainPx {
+  const _ChainPx({
+    required this.label,
+    required this.position,
+    required this.halfLength,
+    required this.angle,
+    required this.fontSize,
+  });
+
+  final FastenerChainLabel label;
+
+  /// Центр подписи на листе (снаружи канта).
+  final Offset position;
+
+  /// Половина ширины текста вдоль стороны, px — для разведения с подписями
+  /// окантовки, кромки и подворота.
+  final double halfLength;
+
+  final double angle;
+  final double fontSize;
 }

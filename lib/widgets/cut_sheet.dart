@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/order_project.dart';
 import '../models/window_geometry.dart';
 import '../models/window_params.dart';
+import '../services/label_settings.dart';
 
 /// Лист «Раскрой плёнки» — вырезанные заготовки мягких окон.
 ///
@@ -82,14 +83,8 @@ class CutSheet extends StatelessWidget {
         final viewportHeight = constraints.maxHeight.isFinite
             ? constraints.maxHeight
             : 900.0;
-        final sheetWidth = math.max(
-          viewportWidth - _outerPadding * 2,
-          320.0,
-        );
-        final sheetHeight = math.max(
-          viewportHeight - _outerPadding * 2,
-          320.0,
-        );
+        final sheetWidth = math.max(viewportWidth - _outerPadding * 2, 320.0);
+        final sheetHeight = math.max(viewportHeight - _outerPadding * 2, 320.0);
         final contentWidth = math.max(sheetWidth - _innerPadding * 2, 160.0);
         final area = Size(
           contentWidth,
@@ -206,42 +201,33 @@ class CutPiece {
     this.outline = const [],
     this.contours = const [],
     this.areaM2 = 0,
+    this.nominalSideLengths = const [],
   });
 
   /// Заготовка к раскрою: плёнка с напайкой под окантовку, припуском на
   /// раскрой и компенсацией усадки ПВХ (см.
   /// [WindowSpec.filmCutPolygonWithShrinkage]).
+  ///
+  /// Форма — фактический контур заготовки: прямоугольник у прямоугольного
+  /// окна и косой четырёхугольник у трапеции или окна с разными высотами
+  /// сторон (стороны считаются по формуле заказчика, см.
+  /// [WindowSpec.blankSideLengths]).
   factory CutPiece.ofSpec(WindowSpec spec) {
     final areaM2 = spec.filmCutAreaWithShrinkageM2;
-    // Заготовка обычного окна (в том числе трапеции и окна с разными
-    // высотами) — ВСЕГДА прямоугольник ширина × высота. Размеры берём из
-    // filmCut*WithShrinkage, а не из габарита полигона: даже если контур
-    // почему-то окажется пустым или схлопнутым, лист «Раскрой» не останется
-    // без заготовки.
     final width = _positive(spec.filmCutWidthWithShrinkage);
     final height = _positive(spec.filmCutHeightWithShrinkage);
-    if (!spec.params.isTShape) {
-      return CutPiece(
-        widthMm: width,
-        heightMm: height,
-        outline: [
-          Offset.zero,
-          Offset(width, 0),
-          Offset(width, height),
-          Offset(0, height),
-        ],
-        areaM2: areaM2,
-      );
-    }
-
-    // У Т-окна без спайки заготовок две: каждая нормализуется к общему
-    // габариту, чтобы лист «Раскрой» показал обе части.
     final polygons = spec.filmCutPolygonsWithShrinkage;
+    // У Т-окна сторон больше четырёх (основное полотно плюс пристройки):
+    // номинальные четыре стороны обычного окна к нему не применимы.
+    final nominal = spec.params.isTShape
+        ? const <double>[]
+        : spec.filmCutSideLengths;
     if (polygons.isEmpty) {
       return CutPiece(
         widthMm: width,
         heightMm: height,
         areaM2: areaM2,
+        nominalSideLengths: nominal,
       );
     }
     final bounds = boundsOfAll(polygons);
@@ -250,6 +236,7 @@ class CutPiece {
         widthMm: width,
         heightMm: height,
         areaM2: areaM2,
+        nominalSideLengths: nominal,
       );
     }
     final contours = [
@@ -265,6 +252,7 @@ class CutPiece {
       outline: contours.first,
       contours: contours,
       areaM2: areaM2,
+      nominalSideLengths: nominal,
     );
   }
   final double widthMm;
@@ -281,6 +269,13 @@ class CutPiece {
   /// Площадь к раскрою по фактическому контуру, м² (с усадкой, минус вырезы).
   /// Ноль — посчитать по габариту (для заготовок, созданных вручную).
   final double areaM2;
+
+  /// Номинальные длины сторон заготовки по обходу: низ, право, верх, лево.
+  ///
+  /// У косого окна это ровно числа заказчика (2 990 / 2 740 / 2 990 / 2 080),
+  /// а не фактические длины наклонных отрезков. Подписи на листе берут их,
+  /// поэтому цифры совпадают с расчётом и документами.
+  final List<double> nominalSideLengths;
 
   /// Некорректные размеры не роняют лист: считаем их минимальной заготовкой.
   static double _positive(double value) =>
@@ -307,7 +302,11 @@ class CutPiece {
   ///
   /// У обычного окна порядок прежний: низ, право, верх, лево. У Т-окна без
   /// спайки сначала идут четыре стороны основного полотна, затем приставки.
+  /// Для косого окна берутся НОМИНАЛЬНЫЕ стороны заготовки
+  /// ([nominalSideLengths]) — они совпадают с формулой заказчика и с
+  /// подписями, хотя наклонная кромка на чертеже длиннее по построению.
   List<double> get sideLengths {
+    if (nominalSideLengths.isNotEmpty) return nominalSideLengths;
     if (!hasContour) return [widthMm, heightMm, widthMm, heightMm];
     return [
       for (final contour in allContours)
@@ -628,7 +627,9 @@ class CutSheetPainter extends CustomPainter {
     required this.layout,
     this.labelFontFamily,
     LengthUnit? unit,
-  }) : unit = unit ?? DisplayUnits.unit;
+    LabelSettings? labelSettings,
+  }) : unit = unit ?? DisplayUnits.unit,
+       labelSettings = labelSettings ?? LabelSettings.value;
 
   final List<WindowSpec> specs;
   final CutLayout layout;
@@ -636,6 +637,16 @@ class CutSheetPainter extends CustomPainter {
 
   /// Единица подписей: при переключении мм/см лист перерисовывается.
   final LengthUnit unit;
+
+  /// Размеры подписей листа «Раскрой» (см. «Настройки подписей»).
+  final LabelSettings labelSettings;
+
+  /// Базовый кегль подписей листа в точках.
+  ///
+  /// Ограничен полутора стандартными: на маленькой заготовке крупная
+  /// подпись не влезла бы в контур и вылезла за лист.
+  double get _basePx =>
+      math.min(labelSettings.pxFor(LabelKind.cutSheet), 10.5 * 1.45);
 
   static const Color _ink = Color(0xFF1B1F27);
   static const Color _dim = Color(0xFF41506A);
@@ -751,7 +762,7 @@ class CutSheetPainter extends CustomPainter {
   void _paintArea(Canvas canvas, Rect rect, CutPiece piece, WindowSpec spec) {
     final areaM2 = piece.areaM2 > 0 ? piece.areaM2 : piece.areaMm2 / 1000000;
     final text = '${formatMeters(areaM2)} м²';
-    var fontSize = math.min(21.0, rect.height * 0.34);
+    var fontSize = math.min(_basePx * 2.0, rect.height * 0.34);
     if (fontSize < 8) return;
     var painter = _painter(text, fontSize: fontSize, bold: true);
     while (fontSize > 8 && painter.width > rect.width - 12) {
@@ -818,6 +829,12 @@ class CutSheetPainter extends CustomPainter {
       ..color = _ink
       ..strokeWidth = 1.1;
     final center = rect.center;
+    // У косого окна подписываем НОМИНАЛЬНЫЕ стороны заготовки — те же числа,
+    // что в расчёте и документах (низ 2 990, право 2 740, верх 2 990,
+    // лево 2 080). Наклонная кромка на чертеже длиннее по построению.
+    final nominal = piece.nominalSideLengths.length == 4 && contours.length == 1
+        ? piece.nominalSideLengths
+        : null;
 
     for (var c = 0; c < contours.length; c++) {
       final points = contours[c];
@@ -854,7 +871,9 @@ class CutSheetPainter extends CustomPainter {
 
         _label(
           canvas,
-          formatMm(lengths[i]),
+          formatMm(
+            nominal != null && i < nominal.length ? nominal[i] : lengths[i],
+          ),
           (a2 + b2) / 2 + normal * 11,
           angle: _uprightAngle(direction),
           small: true,
@@ -933,16 +952,17 @@ class CutSheetPainter extends CustomPainter {
   TextPainter _painter(
     String text, {
     Color color = _ink,
-    double fontSize = 12.5,
+    double fontSize = 0,
     bool small = false,
     bool bold = false,
   }) {
+    final size = fontSize > 0 ? fontSize : (small ? _basePx : _basePx * 1.19);
     return TextPainter(
       text: TextSpan(
         text: text,
         style: TextStyle(
           color: color,
-          fontSize: small ? 10.5 : fontSize,
+          fontSize: size,
           fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
           fontFamily: labelFontFamily,
         ),
@@ -959,8 +979,14 @@ class CutSheetPainter extends CustomPainter {
     double angle = 0,
     bool small = false,
     Color color = _ink,
+    double? fontSize,
   }) {
-    final painter = _painter(text, color: color, small: small);
+    final painter = _painter(
+      text,
+      color: color,
+      small: small,
+      fontSize: fontSize ?? 0,
+    );
     canvas.save();
     canvas.translate(position.dx, position.dy);
     canvas.rotate(angle);
@@ -984,7 +1010,8 @@ class CutSheetPainter extends CustomPainter {
       oldDelegate.layout != layout ||
       oldDelegate.specs != specs ||
       oldDelegate.labelFontFamily != labelFontFamily ||
-      oldDelegate.unit != unit;
+      oldDelegate.unit != unit ||
+      oldDelegate.labelSettings != labelSettings;
 }
 
 /// Итоги раскроя: количество, площади заготовок и материалы.
@@ -1060,10 +1087,7 @@ class _CutTotalsBlock extends StatelessWidget {
               const Spacer(),
               Text(
                 'Масштаб заготовок единый · размеры в ${unitSuffix()}',
-                style: const TextStyle(
-                  fontSize: 9.5,
-                  color: Color(0xFF8A93A0),
-                ),
+                style: const TextStyle(fontSize: 9.5, color: Color(0xFF8A93A0)),
               ),
             ],
           ),
@@ -1081,7 +1105,7 @@ class _CutTotalsBlock extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: _statTile(
-                  'Без усадки (прямоугольник)',
+                  'Без усадки (по контуру)',
                   '${formatMeters(totals.filmAreaM2)} м²',
                 ),
               ),

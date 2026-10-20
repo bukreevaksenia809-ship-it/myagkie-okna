@@ -6,6 +6,7 @@ import 'models/window_geometry.dart';
 import 'models/price_list.dart';
 import 'models/window_params.dart';
 import 'services/order_storage.dart';
+import 'services/label_settings.dart';
 import 'services/tech_checks.dart';
 import 'services/pdf_export.dart';
 import 'services/roll_plan.dart';
@@ -28,6 +29,9 @@ Future<void> main() async {
   // Единицы показа читаем до первой сборки: если заказчик выбрал см,
   // приложение не мигнёт миллиметрами.
   await DisplayUnits.load();
+  // Размеры подписей читаем там же: листы должны открыться с выбранными
+  // кеглями, а не мигнуть стандартными.
+  await LabelSettings.load();
   runApp(const SoftWindowApp());
 }
 
@@ -95,12 +99,19 @@ class _BuilderScreenState extends State<BuilderScreen> {
     _tab = _tabFromUrl();
     _zoom.addListener(_onZoomChanged);
     DisplayUnits.current.addListener(_onUnitsChanged);
+    LabelSettings.current.addListener(_onLabelSettingsChanged);
     _refreshOrders();
   }
 
   /// Переключатель мм/см перерисовывает всё приложение: подписи на панели,
   /// чертеже и табличных листах считаются в build, а не хранятся в модели.
   void _onUnitsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Новый размер подписи перерисовывает листы: пейнтеры получают снимок
+  /// [LabelSettings] при сборке и сравнивают его в shouldRepaint.
+  void _onLabelSettingsChanged() {
     if (mounted) setState(() {});
   }
 
@@ -121,6 +132,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
   void dispose() {
     _zoom.removeListener(_onZoomChanged);
     DisplayUnits.current.removeListener(_onUnitsChanged);
+    LabelSettings.current.removeListener(_onLabelSettingsChanged);
     _zoom.dispose();
     super.dispose();
   }
@@ -132,12 +144,13 @@ class _BuilderScreenState extends State<BuilderScreen> {
     }
   }
 
-  void _updateProject(OrderProject project) => setState(() => _project = project);
+  void _updateProject(OrderProject project) =>
+      setState(() => _project = project);
 
   void _reset() => setState(() {
-        _project = const OrderProject();
-        _zoom.value = Matrix4.identity();
-      });
+    _project = const OrderProject();
+    _zoom.value = Matrix4.identity();
+  });
 
   // ------------------------------------------------------------------ заказы
 
@@ -245,14 +258,13 @@ class _BuilderScreenState extends State<BuilderScreen> {
 
   /// Явный размер листа (длинные листы: подробный чертёж и ведомость).
   Size? _explicitSheetSize(Size viewport) => switch (_tab) {
-        SheetTab.drawing =>
-          DrawingSheet.detailedSheetSize(_project, viewport),
-        SheetTab.roll => null,
-        SheetTab.cut => CutSheet.sheetSize(_project, viewport),
-        SheetTab.costs => CostsSheet.sheetSize(_project, viewport),
-        SheetTab.estimate => EstimateSheet.sheetSize(_project, viewport),
-        SheetTab.techCard => TechCardSheet.sheetSize(_project, viewport),
-      };
+    SheetTab.drawing => DrawingSheet.detailedSheetSize(_project, viewport),
+    SheetTab.roll => null,
+    SheetTab.cut => CutSheet.sheetSize(_project, viewport),
+    SheetTab.costs => CostsSheet.sheetSize(_project, viewport),
+    SheetTab.estimate => EstimateSheet.sheetSize(_project, viewport),
+    SheetTab.techCard => TechCardSheet.sheetSize(_project, viewport),
+  };
 
   /// Границы, по которым можно резать PDF, не разрывая окно.
   List<double>? _safeBreakFractions(Size viewport) =>
@@ -261,8 +273,8 @@ class _BuilderScreenState extends State<BuilderScreen> {
   /// То же, но для конкретного листа: при печати пачки вкладки переключаются.
   List<double>? _safeBreakFractionsFor(SheetTab tab, Size viewport) =>
       tab == SheetTab.drawing
-          ? DrawingSheet.safeBreakFractions(_project, viewport)
-          : null;
+      ? DrawingSheet.safeBreakFractions(_project, viewport)
+      : null;
 
   /// Формат страницы PDF для вкладки.
   ///
@@ -274,13 +286,13 @@ class _BuilderScreenState extends State<BuilderScreen> {
       : SheetPageFormat.a3LandscapeAuto;
 
   String get _sheetPrefix => switch (_tab) {
-        SheetTab.drawing => 'Чертёж',
-        SheetTab.roll => 'Раскладка',
-        SheetTab.cut => 'Раскрой',
-        SheetTab.costs => 'Расходы',
-        SheetTab.estimate => 'Смета',
-        SheetTab.techCard => 'Техкарта',
-      };
+    SheetTab.drawing => 'Чертёж',
+    SheetTab.roll => 'Раскладка',
+    SheetTab.cut => 'Раскрой',
+    SheetTab.costs => 'Расходы',
+    SheetTab.estimate => 'Смета',
+    SheetTab.techCard => 'Техкарта',
+  };
 
   Future<void> _exportPdf() async {
     // Пока идёт другой экспорт, второй раз не запускаем.
@@ -430,7 +442,9 @@ class _BuilderScreenState extends State<BuilderScreen> {
       // Документ отпущен: в памяти остались только готовые байты PDF.
       final printed = await printPdfBytes(bytes: bytes, jobName: jobName);
       if (!printed) {
-        messenger.showSnackBar(const SnackBar(content: Text('Печать отменена')));
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Печать отменена')),
+        );
       }
     } catch (error) {
       messenger.showSnackBar(
@@ -498,8 +512,13 @@ class _BuilderScreenState extends State<BuilderScreen> {
                 ),
               ),
               Text(
-                checks.isEmpty ? 'замечаний нет' : 'замечаний: ${checks.length}',
-                style: const TextStyle(fontSize: 10.5, color: Color(0xFF8A93A0)),
+                checks.isEmpty
+                    ? 'замечаний нет'
+                    : 'замечаний: ${checks.length}',
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  color: Color(0xFF8A93A0),
+                ),
               ),
             ],
           ),
@@ -677,10 +696,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
               // Узкий экран (планшет, телефон, окно браузера): панель сверху.
               return Column(
                 children: [
-                  SizedBox(
-                    height: constraints.maxHeight * 0.42,
-                    child: panel,
-                  ),
+                  SizedBox(height: constraints.maxHeight * 0.42, child: panel),
                   const Divider(height: 1, thickness: 1),
                   Expanded(child: sheetArea),
                 ],
@@ -709,30 +725,27 @@ class _BuilderScreenState extends State<BuilderScreen> {
         builder: (context, viewport) {
           final sheet = switch (_tab) {
             SheetTab.drawing => DrawingSheet(
-                project: _project,
-                captureKey: _sheetKey,
-              ),
+              project: _project,
+              captureKey: _sheetKey,
+            ),
             SheetTab.roll => RollSheet(
-                project: _project,
-                captureKey: _sheetKey,
-              ),
-            SheetTab.cut => CutSheet(
-                project: _project,
-                captureKey: _sheetKey,
-              ),
+              project: _project,
+              captureKey: _sheetKey,
+            ),
+            SheetTab.cut => CutSheet(project: _project, captureKey: _sheetKey),
             SheetTab.costs => CostsSheet(
-                project: _project,
-                captureKey: _sheetKey,
-              ),
+              project: _project,
+              captureKey: _sheetKey,
+            ),
             SheetTab.estimate => EstimateSheet(
-                project: _project,
-                prices: _prices,
-                captureKey: _sheetKey,
-              ),
+              project: _project,
+              prices: _prices,
+              captureKey: _sheetKey,
+            ),
             SheetTab.techCard => TechCardSheet(
-                project: _project,
-                captureKey: _sheetKey,
-              ),
+              project: _project,
+              captureKey: _sheetKey,
+            ),
           };
           final explicit = _explicitSheetSize(viewport.biggest);
 
@@ -810,16 +823,12 @@ class _BuilderScreenState extends State<BuilderScreen> {
                   value: SheetMode.single,
                   label: Text('Одно окно'),
                 ),
-                ButtonSegment(
-                  value: SheetMode.grid,
-                  label: Text('Все окна'),
-                ),
+                ButtonSegment(value: SheetMode.grid, label: Text('Все окна')),
               ],
               selected: {_project.sheetMode},
               showSelectedIcon: false,
-              onSelectionChanged: (selection) => _updateProject(
-                _project.setSheetMode(selection.first),
-              ),
+              onSelectionChanged: (selection) =>
+                  _updateProject(_project.setSheetMode(selection.first)),
             ),
             if (_tab == SheetTab.drawing &&
                 _project.sheetMode == SheetMode.grid &&
@@ -868,10 +877,14 @@ class _BuilderScreenState extends State<BuilderScreen> {
             ),
             const SizedBox(width: 8),
             const Tooltip(
-              message: 'Колесо мыши или трекпад — масштаб, '
+              message:
+                  'Колесо мыши или трекпад — масштаб, '
                   'перетаскивание — сдвиг листа',
-              child:
-                  Icon(Icons.help_outline, size: 18, color: Color(0xFF7C8798)),
+              child: Icon(
+                Icons.help_outline,
+                size: 18,
+                color: Color(0xFF7C8798),
+              ),
             ),
             const SizedBox(width: 6),
             Text(
@@ -900,22 +913,31 @@ class _StatusBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final specs = [for (final window in project.windows) WindowSpec.of(window)];
     // Плёнка в заказе — заготовки к раскрою, то есть с припуском на раскрой.
-    final totalFilmArea =
-        specs.fold<double>(0, (sum, spec) => sum + spec.filmCutAreaM2);
-    final totalProductArea =
-        specs.fold<double>(0, (sum, spec) => sum + spec.productAreaM2);
-    final totalEyelets =
-        specs.fold<int>(0, (sum, spec) => sum + spec.eyeletCount);
+    final totalFilmArea = specs.fold<double>(
+      0,
+      (sum, spec) => sum + spec.filmCutAreaM2,
+    );
+    final totalProductArea = specs.fold<double>(
+      0,
+      (sum, spec) => sum + spec.productAreaM2,
+    );
+    final totalEyelets = specs.fold<int>(
+      0,
+      (sum, spec) => sum + spec.eyeletCount,
+    );
     final consumption = <double, double>{};
     for (final spec in specs) {
       spec.edgeConsumption.forEach((roll, length) {
         consumption[roll] = (consumption[roll] ?? 0) + length;
       });
     }
-    final consumptionText = (consumption.entries.toList()
-          ..sort((a, b) => a.key.compareTo(b.key)))
-        .map((entry) => '${edgeBandLabel(entry.key)}: ${formatMm(entry.value)} ${unitSuffix()}')
-        .join(' · ');
+    final consumptionText =
+        (consumption.entries.toList()..sort((a, b) => a.key.compareTo(b.key)))
+            .map(
+              (entry) =>
+                  '${edgeBandLabel(entry.key)}: ${formatMm(entry.value)} ${unitSuffix()}',
+            )
+            .join(' · ');
 
     return Container(
       height: 64,
@@ -939,13 +961,17 @@ class _StatusBar extends StatelessWidget {
             rollPlans.isEmpty
                 ? '—'
                 : rollPlans
-                    .map((plan) =>
-                        '${plan.material.label.split(' ').first} '
-                        '${formatMm(plan.rollWidth)}×'
-                        '${formatMm(plan.layout.requiredLength)}')
-                    .join(' · '),
+                      .map(
+                        (plan) =>
+                            '${plan.material.label.split(' ').first} '
+                            '${formatMm(plan.rollWidth)}×'
+                            '${formatMm(plan.layout.requiredLength)}',
+                      )
+                      .join(' · '),
           ),
           const SizedBox(width: 200, child: _UnitsSwitch()),
+          const SizedBox(width: 8),
+          const _LabelSettingsButton(),
         ],
       ),
     );
@@ -984,7 +1010,6 @@ class _StatusBar extends StatelessWidget {
     );
   }
 }
-
 
 /// Переключатель единиц внизу экрана: «Единицы: мм · см».
 ///
@@ -1063,6 +1088,140 @@ class _UnitButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Кнопка «Настройки подписей» в нижней строке рядом с единицами мм/см.
+///
+/// Заказчик: «нужно добавить настройку регулирования размеров всех подписей
+/// (для каждой отдельно)». Кнопка открывает диалог с восемью типами подписей;
+/// значения хранятся в shared_preferences и сразу перерисовывают листы.
+class _LabelSettingsButton extends StatelessWidget {
+  const _LabelSettingsButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      key: const Key('label-settings-button'),
+      onPressed: () => showDialog<void>(
+        context: context,
+        builder: (dialogContext) => const _LabelSettingsDialog(),
+      ),
+      style: TextButton.styleFrom(
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+      ),
+      icon: const Icon(Icons.text_fields, size: 16),
+      label: const Text('Настройки подписей'),
+    );
+  }
+}
+
+/// Диалог размеров всех восьми типов подписей, 5…24 pt.
+class _LabelSettingsDialog extends StatefulWidget {
+  const _LabelSettingsDialog();
+
+  @override
+  State<_LabelSettingsDialog> createState() => _LabelSettingsDialogState();
+}
+
+class _LabelSettingsDialogState extends State<_LabelSettingsDialog> {
+  late LabelSettings _settings = LabelSettings.value;
+
+  void _set(LabelKind kind, double value) {
+    // setSize сразу меняет notifier, поэтому листы перерисовываются под
+    // диалогом, а сохранение в shared_preferences идёт следом.
+    LabelSettings.setSize(kind, value);
+    setState(() => _settings = LabelSettings.value);
+  }
+
+  Future<void> _reset() async {
+    await LabelSettings.resetToDefaults();
+    if (!mounted) return;
+    setState(() => _settings = LabelSettings.value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Настройки подписей'),
+      content: SizedBox(
+        width: 520,
+        height: 680,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Размер каждой группы подписей настраивается отдельно, '
+              'от 5 до 24 pt. Значения сохраняются и применяются на всех '
+              'листах: чертёж, раскрой, расходы, смета, техкарта.',
+              style: TextStyle(fontSize: 12, color: Color(0xFF66748A)),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView.separated(
+                itemCount: LabelKind.values.length,
+                separatorBuilder: (_, _) => const Divider(height: 10),
+                itemBuilder: (context, index) {
+                  final kind = LabelKind.values[index];
+                  final value = _settings.ptFor(kind);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              kind.label,
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${value.toStringAsFixed(1).replaceAll('.', ',')} pt',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF0B62C4),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Slider(
+                        key: Key('label-size-${kind.name}'),
+                        min: LabelSettings.minPt,
+                        max: LabelSettings.maxPt,
+                        divisions: 38,
+                        value: value.clamp(
+                          LabelSettings.minPt,
+                          LabelSettings.maxPt,
+                        ),
+                        label: kind.label,
+                        onChanged: (next) => _set(kind, next),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const Key('label-settings-reset'),
+          onPressed: _reset,
+          child: const Text('Сбросить к стандартным'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+          child: const Text('Готово'),
+        ),
+      ],
     );
   }
 }
