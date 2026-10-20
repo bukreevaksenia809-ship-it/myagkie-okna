@@ -253,11 +253,12 @@ void twoAnnexGeometryRules() {
     test('подворот по внешнему контуру, окантовки нет', () {
       expect(params.isScreen, isTrue);
       expect(spec.edgeConsumption, isEmpty);
-      // Прибавка по осям 60 мм: (40 + 40) / 2 + 20. Заготовка-объединение:
-      // 2860 × 2060, площадь — сумма трёх прямоугольников 4,0565 м².
-      expect(spec.filmCutWidth, closeTo(2860, 1e-9));
+      // В заготовку идёт половина каждой стороны: по ширине +20, по высоте
+      // +30 на кромку. Заготовка-объединение: 2840 × 2060,
+      // площадь — 4,024 м².
+      expect(spec.filmCutWidth, closeTo(2840, 1e-9));
       expect(spec.filmCutHeight, closeTo(2060, 1e-9));
-      expect(spec.filmCutAreaM2, closeTo(4.0565, 1e-6));
+      expect(spec.filmCutAreaM2, closeTo(4.024, 1e-6));
       expect(spec.layers.filmPolygons, hasLength(1));
       expect(spec.layers.screenHemPolygons, hasLength(1));
       expect(spec.eyeletCount, greaterThan(0));

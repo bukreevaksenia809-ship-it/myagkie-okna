@@ -318,7 +318,8 @@ void _screenAndWeldRules() {
     expect(find.byKey(const Key('hem-top-field')), findsOneWidget);
     expect(find.byKey(const Key('hem-left-field')), findsOneWidget);
     expect(find.byKey(const Key('hem-blank-label')), findsOneWidget);
-    // Подворот 60 мм на все стороны: заготовка = готовый размер + 60 + 20.
+    // Подворот 60 мм на все стороны: заготовка = готовый размер + половина
+    // подворота с каждой стороны, к высоте +20.
     for (final key in const [
       'hem-bottom-field',
       'hem-right-field',
@@ -336,17 +337,17 @@ void _screenAndWeldRules() {
     final screenSpec = WindowSpec.of(params);
     expect(
       screenSpec.filmCutWidthWithAllowance,
-      closeTo(params.bottomWidth + 60 + 20, 1e-9),
+      closeTo(params.bottomWidth + 60, 1e-9),
     );
     expect(
       screenSpec.filmCutHeightWithAllowance,
       closeTo(params.leftHeight + 60 + 20, 1e-9),
     );
-    // Готовое окно панели 1500 × 2520 → заготовка 1580 × 2600 мм.
-    expect(screenSpec.filmCutWidthWithAllowance, closeTo(1580, 1e-9));
+    // Готовое окно панели 1500 × 2520 → заготовка 1560 × 2600 мм.
+    expect(screenSpec.filmCutWidthWithAllowance, closeTo(1560, 1e-9));
     expect(screenSpec.filmCutHeightWithAllowance, closeTo(2600, 1e-9));
-    // Разные подвороты по сторонам: по каждой оси — среднее двух подворотов
-    // плюс 20 мм. Окно панели 1500 × 2520.
+    // Разные подвороты по сторонам: половина каждой стороны, к высоте +20.
+    // Окно панели 1500 × 2520.
     await tester.enterText(find.byKey(const Key('hem-bottom-field')), '40');
     await tester.enterText(find.byKey(const Key('hem-top-field')), '60');
     await tester.enterText(find.byKey(const Key('hem-right-field')), '50');
@@ -354,12 +355,12 @@ void _screenAndWeldRules() {
     await tester.pumpAndSettle();
     params = hostKey.currentState!.project.selected;
     final mixedSpec = WindowSpec.of(params);
-    // Ширина: 1500 + (40 + 50) / 2 + 20 = 1565.
+    // Ширина: 1500 + 20 + 25 = 1545.
     expect(
       mixedSpec.filmCutWidthWithAllowance,
-      closeTo(params.bottomWidth + 65, 1e-9),
+      closeTo(params.bottomWidth + 45, 1e-9),
     );
-    // Высота: 2520 + (40 + 60) / 2 + 20 = 2590.
+    // Высота: 2520 + 20 + 30 + 20 = 2590.
     expect(
       mixedSpec.filmCutHeightWithAllowance,
       closeTo(params.leftHeight + 70, 1e-9),
@@ -367,19 +368,15 @@ void _screenAndWeldRules() {
     // Панель показывает человеческий расчёт по правилу.
     expect(
       find.text(
-        'Высота: ${formatMm(2520)} + ${formatMm(70)} '
-        '(среднее (${formatMm(40)} + ${formatMm(60)}) / 2 + '
-        '${formatMm(screenHemAxisExtraMm)} = ${formatMm(70)}) = '
-        '${formatMm(2590)} мм',
+        'Высота: ${formatMm(2520)} + ${formatMm(20)} + ${formatMm(30)} + '
+        '${formatMm(screenHemAxisExtraMm)} = ${formatMm(2590)} мм',
       ),
       findsOneWidget,
     );
     expect(
       find.text(
-        'Ширина: ${formatMm(1500)} + ${formatMm(65)} '
-        '(среднее (${formatMm(40)} + ${formatMm(50)}) / 2 + '
-        '${formatMm(screenHemAxisExtraMm)} = ${formatMm(65)}) = '
-        '${formatMm(1565)} мм',
+        'Ширина: ${formatMm(1500)} + ${formatMm(20)} + ${formatMm(25)} = '
+        '${formatMm(1545)} мм',
       ),
       findsOneWidget,
     );
@@ -809,7 +806,7 @@ void _screenZipperBlankRules() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     // Скрин 2000 × 2000, подворот 40 на все стороны, одна молния с полосой
-    // 50 мм: заготовка 2010 × 2060 мм вместо 2060 × 2060.
+    // 50 мм: заготовка 1990 × 2060 мм вместо 2040 × 2060.
     const order = OrderProject(
       windows: [
         WindowParams(
@@ -832,24 +829,24 @@ void _screenZipperBlankRules() {
     expect(tester.takeException(), isNull);
 
     final spec = WindowSpec.of(order.selected);
-    expect(spec.filmCutWidthWithAllowance, closeTo(2010, 1e-9));
+    expect(spec.filmCutWidthWithAllowance, closeTo(1990, 1e-9));
     expect(spec.filmCutHeightWithAllowance, closeTo(2060, 1e-9));
 
     // Подпись подворотного блока: обе ширины и виновник — полоса молнии.
     final blankLabel = tester
         .widget<Text>(find.byKey(const Key('hem-blank-label')))
         .data!;
-    expect(blankLabel, contains(formatMm(2010)));
+    expect(blankLabel, contains(formatMm(1990)));
     expect(blankLabel, contains('полосу молнии 50'));
-    expect(blankLabel, contains('${formatMm(2060)} → ${formatMm(2010)}'));
+    expect(blankLabel, contains('${formatMm(2040)} → ${formatMm(1990)}'));
 
     // Формула по ширине показывает вычет отдельным слагаемым.
     final widthFormula = tester
         .widget<Text>(find.byKey(const Key('hem-width-formula')))
         .data!;
     expect(widthFormula, contains('− полоса молнии 50'));
-    expect(widthFormula, contains('= ${formatMm(2010)} мм'));
-    // Высота полосой не меняется: 2000 + 40 + 20 = 2060.
+    expect(widthFormula, contains('= ${formatMm(1990)} мм'));
+    // Высота полосой не меняется: 2000 + 20 + 20 + 20 = 2060.
     final heightFormula = tester
         .widget<Text>(find.byKey(const Key('hem-height-formula')))
         .data!;
@@ -909,7 +906,7 @@ void _screenZipperBlankRules() {
 }
 
 /// Панель: пресеты подворота скрина 80/100/120 — кнопки, модель и формула
-/// «среднее + 20» на узкой панели 420 px.
+/// «половина подворота + 20 к высоте» на узкой панели 420 px.
 void _screenHemPresetsRules() {
   testWidgets('панель 420: пресеты 80/100/120 меняют модель и заготовку', (
     WidgetTester tester,
@@ -952,24 +949,24 @@ void _screenHemPresetsRules() {
     expect(tester.takeException(), isNull);
 
     // Выбор 120 на низу попадает в модель. По высоте прибавка —
-    // (низ 120 + верх 40) / 2 + 20 = 100 → 2000 + 100 = 2100 мм;
-    // ширина считается по лево/право = 40 и остаётся 2060 мм.
+    // 60 (низ) + 20 (верх) + 20 = 100 → 2000 + 100 = 2100 мм;
+    // ширина считается по лево/право = 40 и остаётся 2040 мм.
     await tester.tap(find.byKey(const Key('hem-preset-hemBottom-120')));
     await tester.pumpAndSettle();
     final afterBottom = hostKey.currentState!.project.selected;
     expect(afterBottom.hemBottomMm, 120);
     final bottomSpec = WindowSpec.of(afterBottom);
-    expect(bottomSpec.filmCutWidth, closeTo(2060, 1e-9));
+    expect(bottomSpec.filmCutWidth, closeTo(2040, 1e-9));
     expect(bottomSpec.filmCutHeight, closeTo(2100, 1e-9));
     expect(tester.takeException(), isNull);
 
-    // Выбор 120 на верху: среднее (120 + 120) / 2 + 20 = 140 → высота 2140.
+    // Выбор 120 на верху: 60 + 60 + 20 = 140 → высота 2140.
     await tester.tap(find.byKey(const Key('hem-preset-hemTop-120')));
     await tester.pumpAndSettle();
     final afterTop = hostKey.currentState!.project.selected;
     expect(afterTop.hemTopMm, 120);
     final topSpec = WindowSpec.of(afterTop);
-    expect(topSpec.filmCutWidth, closeTo(2060, 1e-9));
+    expect(topSpec.filmCutWidth, closeTo(2040, 1e-9));
     expect(topSpec.filmCutHeight, closeTo(2140, 1e-9));
     expect(
       topSpec.screenBlankHeightFormulaLabel,
@@ -977,7 +974,7 @@ void _screenHemPresetsRules() {
     );
     expect(tester.takeException(), isNull);
 
-    // Правый и левый бока 120: ширина тоже становится 2140 мм.
+    // Правый и левый бока 120: ширина тоже становится 2120 мм.
     await tester.tap(find.byKey(const Key('hem-preset-hemRight-120')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('hem-preset-hemLeft-120')));
@@ -986,11 +983,11 @@ void _screenHemPresetsRules() {
     expect(all.hemRightMm, 120);
     expect(all.hemLeftMm, 120);
     final allSpec = WindowSpec.of(all);
-    expect(allSpec.filmCutWidth, closeTo(2140, 1e-9));
+    expect(allSpec.filmCutWidth, closeTo(2120, 1e-9));
     expect(allSpec.filmCutHeight, closeTo(2140, 1e-9));
     expect(
       allSpec.screenBlankWidthFormulaLabel,
-      contains('= ${formatMm(2140)} мм'),
+      contains('= ${formatMm(2120)} мм'),
     );
     expect(tester.takeException(), isNull);
   });

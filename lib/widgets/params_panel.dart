@@ -814,7 +814,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// (10…200 мм);
   /// панель узкая (420 px), поэтому строка собрана из подписи, компактных
   /// чипов и поля. Внизу — итог: какой получится заготовка и как она
-  /// посчитана по каждой оси (прибавка — среднее двух подворотов + 20 мм).
+  /// посчитана: половина подворота каждой стороны, к высоте +20 мм.
   Widget _hemSection(WindowSpec spec) {
     final params = spec.params;
     return Column(
@@ -833,10 +833,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
         Text(
           'Габарит заготовки будет '
           '${formatMm(spec.filmCutWidthWithAllowance)} × '
-          '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}: габарит изделия '
-          'плюс прибавка по оси — среднее двух подворотов + '
-          '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} на шов и запас. Шов '
-          'сварки ${formatMm(screenSeamMm)} ${unitSuffix()}.'
+          '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}: полотно идёт '
+          'шире и выше готового размера на ПОЛОВИНУ подворота каждой стороны, '
+          'к высоте добавляется ${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} '
+          'на шов и запас. Шов сварки ${formatMm(screenSeamMm)} ${unitSuffix()}.'
           // У трапеции и окна с разными высотами наклон сторон добавляет к
           // габариту ещё немного — это видно отдельным слагаемым в формулах.
           '${spec.widthSlopeExtraMm.abs() >= 0.5 || spec.heightSlopeExtraMm.abs() >= 0.5 ? ' Наклон сторон добавляет к габариту: по ширине '
@@ -1127,8 +1127,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
                       '(сверху саморезы). Молния ставится в полосу из скрина '
                       '(подворот или накладная полоса) со швом '
                       '${formatMm(screenSeamMm)} ${unitSuffix()} по краям. Тента и окантовки у '
-                      'скрина нет: заготовка равна готовому размеру плюс прибавка '
-                      'по каждой оси — среднее двух подворотов + '
+                      'скрина нет: заготовка равна готовому размеру плюс ПОЛОВИНА '
+                      'подворота каждой стороны, к высоте добавляется '
                       '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} (низ 40 и верх 60 '
                       'дают по высоте +70 мм).'
                 : 'Каждое окно рисуется слоями: окантовка (складывается '
@@ -1288,8 +1288,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 const SizedBox(height: 8),
                 Text(
                   'Усадки у скрина нет; нужен запас — добавьте припуск на '
-                  'раскрой в разделе выше. В заготовку идёт не сумма подворотов, '
-                  'а среднее двух подворотов оси плюс '
+                  'раскрой в разделе выше. В заготовку идёт ПОЛОВИНА подворота '
+                  'каждой стороны, к высоте прибавляется '
                   '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} — поэтому (низ 40, '
                   'верх 60) даёт по высоте +70 мм.',
                   style: const TextStyle(
@@ -1699,7 +1699,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
               if (params.isScreen) ...[
                 Text(
                   'У скрина усадки нет: заготовка равна готовому размеру плюс '
-                  'прибавка по каждой оси — среднее двух подворотов + '
+                  'половина подворота каждой стороны, к высоте добавляется '
                   '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} на шов и запас. '
                   'Нужен запас — добавьте припуск на раскрой.',
                   style: const TextStyle(
@@ -3088,7 +3088,7 @@ class _CuttingCard extends StatelessWidget {
       ),
       (
         params.isScreen
-            ? 'Заготовка: готовый размер + среднее подворотов по оси + 20 мм '
+            ? 'Заготовка: готовый размер + половины подворотов, к высоте +20 мм '
                   '${params.hemBySideShortLabel}'
                   '${params.hasAllowance ? ' и припуск' : ''}'
             : 'Заготовка с запайкой ${formatMm(params.weldOverlapMm)} ${unitSuffix()}'

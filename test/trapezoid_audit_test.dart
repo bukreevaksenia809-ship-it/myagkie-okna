@@ -276,45 +276,97 @@ void main() {
       );
       final spec = WindowSpec.of(params);
 
-      // Прибавка по высоте: (80 + 100) / 2 + 20 = 110;
-      // по ширине: (100 + 80) / 2 + 20 = 110.
-      // Заготовка: низ 2110, верх 1110, высоты 1110.
+      // В заготовку идёт половина подворота каждой стороны:
+      // по высоте 40 + 50 + 20 = 110; по ширине 50 + 40 = 90.
+      // Заготовка: низ 2090, верх 1090, высоты 1110.
       expect(params.hemAxisBottomTopIncrease, closeTo(110, 1e-9));
-      expect(params.hemAxisLeftRightIncrease, closeTo(110, 1e-9));
+      expect(params.hemAxisLeftRightIncrease, closeTo(90, 1e-9));
       final blank = _manualScreenSides(params);
-      expect(blank, [2110, 1110, 1110, 1110]);
+      expect(blank, [2090, 1110, 1090, 1110]);
       _expectSides(spec.blankSideLengths, blank, 'стороны заготовки');
-      expect(spec.filmCutWidth, closeTo(2110, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2090, 1e-9));
       expect(spec.filmCutHeight, closeTo(1110, 1e-9));
-      // Площадь трапеции: (2110 + 1110) / 2 × 1110 = 1,7871 м².
+      // Площадь трапеции: (2090 + 1090) / 2 × 1110 = 1,7649 м².
       expect(spec.filmAreaM2, closeTo(_manualAreaM2(blank), 1e-9));
-      expect(spec.filmAreaM2, closeTo(1.7871, 1e-9));
+      expect(spec.filmAreaM2, closeTo(1.7649, 1e-9));
 
       // Наклона сторон в прибавке по осям больше нет.
       expect(spec.widthSlopeExtraMm, closeTo(0, 1e-9));
       expect(spec.heightSlopeExtraMm, closeTo(0, 1e-9));
       final widthFormula = spec.screenBlankWidthFormulaLabel;
-      expect(widthFormula, contains('${formatMm(2000)} + ${formatMm(110)}'));
+      expect(
+        widthFormula,
+        contains(
+          '${formatMm(2000)} + ${formatMm(50)} + ${formatMm(40)}',
+        ),
+      );
       expect(widthFormula, isNot(contains('наклон')));
-      expect(widthFormula, contains('= ${formatMm(2110)} мм'));
+      expect(widthFormula, contains('= ${formatMm(2090)} мм'));
 
       // У скрина нет ни припуска, ни усадки — площадь та же.
       final cut = _manualCutSides(params);
       _expectSides(spec.filmCutSideLengths, cut, 'стороны к раскрою');
-      expect(spec.filmCutAreaM2, closeTo(1.7871, 1e-9));
+      expect(spec.filmCutAreaM2, closeTo(1.7649, 1e-9));
       expect(spec.filmCutAreaM2, closeTo(_manualAreaM2(cut), 1e-9));
-      expect(spec.filmCutAreaWithShrinkageM2, closeTo(1.7871, 1e-9));
+      expect(spec.filmCutAreaWithShrinkageM2, closeTo(1.7649, 1e-9));
 
       final piece = CutPiece.ofSpec(spec);
       _expectSides(piece.sideLengths, cut, 'CutPiece');
-      expect(piece.widthMm, closeTo(2110, 1e-9));
+      expect(piece.widthMm, closeTo(2090, 1e-9));
       expect(piece.heightMm, closeTo(1110, 1e-9));
 
       // Окантовки у скрина нет: расход пуст, длина подворота — периметр.
       expect(spec.edgeConsumption, isEmpty);
       final summary = CostsSummary(OrderProject(windows: [params]));
       expect(summary.screenHemLengthMm, closeTo(5236.0679775, 1e-4));
-      expect(summary.filmAreaM2, closeTo(1.7871, 1e-9));
+      expect(summary.filmAreaM2, closeTo(1.7649, 1e-9));
+    });
+
+    test('д) косой скрин заказчика: низ 2000, верх 1000, высоты 1000/1000, '
+        'подвороты 80 на все стороны', () {
+      const params = WindowParams(
+        material: FilmMaterial.screen,
+        bottomWidth: 2000,
+        topWidth: 1000,
+        leftHeight: 1000,
+        rightHeight: 1000,
+        hemBottomMm: 80,
+        hemRightMm: 80,
+        hemTopMm: 80,
+        hemLeftMm: 80,
+      );
+      final spec = WindowSpec.of(params);
+
+      // Вручную по каждой стороне: 80 / 2 = 40.
+      // Низ: 2000 + 40 + 40 = 2080.
+      // Верх: 1000 + 40 + 40 = 1080.
+      // Правая и левая высоты: 1000 + 40 + 40 + 20 = 1100 каждая.
+      final blank = _manualScreenSides(params);
+      expect(blank, [2080, 1100, 1080, 1100]);
+      _expectSides(spec.blankSideLengths, blank, 'стороны заготовки');
+      expect(spec.filmCutWidth, closeTo(2080, 1e-9));
+      expect(spec.filmCutHeight, closeTo(1100, 1e-9));
+      // Площадь трапеции: (2080 + 1080) / 2 × 1100 = 1,738 м².
+      expect(spec.filmAreaM2, closeTo(_manualAreaM2(blank), 1e-9));
+      expect(spec.filmAreaM2, closeTo(1.738, 1e-9));
+
+      // Формулы показывают половины подворотов и +20 только к высоте.
+      expect(
+        spec.screenBlankWidthFormulaLabel,
+        contains(
+          '${formatMm(2000)} + ${formatMm(40)} + ${formatMm(40)} = '
+          '${formatMm(2080)} мм',
+        ),
+      );
+      expect(
+        spec.screenBlankHeightFormulaLabel,
+        contains(
+          '${formatMm(1000)} + ${formatMm(40)} + ${formatMm(40)} + '
+          '${formatMm(screenHemAxisExtraMm)} = ${formatMm(1100)} мм',
+        ),
+      );
+      expect(spec.widthSlopeExtraMm, closeTo(0, 1e-9));
+      expect(spec.heightSlopeExtraMm, closeTo(0, 1e-9));
     });
 
     test('молния на трапеции сужает ширину, форма остаётся косой', () {

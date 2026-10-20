@@ -81,7 +81,7 @@ const _trapezoid = WindowParams(
 );
 
 /// Скрин 2000 × 2000 с подворотом 40 и молнией: заготовка на листе «Раскрой»
-/// должна быть 2010 × 2060 мм — уже на полосу молнии 50 мм.
+/// должна быть 1990 × 2060 мм — уже на полосу молнии 50 мм.
 const _screenZipper = WindowParams(
   projectName: 'Мягкое окно террасы',
   customer: 'Иванов И. И.',
@@ -345,7 +345,7 @@ void main() {
   });
 
   group('CutPiece: полоса молнии сужает заготовку скрина', () {
-    // Скрин 2000 × 2000, подворот 40 на все стороны: заготовка 2060 × 2060.
+    // Скрин 2000 × 2000, подворот 40 на все стороны: заготовка 2040 × 2060.
     const screen2000 = WindowParams(
       material: FilmMaterial.screen,
       bottomWidth: 2000,
@@ -358,23 +358,23 @@ void main() {
       hemLeftMm: 40,
     );
 
-    test('прямоугольник: ширина 2010 мм и площадь 4,1406 м²', () {
+    test('прямоугольник: ширина 1990 мм и площадь 4,0994 м²', () {
       final without = CutPiece.ofSpec(WindowSpec.of(screen2000));
-      expect(without.widthMm, closeTo(2060, 1e-9));
+      expect(without.widthMm, closeTo(2040, 1e-9));
       expect(without.heightMm, closeTo(2060, 1e-9));
-      expect(without.areaM2, closeTo(4.2436, 1e-9));
+      expect(without.areaM2, closeTo(4.2024, 1e-9));
 
       final spec = WindowSpec.of(
         screen2000.copyWith(zippers: const [ZipperSpec(centered: true)]),
       );
       final piece = CutPiece.ofSpec(spec);
 
-      // Заготовка на листе «Раскрой» уже на полосу: 2060 − 50 = 2010 мм.
-      expect(piece.widthMm, closeTo(2010, 1e-9));
+      // Заготовка на листе «Раскрой» уже на полосу: 2040 − 50 = 1990 мм.
+      expect(piece.widthMm, closeTo(1990, 1e-9));
       expect(piece.widthMm, closeTo(spec.filmCutWidthWithShrinkage, 1e-9));
       expect(piece.heightMm, closeTo(2060, 1e-9));
-      // Площадь пересчитана от новой ширины: 2010 × 2060 = 4,1406 м².
-      expect(piece.areaM2, closeTo(4.1406, 1e-9));
+      // Площадь пересчитана от новой ширины: 1990 × 2060 = 4,0994 м².
+      expect(piece.areaM2, closeTo(4.0994, 1e-9));
       expect(without.areaM2 - piece.areaM2, closeTo(50 * 2060 / 1000000, 1e-9));
       expect(piece.areaMm2 / 1000000, closeTo(piece.areaM2, 1e-9));
     });
@@ -608,7 +608,7 @@ void main() {
               const Size(1720, 1080),
           project: _trapezoidOrder,
         ),
-        // Скрин с молнией: заготовка уже на полосу — 2010 × 2060 мм, под
+        // Скрин с молнией: заготовка уже на полосу — 1990 × 2060 мм, под
         // площадью и под заготовкой подписано «полоса молнии 50 мм».
         'raskroy-skrin-molniya': (
           viewport:

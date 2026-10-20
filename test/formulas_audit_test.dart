@@ -199,11 +199,13 @@ void _filamentBlankAudit() {
 // 2. Скрин: размер заготовки
 // ---------------------------------------------------------------------------
 void _screenBlankAudit() {
-  group('2. Скрин: заготовка = готовый размер + среднее подворотов + 20 мм', () {
+  group('2. Скрин: заготовка = готовый размер + половина подворотов, к высоте +20 мм', () {
     for (final hem in <double>[40, 50, 60]) {
-      final expected = 2000 + hem + 20;
+      final expectedWidth = 2000 + hem;
+      final expectedHeight = 2000 + hem + 20;
       test('подворот ${hem.toStringAsFixed(0)} на все стороны → '
-          '${expected.toStringAsFixed(0)} × ${expected.toStringAsFixed(0)}', () {
+          '${expectedWidth.toStringAsFixed(0)} × '
+          '${expectedHeight.toStringAsFixed(0)}', () {
         final params = WindowParams(
           bottomWidth: 2000,
           topWidth: 2000,
@@ -217,19 +219,20 @@ void _screenBlankAudit() {
         );
         final spec = WindowSpec.of(params);
 
-        // Вручную: 2000 + (подворот + подворот) / 2 + 20 = 2000 + подворот + 20.
-        expectClose(spec.filmCutWidth, expected, 'заготовка по ширине');
-        expectClose(spec.filmCutHeight, expected, 'заготовка по высоте');
+        // Вручную: ширина 2000 + hem / 2 + hem / 2 = 2000 + hem;
+        // высота 2000 + hem / 2 + hem / 2 + 20 = 2000 + hem + 20.
+        expectClose(spec.filmCutWidth, expectedWidth, 'заготовка по ширине');
+        expectClose(spec.filmCutHeight, expectedHeight, 'заготовка по высоте');
         // Шов 3 мм на сторону не входит в габарит заготовки, усадки у скрина
         // нет: с «усадкой» те же размеры.
         expectClose(
           spec.filmCutWidthWithShrinkage,
-          expected,
+          expectedWidth,
           'у скрина усадки нет',
         );
         expectClose(
           spec.filmCutHeightWithShrinkage,
-          expected,
+          expectedHeight,
           'у скрина усадки нет',
         );
         // Видимый размер скрина — готовый контур изделия.
@@ -243,7 +246,7 @@ void _screenBlankAudit() {
     }
 
     test('смешанный подворот (низ 40, право 50, верх 60, лево 40) '
-        '→ 2065 × 2070', () {
+        '→ 2045 × 2070', () {
       const params = WindowParams(
         bottomWidth: 2000,
         topWidth: 2000,
@@ -257,25 +260,25 @@ void _screenBlankAudit() {
       );
       final spec = WindowSpec.of(params);
 
-      // Вручную: прибавка по оси — среднее двух подворотов плюс 20 мм.
-      // Ширина = 2000 + (40 + 50) / 2 + 20 = 2000 + 65 = 2065;
-      // высота = 2000 + (40 + 60) / 2 + 20 = 2000 + 70 = 2070.
-      expectClose(spec.filmCutWidth, 2065, 'ширина 2065');
+      // Вручную: в заготовку идёт половина подворота каждой стороны.
+      // Ширина = 2000 + 20 + 25 = 2045;
+      // высота = 2000 + 20 + 30 + 20 = 2070.
+      expectClose(spec.filmCutWidth, 2045, 'ширина 2045');
       expectClose(spec.filmCutHeight, 2070, 'высота 2070');
       expectClose(
         params.hemAxisLeftRightIncrease,
-        65,
-        'ширина: (40 + 50) / 2 + 20 = 65',
+        45,
+        'ширина: 40 / 2 + 50 / 2 = 45',
       );
       expectClose(
         params.hemAxisBottomTopIncrease,
         70,
-        'высота: (40 + 60) / 2 + 20 = 70',
+        'высота: 40 / 2 + 60 / 2 + 20 = 70',
       );
       expect(params.hasUniformHem, isFalse, reason: 'подвороты разные');
       expectClose(
         spec.filmCutWidthWithShrinkage,
-        2065,
+        2045,
         'у скрина усадки нет (ширина)',
       );
       expectClose(
@@ -513,7 +516,7 @@ void _areaAudit() {
     });
 
     test(
-      'скрин 2000 × 2000, подворот 40: заготовка 2060 × 2060 = 4,2436 м²',
+      'скрин 2000 × 2000, подворот 40: заготовка 2040 × 2060 = 4,2024 м²',
       () {
         const params = WindowParams(
           bottomWidth: 2000,
@@ -528,8 +531,8 @@ void _areaAudit() {
         );
         final spec = WindowSpec.of(params);
 
-        // Вручную: 2060 × 2060 = 4 243 600 мм² = 4,2436 м².
-        expectClose(spec.filmCutAreaM2, 4.2436, 'площадь заготовки скрина');
+        // Вручную: 2040 × 2060 = 4 202 400 мм² = 4,2024 м².
+        expectClose(spec.filmCutAreaM2, 4.2024, 'площадь заготовки скрина');
       },
     );
 

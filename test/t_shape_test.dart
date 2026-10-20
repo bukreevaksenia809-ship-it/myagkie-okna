@@ -238,12 +238,13 @@ void main() {
     test('подворот по внешним сторонам, окантовки нет', () {
       expect(params.isScreen, isTrue);
       expect(spec.edgeConsumption, isEmpty);
-      // Подворот 40/40: прибавка по оси (40 + 40) / 2 + 20 = 60, по 30 мм
-      // наружу на кромку. Заготовка: 2030 × 1560 + 830 × 660 = 3,7146 м².
+      // Подворот 40/40: в заготовку идёт половина каждой стороны — по 20 мм
+      // по ширине и по 30 мм по высоте (20 + 10 добавки). Заготовка:
+      // 2020 × 1560 + 820 × 660 = 3,6924 м² (общая ширина 2840 мм).
       expect(spec.layers.filmPolygons, hasLength(1));
-      expect(spec.filmCutWidth, closeTo(2860, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2840, 1e-9));
       expect(spec.filmCutHeight, closeTo(1560, 1e-9));
-      expect(spec.filmCutAreaM2, closeTo(3.7146, 1e-6));
+      expect(spec.filmCutAreaM2, closeTo(3.6924, 1e-6));
       expect(spec.layers.weldLengthMm, 600);
     });
 

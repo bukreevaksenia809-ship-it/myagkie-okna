@@ -806,21 +806,22 @@ class WindowLayers {
   /// Расширение контура заготовки скрина по сторонам в порядке обхода
   /// (низ, право, верх, лево), мм.
   ///
-  /// Прибавка по каждой оси — среднее двух подворотов оси плюс 20 мм
-  /// ([WindowParams.hemAxisBottomTopIncrease] и
-  /// [WindowParams.hemAxisLeftRightIncrease]). На обе кромки оси откладывается
-  /// её половина, поэтому габарит заготовки растёт ровно на прибавку по оси:
-  /// при подвороте (низ 40, верх 60) и изделии 2000 мм высота заготовки
-  /// 2000 + (40 + 60) / 2 + 20 = 2070 мм. При равных подворотах 120 и 120
-  /// прибавка 140 мм, то есть по 70 мм на кромку.
+  /// В заготовку идёт ПОЛОВИНА введённого подворота каждой стороны: 80 → 40,
+  /// 120 → 60. К высоте добавляется ещё 20 мм на шов и запас — их делим
+  /// поровну между нижней и верхней кромкой (по 10 мм), поэтому высота
+  /// заготовки растёт ровно на `низ / 2 + верх / 2 + 20`. Ширина — только
+  /// `лево / 2 + право / 2`, без добавки. Пример заказчика: скрин 1000 × 1000,
+  /// подвороты 80/80/120/80 → заготовка 1080 × 1120 мм.
   List<double> get hemOutsetWidths {
     if (!isScreen) return const [0, 0, 0, 0];
-    // Половина прибавки по оси — на каждую её кромку. Прибавку берём из
-    // модели, чтобы формула «среднее + 20» жила в одном месте.
-    final halfBottomTop = params.hemAxisBottomTopIncrease / 2;
-    final halfLeftRight = params.hemAxisLeftRightIncrease / 2;
+    const halfExtra = screenHemAxisExtraMm / 2;
     // Порядок обхода: низ, право, верх, лево.
-    return [halfBottomTop, halfLeftRight, halfBottomTop, halfLeftRight];
+    return [
+      params.hemBottomHalfMm + halfExtra,
+      params.hemRightHalfMm,
+      params.hemTopHalfMm + halfExtra,
+      params.hemLeftHalfMm,
+    ];
   }
 
   /// Т-образное окно: контур из нескольких вершин.
@@ -888,10 +889,16 @@ class WindowLayers {
     WindowSide.left => params.hemLeftMm,
   };
 
-  /// Прибавка к заготовке скрина по стороне (половина прибавки по оси), мм.
+  /// Прибавка к заготовке скрина по стороне, мм.
+  ///
+  /// Ровно половина подворота этой стороны ([WindowParams.hemLeftHalfMm] и
+  /// т. п.); к нижней и верхней кромке добавлено ещё по 10 мм — половина
+  /// постоянной добавки +20 мм к высоте.
   double hemOutsetFor(WindowSide side) => switch (side) {
-    WindowSide.bottom || WindowSide.top => params.hemAxisBottomTopIncrease / 2,
-    WindowSide.left || WindowSide.right => params.hemAxisLeftRightIncrease / 2,
+    WindowSide.bottom => params.hemBottomHalfMm + screenHemAxisExtraMm / 2,
+    WindowSide.top => params.hemTopHalfMm + screenHemAxisExtraMm / 2,
+    WindowSide.left => params.hemLeftHalfMm,
+    WindowSide.right => params.hemRightHalfMm,
   };
 
   /// Ширины по рёбрам многоугольника — по стороне каждого ребра.
@@ -923,7 +930,7 @@ class WindowLayers {
   /// Это и есть заказчиково `d = готовая полоса − запайка`: у ПВХ
   /// [WindowParams.finishedEdgeWidth] минус [WindowParams.weldOverlapMm].
   /// У скрина вычет отрицательный — заготовка БОЛЬШЕ готового изделия на
-  /// половину прибавки по оси ([hemOutsetFor]).
+  /// половину подворота этой стороны ([hemOutsetFor]).
   double blankSideDeduction(WindowSide side) => _blankAmount(side);
 
   /// Геометрия заготовки полотна: та же форма, что у изделия, но каждая
@@ -982,18 +989,32 @@ class WindowLayers {
     blankGeometry.leftHeight,
   ];
 
-  /// Вершины заготовки, совмещённые по центру с изделием.
+  /// Вершины заготовки: контур изделия расширен на половину подворота
+  /// каждой стороны.
   ///
-  /// Размеры сторон — из [blankGeometry], но контур сдвинут так, чтобы его
-  /// габарит был вписан в изделие симметрично. Для ПВХ это тот же вычет по
-  /// каждой кромке; для скрина, наоборот, прибавка на подворот уходит на обе
-  /// кромки оси, поэтому фартук и линия подворота остаются на своих местах.
+  /// Размеры сторон — из [blankGeometry]. У ПВХ контур сдвинут так, чтобы его
+  /// габарит был вписан в изделие симметрично (вычет по каждой кромке). У
+  /// скрина, наоборот, каждая кромка отодвигается на СВОЮ половину подворота:
+  /// низ — на `низ / 2 + 10`, верх — на `верх / 2 + 10`, лево/право — на
+  /// `лево / 2` и `право / 2`. Так полоса подворота на чертеже равна половине
+  /// введённого значения даже при разных подворотах по сторонам.
   late final List<Offset> blankCorners = _buildBlankCorners();
 
   List<Offset> _buildBlankCorners() {
     final corners = blankGeometry.corners;
     if (corners.isEmpty) return const [];
-    final shift = geometry.productBounds.center - boundsOf(corners).center;
+    final bounds = boundsOf(corners);
+    if (isScreen) {
+      final product = geometry.productBounds;
+      final shift = Offset(
+        // Левая кромка — на лево / 2 наружу, правая — на право / 2.
+        product.left - hemOutsetFor(WindowSide.left) - bounds.left,
+        // В модели ось Y вверх: top Rect — нижняя кромка изделия.
+        product.top - hemOutsetFor(WindowSide.bottom) - bounds.top,
+      );
+      return [for (final point in corners) point + shift];
+    }
+    final shift = geometry.productBounds.center - bounds.center;
     return [for (final point in corners) point + shift];
   }
 
@@ -1983,13 +2004,12 @@ class WindowSpec {
   /// Для ПВХ: видимый размер плюс запайка [WindowParams.weldOverlapMm] с двух
   /// сторон — плёнка заходит под окантовку.
   ///
-  /// Для скрина: готовый размер плюс прибавка по каждой оси — среднее двух
-  /// подворотов этой оси плюс 20 мм
+  /// Для скрина: готовый размер плюс ПОЛОВИНА подворота каждой стороны
   /// ([WindowParams.hemAxisBottomTopIncrease] /
-  /// [WindowParams.hemAxisLeftRightIncrease]). Изделие 2000 × 2000 при
-  /// подвороте 40 мм на все стороны даёт 2060 × 2060 мм, при 120 и 120 —
-  /// 2140 × 2140 мм, а при (низ 40, верх 60, лево 40, право 40) —
-  /// 2060 × 2070 мм.
+  /// [WindowParams.hemAxisLeftRightIncrease]); к высоте добавляется ещё
+  /// 20 мм. Скрин 1000 × 1000 при подворотах 80/80/120/80 даёт
+  /// 1080 × 1120 мм; на изделии 2000 × 2000 подвороты 80 на все стороны —
+  /// 2080 × 2100 мм, 120 на все стороны — 2120 × 2140 мм.
   ///
   /// Если есть молнии, из ширины ВЫЧИТАЕТСЯ суммарная ширина их полос
   /// ([zipperBandTotalMm]): заказчик кроит полотно уже на полосу, потому что
@@ -2035,23 +2055,13 @@ class WindowSpec {
   double get filmCutHeightWithAllowance =>
       filmCutHeight + params.effectiveAllowanceHeightMm;
 
-  /// Расшифровка прибавки по оси для формулы панели:
-  /// « (40 + 60) / 2 + 20 = 70». Для равных подворотов пустая строка — тогда
-  /// формула остаётся короткой, как в примере заказчика «2 000 + 140 = 2 140».
-  String _axisIncreaseHint(double first, double second, double increase) {
-    if (first == second) return '';
-    return ' (среднее (${formatMm(first)} + ${formatMm(second)}) / 2 + '
-        '${formatMm(screenHemAxisExtraMm)} = ${formatMm(increase)})';
-  }
-
   /// Добавка к габариту заготовки скрина от наклона сторон, мм.
   ///
   /// У прямоугольника её нет: габарит заготовки = готовый размер + прибавка по
-  /// оси. У трапеции и у окна с разными высотами стороны наклонены, поэтому
-  /// сдвиг на половину прибавки по нормали даёт по габариту больше, чем
-  /// прибавка по оси. Эти «лишние» миллиметры показываем отдельным
-  /// слагаемым, чтобы формула не выдавала «2 067,98 + 110 = 2 177,98» там,
-  /// где готовый размер — 2 000 мм.
+  /// оси. У трапеции и у окна с разными высотами вычисленные стороны
+  /// заготовки могут дать по габариту чуть больше, чем «готовый габарит плюс
+  /// половины подворотов». Эти «лишние» миллиметры показываем отдельным
+  /// слагаемым, чтобы формула не выдавала необъяснимое число.
   double get _widthSlopeExtra =>
       filmCutWidthBeforeZipper -
       geometry.spanX -
@@ -2063,7 +2073,7 @@ class WindowSpec {
   /// Добавка к ширине габарита заготовки от наклона боковых сторон, мм.
   ///
   /// Ноль у прямоугольника; у трапеции положительная — по ней видно, почему
-  /// габарит заготовки больше «готовый размер + прибавка по оси».
+  /// габарит заготовки больше «готовый размер + половины подворотов».
   double get widthSlopeExtraMm => _widthSlopeExtra;
 
   /// Добавка к высоте габарита заготовки от наклона верхней стороны, мм.
@@ -2073,48 +2083,44 @@ class WindowSpec {
       extra.abs() < 0.5 ? '' : ' + ${formatMm(extra)} (наклон $sides)';
 
   /// Человеческий расчёт высоты заготовки скрина для панели:
-  /// «Высота: 2 000 + 140 = 2 140 мм», а при разных подворотах —
-  /// «Высота: 2 000 + 70 (среднее (40 + 60) / 2 + 20 = 70) = 2 070 мм».
+  /// «Высота: 1 000 + 40 + 60 + 20 = 1 120 мм».
   ///
-  /// Показывает ровно то правило, по которому считается заготовка: прибавка по
-  /// оси — среднее двух подворотов плюс 20 мм на шов и запас. Припуск на
+  /// В заготовку идёт половина подворота каждой стороны, к высоте добавляется
+  /// постоянные +20 мм на шов и запас ([screenHemAxisExtraMm]). Припуск на
   /// раскрой, если он задан, идёт отдельным слагаемым. У окна с разными
   /// высотами слева/справа наклон верхней стороны даёт добавочное слагаемое.
   String get screenBlankHeightFormulaLabel {
-    final bottom = params.hemBottomMm;
-    final top = params.hemTopMm;
-    final increase = params.hemAxisBottomTopIncrease;
-    final hint = _axisIncreaseHint(bottom, top, increase);
-    final allowance = params.hasAllowance
+    final allow = params.hasAllowance
         ? ' + припуск ${formatMm(params.allowanceHeightMm)}'
         : '';
     final slope = _slopeExtraLabel(_heightSlopeExtra, 'верхней стороны');
-    return 'Высота: ${formatMm(geometry.spanY)} + ${formatMm(increase)}$hint'
-        '$slope$allowance = ${formatMm(filmCutHeightWithAllowance)} ${unitSuffix()}';
+    return 'Высота: ${formatMm(geometry.spanY)} + '
+        '${formatMmTrimmed(params.hemBottomHalfMm)} + '
+        '${formatMmTrimmed(params.hemTopHalfMm)} + '
+        '${formatMm(screenHemAxisExtraMm)}$slope$allow = '
+        '${formatMm(filmCutHeightWithAllowance)} ${unitSuffix()}';
   }
 
   /// Человеческий расчёт ширины заготовки скрина для панели:
-  /// «Ширина: 2 000 + 140 = 2 140 мм».
+  /// «Ширина: 1 000 + 40 + 40 = 1 080 мм».
   ///
-  /// Смысл тот же, что у [screenBlankHeightFormulaLabel]. Если у скрина есть
-  /// молнии, из ширины вычитается суммарная ширина их полос — это видно прямо
-  /// в формуле: «Ширина: 2 000 + 60 − полоса молнии 50 = 2 010 мм».
+  /// Смысл тот же, что у [screenBlankHeightFormulaLabel], только по ширине
+  /// добавки +20 мм нет. Если у скрина есть молнии, из ширины вычитается
+  /// суммарная ширина их полос — это видно прямо в формуле:
+  /// «Ширина: 2 000 + 40 + 40 − полоса молнии 50 = 2 030 мм».
   /// У трапеции наклон боковых сторон добавляет к габариту отдельное
   /// слагаемое.
   String get screenBlankWidthFormulaLabel {
-    final left = params.hemLeftMm;
-    final right = params.hemRightMm;
-    final increase = params.hemAxisLeftRightIncrease;
-    final hint = _axisIncreaseHint(left, right, increase);
-    final allowance = params.hasAllowance
+    final allow = params.hasAllowance
         ? ' + припуск ${formatMm(params.allowanceWidthMm)}'
         : '';
     final zipper = zipperBandTotalMm > 0
         ? ' − полоса молнии ${formatMm(zipperBandTotalMm)}'
         : '';
     final slope = _slopeExtraLabel(_widthSlopeExtra, 'боковых сторон');
-    return 'Ширина: ${formatMm(geometry.spanX)} + ${formatMm(increase)}$hint'
-        '$slope$zipper$allowance = '
+    return 'Ширина: ${formatMm(geometry.spanX)} + '
+        '${formatMmTrimmed(params.hemLeftHalfMm)} + '
+        '${formatMmTrimmed(params.hemRightHalfMm)}$slope$zipper$allow = '
         '${formatMm(filmCutWidthWithAllowance)} ${unitSuffix()}';
   }
 
@@ -2467,18 +2473,16 @@ class WindowSpec {
         'Подворот материала по сторонам — ${params.hemBySideLabel} '
             '(низ/право/верх/лево); шов сварки подворота '
             '${formatMm(screenSeamMm)} ${unitSuffix()} с каждой стороны',
-        'Заготовка скрина — готовый габарит плюс прибавка по каждой оси: '
-            'среднее двух подворотов оси плюс '
-            '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} на шов и запас. По высоте '
-            '(низ ${formatMm(params.hemBottomMm)} + верх '
-            '${formatMm(params.hemTopMm)}) / 2 + '
+        'Заготовка скрина — готовый габарит плюс ПОЛОВИНА подворота с каждой '
+            'стороны; к высоте добавляется ${formatMm(screenHemAxisExtraMm)} '
+            '${unitSuffix()} на шов и запас. По ширине лево '
+            '${formatMmTrimmed(params.hemLeftHalfMm)} + право '
+            '${formatMmTrimmed(params.hemRightHalfMm)} = '
+            '${formatMm(params.hemAxisLeftRightIncrease)} ${unitSuffix()}, по высоте низ '
+            '${formatMmTrimmed(params.hemBottomHalfMm)} + верх '
+            '${formatMmTrimmed(params.hemTopHalfMm)} + '
             '${formatMm(screenHemAxisExtraMm)} = '
-            '${formatMm(params.hemAxisBottomTopIncrease)} ${unitSuffix()}, по ширине '
-            '(лево ${formatMm(params.hemLeftMm)} + право '
-            '${formatMm(params.hemRightMm)}) / 2 + '
-            '${formatMm(screenHemAxisExtraMm)} = '
-            '${formatMm(params.hemAxisLeftRightIncrease)} ${unitSuffix()} '
-            '(при (40, 60) это 70 мм, при (120, 120) — 140 мм)'
+            '${formatMm(params.hemAxisBottomTopIncrease)} ${unitSuffix()}'
             '${widthSlopeExtraMm.abs() >= 0.5 || heightSlopeExtraMm.abs() >= 0.5 ? '; у трапеции/окна с разными высотами наклон сторон добавляет к габариту по ширине '
                       '${formatSignedMm(widthSlopeExtraMm)}, по высоте '
                       '${formatSignedMm(heightSlopeExtraMm)} ${unitSuffix()}' : ''}',
@@ -2991,9 +2995,9 @@ List<ParamIssue> validateParams(WindowParams params) {
   }
 
   // Подворот скрина: 10…200 мм на каждую сторону, обычный диапазон 40–80 мм.
-  // Готовый размер плюс прибавка по каждой оси — среднее двух подворотов
-  // плюс 20 мм — даёт заготовку: 2000 × 2000 при подвороте 40 мм на все
-  // стороны → 2060 × 2060 мм, при (низ 40, верх 60) → 2060 × 2070 мм.
+  // В заготовку идёт половина подворота каждой стороны, к высоте +20 мм:
+  // 2000 × 2000 при подвороте 40 мм на все стороны → 2040 × 2060 мм,
+  // при (низ 40, верх 60) → 2040 × 2070 мм.
   if (params.isScreen) {
     for (final side in EdgeSide.values) {
       final hem = params.hemForSide(side);

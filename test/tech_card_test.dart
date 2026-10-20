@@ -61,7 +61,7 @@ const _rich = WindowParams(
 );
 
 /// Скрин 2000 × 2000: подворот по сторонам (низ 40, право 50, верх 60,
-/// лево 40 мм), заготовка 2065 × 2070, без тента.
+/// лево 40 мм), заготовка 2045 × 2070, без тента.
 const _screen = WindowParams(
   projectName: 'Мягкое окно веранды',
   customer: 'Иванов И. И.',
@@ -519,15 +519,15 @@ void main() {
           isNot(contains('напайка')));
     });
 
-    test('заготовка 2065 × 2070 и подворот по сторонам', () {
+    test('заготовка 2045 × 2070 и подворот по сторонам', () {
       final cutting = _op(card, TechOperationKind.cutting);
       expect(cutting.title, 'Раскрой скрина');
-      // Прибавка по оси — среднее двух подворотов плюс 20 мм:
-      // ширина 2000 + (40 + 50) / 2 + 20 = 2065;
-      // высота 2000 + (40 + 60) / 2 + 20 = 2070.
-      expect(cutting.text, contains(formatMm(2065)));
+      // В заготовку идёт половина подворота каждой стороны, к высоте +20:
+      // ширина 2000 + 20 + 25 = 2045;
+      // высота 2000 + 20 + 30 + 20 = 2070.
+      expect(cutting.text, contains(formatMm(2045)));
       expect(cutting.text, contains(formatMm(2070)));
-      expect(cutting.text, contains('среднее двух подворотов'));
+      expect(cutting.text, contains('ПОЛОВИНА подворота'));
       expect(cutting.text, isNot(contains('усадка 1,5')));
 
       final hem = _op(card, TechOperationKind.hem);
