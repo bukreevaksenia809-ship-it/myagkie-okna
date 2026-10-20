@@ -199,12 +199,12 @@ class CostsSheet extends StatelessWidget {
       ]);
     }
 
-    const headers = [
+    final headers = [
       '№',
       'Тип',
       'Материал полотна',
-      'Размеры полотна, мм',
-      'Полотно в раскрое с усадкой, мм',
+      'Размеры полотна, ${unitSuffix()}',
+      'Полотно в раскрое с усадкой, ${unitSuffix()}',
       'Площадь изделия, м²',
       'Площадь заготовки-прямоугольника, м²',
       'Люверсы, шт',
@@ -314,15 +314,15 @@ class CostsSheet extends StatelessWidget {
             ..._screenHemLabels(),
             summary.screenZipperCount > 0
                 ? 'Длина подворота по периметру и швов полос молний: '
-                      '${formatCm(summary.screenHemLengthMm)} см '
-                      '(полосы — ${formatCm(summary.screenZipperBandLengthMm)} см)'
+                      '${formatMm(summary.screenHemLengthMm)} ${unitSuffix()} '
+                      '(полосы — ${formatMm(summary.screenZipperBandLengthMm)} ${unitSuffix()})'
                 : 'Длина подворота по периметру: '
-                      '${formatCm(summary.screenHemLengthMm)} см',
+                      '${formatMm(summary.screenHemLengthMm)} ${unitSuffix()}',
             'Расход скрина — по площади заготовок в раскрое (готовый размер '
                 'плюс среднее подворотов по оси + 20 мм'
                 '${summary.screenZipperCount > 0 ? ', ширина кроя уменьшена на '
                           'полосу молнии '
-                          '${formatMm(summary.screenZipperBandWidthMm)} мм' : ''})',
+                          '${formatMm(summary.screenZipperBandWidthMm)} ${unitSuffix()}' : ''})',
           ],
         ),
       (
@@ -355,8 +355,8 @@ class CostsSheet extends StatelessWidget {
         'Раскладка на рулонах',
         [
           for (final plan in summary.rollPlans)
-            '${plan.material.label}: рулон ${formatMm(plan.rollWidth)} мм × '
-                '${formatMm(plan.layout.requiredLength)} мм — '
+            '${plan.material.label}: рулон ${formatMm(plan.rollWidth)} ${unitSuffix()} × '
+                '${formatMm(plan.layout.requiredLength)} ${unitSuffix()} — '
                 'отход ${formatPercent(plan.wastePercent)}',
           'Общий отход по рулонам: ${formatPercent(summary.rollWastePercent)}',
         ],

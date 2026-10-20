@@ -214,7 +214,7 @@ void _checkEyeletStep(WindowParams params, List<TechCheck> checks) {
       ruleId: 'eyelet-step-loose',
       severity: TechSeverity.warning,
       field: ParamField.eyeletStep,
-      title: 'Интервал люверсов ${formatMm(step)} мм — слишком редкий',
+      title: 'Интервал люверсов ${formatMm(step)} ${unitSuffix()} — слишком редкий',
       explanation: 'Полотно между точками крепления провисает: при ветре окно '
           'парусит и хлопает, окантовка и люверсы работают на отрыв, '
           'тент вытягивается по пробою.',
@@ -227,7 +227,7 @@ void _checkEyeletStep(WindowParams params, List<TechCheck> checks) {
       ruleId: 'eyelet-step-wide',
       severity: TechSeverity.info,
       field: ParamField.eyeletStep,
-      title: 'Интервал люверсов ${formatMm(step)} мм — на верхней границе',
+      title: 'Интервал люверсов ${formatMm(step)} ${unitSuffix()} — на верхней границе',
       explanation: 'Формально допустимо, но запас до «парусности» уже небольшой: '
           'на открытом фасаде полотно начнёт хлопать.',
       recommendation: 'Для ветреных мест ставьте 250–300 мм.',
@@ -237,7 +237,7 @@ void _checkEyeletStep(WindowParams params, List<TechCheck> checks) {
       ruleId: 'eyelet-step-tight',
       severity: TechSeverity.warning,
       field: ParamField.eyeletStep,
-      title: 'Интервал люверсов ${formatMm(step)} мм — слишком частый',
+      title: 'Интервал люверсов ${formatMm(step)} ${unitSuffix()} — слишком частый',
       explanation: 'Люверсы идут почти вплотную: перерасход тента и фурнитуры, '
           'а узкая перемычка между кольцами рвётся по пробою при нагрузке.',
       recommendation: 'Увеличьте интервал до 250–450 мм.',
@@ -247,7 +247,7 @@ void _checkEyeletStep(WindowParams params, List<TechCheck> checks) {
       ruleId: 'eyelet-step-narrow',
       severity: TechSeverity.info,
       field: ParamField.eyeletStep,
-      title: 'Интервал люверсов ${formatMm(step)} мм — ниже рекомендуемого',
+      title: 'Интервал люверсов ${formatMm(step)} ${unitSuffix()} — ниже рекомендуемого',
       explanation: 'Работает, но люверсов и тента уходит больше нормы.',
       recommendation: 'Если окно не на ветреном фасаде, хватит 250–450 мм.',
     ));
@@ -272,11 +272,11 @@ void _checkEyeletClearance(
       ruleId: 'eyelet-corner-danger',
       severity: TechSeverity.warning,
       field: ParamField.eyeletCornerOffset,
-      title: 'Люверс поднят от угла всего на ${formatMm(offset)} мм',
+      title: 'Люверс поднят от угла всего на ${formatMm(offset)} ${unitSuffix()}',
       explanation: 'Между люверсом и углом остаётся узкая перемычка окантовки — '
           'именно по ней рвёт тент, а сам люверс не тянет угол по диагонали.',
       recommendation: 'Поставьте люверс ровно в угол (0 мм) или отступите '
-          'не меньше ${formatMm(_minEyeletCornerClearanceMm)} мм.',
+          'не меньше ${formatMm(_minEyeletCornerClearanceMm)} ${unitSuffix()}.',
     ));
   }
 
@@ -292,12 +292,12 @@ void _checkEyeletClearance(
         ruleId: 'eyelet-hem-material',
         severity: TechSeverity.warning,
         title: 'Люверсу не хватает подворота: запас всего '
-            '${formatMm(math.max(minHem / 2 - ringHalf, 0))} мм',
+            '${formatMm(math.max(minHem / 2 - ringHalf, 0))} ${unitSuffix()}',
         explanation: 'Кольцо ${params.effectiveEyeletType.label.toLowerCase()} '
-            'почти выходит за самый узкий подворот ${formatMm(minHem)} мм: '
+            'почти выходит за самый узкий подворот ${formatMm(minHem)} ${unitSuffix()}: '
             'ткань под кольцом продавливается и рвётся.',
         recommendation: 'Увеличьте подворот до '
-            '${formatMm(math.max(minHem, _minHemMm * 2))} мм на каждой стороне '
+            '${formatMm(math.max(minHem, _minHemMm * 2))} ${unitSuffix()} на каждой стороне '
             'или поставьте люверс меньшего размера.',
       ));
     }
@@ -312,9 +312,9 @@ void _checkEyeletClearance(
       ruleId: 'eyelet-corner-material',
       severity: TechSeverity.warning,
       title: 'Люверсу не хватает тента: запас всего '
-          '${formatMm(math.max(margin, 0))} мм',
+          '${formatMm(math.max(margin, 0))} ${unitSuffix()}',
       explanation: 'Кольцо ${params.effectiveEyeletType.label.toLowerCase()} '
-          'почти выходит за окантовку ${formatMm(minFinished)} мм: тент '
+          'почти выходит за окантовку ${formatMm(minFinished)} ${unitSuffix()}: тент '
           'под кольцом продавливается и рвётся.',
       recommendation: 'Возьмите рулон окантовки шире (готовых 100 мм) или '
           'поставьте люверс меньшего размера.',
@@ -339,8 +339,8 @@ void _checkWeldOverlap(WindowParams params, List<TechCheck> checks) {
       ruleId: 'weld-overlap-range',
       severity: TechSeverity.error,
       field: ParamField.weldOverlap,
-      title: 'Запайка ${formatMm(overlap)} мм — вне диапазона '
-          '${formatMm(_minWeldOverlapMm)}–${formatMm(_maxWeldOverlapMm)} мм',
+      title: 'Запайка ${formatMm(overlap)} ${unitSuffix()} — вне диапазона '
+          '${formatMm(_minWeldOverlapMm)}–${formatMm(_maxWeldOverlapMm)} ${unitSuffix()}',
       explanation: 'Плёнка заходит под окантовку на запайку; при значении вне '
           'диапазона заготовка считается неверно: мало — шов рвётся по кромке, '
           'много — перерасход плёнки и бугор под лентой.',
@@ -381,8 +381,8 @@ void _checkScreenHem(WindowParams params, List<TechCheck> checks) {
         ruleId: 'screen-hem-range',
         severity: TechSeverity.warning,
         field: field,
-        title: 'Подворот скрина, $name: ${formatMm(hem)} мм — вне обычного '
-            'диапазона ${formatMm(_minHemMm)}–${formatMm(_maxHemMm)} мм',
+        title: 'Подворот скрина, $name: ${formatMm(hem)} ${unitSuffix()} — вне обычного '
+            'диапазона ${formatMm(_minHemMm)}–${formatMm(_maxHemMm)} ${unitSuffix()}',
         explanation: 'Подворот держит кольцо люверса и шов кромки. Узкий '
             'подворот вырывается по люверсу, широкий — лишний расход ткани.',
         recommendation: 'Для типового скрина берите подворот 40, 50 или 60 мм.',
@@ -416,7 +416,7 @@ void _checkEdgeRolls(WindowParams params, List<TechCheck> checks) {
     checks.add(TechCheck(
       ruleId: 'edge-too-narrow',
       severity: TechSeverity.error,
-      title: 'Окантовка уже ${formatMm(_minFinishedEdgeMm)} мм '
+      title: 'Окантовка уже ${formatMm(_minFinishedEdgeMm)} ${unitSuffix()} '
           '(${_sidesLabel(narrow)})',
       explanation: 'В узкую ленту не помещается кольцо люверса: тент под кольцом '
           'продавливается, люверс вырывает кромку.',
@@ -429,7 +429,7 @@ void _checkEdgeRolls(WindowParams params, List<TechCheck> checks) {
     checks.add(TechCheck(
       ruleId: 'edge-too-wide',
       severity: TechSeverity.warning,
-      title: 'Окантовка шире ${formatMm(_maxFinishedEdgeMm)} мм '
+      title: 'Окантовка шире ${formatMm(_maxFinishedEdgeMm)} ${unitSuffix()} '
           '(${_sidesLabel(wide)})',
       explanation: 'Перерасход тента и лишний вес по периметру; широкая лента '
           'тяжелее сваривается без складок.',
@@ -442,11 +442,11 @@ void _checkEdgeRolls(WindowParams params, List<TechCheck> checks) {
     checks.add(TechCheck(
       ruleId: 'edge-weld-insufficient',
       severity: TechSeverity.error,
-      title: 'Окантовка уже ${formatMm(minEdge)} мм — плёнке не за '
+      title: 'Окантовка уже ${formatMm(minEdge)} ${unitSuffix()} — плёнке не за '
           'что зацепиться (${_sidesLabel(weakWeld)})',
       explanation: 'Плёнка заходит под окантовку на '
-          '${formatMm(params.weldOverlapMm)} мм с каждой стороны; при готовой '
-          'окантовке меньше ${formatMm(minEdge)} мм запайка съедает всю ленту '
+          '${formatMm(params.weldOverlapMm)} ${unitSuffix()} с каждой стороны; при готовой '
+          'окантовке меньше ${formatMm(minEdge)} ${unitSuffix()} запайка съедает всю ленту '
           'и шов остаётся без тела.',
       recommendation: 'Возьмите рулон шире: 200 мм (готовых 100 мм) или '
           '240 мм (готовых 120 мм), либо уменьшите запайку.',
@@ -469,13 +469,13 @@ void _checkFilm(WindowParams params, WindowSpec spec, List<TechCheck> checks) {
       ruleId: 'film-narrow',
       severity: TechSeverity.error,
       field: ParamField.bottomWidth,
-      title: 'Плёнка ${formatMm(bounds.width)} × ${formatMm(bounds.height)} мм '
-          '— уже ${formatMm(_minFilmSideMm)} мм',
+      title: 'Плёнка ${formatMm(bounds.width)} × ${formatMm(bounds.height)} ${unitSuffix()} '
+          '— уже ${formatMm(_minFilmSideMm)} ${unitSuffix()}',
       explanation: 'Окантовка, напайка и люверсы занимают почти всю ширину '
           'изделия: плёнке не остаётся места, окно не держит форму и '
           'собирается складками.',
       recommendation: 'Увеличьте габарит окна или возьмите окантовку уже — '
-          'видимая плёнка должна быть не меньше ${formatMm(_minFilmSideMm)} мм.',
+          'видимая плёнка должна быть не меньше ${formatMm(_minFilmSideMm)} ${unitSuffix()}.',
     ));
   }
 
@@ -515,7 +515,7 @@ void _checkLifting(
     checks.add(TechCheck(
       ruleId: 'lifting-strap-load',
       severity: TechSeverity.warning,
-      title: 'Подъёмное окно шириной ${formatMm(width)} мм — '
+      title: 'Подъёмное окно шириной ${formatMm(width)} ${unitSuffix()} — '
           '${params.liftStrapCount} ремня(ей)',
       explanation: 'Ремни считаются автоматически (2 шт до 2 м, далее +1 на метр), '
           'но с ростом ширины растёт нагрузка на каждый ремень и на верхнюю '
@@ -531,7 +531,7 @@ void _checkLifting(
       ruleId: 'lifting-height',
       severity: TechSeverity.warning,
       field: ParamField.leftHeight,
-      title: 'Подъёмное окно высотой ${formatMm(height)} мм — тяжело '
+      title: 'Подъёмное окно высотой ${formatMm(height)} ${unitSuffix()} — тяжело '
           'поднимать',
       explanation: 'Полотно большой высоты поднимают вручную за ремни: чем выше '
           'окно, тем больше ход и масса, тем тяжелее работать и тем выше '
@@ -575,24 +575,24 @@ void _checkZippers(
         severity: TechSeverity.warning,
         title: isScreen
             ? 'Молния №${i + 1}: от полосы до кромки подворота меньше '
-                '${formatMm(minEdge)} мм'
+                '${formatMm(minEdge)} ${unitSuffix()}'
             : 'Молния №${i + 1}: от спайки до кромки плёнки меньше '
-                '${formatMm(minEdge)} мм',
+                '${formatMm(minEdge)} ${unitSuffix()}',
         explanation: isScreen
             ? 'Полоса молнии у скрина — подвёрнутая ткань; до линии подворота '
                 'остаётся ${formatMm(gap.left < gap.right ? gap.left : gap.right)} '
-                'мм (слева ${formatMm(gap.left)} мм, справа '
-                '${formatMm(gap.right)} мм). Шов полосы сливается со швом '
+                'мм (слева ${formatMm(gap.left)} ${unitSuffix()}, справа '
+                '${formatMm(gap.right)} ${unitSuffix()}). Шов полосы сливается со швом '
                 'подворота, кромка теряет тело и рвётся по молнии.'
             : 'С одной стороны спайки остаётся узкая полоса плёнки '
-                '(слева ${formatMm(gap.left)} мм, справа '
-                '${formatMm(gap.right)} мм): шов слабый, при натяжении полотно '
+                '(слева ${formatMm(gap.left)} ${unitSuffix()}, справа '
+                '${formatMm(gap.right)} ${unitSuffix()}): шов слабый, при натяжении полотно '
                 'рвёт вдоль спайки.',
         recommendation: isScreen
             ? 'Сместите молнию от кромки подворота не меньше чем на '
-                '${formatMm(minScreenZipperHemMm)} мм или сузьте полосу.'
+                '${formatMm(minScreenZipperHemMm)} ${unitSuffix()} или сузьте полосу.'
             : 'Сместите молнию так, чтобы от спайки до кромок плёнки было не '
-                'меньше ${formatMm(_minZipperToEdgeMm)} мм.',
+                'меньше ${formatMm(_minZipperToEdgeMm)} ${unitSuffix()}.',
       ));
     }
   }
@@ -606,8 +606,8 @@ void _checkZippers(
           ruleId: 'zipper-spacing-near',
           severity: TechSeverity.warning,
           title: 'Молнии №${i + 1} и №${j + 1} стоят в '
-              '${formatMm(distance)} мм друг от друга',
-          explanation: 'Две молнии ближе ${formatMm(_minZipperSpacingMm)} мм '
+              '${formatMm(distance)} ${unitSuffix()} друг от друга',
+          explanation: 'Две молнии ближе ${formatMm(_minZipperSpacingMm)} ${unitSuffix()} '
               'неудобны в эксплуатации: створки мешают друг другу, между '
               'спайками остаётся узкая полоса полотна.',
           recommendation: 'Разнесите молнии по ширине окна (например, на '
@@ -657,7 +657,7 @@ void _checkPocket(
     final toLeft = (eyelet.center - bottomLeft).distance;
     final toRight = (eyelet.center - bottomRight).distance;
     if (toLeft < pocketCornerOffset - 1 || toRight < pocketCornerOffset - 1) {
-      blockers.add('${eyelet.side.label} ${formatMm(toLeft < toRight ? toLeft : toRight)} мм');
+      blockers.add('${eyelet.side.label} ${formatMm(toLeft < toRight ? toLeft : toRight)} ${unitSuffix()}');
     }
   }
 
@@ -669,7 +669,7 @@ void _checkPocket(
       explanation: 'Крепёж стоит в зоне фартука (${blockers.join(', ')}): '
           'утяжителю некуда заводиться, а люверс продавливает шов фартука.',
       recommendation: 'Поднимите нижние угловые люверсы на '
-          '${formatMm(pocketCornerOffset)} мм или уберите их — как это делает '
+          '${formatMm(pocketCornerOffset)} ${unitSuffix()} или уберите их — как это делает '
           'автоматическая раскладка фартука.',
     ));
   }
@@ -702,13 +702,13 @@ void _checkCutouts(WindowSpec spec, List<TechCheck> checks) {
       checks.add(TechCheck(
         ruleId: 'cutout-bridge-thin',
         severity: TechSeverity.warning,
-        title: 'Вырез №${i + 1}: до окантовки всего ${formatMm(bridge)} мм',
+        title: 'Вырез №${i + 1}: до окантовки всего ${formatMm(bridge)} ${unitSuffix()}',
         explanation: 'Между вырезом и швом окантовки остаётся тонкая перемычка '
-            'меньше ${formatMm(_minCutoutBridgeMm)} мм — по ней плёнка рвётся '
+            'меньше ${formatMm(_minCutoutBridgeMm)} ${unitSuffix()} — по ней плёнка рвётся '
             'при первой же нагрузке.',
         recommendation: 'Сместите вырез от кромки или уменьшите его так, чтобы '
             'до окантовки оставалось не меньше '
-            '${formatMm(_minCutoutBridgeMm)} мм.',
+            '${formatMm(_minCutoutBridgeMm)} ${unitSuffix()}.',
       ));
     }
 
@@ -716,13 +716,13 @@ void _checkCutouts(WindowSpec spec, List<TechCheck> checks) {
       checks.add(TechCheck(
         ruleId: 'cutout-circle-small',
         severity: TechSeverity.info,
-        title: 'Круглый вырез №${i + 1} Ø${formatMm(cutout.spec.width)} мм — '
-            'меньше ${formatMm(_minRoundCutoutMm)} мм',
+        title: 'Круглый вырез №${i + 1} Ø${formatMm(cutout.spec.width)} ${unitSuffix()} — '
+            'меньше ${formatMm(_minRoundCutoutMm)} ${unitSuffix()}',
         explanation: 'Под трубу, стойку или вентиляцию такой диаметр обычно не '
             'проходит: скорее всего ошибка в размере или это дренаж, который '
             'делается иначе.',
         recommendation: 'Уточните, что заводится в отверстие, и при '
-            'необходимости увеличьте диаметр до ${formatMm(_minRoundCutoutMm)} мм '
+            'необходимости увеличьте диаметр до ${formatMm(_minRoundCutoutMm)} ${unitSuffix()} '
             'и больше.',
       ));
     }
@@ -894,9 +894,9 @@ void _checkSection(
       ruleId: 'section-large-diff',
       severity: TechSeverity.warning,
       field: ParamField.topWidth,
-      title: 'Низ и верх отличаются на ${formatMm(diff)} мм при высоте '
-          '${formatMm(spec.geometry.overallHeight)} мм',
-      explanation: 'Высокая трапеция со скосом больше ${formatMm(_maxWidthDiffMm)} мм '
+      title: 'Низ и верх отличаются на ${formatMm(diff)} ${unitSuffix()} при высоте '
+          '${formatMm(spec.geometry.overallHeight)} ${unitSuffix()}',
+      explanation: 'Высокая трапеция со скосом больше ${formatMm(_maxWidthDiffMm)} ${unitSuffix()} '
           'сваривается со складками: боковые швы идут по косой, окантовку '
           'тянет и полотно уводит при раскрое.',
       recommendation: 'Проверьте замеры, разбейте окно по высоте или '

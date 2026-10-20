@@ -101,6 +101,8 @@ void main() {
 
     // 3. Припуски на раскрой: кнопка раскрывает поля, значения — в модель.
     expect(find.text('Припуски на раскрой'), findsOneWidget);
+    await tester.ensureVisible(find.text('Припуски на раскрой'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Припуски на раскрой'));
     await tester.pumpAndSettle();
 
@@ -258,6 +260,7 @@ void main() {
 
     // Блок «Припуски на раскрой» по умолчанию свёрнут — раскрываем его.
     await tester.ensureVisible(find.text('Припуски на раскрой'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Припуски на раскрой'));
     await tester.pumpAndSettle();
 
@@ -570,10 +573,10 @@ void _rollWidthsAndEyeletsPanelRules() {
     await tester.tap(screenChip);
     await tester.pumpAndSettle();
 
-    expect(find.text('250 см'), findsOneWidget);
-    expect(find.text('500 см'), findsOneWidget);
-    await tester.ensureVisible(find.text('500 см'));
-    await tester.tap(find.text('500 см'));
+    expect(find.text('2\u202F500 мм'), findsOneWidget);
+    expect(find.text('5\u202F000 мм'), findsOneWidget);
+    await tester.ensureVisible(find.text('5\u202F000 мм'));
+    await tester.tap(find.text('5\u202F000 мм'));
     await tester.pumpAndSettle();
     expect(
       hostKey.currentState!.project.rollWidthFor(FilmMaterial.screen),

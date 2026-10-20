@@ -441,7 +441,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       setState(
         () => _errors[ParamField.eyeletStep] =
             'Интервал от ${formatMm(minEyeletStepMm)} до '
-            '${formatMm(maxEyeletStepMm)} мм',
+            '${formatMm(maxEyeletStepMm)} ${unitSuffix()}',
       );
       return;
     }
@@ -493,7 +493,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       setState(
         () => _edgeErrors[side] =
             'Ширина от '
-            '${formatMm(minEdgeRollWidth)} до ${formatMm(maxEdgeRollWidth)} мм',
+            '${formatMm(minEdgeRollWidth)} до ${formatMm(maxEdgeRollWidth)} ${unitSuffix()}',
       );
       return;
     }
@@ -511,7 +511,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     if (value < 0 || value > _maxAllowanceMm) {
       setState(
         () => _allowanceErrors[field] =
-            'Припуск 0…${formatMm(_maxAllowanceMm)} мм',
+            'Припуск 0…${formatMm(_maxAllowanceMm)} ${unitSuffix()}',
       );
       return;
     }
@@ -566,7 +566,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     if (value < 0 || value > maxShrinkageFieldPercent) {
       setState(
         () => _errors[ParamField.shrinkagePercent] =
-            'Усадка 0…${formatMm(maxShrinkageFieldPercent)} %',
+            'Усадка 0…${formatDecimal(maxShrinkageFieldPercent)} %',
       );
       return;
     }
@@ -590,7 +590,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       setState(
         () => _errors[ParamField.weldOverlap] =
             'Запайка от ${formatMm(minWeldOverlapMm)} до '
-            '${formatMm(maxWeldOverlapMm)} мм',
+            '${formatMm(maxWeldOverlapMm)} ${unitSuffix()}',
       );
       return;
     }
@@ -617,7 +617,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     if (value < minScreenHemMm || value > maxScreenHemMm) {
       setState(
         () => _errors[field] =
-            '${formatMm(minScreenHemMm)}…${formatMm(maxScreenHemMm)} мм',
+            '${formatMm(minScreenHemMm)}…${formatMm(maxScreenHemMm)} ${unitSuffix()}',
       );
       return;
     }
@@ -638,7 +638,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
             for (final preset in const [10.0, 25.0, 40.0])
               ChoiceChip(
                 label: Text(
-                  '${formatMm(preset)} мм',
+                  '${formatMm(preset)} ${unitSuffix()}',
                   style: const TextStyle(fontSize: 12),
                 ),
                 selected: (value - preset).abs() < 1e-9,
@@ -660,7 +660,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
             suffixText: 'мм',
             helperText:
                 '${formatMm(minWeldOverlapMm)}…'
-                '${formatMm(maxWeldOverlapMm)} мм; заготовка плёнки = готовый '
+                '${formatMm(maxWeldOverlapMm)} ${unitSuffix()}; заготовка плёнки = готовый '
                 'размер − 2 × окантовка + 2 × запайка',
             helperMaxLines: 2,
             border: const OutlineInputBorder(),
@@ -833,21 +833,21 @@ class _ParamsPanelState extends State<ParamsPanel> {
         Text(
           'Габарит заготовки будет '
           '${formatMm(spec.filmCutWidthWithAllowance)} × '
-          '${formatMm(spec.filmCutHeightWithAllowance)} мм: габарит изделия '
+          '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}: габарит изделия '
           'плюс прибавка по оси — среднее двух подворотов + '
-          '${formatMm(screenHemAxisExtraMm)} мм на шов и запас. Шов '
-          'сварки ${formatMm(screenSeamMm)} мм.'
+          '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} на шов и запас. Шов '
+          'сварки ${formatMm(screenSeamMm)} ${unitSuffix()}.'
           // У трапеции и окна с разными высотами наклон сторон добавляет к
           // габариту ещё немного — это видно отдельным слагаемым в формулах.
           '${spec.widthSlopeExtraMm.abs() >= 0.5 || spec.heightSlopeExtraMm.abs() >= 0.5 ? ' Наклон сторон добавляет к габариту: по ширине '
-                    '${formatSignedMm(spec.widthSlopeExtraMm)} мм, по высоте '
-                    '${formatSignedMm(spec.heightSlopeExtraMm)} мм.' : ''}'
+                    '${formatSignedMm(spec.widthSlopeExtraMm)} ${unitSuffix()}, по высоте '
+                    '${formatSignedMm(spec.heightSlopeExtraMm)} ${unitSuffix()}.' : ''}'
           // Полоса молнии сужает именно заготовку, а не подворот: подвороты
           // остаются своими, но итоговая ширина кроя меньше на полосу.
           '${spec.zipperBandTotalMm > 0 ? ' Ширина кроя уменьшена на полосу '
-                    'молнии ${formatMm(spec.zipperBandTotalMm)} мм: '
+                    'молнии ${formatMm(spec.zipperBandTotalMm)} ${unitSuffix()}: '
                     '${formatMm(spec.filmCutWidthBeforeZipper)}'
-                    ' → ${formatMm(spec.filmCutWidth)} мм до припуска — полоса '
+                    ' → ${formatMm(spec.filmCutWidth)} ${unitSuffix()} до припуска — полоса '
                     'кроится из того же полотна.' : ''}',
           key: const Key('hem-blank-label'),
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
@@ -959,7 +959,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
               const SizedBox(width: 8),
               Text(
                 '${params.allowanceWidthLabel} / '
-                '${params.allowanceHeightLabel} мм',
+                '${params.allowanceHeightLabel} ${unitSuffix()}',
                 style: const TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w600,
@@ -1031,7 +1031,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
               children: [
                 Text(
                   'Плёнка в раскрое с припуском: ${formatMm(width)} × '
-                  '${formatMm(height)} мм',
+                  '${formatMm(height)} ${unitSuffix()}',
                   key: const Key('allowance-cut-size'),
                   style: const TextStyle(
                     fontSize: 12.5,
@@ -1041,7 +1041,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 const SizedBox(height: 4),
                 Text(
                   'Изделие остаётся ${formatMm(params.bottomWidth)} × '
-                  '${formatMm(params.leftHeight)} мм; площадь изделия и расход '
+                  '${formatMm(params.leftHeight)} ${unitSuffix()}; площадь изделия и расход '
                   'окантовки не меняются, припуск виден в раскрое плёнки и '
                   'в расходе материала.',
                   style: const TextStyle(
@@ -1122,14 +1122,14 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 ? 'Скрин — самостоятельная технология: серое полотно '
                       'подворачивается по периметру, подворот задаётся на каждую '
                       'сторону (низ, право, верх, лево — обычно 40/50/60 мм), шов '
-                      '${formatMm(screenSeamMm)} мм, крепёж ложится по подвороту: '
+                      '${formatMm(screenSeamMm)} ${unitSuffix()}, крепёж ложится по подвороту: '
                       'люверсы, а по низу и бокам — скобы, замки или ремни '
                       '(сверху саморезы). Молния ставится в полосу из скрина '
                       '(подворот или накладная полоса) со швом '
-                      '${formatMm(screenSeamMm)} мм по краям. Тента и окантовки у '
+                      '${formatMm(screenSeamMm)} ${unitSuffix()} по краям. Тента и окантовки у '
                       'скрина нет: заготовка равна готовому размеру плюс прибавка '
                       'по каждой оси — среднее двух подворотов + '
-                      '${formatMm(screenHemAxisExtraMm)} мм (низ 40 и верх 60 '
+                      '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} (низ 40 и верх 60 '
                       'дают по высоте +70 мм).'
                 : 'Каждое окно рисуется слоями: окантовка (складывается '
                       'пополам), запайка плёнки под окантовку, плёнка, люверсы и '
@@ -1197,7 +1197,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           const SizedBox(height: 10),
           _tShapeSection(params),
           const SizedBox(height: 20),
-          const _SectionTitle('Размеры полотна, мм'),
+          _SectionTitle('Размеры полотна, ${unitSuffix()}'),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -1238,7 +1238,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           _expansion(
             title: 'Полотно (плёнка)',
             subtitle:
-                '${params.material.label} · рулон ${formatMm(project.rollWidthFor(params.material))} мм',
+                '${params.material.label} · рулон ${formatMm(project.rollWidthFor(params.material))} ${unitSuffix()}',
             children: [
               const Text(
                 'Материал',
@@ -1255,7 +1255,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
               const SizedBox(height: 6),
               Text(
                 '${params.material.thickness}; доступные рулоны: '
-                '${params.material.rollWidthsLabel} см',
+                '${params.material.rollWidthsLabel} ${unitSuffix()}',
                 style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
               ),
               const SizedBox(height: 14),
@@ -1271,7 +1271,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                   for (final width in params.availableRollWidths)
                     ChoiceChip(
                       label: Text(
-                        '${formatCm(width)} см',
+                        '${formatMm(width)} ${unitSuffix()}',
                         style: const TextStyle(fontSize: 12),
                       ),
                       selected: project.rollWidthFor(params.material) == width,
@@ -1290,7 +1290,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                   'Усадки у скрина нет; нужен запас — добавьте припуск на '
                   'раскрой в разделе выше. В заготовку идёт не сумма подворотов, '
                   'а среднее двух подворотов оси плюс '
-                  '${formatMm(screenHemAxisExtraMm)} мм — поэтому (низ 40, '
+                  '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} — поэтому (низ 40, '
                   'верх 60) даёт по высоте +70 мм.',
                   style: const TextStyle(
                     fontSize: 11,
@@ -1333,7 +1333,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 Text(
                   'Готовая полоса — половина рулона. Своя ширина 40…400 мм; '
                   'если ширина меньше 100 мм, запайке 2 × '
-                  '${formatMm(params.weldOverlapMm)} мм может не хватить ленты.',
+                  '${formatMm(params.weldOverlapMm)} ${unitSuffix()} может не хватить ленты.',
                   style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF66748A),
@@ -1462,7 +1462,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
               child: Text(
                 'Окантовка скрину не нужна: материал подворачивается сам. '
                 'Подворот по сторонам (низ, право, верх, лево) и шов '
-                '${formatMm(screenSeamMm)} мм — в разделе «Полотно (плёнка)».',
+                '${formatMm(screenSeamMm)} ${unitSuffix()} — в разделе «Полотно (плёнка)».',
                 style: const TextStyle(
                   fontSize: 11.5,
                   color: Color(0xFF5B6B80),
@@ -1473,8 +1473,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
           _expansion(
             title: 'Крепёж',
             subtitle:
-                '${spec.eyeletType.label} · интервал '
-                '${formatMm(params.eyeletStep)} мм (факт. '
+                '${spec.eyeletType.displayLabel} · интервал '
+                '${formatMm(params.eyeletStep)} ${unitSuffix()} (факт. '
                 '${spec.eyeletStepLabel}) · '
                 '${spec.eyeletCount} шт на окно',
             children: [
@@ -1569,9 +1569,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
                       ? 'Полоса под молнию у скрина — подвёрнутая ткань (или '
                             'накладная полоса из скрина): на чертеже полоса серая, '
                             'как подворот, со швом '
-                            '${formatMm(screenSeamMm)} мм по краям. Молния не '
+                            '${formatMm(screenSeamMm)} ${unitSuffix()} по краям. Молния не '
                             'должна подходить к кромке подворота ближе '
-                            '${formatMm(minScreenZipperHemMm)} мм. Всего до '
+                            '${formatMm(minScreenZipperHemMm)} ${unitSuffix()}. Всего до '
                             '$maxZippers молний.'
                       : 'Молния впаивается в полосу тента: на чертеже показаны '
                             'полоса спайки и расстояния до кромок плёнки. Всего '
@@ -1631,14 +1631,14 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 Text(
                   params.isScreen
                       ? 'У скрина фартук образуется подворотом материала '
-                            '${formatMm(params.pocketWidth)} мм. Угловые люверсы со '
+                            '${formatMm(params.pocketWidth)} ${unitSuffix()}. Угловые люверсы со '
                             'стороны фартука не ставятся, крайние боковые смещаются '
-                            'на ${formatMm(pocketCornerOffset)} мм — чтобы в полость '
+                            'на ${formatMm(pocketCornerOffset)} ${unitSuffix()} — чтобы в полость '
                             'фартука заводился утяжитель.'
                       : 'Фартук делается из тента 200 мм, складывается пополам — '
-                            'получается ${formatMm(params.pocketWidth)} мм. Угловые '
+                            'получается ${formatMm(params.pocketWidth)} ${unitSuffix()}. Угловые '
                             'люверсы со стороны фартука не ставятся: они смещаются на '
-                            '${formatMm(pocketCornerOffset)} мм, чтобы в полость '
+                            '${formatMm(pocketCornerOffset)} ${unitSuffix()}, чтобы в полость '
                             'фартука заводился утяжитель.',
                   style: const TextStyle(
                     fontSize: 11,
@@ -1694,13 +1694,13 @@ class _ParamsPanelState extends State<ParamsPanel> {
             title: 'Раскрой',
             subtitle:
                 'заготовка ${formatMm(spec.filmCutWidthWithAllowance)} × '
-                '${formatMm(spec.filmCutHeightWithAllowance)} мм',
+                '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}',
             children: [
               if (params.isScreen) ...[
                 Text(
                   'У скрина усадки нет: заготовка равна готовому размеру плюс '
                   'прибавка по каждой оси — среднее двух подворотов + '
-                  '${formatMm(screenHemAxisExtraMm)} мм на шов и запас. '
+                  '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} на шов и запас. '
                   'Нужен запас — добавьте припуск на раскрой.',
                   style: const TextStyle(
                     fontSize: 11,
@@ -1727,7 +1727,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 if (params.shrinkageEnabled) ...[
                   Text(
                     'Типовая усадка 1–2 %; поле принимает 0…'
-                    '${formatMm(maxShrinkageFieldPercent)} %.',
+                    '${formatDecimal(maxShrinkageFieldPercent)} %.',
                     style: const TextStyle(
                       fontSize: 11,
                       color: Color(0xFF66748A),
@@ -1922,8 +1922,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 label: const Text('Сбросить'),
               ),
             ],
-          ),
-        ],
+          ),        ],
       ),
     );
   }
@@ -1977,7 +1976,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
         labelText: 'Ширина фартука, мм',
         helperText:
             'общая для нижнего и верхнего фартука; обычно '
-            '${formatMm(pocketFinishedWidth)} мм',
+            '${formatMm(pocketFinishedWidth)} ${unitSuffix()}',
         helperMaxLines: 2,
         border: const OutlineInputBorder(),
         isDense: true,
@@ -1991,14 +1990,14 @@ class _ParamsPanelState extends State<ParamsPanel> {
   String _specElementsSummary(WindowParams params) {
     final zipperPart = switch (params.zippers.length) {
       0 => null,
-      1 => 'молния ${formatMm(params.zippers.first.bandWidth)} мм',
+      1 => 'молния ${formatMm(params.zippers.first.bandWidth)} ${unitSuffix()}',
       _ => 'молний ${params.zippers.length}',
     };
     final parts = <String>[
       ?zipperPart,
       if (params.cutouts.isNotEmpty) 'вырезов ${params.cutouts.length}',
-      if (params.pocket) 'фартук снизу ${formatMm(params.pocketWidth)} мм',
-      if (params.pocketTop) 'фартук сверху ${formatMm(params.pocketWidth)} мм',
+      if (params.pocket) 'фартук снизу ${formatMm(params.pocketWidth)} ${unitSuffix()}',
+      if (params.pocketTop) 'фартук сверху ${formatMm(params.pocketWidth)} ${unitSuffix()}',
       if (params.drainHoles && !params.isScreen)
         'дренаж ${params.drainCount.round()} шт',
     ];
@@ -2012,7 +2011,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       0,
       (sum, cutout) => sum + cutout.perimeterMm,
     );
-    return '${params.cutouts.length} шт · контур ${formatMm(perimeter)} мм';
+    return '${params.cutouts.length} шт · контур ${formatMm(perimeter)} ${unitSuffix()}';
   }
 
   /// Раздел «Т-образное окно»: перевод в Т-форму и две пристройки.
@@ -2390,7 +2389,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           if (!zipper.centered) ...[
             const SizedBox(height: 4),
             Text(
-              'Положение от левого края плёнки: ${formatMm(offset)} мм',
+              'Положение от левого края плёнки: ${formatMm(offset)} ${unitSuffix()}',
               style: const TextStyle(fontSize: 11.5, color: Color(0xFF5B6B80)),
             ),
             Slider(
@@ -2413,17 +2412,17 @@ class _ParamsPanelState extends State<ParamsPanel> {
           const SizedBox(height: 6),
           Text(
             params.isScreen
-                ? 'Полоса шириной ${formatMm(zipper.bandWidth)} мм из скрина '
+                ? 'Полоса шириной ${formatMm(zipper.bandWidth)} ${unitSuffix()} из скрина '
                       '(подворот или накладная полоса): молния идёт по её '
-                      'середине, шов ${formatMm(screenSeamMm)} мм по краям полосы. '
+                      'середине, шов ${formatMm(screenSeamMm)} ${unitSuffix()} по краям полосы. '
                       'Ширина заготовки уменьшается на полосу: '
                       '${formatMm(spec.filmCutWidthBeforeZipper)}'
-                      ' → ${formatMm(spec.filmCutWidth)} мм до припуска.'
-                : 'Спайка шириной ${formatMm(zipper.bandWidth)} мм: молния '
+                      ' → ${formatMm(spec.filmCutWidth)} ${unitSuffix()} до припуска.'
+                : 'Спайка шириной ${formatMm(zipper.bandWidth)} ${unitSuffix()}: молния '
                       'впаивается в полосу тента и идёт по её середине. Ширина '
                       'заготовки уменьшается на полосу так же, как у скрина: '
                       '${formatMm(spec.filmCutWidthBeforeZipper)}'
-                      ' → ${formatMm(spec.filmCutWidth)} мм до припуска.',
+                      ' → ${formatMm(spec.filmCutWidth)} ${unitSuffix()} до припуска.',
             style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
         ],
@@ -2441,7 +2440,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       decoration: InputDecoration(
         labelText: 'Положение от левого края',
         suffixText: 'мм',
-        helperText: '0–${formatMm(maxOffset)} мм, шаг 10',
+        helperText: '0–${formatMm(maxOffset)} ${unitSuffix()}, шаг 10',
         border: const OutlineInputBorder(),
         isDense: true,
         errorText: _zipperOffsetErrors[index],
@@ -2484,7 +2483,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     if (value < 0 || value > maxOffset) {
       setState(
         () => _zipperOffsetErrors[index] =
-            'Положение от 0 до ${formatMm(maxOffset)} мм',
+            'Положение от 0 до ${formatMm(maxOffset)} ${unitSuffix()}',
       );
       return;
     }
@@ -2545,7 +2544,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 ),
               ),
               Text(
-                'контур ${formatMm(cutout.perimeterMm)} мм',
+                'контур ${formatMm(cutout.perimeterMm)} ${unitSuffix()}',
                 style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
               ),
               IconButton(
@@ -2652,9 +2651,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
           const SizedBox(height: 2),
           Text(
-            'По видимой плёнке: 0…${formatMm(maxX)} мм по горизонтали, '
-            '0…${formatMm(maxY)} мм по вертикали, шаг '
-            '${formatMm(_cutoutSliderStepMm)} мм.',
+            'По видимой плёнке: 0…${formatMm(maxX)} ${unitSuffix()} по горизонтали, '
+            '0…${formatMm(maxY)} ${unitSuffix()} по вертикали, шаг '
+            '${formatMm(_cutoutSliderStepMm)} ${unitSuffix()}.',
             style: const TextStyle(fontSize: 10.5, color: Color(0xFF66748A)),
           ),
         ],
@@ -2698,7 +2697,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
             ),
             Text(
               '${isX ? 'по горизонтали' : 'по вертикали'}: '
-              '${formatMm(value)} мм',
+              '${formatMm(value)} ${unitSuffix()}',
               key: Key('cutout-$index-$axis-value'),
               style: const TextStyle(
                 fontSize: 11.5,
@@ -2814,9 +2813,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
   String _rollSummary(OrderProject project) {
     final parts = [
       for (final material in project.materialsInOrder)
-        '${material.label.toLowerCase()}: ${formatCm(project.rollWidthFor(material))} см',
+        '${material.label.toLowerCase()}: ${formatMm(project.rollWidthFor(material))} ${unitSuffix()}',
     ];
-    return '${parts.join(' · ')} · зазор ${formatMm(project.rollGap)} мм';
+    return '${parts.join(' · ')} · зазор ${formatMm(project.rollGap)} ${unitSuffix()}';
   }
 
   Widget _sectionHeader(String title, String subtitle) {
@@ -2892,7 +2891,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
             errorText: _edgeErrors[side],
             errorMaxLines: 2,
             helperText:
-                'готовая полоса ${formatMm(finished)} мм '
+                'готовая полоса ${formatMm(finished)} ${unitSuffix()} '
                 '(складывается пополам)',
             helperMaxLines: 2,
           ),
@@ -3028,7 +3027,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
             suffixText: 'мм',
             helperText:
                 '${formatMm(minEyeletStepMm)}…'
-                '${formatMm(maxEyeletStepMm)} мм; рекомендовано '
+                '${formatMm(maxEyeletStepMm)} ${unitSuffix()}; рекомендовано '
                 '${formatMm(recommendedEyeletStepMinMm)}–'
                 '${formatMm(recommendedEyeletStepMaxMm)}',
             helperMaxLines: 2,
@@ -3041,7 +3040,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Задан ${formatMm(value)} мм → фактически '
+          'Задан ${formatMm(value)} ${unitSuffix()} → фактически '
           '${spec.eyeletStepLabel} по сторонам: число интервалов округляют '
           'вверх, поэтому факт не больше заданного.',
           key: const Key('eyelet-step-actual'),
@@ -3082,19 +3081,19 @@ class _CuttingCard extends StatelessWidget {
       ('Площадь изделия', '${formatMeters(spec.productAreaM2)} м²'),
       (
         params.isScreen ? 'Полотно скрина видимое' : 'Плёнка видимая',
-        '${formatMm(spec.filmVisibleWidth)} × ${formatMm(spec.filmVisibleHeight)} мм',
+        '${formatMm(spec.filmVisibleWidth)} × ${formatMm(spec.filmVisibleHeight)} ${unitSuffix()}',
       ),
       (
         params.isScreen
             ? 'Заготовка: готовый размер + среднее подворотов по оси + 20 мм '
                   '${params.hemBySideShortLabel}'
                   '${params.hasAllowance ? ' и припуск' : ''}'
-            : 'Заготовка с запайкой ${formatMm(params.weldOverlapMm)} мм'
+            : 'Заготовка с запайкой ${formatMm(params.weldOverlapMm)} ${unitSuffix()}'
                   '${params.hasManualAllowance ? ' и припуском' : ''}'
                   '${params.hasAutoHeightAllowance ? ' и авто +'
-                            '${formatMm(params.autoHeightAllowanceMm)} мм к высоте' : ''}',
+                            '${formatMm(params.autoHeightAllowanceMm)} ${unitSuffix()} к высоте' : ''}',
         '${formatMm(spec.filmCutWidthWithAllowance)} × '
-            '${formatMm(spec.filmCutHeightWithAllowance)} мм',
+            '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}',
       ),
       // Молния сужает ширину заготовки у всех материалов. Строка стоит
       // отдельно, чтобы человек видел, почему ширина не равна «готовый
@@ -3103,16 +3102,16 @@ class _CuttingCard extends StatelessWidget {
         (
           'Минус полоса молнии на ширину кроя '
               '(${spec.params.zippers.length} шт)',
-          '−${formatMm(spec.zipperBandTotalMm)} мм: '
+          '−${formatMm(spec.zipperBandTotalMm)} ${unitSuffix()}: '
               '${formatMm(spec.filmCutWidthBeforeZipper)}'
-              ' → ${formatMm(spec.filmCutWidth)} мм до припуска',
+              ' → ${formatMm(spec.filmCutWidth)} ${unitSuffix()} до припуска',
         ),
       if (!params.isScreen)
         params.hasShrinkage
             ? (
                 'С усадкой ${formatPercent(params.effectiveShrinkagePercent)}',
                 '${formatMm(spec.filmCutWidthWithShrinkage)} × '
-                    '${formatMm(spec.filmCutHeightWithShrinkage)} мм',
+                    '${formatMm(spec.filmCutHeightWithShrinkage)} ${unitSuffix()}',
               )
             : ('Усадка', 'не учитывается')
       else
@@ -3133,7 +3132,7 @@ class _CuttingCard extends StatelessWidget {
       ),
       if (params.isScreen)
         (
-          'Подворот и шов ${formatMm(screenSeamMm)} мм по сторонам '
+          'Подворот и шов ${formatMm(screenSeamMm)} ${unitSuffix()} по сторонам '
               '(низ/право/верх/лево)',
           params.hemBySideShortLabel,
         ),

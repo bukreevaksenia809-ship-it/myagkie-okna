@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'units.dart';
+
 /// Допуск сравнения размеров в миллиметрах: габариты приходят из double.
 const double _epsilon = 1e-9;
 
@@ -118,7 +120,7 @@ RollLayout packOnRoll({
       placements: const <RollPlacement>[],
       wastePercent: 0,
       warnings: <String>[
-        'Некорректная ширина рулона: ${_formatMm(rollWidth)} мм — '
+        'Некорректная ширина рулона: ${_formatMm(rollWidth)} ${unitSuffix()} — '
             'раскладка невозможна',
       ],
     );
@@ -147,8 +149,8 @@ RollLayout packOnRoll({
         : piece.width;
     if (bestSide > rollWidth + _epsilon) {
       warnings.add(
-        'Заготовка «${piece.label}» (${_formatMm(bestSide)} мм) шире рулона '
-        '${_formatMm(rollWidth)} мм — нужна сшивка',
+        'Заготовка «${piece.label}» (${_formatMm(bestSide)} ${unitSuffix()}) шире рулона '
+        '${_formatMm(rollWidth)} ${unitSuffix()} — нужна сшивка',
       );
     }
 
@@ -242,11 +244,10 @@ int _comparePieces(RollPiece a, RollPiece b) {
 
 /// Печатает размер в миллиметрах без лишних нулей: 1450, 1450.5, NaN.
 String _formatMm(double value) {
-  if (!value.isFinite) {
-    return value.toString();
-  }
-  if (value == value.roundToDouble()) {
-    return value.round().toString();
-  }
-  return value.toStringAsFixed(1);
+  if (!value.isFinite) return value.toString();
+  final cm = DisplayUnits.unit == LengthUnit.cm;
+  final display = cm ? value / 10 : value;
+  if (cm) return display.toStringAsFixed(1).replaceAll('.', ',');
+  if (display == display.roundToDouble()) return display.round().toString();
+  return display.toStringAsFixed(1).replaceAll('.', ',');
 }

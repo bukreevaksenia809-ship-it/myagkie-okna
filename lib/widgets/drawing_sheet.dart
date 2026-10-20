@@ -573,7 +573,7 @@ class _Caption extends StatelessWidget {
             ),
           ),
           Text(
-            '${formatMm(spec.geometry.spanX)}×${formatMm(spec.geometry.overallHeight)} мм · '
+            '${formatMm(spec.geometry.spanX)}×${formatMm(spec.geometry.overallHeight)} ${unitSuffix()} · '
             '${formatMeters(spec.productAreaM2)} м² · '
             '${params.windowType.label.toLowerCase()} · люверсов ${spec.eyeletCount}',
             maxLines: 1,
@@ -685,7 +685,7 @@ class _TitleBlock extends StatelessWidget {
                         : consumptionLabels
                               .map(
                                 (entry) =>
-                                    '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см',
+                                    '${edgeBandLabel(entry.key)} — ${formatMm(entry.value)} ${unitSuffix()}',
                               )
                               .join(' · '),
                   ),
@@ -701,7 +701,7 @@ class _TitleBlock extends StatelessWidget {
                 Expanded(
                   flex: 3,
                   child: _cell(
-                    'Размеры окон, мм',
+                    'Размеры окон, ${unitSuffix()}',
                     windows.length == 1
                         ? _sizesLabel(first)
                         : windows
@@ -750,12 +750,12 @@ class _TitleBlock extends StatelessWidget {
                               '${first.hemBySideShortLabel} (низ/право/верх/лево)'
                               '${specs.first.zipperBandTotalMm > 0 ? ', минус '
                                         'полоса молнии '
-                                        '${formatMm(specs.first.zipperBandTotalMm)} мм' : ''}'
+                                        '${formatMm(specs.first.zipperBandTotalMm)} ${unitSuffix()}' : ''}'
                         : 'Полотно: раскрой с запайкой '
-                              '${formatMm(first.weldOverlapMm)} мм'
+                              '${formatMm(first.weldOverlapMm)} ${unitSuffix()}'
                               '${specs.first.zipperBandTotalMm > 0 ? ', минус '
                                         'полоса молнии '
-                                        '${formatMm(specs.first.zipperBandTotalMm)} мм' : ''}',
+                                        '${formatMm(specs.first.zipperBandTotalMm)} ${unitSuffix()}' : ''}',
                     windows.length == 1
                         ? '${formatMm(specs.first.filmCutWidthWithAllowance)} × '
                               '${formatMm(specs.first.filmCutHeightWithAllowance)}'
@@ -865,6 +865,10 @@ class _SidePanel extends StatelessWidget {
   /// Знаменатель масштаба: 15 для «М 1:15».
   final double scaleDenominator;
 
+  /// Название люверса в текущей единице: «Круглый Ø10 мм» / «Круглый Ø1,0 см».
+  String _eyeletLabel(WindowParams params) =>
+      params.eyeletType.displayLabel;
+
   @override
   Widget build(BuildContext context) {
     final windows = project.windows;
@@ -892,11 +896,11 @@ class _SidePanel extends StatelessWidget {
         (
           LegendKind.seam,
           'Подворот ${params.hemBySideShortLabel} (низ/право/верх/лево), шов '
-              '${formatMm(screenSeamMm)} мм',
+              '${formatMm(screenSeamMm)} ${unitSuffix()}',
         )
       else ...[
-        (LegendKind.edge, 'Окантовка по сторонам: ${_widthList(windows)} мм'),
-        (LegendKind.seam, 'Запайка ${formatMm(params.weldOverlapMm)} мм'),
+        (LegendKind.edge, 'Окантовка по сторонам: ${_widthList(windows)} ${unitSuffix()}'),
+        (LegendKind.seam, 'Запайка ${formatMm(params.weldOverlapMm)} ${unitSuffix()}'),
       ],
       if (windows.any((window) => window.isTShape))
         (
@@ -916,8 +920,8 @@ class _SidePanel extends StatelessWidget {
       (
         LegendKind.eyelet,
         params.isScreen
-            ? 'Люверс ${params.eyeletType.label.toLowerCase()} по подвороту'
-            : 'Люверс ${params.eyeletType.label.toLowerCase()}',
+            ? 'Люверс ${_eyeletLabel(params)} по подвороту'
+            : 'Люверс ${_eyeletLabel(params)}',
       ),
       if (anyMovable)
         switch (params.fastenerType) {
@@ -946,29 +950,36 @@ class _SidePanel extends StatelessWidget {
                 : 'Крепление саморезами',
           ),
         },
-      if (anyLifting) (LegendKind.liftStrap, 'Подъёмный ремень 50×500 мм'),
+      if (anyLifting)
+        (
+          LegendKind.liftStrap,
+          'Подъёмный ремень ${formatMm(liftStrapWidth)}×'
+              '${formatMm(liftStrapLength)} ${unitSuffix()}',
+        ),
       if (anyZipper)
         (
           LegendKind.zipperBand,
           // У скрина полоса под молнию — из скрина, со швом 3 мм по краям;
           // у ПВХ — спайка тента шириной 50 мм.
           params.isScreen
-              ? 'Полоса скрина ${formatMm(params.zipperBandWidth)} мм с молнией '
-                    '(шов ${formatMm(screenSeamMm)} мм)'
-              : 'Спайка ${formatMm(params.zipperBandWidth)} мм с молнией по центру',
+              ? 'Полоса скрина ${formatMm(params.zipperBandWidth)} ${unitSuffix()} с молнией '
+                    '(шов ${formatMm(screenSeamMm)} ${unitSuffix()})'
+              : 'Спайка ${formatMm(params.zipperBandWidth)} ${unitSuffix()} с молнией по центру',
         ),
       if (anyCutout)
         (LegendKind.cutout, 'Вырез в полотне с окантовкой по контуру'),
       if (anyWeld)
-        (LegendKind.weld, 'Спайка с соседним окном $windowWeldWidth мм'),
+        (LegendKind.weld,
+            'Спайка с соседним окном ${formatMm(windowWeldWidth)} ${unitSuffix()}'),
       if (anyPocket)
         (
           LegendKind.pocket,
           params.isScreen
-              ? 'Фартук ${formatMm(params.pocketWidth)} мм (подворот)'
-              : 'Фартук ${formatMm(params.pocketWidth)} мм (тент 200 мм ×2)',
+              ? 'Фартук ${formatMm(params.pocketWidth)} ${unitSuffix()} (подворот)'
+              : 'Фартук ${formatMm(params.pocketWidth)} ${unitSuffix()} (тент 200 мм ×2)',
         ),
-      if (anyDrain) (LegendKind.drain, 'Дренаж Ø6 мм'),
+      if (anyDrain)
+        (LegendKind.drain, 'Дренаж Ø${formatMm(6)} ${unitSuffix()}'),
     ];
 
     return Padding(
@@ -1157,7 +1168,7 @@ class _SidePanel extends StatelessWidget {
         .map(
           (material) =>
               '${material.label.toLowerCase()} — рулон '
-              '${formatMm(project.rollWidthFor(material))} мм',
+              '${formatMm(project.rollWidthFor(material))} ${unitSuffix()}',
         )
         .join('; ');
     // Вычет полосы молнии из ширины кроя у ПВХ: та же формула, что у скрина,
@@ -1174,22 +1185,22 @@ class _SidePanel extends StatelessWidget {
       if (first.isScreen)
         'Скрин: подворот по сторонам ${first.hemBySideLabel} '
             '(низ/право/верх/лево), шов '
-            '${formatMm(screenSeamMm)} мм; заготовка = готовый размер плюс '
-            'среднее подворотов по каждой оси + ${formatMm(screenHemAxisExtraMm)} мм'
+            '${formatMm(screenSeamMm)} ${unitSuffix()}; заготовка = готовый размер плюс '
+            'среднее подворотов по каждой оси + ${formatMm(screenHemAxisExtraMm)} ${unitSuffix()}'
             '${specs.first.zipperBandTotalMm > 0 ? ' минус полоса молнии '
-                      '${formatMm(specs.first.zipperBandTotalMm)} мм' : ''} — '
+                      '${formatMm(specs.first.zipperBandTotalMm)} ${unitSuffix()}' : ''} — '
             '${formatMm(specs.first.filmCutWidthWithAllowance)} × '
-            '${formatMm(specs.first.filmCutHeightWithAllowance)} мм; '
+            '${formatMm(specs.first.filmCutHeightWithAllowance)} ${unitSuffix()}; '
             'тента и окантовки нет'
       else
         'Окантовка складывается пополам, запайка плёнки под окантовку '
-            '${formatMm(first.weldOverlapMm)} мм по всему периметру',
+            '${formatMm(first.weldOverlapMm)} ${unitSuffix()} по всему периметру',
       if (pvcZipperNotes.isNotEmpty)
         'Молния: ширина кроя плёнки уменьшена на полосу (спайку) — '
             '${pvcZipperNotes.join('; ')}',
       if (!first.isScreen)
         'Расход окантовки: '
-            '${labels.map((entry) => '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см').join(', ')}',
+            '${labels.map((entry) => '${edgeBandLabel(entry.key)} — ${formatMm(entry.value)} ${unitSuffix()}').join(', ')}',
       'Люверсы: всего $totalEyelets шт, шаг ${specs.first.eyeletStepLabel}',
       'Крепёж: ${specs.first.fastenerSummary.toLowerCase()}',
       first.hasShrinkage
@@ -1200,7 +1211,7 @@ class _SidePanel extends StatelessWidget {
       'Полотно: ${materials.map((material) => '${material.label} (${material.thickness})').join('; ')}',
       'Доступные рулоны: '
           '${materials.map((material) => '${material.label.toLowerCase()} — '
-              '${material.rollWidthsLabel} см').join('; ')}',
+              '${material.rollWidthsLabel} ${unitSuffix()}').join('; ')}',
       if (first.isScreen)
         'Скрин сваривается горячим воздухом 400–500 °C, морозостойкость '
             'до −30 °C'
@@ -1249,10 +1260,17 @@ enum LegendKind {
 
 /// Линейка для боковой панели: показывает длину в масштабе листа.
 class _RulerPainter extends CustomPainter {
-  _RulerPainter({required this.scaleDenominator, required this.labelStyle});
+  _RulerPainter({
+    required this.scaleDenominator,
+    required this.labelStyle,
+    LengthUnit? unit,
+  }) : unit = unit ?? DisplayUnits.unit;
 
   final double scaleDenominator;
   final TextStyle labelStyle;
+
+  /// Единица подписи линейки: при переключении мм/см перерисовывается.
+  final LengthUnit unit;
 
   /// Точек листа на миллиметр бумаги: 1240 точек на 210 мм.
   static const double _pxPerPaperMm = DrawingSheet.a4PxPerMm;
@@ -1303,7 +1321,7 @@ class _RulerPainter extends CustomPainter {
       text: TextSpan(
         text: step >= 1000
             ? '0 — ${(step / 1000).toStringAsFixed(step % 1000 == 0 ? 0 : 1).replaceAll('.', ',')} м'
-            : '0 — ${formatMm(step)} мм',
+            : '0 — ${formatMm(step)} ${unitSuffix()}',
         style: labelStyle,
       ),
       textDirection: TextDirection.ltr,
@@ -1314,7 +1332,8 @@ class _RulerPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _RulerPainter oldDelegate) =>
       oldDelegate.scaleDenominator != scaleDenominator ||
-      oldDelegate.labelStyle != labelStyle;
+      oldDelegate.labelStyle != labelStyle ||
+      oldDelegate.unit != unit;
 }
 
 class _LegendPainter extends CustomPainter {

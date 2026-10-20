@@ -163,7 +163,7 @@ class TechCard {
   /// Габарит изделия: «1 500 × 2 520 мм».
   String get dimensionsLabel =>
       '${formatMm(spec.geometry.spanX)} × '
-      '${formatMm(spec.geometry.overallHeight)} мм';
+      '${formatMm(spec.geometry.overallHeight)} ${unitSuffix()}';
 
   /// Тип окна строчными: «глухое», «подъёмное».
   String get typeLabel => params.windowType.label.toLowerCase();
@@ -171,11 +171,11 @@ class TechCard {
   /// Подпись под заголовком: окантовка, люверсы, крепёж.
   String get subtitle => params.isScreen
       ? 'Скрин без тента: подворот ${params.hemBySideShortLabel} '
-            '(низ/право/верх/лево), шов ${formatMm(screenSeamMm)} мм · заготовка '
+            '(низ/право/верх/лево), шов ${formatMm(screenSeamMm)} ${unitSuffix()} · заготовка '
             '${formatMm(spec.filmCutWidthWithAllowance)} × '
-            '${formatMm(spec.filmCutHeightWithAllowance)} мм · '
+            '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()} · '
             'люверсы: ${spec.eyeletCount} шт, интервал '
-            '${formatMm(params.eyeletStep)} мм (факт. '
+            '${formatMm(params.eyeletStep)} ${unitSuffix()} (факт. '
             '${spec.eyeletStepLabel}) · '
             'крепёж: ${spec.fastenerSummary.toLowerCase()}'
       : 'Окантовка: ${spec.edgeBySideSummary} · '
@@ -183,9 +183,9 @@ class TechCard {
             '${params.hasAllowance ? ' с припуском' : ''}'
             '${params.hasShrinkage ? ' и усадкой' : ''}: '
             '${formatMm(spec.filmCutWidthWithShrinkage)} × '
-            '${formatMm(spec.filmCutHeightWithShrinkage)} мм · '
+            '${formatMm(spec.filmCutHeightWithShrinkage)} ${unitSuffix()} · '
             'люверсы: ${spec.eyeletCount} шт, интервал '
-            '${formatMm(params.eyeletStep)} мм (факт. ${spec.eyeletStepLabel}) · '
+            '${formatMm(params.eyeletStep)} ${unitSuffix()} (факт. ${spec.eyeletStepLabel}) · '
             'крепёж: ${spec.fastenerSummary.toLowerCase()}';
 
   /// Расход окантовки по ширинам рулонов — из модели.
@@ -229,7 +229,7 @@ class TechCard {
       ..sort((a, b) => a.key.compareTo(b.key));
     return [
       for (final entry in entries)
-        '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см',
+        '${edgeBandLabel(entry.key)} — ${formatMm(entry.value)} ${unitSuffix()}',
     ];
   }
 }
@@ -280,25 +280,25 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       title: 'Раскрой скрина',
       description:
           'Отрезать полотно скрина по заготовке: готовый размер '
-          '${formatMm(geometry.spanX)} × ${formatMm(geometry.overallHeight)} мм '
+          '${formatMm(geometry.spanX)} × ${formatMm(geometry.overallHeight)} ${unitSuffix()} '
           'плюс прибавка по каждой оси — среднее двух подворотов оси плюс '
-          '${formatMm(screenHemAxisExtraMm)} мм на шов и запас. '
+          '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} на шов и запас. '
           'По высоте (низ ${formatMm(params.hemBottomMm)} + верх '
           '${formatMm(params.hemTopMm)}) / 2 + '
           '${formatMm(screenHemAxisExtraMm)} = '
-          '${formatMm(params.hemAxisBottomTopIncrease)} мм, по ширине '
+          '${formatMm(params.hemAxisBottomTopIncrease)} ${unitSuffix()}, по ширине '
           '(лево ${formatMm(params.hemLeftMm)} + право '
           '${formatMm(params.hemRightMm)}) / 2 + '
           '${formatMm(screenHemAxisExtraMm)} = '
-          '${formatMm(params.hemAxisLeftRightIncrease)} мм'
+          '${formatMm(params.hemAxisLeftRightIncrease)} ${unitSuffix()}'
           '${spec.widthSlopeExtraMm.abs() >= 0.5 || spec.heightSlopeExtraMm.abs() >= 0.5 ? ', плюс наклон сторон (по ширине '
                     '${formatSignedMm(spec.widthSlopeExtraMm)}, по высоте '
-                    '${formatSignedMm(spec.heightSlopeExtraMm)} мм)' : ''}'
+                    '${formatSignedMm(spec.heightSlopeExtraMm)} ${unitSuffix()})' : ''}'
           '${spec.zipperBandTotalMm > 0 ? ', минус ширина полосы молнии '
-                    '${formatMm(spec.zipperBandTotalMm)} мм' : ''} → '
+                    '${formatMm(spec.zipperBandTotalMm)} ${unitSuffix()}' : ''} → '
           'габарит заготовки '
           '${formatMm(spec.filmCutWidthWithAllowance)} × '
-          '${formatMm(spec.filmCutHeightWithAllowance)} мм'
+          '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}'
           '${params.hasAllowance ? ', плюс припуск на раскрой '
                     '${params.allowanceWidthLabel} по ширине и '
                     '${params.allowanceHeightLabel} по высоте' : ''}. '
@@ -309,21 +309,21 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           name: '${params.material.label} (${params.material.thickness})',
           size:
               '${formatMm(spec.filmCutWidthWithAllowance)} × '
-              '${formatMm(spec.filmCutHeightWithAllowance)} мм',
+              '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}',
           note:
               'готовый габарит ${formatMm(geometry.spanX)} × '
-              '${formatMm(geometry.overallHeight)} мм плюс среднее подворотов '
-              'по оси + ${formatMm(screenHemAxisExtraMm)} мм: высота '
+              '${formatMm(geometry.overallHeight)} ${unitSuffix()} плюс среднее подворотов '
+              'по оси + ${formatMm(screenHemAxisExtraMm)} ${unitSuffix()}: высота '
               '+${formatMm(params.hemAxisBottomTopIncrease)}, '
-              'ширина +${formatMm(params.hemAxisLeftRightIncrease)} мм '
+              'ширина +${formatMm(params.hemAxisLeftRightIncrease)} ${unitSuffix()} '
               '(подвороты ${params.hemBySideShortLabel}, низ/право/верх/лево)'
               '${spec.widthSlopeExtraMm.abs() >= 0.5 || spec.heightSlopeExtraMm.abs() >= 0.5 ? '; наклон сторон: по ширине '
                         '${formatSignedMm(spec.widthSlopeExtraMm)}, по высоте '
-                        '${formatSignedMm(spec.heightSlopeExtraMm)} мм' : ''}'
+                        '${formatSignedMm(spec.heightSlopeExtraMm)} ${unitSuffix()}' : ''}'
               '${spec.zipperBandTotalMm > 0 ? '; ширина кроя уменьшена на '
-                        'полосу молнии ${formatMm(spec.zipperBandTotalMm)} мм '
+                        'полосу молнии ${formatMm(spec.zipperBandTotalMm)} ${unitSuffix()} '
                         '(${formatMm(spec.filmCutWidthBeforeZipper)} → '
-                        '${formatMm(spec.filmCutWidth)} мм)' : ''}',
+                        '${formatMm(spec.filmCutWidth)} ${unitSuffix()})' : ''}',
         ),
         TechMaterial(
           name: 'Площадь заготовки-прямоугольника в раскрое',
@@ -334,13 +334,13 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       tool: 'Раскроечный стол, дисковый нож, рулетка, угольник, маркер',
       control:
           'Габарит ${formatMm(spec.filmCutWidthWithAllowance)} × '
-          '${formatMm(spec.filmCutHeightWithAllowance)} мм (±5 мм), '
+          '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()} (±5 мм), '
           'заготовка прямоугольная — четыре прямых угла, кромка ровная без '
           'задиров и волн',
       source:
           'WindowSpec.filmCutWidthWithAllowance / filmCutHeightWithAllowance '
           '(готовый размер + среднее подворотов по оси + '
-          '${formatMm(screenHemAxisExtraMm)} мм: '
+          '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()}: '
           'WindowParams.hemAxisBottomTopIncrease / hemAxisLeftRightIncrease; '
           'подвороты hemBottomMm / hemRightMm / hemTopMm / hemLeftMm; '
           'у окна с молнией ширина кроя минус WindowLayers.zipperBandTotalMm)',
@@ -352,17 +352,17 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       description:
           '${params.isTShape ? 'Т-образное окно: выкроить основное полотно и пристройки, затем сварить по общим сторонам. ' : ''}'
           'Отрезать полотно по раскрою: видимый размер '
-          '${formatMm(visible.width)} × ${formatMm(visible.height)} мм, плюс '
-          'запайка ${formatMm(params.weldOverlapMm)} мм с каждой стороны'
+          '${formatMm(visible.width)} × ${formatMm(visible.height)} ${unitSuffix()}, плюс '
+          'запайка ${formatMm(params.weldOverlapMm)} ${unitSuffix()} с каждой стороны'
           '${spec.zipperBandTotalMm > 0 ? ', минус полоса молнии '
-                    '${formatMm(spec.zipperBandTotalMm)} мм (ширина '
+                    '${formatMm(spec.zipperBandTotalMm)} ${unitSuffix()} (ширина '
                     '${formatMm(spec.filmCutWidthBeforeZipper)}'
-                    ' → ${formatMm(spec.filmCutWidth)} мм до припуска)' : ''}'
+                    ' → ${formatMm(spec.filmCutWidth)} ${unitSuffix()} до припуска)' : ''}'
           '${params.hasManualAllowance ? ', плюс припуск на раскрой '
                     '${params.allowanceWidthLabel} по ширине и '
                     '${params.manualAllowanceHeightLabel} по высоте' : ''}'
           '${params.hasAutoHeightAllowance ? ', плюс авто +'
-                    '${formatMm(params.autoHeightAllowanceMm)} мм к высоте '
+                    '${formatMm(params.autoHeightAllowanceMm)} ${unitSuffix()} к высоте '
                     'заготовки (ПВХ)' : ''}'
           '${params.hasShrinkage ? ', плюс усадка '
                     '${formatPercent(params.effectiveShrinkagePercent)}' : ''}. '
@@ -372,15 +372,15 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           name: '${params.material.label} (${params.material.thickness})',
           size:
               '${formatMm(spec.filmCutWidthWithShrinkage)} × '
-              '${formatMm(spec.filmCutHeightWithShrinkage)} мм',
+              '${formatMm(spec.filmCutHeightWithShrinkage)} ${unitSuffix()}',
           note:
               'до усадки ${formatMm(spec.filmCutWidthWithAllowance)} × '
-              '${formatMm(spec.filmCutHeightWithAllowance)} мм'
+              '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}'
               '${params.hasAllowance ? ' (с припуском на раскрой)' : ''}'
               '${spec.zipperBandTotalMm > 0 ? '; ширина кроя уменьшена на '
-                        'полосу молнии ${formatMm(spec.zipperBandTotalMm)} мм '
+                        'полосу молнии ${formatMm(spec.zipperBandTotalMm)} ${unitSuffix()} '
                         '(${formatMm(spec.filmCutWidthBeforeZipper)}'
-                        ' → ${formatMm(spec.filmCutWidth)} мм до припуска)' : ''}',
+                        ' → ${formatMm(spec.filmCutWidth)} ${unitSuffix()} до припуска)' : ''}',
         ),
         TechMaterial(
           name: params.hasShrinkage
@@ -396,7 +396,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
             name: 'Основное полотно (Т-окно)',
             size:
                 '${formatMm(spec.filmPartBounds[0].width)} × '
-                '${formatMm(spec.filmPartBounds[0].height)} мм',
+                '${formatMm(spec.filmPartBounds[0].height)} ${unitSuffix()}',
             note: 'основная часть, припуск под окантовку по внешним сторонам',
           ),
           for (var index = 0; index < spec.layers.tAnnexes.length; index++)
@@ -405,10 +405,10 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
                   'Пристройка ${spec.layers.tAnnexes[index].number} (Т-окно)',
               size:
                   '${formatMm(spec.filmPartBounds[index + 1].width)} × '
-                  '${formatMm(spec.filmPartBounds[index + 1].height)} мм',
+                  '${formatMm(spec.filmPartBounds[index + 1].height)} ${unitSuffix()}',
               note:
                   '${spec.layers.tAnnexes[index].side.label.toLowerCase()}, '
-                  'смещение ${formatMm(spec.layers.tAnnexes[index].offset)} мм'
+                  'смещение ${formatMm(spec.layers.tAnnexes[index].offset)} ${unitSuffix()}'
                   '${spec.layers.tAnnexes[index].welded ? ', общая сторона — шов' : ', отдельное окно'}',
             ),
         ],
@@ -416,7 +416,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       tool: 'Раскроечный стол, дисковый нож, рулетка, угольник, маркер',
       control:
           'Габарит ${formatMm(spec.filmCutWidthWithShrinkage)} × '
-          '${formatMm(spec.filmCutHeightWithShrinkage)} мм (±5 мм), '
+          '${formatMm(spec.filmCutHeightWithShrinkage)} ${unitSuffix()} (±5 мм), '
           'заготовка прямоугольная — четыре прямых угла, кромка ровная без '
           'задиров и волн',
       source:
@@ -434,7 +434,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     // на трапеции и на окне со спайкой стороны бывают разными.
     final hemBySide = <String>[
       for (final side in EdgeSide.values)
-        '${side.label.toLowerCase()} ${formatMm(params.hemForSide(side))} мм',
+        '${side.label.toLowerCase()} ${formatMm(params.hemForSide(side))} ${unitSuffix()}',
     ].join(', ');
     final hemControl = <String>[
       for (final side in EdgeSide.values)
@@ -442,34 +442,34 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     ].join(', ');
     add(
       kind: TechOperationKind.hem,
-      title: 'Подворот и шов ${formatMm(screenSeamMm)} мм',
+      title: 'Подворот и шов ${formatMm(screenSeamMm)} ${unitSuffix()}',
       description:
           'Завернуть материал по периметру на подворот по сторонам — '
           '$hemBySide (низ/право/верх/лево), всего по периметру '
-          '${formatMm(spec.edgePerimeterMm)} мм, и сварить горячим воздухом '
-          'швом ${formatMm(screenSeamMm)} мм с каждой стороны. '
+          '${formatMm(spec.edgePerimeterMm)} ${unitSuffix()}, и сварить горячим воздухом '
+          'швом ${formatMm(screenSeamMm)} ${unitSuffix()} с каждой стороны. '
           'Запас заготовки под подворот уже заложен по правилу «среднее двух '
-          'подворотов оси + ${formatMm(screenHemAxisExtraMm)} мм»: по высоте +'
-          '${formatMm(params.hemAxisBottomTopIncrease)} мм, по ширине +'
-          '${formatMm(params.hemAxisLeftRightIncrease)} мм'
+          'подворотов оси + ${formatMm(screenHemAxisExtraMm)} ${unitSuffix()}»: по высоте +'
+          '${formatMm(params.hemAxisBottomTopIncrease)} ${unitSuffix()}, по ширине +'
+          '${formatMm(params.hemAxisLeftRightIncrease)} ${unitSuffix()}'
           '${spec.zipperBandTotalMm > 0 ? ' минус полоса молнии '
-                    '${formatMm(spec.zipperBandTotalMm)} мм' : ''} — заготовка '
+                    '${formatMm(spec.zipperBandTotalMm)} ${unitSuffix()}' : ''} — заготовка '
           '${formatMm(spec.filmCutWidthWithAllowance)} × '
-          '${formatMm(spec.filmCutHeightWithAllowance)} мм. '
+          '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}. '
           'Скорость сварки $techWeldSpeedHint, режим уточнить пробным швом '
           'на обрезке. Тента и окантовки у скрина нет.',
       materials: [
         for (final side in EdgeSide.values)
           TechMaterial(
             name: 'Подворот скрина',
-            size: '${formatMm(params.hemForSide(side))} мм',
+            size: '${formatMm(params.hemForSide(side))} ${unitSuffix()}',
             quantity: params.hemForSide(side),
             side: side.label,
-            note: 'шов ${formatMm(screenSeamMm)} мм',
+            note: 'шов ${formatMm(screenSeamMm)} ${unitSuffix()}',
           ),
         TechMaterial(
           name: 'Длина подворота по периметру',
-          size: '${formatMm(spec.edgePerimeterMm)} мм',
+          size: '${formatMm(spec.edgePerimeterMm)} ${unitSuffix()}',
           quantity: spec.edgePerimeterMm,
           note:
               'периметр готового изделия; расход скрина считается по площади '
@@ -494,19 +494,19 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           : 'Напайка: шитьё окантовки',
       description:
           'Плёнку завести под окантовку на запайку '
-          '${formatMm(params.weldOverlapMm)} мм по всему периметру '
-          '(${formatMm(spec.edgePerimeterMm)} мм). '
+          '${formatMm(params.weldOverlapMm)} ${unitSuffix()} по всему периметру '
+          '(${formatMm(spec.edgePerimeterMm)} ${unitSuffix()}). '
           'Соединение: ${params.edgeMaterial.joining}. '
           '${isWeldedEdge ? 'Скорость сварки $techWeldSpeedHint, режим уточнить '
                     'пробным швом на обрезке.' : 'Шов ровный, без посадки полотна.'}'
           '${spec.zipperBandTotalMm > 0 ? ' Ширина заготовки уже уменьшена на '
-                    'полосу молнии ${formatMm(spec.zipperBandTotalMm)} мм — '
+                    'полосу молнии ${formatMm(spec.zipperBandTotalMm)} ${unitSuffix()} — '
                     'напайка идёт по кромке суженного полотна.' : ''}',
       materials: [
         TechMaterial(
           name: 'Припуск плёнки под окантовку (запайка)',
-          size: '${formatMm(params.weldOverlapMm)} мм на сторону',
-          note: 'периметр окна ${formatMm(spec.edgePerimeterMm)} мм',
+          size: '${formatMm(params.weldOverlapMm)} ${unitSuffix()} на сторону',
+          note: 'периметр окна ${formatMm(spec.edgePerimeterMm)} ${unitSuffix()}',
         ),
       ],
       tool: isWeldedEdge
@@ -532,12 +532,12 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         TechMaterial(
           name:
               'Спайка по общей стороне пристройки ${annex.number} внахлёст '
-              '${formatMm(windowWeldWidth)} мм',
-          size: '${formatMm(annex.sharedLength)} мм',
+              '${formatMm(windowWeldWidth)} ${unitSuffix()}',
+          size: '${formatMm(annex.sharedLength)} ${unitSuffix()}',
           quantity: annex.sharedLength,
           note:
               'пристройка ${annex.number} ${formatMm(annex.rect.width)} × '
-              '${formatMm(annex.rect.height)} мм '
+              '${formatMm(annex.rect.height)} ${unitSuffix()} '
               '${annex.side.label.toLowerCase()}',
         ),
       );
@@ -550,8 +550,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         TechMaterial(
           name:
               'Спайка с соседним окном внахлёст '
-              '${formatMm(windowWeldWidth)} мм',
-          size: '${formatMm(length)} мм',
+              '${formatMm(windowWeldWidth)} ${unitSuffix()}',
+          size: '${formatMm(length)} ${unitSuffix()}',
           quantity: length,
           side: side.label,
         ),
@@ -566,11 +566,11 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           '${spec.weldSummary}. Сварку вести с двух сторон шва, шов '
           'прогреть до однородного валика. По общей стороне Т-окна окантовка '
           'не ставится: только шов; окантовка идёт по внешнему периметру '
-          '${formatMm(spec.edgePerimeterMm)} мм.',
+          '${formatMm(spec.edgePerimeterMm)} ${unitSuffix()}.',
       materials: weldedMaterials,
       tool: 'Фен-сварочник (горячий воздух), прижимной ролик, струбцины',
       control:
-          'Шов по всей длине ${formatMm(layers.weldLengthMm)} мм, без '
+          'Шов по всей длине ${formatMm(layers.weldLengthMm)} ${unitSuffix()}, без '
           'расслоения; плоскости полотен совпадают, зазоров нет',
       source: 'WindowParams.tWelded + t2Welded / weldedSides / WindowLayers.weldLengthMm',
     );
@@ -596,9 +596,9 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         TechMaterial(
           name:
               '${edgeBandLabel(roll)} → полоса '
-              '${formatMm(WindowParams.finishedEdgeWidth(roll))} мм '
+              '${formatMm(WindowParams.finishedEdgeWidth(roll))} ${unitSuffix()} '
               '(сложить пополам)',
-          size: '${formatMm(length)} мм',
+          size: '${formatMm(length)} ${unitSuffix()}',
           quantity: length,
           roll: roll,
           side: side.label,
@@ -612,13 +612,13 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       edgeMaterials.add(
         TechMaterial(
           name: '${edgeBandLabel(roll)} → окантовка выреза',
-          size: '${formatMm(perimeter)} мм',
+          size: '${formatMm(perimeter)} ${unitSuffix()}',
           quantity: perimeter,
           roll: roll,
           note: cutout.isCircle
-              ? 'Ø${formatMm(cutout.spec.width)} мм'
+              ? 'Ø${formatMm(cutout.spec.width)} ${unitSuffix()}'
               : '${formatMm(cutout.spec.width)} × '
-                    '${formatMm(cutout.spec.height)} мм',
+                    '${formatMm(cutout.spec.height)} ${unitSuffix()}',
         ),
       );
     }
@@ -634,7 +634,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           'полоса — половина рулона (пресеты: 100 → 50 мм, 200 → 100 мм, '
           '240 → 120 мм; свою ширину на каждую сторону мастер берёт из карты). '
           'Полосу наложить на плёнку с запайкой '
-          '${formatMm(params.weldOverlapMm)} мм и '
+          '${formatMm(params.weldOverlapMm)} ${unitSuffix()} и '
           '${isWeldedEdge ? 'приварить' : 'пришить'}. Итого по ширинам: '
           '$totalsText.',
       materials: edgeMaterials,
@@ -689,12 +689,12 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     kind: TechOperationKind.eyelets,
     title: 'Люверсы',
     description:
-        'Установить люверсы ${eyeletType.label.toLowerCase()} — всего '
+        'Установить люверсы ${eyeletType.displayLabel.toLowerCase()} — всего '
         '${spec.eyeletCount} шт, интервал задан '
-        '${formatMm(params.eyeletStep)} мм, фактически '
+        '${formatMm(params.eyeletStep)} ${unitSuffix()}, фактически '
         '${spec.eyeletStepLabel} по сторонам (число интервалов округляется '
         'вверх, поэтому факт не больше заданного), отступ от угла '
-        '${formatMm(params.eyeletCornerOffset)} мм. '
+        '${formatMm(params.eyeletCornerOffset)} ${unitSuffix()}. '
         '${params.roundEyeletsEnabled ? 'В углах только круглые '
                   '${EyeletType.round10.label}: овальный люверс угол не держит. ' : 'Круглые люверсы в углах отключены: угловых точек нет ни на '
                   'чертеже, ни в расходе, ни в смете. '}'
@@ -714,7 +714,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         ),
       if (ovalCount > 0)
         TechMaterial(
-          name: 'Люверсы ${eyeletType.label}',
+          name: 'Люверсы ${eyeletType.displayLabel}',
           size: '$ovalCount шт',
           quantity: ovalCount.toDouble(),
           unit: 'шт',
@@ -755,9 +755,9 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     ],
     tool: 'Пресс для люверсов, пробойник, наковальня, молоток',
     control:
-        'Интервал задан ${formatMm(params.eyeletStep)} мм, фактический '
+        'Интервал задан ${formatMm(params.eyeletStep)} ${unitSuffix()}, фактический '
         '${spec.eyeletStepLabel} (±5 мм), отступ от угла '
-        '${formatMm(params.eyeletCornerOffset)} мм; люверсы зажаты без '
+        '${formatMm(params.eyeletCornerOffset)} ${unitSuffix()}; люверсы зажаты без '
         'перекосов и задиров, полотно между ними не порвано',
     source: 'WindowLayers.eyelets / eyeletStepLabel / typeFor',
   );
@@ -774,7 +774,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         ..add(
           TechMaterial(
             name: 'Молния №${i + 1} (вертикальная)',
-            size: '${formatMm(band.height)} мм',
+            size: '${formatMm(band.height)} ${unitSuffix()}',
             quantity: band.height,
             note: isScreen
                 ? 'вшивается в полосу скрина по центру'
@@ -786,13 +786,13 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
             name: isScreen
                 ? 'Полоса скрина под молнию №${i + 1}'
                 : 'Полоса тента под молнию №${i + 1}',
-            size: '${formatMm(band.width)} × ${formatMm(band.height)} мм',
+            size: '${formatMm(band.width)} × ${formatMm(band.height)} ${unitSuffix()}',
             note: isScreen
-                ? 'шов ${formatMm(screenSeamMm)} мм по краям полосы; подворот '
+                ? 'шов ${formatMm(screenSeamMm)} ${unitSuffix()} по краям полосы; подворот '
                       'или накладная полоса из скрина; ширина кроя полотна '
-                      'уменьшена на ${formatMm(band.width)} мм'
-                : 'спайка ${formatMm(band.width)} мм; ширина кроя полотна '
-                      'уменьшена на ${formatMm(band.width)} мм',
+                      'уменьшена на ${formatMm(band.width)} ${unitSuffix()}'
+                : 'спайка ${formatMm(band.width)} ${unitSuffix()}; ширина кроя полотна '
+                      'уменьшена на ${formatMm(band.width)} ${unitSuffix()}',
           ),
         );
     }
@@ -803,20 +803,20 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           ? '${params.zippers.length == 1 ? 'Вшить молнию' : 'Вшить молнии'} '
                 'в полосу из скрина: ${spec.zippersSummary}. Полосу подвёрнутой '
                 'ткани (или накладную полосу из скрина) шириной '
-                '${formatMm(params.zipperBandWidth)} мм уложить по всей высоте '
+                '${formatMm(params.zipperBandWidth)} ${unitSuffix()} уложить по всей высоте '
                 'полотна и сварить горячим воздухом швом '
-                '${formatMm(screenSeamMm)} мм по обоим краям полосы; молния идёт '
+                '${formatMm(screenSeamMm)} ${unitSuffix()} по обоим краям полосы; молния идёт '
                 'по её середине. Расстояние от края полосы до кромки подворота — '
-                'не меньше ${formatMm(minScreenZipperHemMm)} мм, за пределы '
+                'не меньше ${formatMm(minScreenZipperHemMm)} ${unitSuffix()}, за пределы '
                 'заготовки полоса не выходит. Ширина заготовки скрина уменьшена '
                 'на полосу: ${formatMm(spec.filmCutWidthBeforeZipper)} → '
-                '${formatMm(spec.filmCutWidth)} мм.'
+                '${formatMm(spec.filmCutWidth)} ${unitSuffix()}.'
           : '${params.zippers.length == 1 ? 'Впаять молнию' : 'Впаять молнии'}: '
                 '${spec.zippersSummary}. Полосу тента с молнией сварить с '
                 'полотном по всей высоте, шов ровный, полотно без волны. '
                 'Ширина заготовки уменьшена на полосу (спайку): '
                 '${formatMm(spec.filmCutWidthBeforeZipper)}'
-                ' → ${formatMm(spec.filmCutWidth)} мм до припуска.',
+                ' → ${formatMm(spec.filmCutWidth)} ${unitSuffix()} до припуска.',
       materials: zipperMaterials,
       tool: isScreen || isWeldedEdge
           ? 'Фен-сварочник, прижимной ролик, шаблон для ровной укладки'
@@ -824,7 +824,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       control: isScreen
           ? 'Молния вертикальна и не смещена, шов '
                 '${formatMm(screenSeamMm)} ± 0,5 мм по краям полосы; от полосы до '
-                'кромки подворота не меньше ${formatMm(minScreenZipperHemMm)} мм; '
+                'кромки подворота не меньше ${formatMm(minScreenZipperHemMm)} ${unitSuffix()}; '
                 'бегунок ходит свободно'
           : 'Молния вертикальна и не смещена, ширина спайки '
                 '${formatMm(params.zipperBandWidth)} ± 2 мм, бегунок ходит свободно',
@@ -843,16 +843,16 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         TechMaterial(
           name: cutout.isCircle ? 'Вырез круглый' : 'Вырез прямоугольный',
           size: cutout.isCircle
-              ? 'Ø${formatMm(cutout.spec.width)} мм'
+              ? 'Ø${formatMm(cutout.spec.width)} ${unitSuffix()}'
               : '${formatMm(cutout.spec.width)} × '
-                    '${formatMm(cutout.spec.height)} мм',
+                    '${formatMm(cutout.spec.height)} ${unitSuffix()}',
           note:
               'центр ${formatMm(cutout.spec.centerXMm)} × '
-              '${formatMm(cutout.spec.centerYMm)} мм от левого нижнего угла плёнки',
+              '${formatMm(cutout.spec.centerYMm)} ${unitSuffix()} от левого нижнего угла плёнки',
         ),
       TechMaterial(
         name: 'Окантовка по контуру вырезов',
-        size: '${formatMm(layers.cutoutPerimeterMm)} мм',
+        size: '${formatMm(layers.cutoutPerimeterMm)} ${unitSuffix()}',
         note: 'учтена в расходе окантовки',
       ),
     ];
@@ -887,13 +887,13 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     final cornerHint = switch ((params.pocket, params.pocketTop)) {
       (true, true) =>
         'угловые люверсы снизу и сверху убраны, боковые смещены на '
-            '${formatMm(pocketCornerOffset)} мм',
+            '${formatMm(pocketCornerOffset)} ${unitSuffix()}',
       (true, false) =>
         'нижние угловые люверсы не ставим, а крайние боковые подняты на '
-            '${formatMm(pocketCornerOffset)} мм',
+            '${formatMm(pocketCornerOffset)} ${unitSuffix()}',
       (false, true) =>
         'верхние угловые люверсы не ставим, а крайние боковые опущены на '
-            '${formatMm(pocketCornerOffset)} мм',
+            '${formatMm(pocketCornerOffset)} ${unitSuffix()}',
       (false, false) => '',
     };
     add(
@@ -901,23 +901,23 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       title: 'Фартук $where',
       description: isScreen
           ? 'Фартук $where образовать подворотом материала полосой '
-                '${formatMm(params.pocketWidth)} мм на всю ширину '
-                '${formatMm(pocketLength)} мм и приварить по кромке. '
+                '${formatMm(params.pocketWidth)} ${unitSuffix()} на всю ширину '
+                '${formatMm(pocketLength)} ${unitSuffix()} и приварить по кромке. '
                 'В полость фартука заводится утяжитель, поэтому $cornerHint.'
-          : 'Полосу тента ${formatMm(pocketRollWidth)} мм сложить пополам '
-                'до ${formatMm(params.pocketWidth)} мм и '
+          : 'Полосу тента ${formatMm(pocketRollWidth)} ${unitSuffix()} сложить пополам '
+                'до ${formatMm(params.pocketWidth)} ${unitSuffix()} и '
                 '${isWeldedEdge ? 'приварить' : 'пришить'} по кромке $where на '
-                'всю ширину ${formatMm(pocketLength)} мм. В полость фартука '
+                'всю ширину ${formatMm(pocketLength)} ${unitSuffix()}. В полость фартука '
                 'заводится утяжитель, поэтому $cornerHint.',
       materials: [
         TechMaterial(
           name: isScreen
               ? 'Подворот под фартук $where '
-                    '(${formatMm(params.pocketWidth)} мм)'
+                    '(${formatMm(params.pocketWidth)} ${unitSuffix()})'
               : 'Полоса тента под фартук '
-                    '(${formatMm(pocketRollWidth)} мм → '
-                    '${formatMm(params.pocketWidth)} мм)',
-          size: '${formatMm(pocketLength)} мм',
+                    '(${formatMm(pocketRollWidth)} ${unitSuffix()} → '
+                    '${formatMm(params.pocketWidth)} ${unitSuffix()})',
+          size: '${formatMm(pocketLength)} ${unitSuffix()}',
           quantity: pocketLength,
         ),
       ],
@@ -938,13 +938,13 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       title: 'Подъёмные ремни',
       description:
           'Приварить/пришить ${spec.strapCount} шт ремней '
-          '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} мм по '
+          '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} ${unitSuffix()} по '
           'верхней кромке, сверху вниз, равномерно по ширине (2 шт до 2 м '
           'ширины, далее +1 на каждый метр).',
       materials: [
         TechMaterial(
           name: 'Подъёмный ремень (заготовка)',
-          size: '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} мм',
+          size: '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} ${unitSuffix()}',
           quantity: spec.strapCount.toDouble(),
           unit: 'шт',
         ),
@@ -965,13 +965,13 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       title: 'Дренаж',
       description:
           'Пробить $drainCount отв. Ø'
-          '${formatMm(techDrainHoleDiameter)} мм в нижней окантовке на равных '
+          '${formatMm(techDrainHoleDiameter)} ${unitSuffix()} в нижней окантовке на равных '
           'расстояниях, не задевая шов и люверсы.',
       materials: [
         TechMaterial(
           name:
               'Дренажные отверстия Ø'
-              '${formatMm(techDrainHoleDiameter)} мм',
+              '${formatMm(techDrainHoleDiameter)} ${unitSuffix()}',
           size: '$drainCount шт',
           quantity: drainCount.toDouble(),
           unit: 'шт',
@@ -979,7 +979,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         ),
       ],
       tool:
-          'Пробойник Ø${formatMm(techDrainHoleDiameter)} мм, молоток, наковальня',
+          'Пробойник Ø${formatMm(techDrainHoleDiameter)} ${unitSuffix()}, молоток, наковальня',
       control:
           'Отверстия в нижней окантовке, вода выходит свободно, шов и '
           'люверсы не задеты',
@@ -994,15 +994,15 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     description:
         'Перед упаковкой проверить изделие и промаркировать: окно '
         '№$index, ${formatMm(geometry.spanX)} × '
-        '${formatMm(geometry.overallHeight)} мм, '
+        '${formatMm(geometry.overallHeight)} ${unitSuffix()}, '
         '${params.windowType.label.toLowerCase()}.',
     tool: 'Рулетка, угольник, маркер, упаковочная плёнка',
     control:
         'Размеры по чертежу (±10 мм); интервал люверсов задан '
-        '${formatMm(params.eyeletStep)} мм, фактический '
+        '${formatMm(params.eyeletStep)} ${unitSuffix()}, фактический '
         '${spec.eyeletStepLabel}; '
         'нет перекосов, волн и заломов полотна; '
-        '${isScreen ? 'подворот ровный, шов ${formatMm(screenSeamMm)} мм без '
+        '${isScreen ? 'подворот ровный, шов ${formatMm(screenSeamMm)} ${unitSuffix()} без '
                   'расслоений' : 'окантовка ровная, швы без расслоений'}; '
         'маркировка номера окна №$index на бирке; упаковать.',
     source: 'сводная проверка WindowSpec / WindowLayers',

@@ -272,7 +272,7 @@ class CostsSummary {
       ..sort((a, b) => a.key.compareTo(b.key));
     return [
       for (final entry in entries)
-        '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см',
+        '${edgeBandLabel(entry.key)} — ${formatMm(entry.value)} ${unitSuffix()}',
     ];
   }
 
@@ -320,33 +320,33 @@ class CostsSummary {
   List<String> get extraLabels => [
     if (cutoutCount > 0)
       'Вырезы: $cutoutCount шт, окантовка по контуру '
-          '${formatMm(cutoutPerimeterMm)} мм',
+          '${formatMm(cutoutPerimeterMm)} ${unitSuffix()}',
     if (weldLengthMm > 0)
-      'Спайка с соседними окнами: ${formatMm(weldLengthMm)} мм '
+      'Спайка с соседними окнами: ${formatMm(weldLengthMm)} ${unitSuffix()} '
           '(окантовка на этих сторонах не ставится)',
     if (zipperCount - screenZipperCount > 0)
-      'Спайка молнии: тент ${formatMm(100)} мм × '
-          '${formatMm(zipperBandLengthMm - screenZipperBandLengthMm)} мм — '
+      'Спайка молнии: тент ${formatMm(100)} ${unitSuffix()} × '
+          '${formatMm(zipperBandLengthMm - screenZipperBandLengthMm)} ${unitSuffix()} — '
           '${zipperCount - screenZipperCount} шт; ширина кроя полотна '
           'уменьшена на полосу (спайку) '
-          '${formatMm(pvcZipperBandWidthMm)} мм',
+          '${formatMm(pvcZipperBandWidthMm)} ${unitSuffix()}',
     if (screenZipperCount > 0)
       'Полоса молнии из скрина: $screenZipperCount шт, '
-          '${formatMm(screenZipperBandWidthMm)} мм в сумме — ширина кроя '
+          '${formatMm(screenZipperBandWidthMm)} ${unitSuffix()} в сумме — ширина кроя '
           'уже уменьшена на эту полосу (ткань '
           '${formatMeters(screenZipperBandAreaM2)} м² отдельно не '
-          'считается), шов ${formatMm(screenSeamMm)} мм по краям полосы '
-          '(длина ${formatMm(screenZipperBandLengthMm)} мм)',
+          'считается), шов ${formatMm(screenSeamMm)} ${unitSuffix()} по краям полосы '
+          '(длина ${formatMm(screenZipperBandLengthMm)} ${unitSuffix()})',
     if (pocketCount > 0)
       'Фартук (низ/верх): $pocketCount шт, полоса '
-          '${formatMm(pocketLengthMm)} мм',
+          '${formatMm(pocketLengthMm)} ${unitSuffix()}',
     if (screenHemLengthMm > 0)
-      'Подворот скрина и шов ${formatMm(screenSeamMm)} мм: '
-          '${formatMm(screenHemLengthMm)} мм периметра и полос — расход '
+      'Подворот скрина и шов ${formatMm(screenSeamMm)} ${unitSuffix()}: '
+          '${formatMm(screenHemLengthMm)} ${unitSuffix()} периметра и полос — расход '
           'скрина считается по площади суженной заготовки',
     if (drainTotal > 0) 'Дренаж Ø6 мм: $drainTotal шт',
     if (strapCount > 0)
-      'Подъёмные ремни: ${formatMm(50)} × ${formatMm(500)} мм — '
+      'Подъёмные ремни: ${formatMm(50)} × ${formatMm(500)} ${unitSuffix()} — '
           '$strapCount шт',
   ];
 }

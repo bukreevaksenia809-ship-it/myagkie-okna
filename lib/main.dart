@@ -23,7 +23,11 @@ import 'widgets/tech_card_sheet.dart';
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
 const String kAppVersion = '1.1.0';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Единицы показа читаем до первой сборки: если заказчик выбрал см,
+  // приложение не мигнёт миллиметрами.
+  await DisplayUnits.load();
   runApp(const SoftWindowApp());
 }
 
@@ -90,7 +94,14 @@ class _BuilderScreenState extends State<BuilderScreen> {
     super.initState();
     _tab = _tabFromUrl();
     _zoom.addListener(_onZoomChanged);
+    DisplayUnits.current.addListener(_onUnitsChanged);
     _refreshOrders();
+  }
+
+  /// Переключатель мм/см перерисовывает всё приложение: подписи на панели,
+  /// чертеже и табличных листах считаются в build, а не хранятся в модели.
+  void _onUnitsChanged() {
+    if (mounted) setState(() {});
   }
 
   /// Вкладку можно открыть ссылкой: ?tab=costs или ?tab=roll.
@@ -109,6 +120,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
   @override
   void dispose() {
     _zoom.removeListener(_onZoomChanged);
+    DisplayUnits.current.removeListener(_onUnitsChanged);
     _zoom.dispose();
     super.dispose();
   }
@@ -902,7 +914,7 @@ class _StatusBar extends StatelessWidget {
     }
     final consumptionText = (consumption.entries.toList()
           ..sort((a, b) => a.key.compareTo(b.key)))
-        .map((entry) => '${edgeBandLabel(entry.key)}: ${formatCm(entry.value)} см')
+        .map((entry) => '${edgeBandLabel(entry.key)}: ${formatMm(entry.value)} ${unitSuffix()}')
         .join(' · ');
 
     return Container(
@@ -916,7 +928,7 @@ class _StatusBar extends StatelessWidget {
             'Выбранное окно',
             '№${project.selectedIndex + 1} · '
                 '${formatMm(selectedSpec.geometry.spanX)}×'
-                '${formatMm(selectedSpec.geometry.overallHeight)} мм',
+                '${formatMm(selectedSpec.geometry.overallHeight)} ${unitSuffix()}',
           ),
           _stat('Площадь изделий', '${formatMeters(totalProductArea)} м²'),
           _stat('Плёнка: заготовки', '${formatMeters(totalFilmArea)} м²'),
@@ -933,6 +945,7 @@ class _StatusBar extends StatelessWidget {
                         '${formatMm(plan.layout.requiredLength)}')
                     .join(' · '),
           ),
+          const SizedBox(width: 200, child: _UnitsSwitch()),
         ],
       ),
     );
@@ -967,6 +980,88 @@ class _StatusBar extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+/// Переключатель единиц внизу экрана: «Единицы: мм · см».
+///
+/// Стоит в нижней строке рядом с итогами, поэтому всегда на виду. Значение
+/// хранится в [DisplayUnits] (shared_preferences), переключение мгновенно
+/// перерисовывает панель, чертёж и все листы. Ввод в полях остаётся в мм.
+class _UnitsSwitch extends StatelessWidget {
+  const _UnitsSwitch();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<LengthUnit>(
+      valueListenable: DisplayUnits.current,
+      builder: (context, unit, _) {
+        return Row(
+          key: const Key('length-unit-switch'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Единицы:',
+              style: TextStyle(fontSize: 10.5, color: Color(0xFF8FA3BC)),
+            ),
+            const SizedBox(width: 6),
+            _UnitButton(
+              key: const Key('unit-mm'),
+              label: 'мм',
+              selected: unit == LengthUnit.mm,
+              onTap: () => DisplayUnits.setUnit(LengthUnit.mm),
+            ),
+            const SizedBox(width: 4),
+            _UnitButton(
+              key: const Key('unit-cm'),
+              label: 'см',
+              selected: unit == LengthUnit.cm,
+              onTap: () => DisplayUnits.setUnit(LengthUnit.cm),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _UnitButton extends StatelessWidget {
+  const _UnitButton({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(5),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : const Color(0xFF1D2C40),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(
+            color: selected ? Colors.white : const Color(0xFF44566D),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: selected ? const Color(0xFF111C2B) : Colors.white,
+          ),
+        ),
       ),
     );
   }

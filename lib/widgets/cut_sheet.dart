@@ -627,11 +627,15 @@ class CutSheetPainter extends CustomPainter {
     required this.specs,
     required this.layout,
     this.labelFontFamily,
-  });
+    LengthUnit? unit,
+  }) : unit = unit ?? DisplayUnits.unit;
 
   final List<WindowSpec> specs;
   final CutLayout layout;
   final String? labelFontFamily;
+
+  /// Единица подписей: при переключении мм/см лист перерисовывается.
+  final LengthUnit unit;
 
   static const Color _ink = Color(0xFF1B1F27);
   static const Color _dim = Color(0xFF41506A);
@@ -776,7 +780,7 @@ class CutSheetPainter extends CustomPainter {
 
     final zipperBand = spec.zipperBandTotalMm;
     if (zipperBand <= 0) return;
-    final note = '− полоса молнии ${formatMm(zipperBand)} мм';
+    final note = '− полоса молнии ${formatMm(zipperBand)} ${unitSuffix()}';
     final notePainter = _painter(note, color: _dim, small: true);
     // Строка не должна вылезать за заготовку: на мелких заготовках она
     // останется только в подписи под ними.
@@ -903,17 +907,17 @@ class CutSheetPainter extends CustomPainter {
       if (spec.zipperBandTotalMm > 0)
         'ширина заготовки '
             '${formatMm(spec.filmCutWidthBeforeZipper)}'
-            ' → ${formatMm(spec.filmCutWidth)} мм, '
-            'минус полоса молнии ${formatMm(spec.zipperBandTotalMm)} мм',
+            ' → ${formatMm(spec.filmCutWidth)} ${unitSuffix()}, '
+            'минус полоса молнии ${formatMm(spec.zipperBandTotalMm)} ${unitSuffix()}',
       if (params.hasManualAllowance)
         'припуск ${params.allowanceWidthLabel}/'
-            '${params.manualAllowanceHeightLabel} мм',
+            '${params.manualAllowanceHeightLabel} ${unitSuffix()}',
       if (params.hasAutoHeightAllowance)
-        'авто +${formatMm(params.autoHeightAllowanceMm)} мм к высоте (ПВХ)',
+        'авто +${formatMm(params.autoHeightAllowanceMm)} ${unitSuffix()} к высоте (ПВХ)',
       if (params.hasShrinkage)
         'с усадкой ${formatPercent(params.effectiveShrinkagePercent)}: '
             '${formatMm(spec.filmCutWidthWithShrinkage)} × '
-            '${formatMm(spec.filmCutHeightWithShrinkage)} мм',
+            '${formatMm(spec.filmCutHeightWithShrinkage)} ${unitSuffix()}',
     ];
     if (parts.isNotEmpty) {
       _label(
@@ -979,7 +983,8 @@ class CutSheetPainter extends CustomPainter {
   bool shouldRepaint(covariant CutSheetPainter oldDelegate) =>
       oldDelegate.layout != layout ||
       oldDelegate.specs != specs ||
-      oldDelegate.labelFontFamily != labelFontFamily;
+      oldDelegate.labelFontFamily != labelFontFamily ||
+      oldDelegate.unit != unit;
 }
 
 /// Итоги раскроя: количество, площади заготовок и материалы.
@@ -1053,9 +1058,12 @@ class _CutTotalsBlock extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              const Text(
-                'Масштаб заготовок единый · размеры в мм',
-                style: TextStyle(fontSize: 9.5, color: Color(0xFF8A93A0)),
+              Text(
+                'Масштаб заготовок единый · размеры в ${unitSuffix()}',
+                style: const TextStyle(
+                  fontSize: 9.5,
+                  color: Color(0xFF8A93A0),
+                ),
               ),
             ],
           ),

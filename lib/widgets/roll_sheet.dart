@@ -113,11 +113,15 @@ class RollLayoutPainter extends CustomPainter {
     required this.plans,
     required this.selectedIndex,
     this.labelFontFamily,
-  });
+    LengthUnit? unit,
+  }) : unit = unit ?? DisplayUnits.unit;
 
   final List<RollPlan> plans;
   final int selectedIndex;
   final String? labelFontFamily;
+
+  /// Единица подписей: при переключении мм/см лист перерисовывается.
+  final LengthUnit unit;
 
   static const Color _ink = Color(0xFF1B1F27);
   static const Color _filmFill = Color(0x335AA7E8);
@@ -268,7 +272,7 @@ class RollLayoutPainter extends CustomPainter {
     // Заголовок рулона и размеры.
     _label(
       canvas,
-      '${plan.material.label} · рулон ${formatMm(plan.rollWidth)} мм',
+      '${plan.material.label} · рулон ${formatMm(plan.rollWidth)} ${unitSuffix()}',
       Offset(rollRect.center.dx, rollRect.top - 62),
       small: true,
       color: _accent,
@@ -420,7 +424,8 @@ class RollLayoutPainter extends CustomPainter {
   bool shouldRepaint(covariant RollLayoutPainter oldDelegate) =>
       oldDelegate.plans != plans ||
       oldDelegate.selectedIndex != selectedIndex ||
-      oldDelegate.labelFontFamily != labelFontFamily;
+      oldDelegate.labelFontFamily != labelFontFamily ||
+      oldDelegate.unit != unit;
 }
 
 class _RollSidePanel extends StatelessWidget {
@@ -459,7 +464,7 @@ class _RollSidePanel extends StatelessWidget {
           _row('Площадь заготовок', '${formatMeters(totalPiecesArea / 1000000)} м²'),
           _row('Площадь рулонов', '${formatMeters(totalRollArea / 1000000)} м²'),
           _row('Отход', formatPercent(waste)),
-          _row('Зазор между заготовками', '${formatMm(project.rollGap)} мм'),
+          _row('Зазор между заготовками', '${formatMm(project.rollGap)} ${unitSuffix()}'),
           const SizedBox(height: 12),
           const Text(
             'РУЛОНЫ',
@@ -478,7 +483,7 @@ class _RollSidePanel extends StatelessWidget {
                 children: [
                   for (final plan in plans) ...[
                     Text(
-                      '${plan.material.label} · ${formatMm(plan.rollWidth)} мм',
+                      '${plan.material.label} · ${formatMm(plan.rollWidth)} ${unitSuffix()}',
                       style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
@@ -488,7 +493,7 @@ class _RollSidePanel extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(left: 8, top: 2, bottom: 8),
                       child: Text(
-                        'длина ${formatMm(plan.layout.requiredLength)} мм · '
+                        'длина ${formatMm(plan.layout.requiredLength)} ${unitSuffix()} · '
                         'заготовок ${plan.layout.placements.length} · '
                         'отход ${formatPercent(plan.rollArea > 0 ? ((plan.rollArea - plan.piecesArea) / plan.rollArea * 100).clamp(0.0, 100.0) : 0.0)}',
                         style: const TextStyle(
@@ -502,7 +507,7 @@ class _RollSidePanel extends StatelessWidget {
                         padding: const EdgeInsets.only(left: 8, bottom: 3),
                         child: Text(
                           '${placement.piece.label}: '
-                          '${formatMm(placement.width)}×${formatMm(placement.height)} мм'
+                          '${formatMm(placement.width)}×${formatMm(placement.height)} ${unitSuffix()}'
                           '${placement.rotated ? ' (повёрнуто)' : ''}',
                           style: const TextStyle(
                             fontSize: 10,

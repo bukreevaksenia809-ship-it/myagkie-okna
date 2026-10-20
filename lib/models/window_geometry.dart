@@ -1350,7 +1350,7 @@ class WindowLayers {
       ..sort((a, b) => a.key.compareTo(b.key));
     return [
       for (final entry in entries)
-        '${edgeBandLabel(entry.key)} — ${formatCm(entry.value)} см',
+        '${edgeBandLabel(entry.key)} — ${formatMm(entry.value)} ${unitSuffix()}',
     ];
   }
 
@@ -1804,12 +1804,12 @@ class WindowSpec {
     if (t == null) return '—';
     final parts = <String>[
       'основное ${formatMm(params.bottomWidth)} × '
-          '${formatMm(params.leftHeight)} мм',
+          '${formatMm(params.leftHeight)} ${unitSuffix()}',
       for (final annex in t.annexes)
         '${annex.number == 1 ? 'пристройка 1' : 'пристройка 2'} '
-            '${formatMm(annex.rect.width)} × ${formatMm(annex.rect.height)} мм '
+            '${formatMm(annex.rect.width)} × ${formatMm(annex.rect.height)} ${unitSuffix()} '
             '${annex.side.label.toLowerCase()}, смещение '
-            '${formatMm(annex.offset)} мм',
+            '${formatMm(annex.offset)} ${unitSuffix()}',
     ];
     final welded = t.weldedAnnexes;
     final separate = t.separateAnnexes;
@@ -1817,7 +1817,7 @@ class WindowSpec {
     if (welded.isNotEmpty) {
       details.add(
         'швы по общей стороне: '
-        '${welded.map((annex) => '${formatMm(annex.sharedLength)} мм').join(' и ')}',
+        '${welded.map((annex) => '${formatMm(annex.sharedLength)} ${unitSuffix()}').join(' и ')}',
       );
     }
     if (separate.isNotEmpty) {
@@ -1886,8 +1886,8 @@ class WindowSpec {
     final total = zipperBandTotalMm;
     if (!(total > 0)) return null;
     return 'ширина ${formatMm(filmCutWidthBeforeZipper)}'
-        ' → ${formatMm(filmCutWidth)} мм, минус полоса молнии '
-        '${formatMm(total)} мм';
+        ' → ${formatMm(filmCutWidth)} ${unitSuffix()}, минус полоса молнии '
+        '${formatMm(total)} ${unitSuffix()}';
   }
 
   /// Заготовка плёнки к раскрою с припуском, без усадки, мм.
@@ -1957,7 +1957,7 @@ class WindowSpec {
         : '';
     final slope = _slopeExtraLabel(_heightSlopeExtra, 'верхней стороны');
     return 'Высота: ${formatMm(geometry.spanY)} + ${formatMm(increase)}$hint'
-        '$slope$allowance = ${formatMm(filmCutHeightWithAllowance)} мм';
+        '$slope$allowance = ${formatMm(filmCutHeightWithAllowance)} ${unitSuffix()}';
   }
 
   /// Человеческий расчёт ширины заготовки скрина для панели:
@@ -1982,7 +1982,7 @@ class WindowSpec {
     final slope = _slopeExtraLabel(_widthSlopeExtra, 'боковых сторон');
     return 'Ширина: ${formatMm(geometry.spanX)} + ${formatMm(increase)}$hint'
         '$slope$zipper$allowance = '
-        '${formatMm(filmCutWidthWithAllowance)} мм';
+        '${formatMm(filmCutWidthWithAllowance)} ${unitSuffix()}';
   }
 
   /// Суммарная ширина полос всех молний окна, мм.
@@ -2116,8 +2116,8 @@ class WindowSpec {
     final min = eyeletStepMin;
     final max = eyeletStepMax;
     if (min == null || max == null) return '—';
-    if ((max - min).abs() < 1) return '${formatMm(max)} мм';
-    return '${formatMm(min)}…${formatMm(max)} мм';
+    if ((max - min).abs() < 1) return '${formatMm(max)} ${unitSuffix()}';
+    return '${formatMm(min)}…${formatMm(max)} ${unitSuffix()}';
   }
 
   /// Подпись окантовки по сторонам: «низ 100, верх 100, лево 200, право 200».
@@ -2126,7 +2126,7 @@ class WindowSpec {
   String get edgeBySideSummary {
     if (params.isScreen) {
       return 'подворот ${params.hemBySideLabel}, '
-          'шов ${formatMm(screenSeamMm)} мм';
+          'шов ${formatMm(screenSeamMm)} ${unitSuffix()}';
     }
     final sides = [
       ('низ', params.rollBottom),
@@ -2145,7 +2145,7 @@ class WindowSpec {
 
   String get edgeSummary => params.isScreen
       ? 'без окантовки: подворот ${params.hemBySideShortLabel} '
-            '(низ/право/верх/лево), шов ${formatMm(screenSeamMm)} мм'
+            '(низ/право/верх/лево), шов ${formatMm(screenSeamMm)} ${unitSuffix()}'
       : '${params.edgeColor.label.toLowerCase()}, ${params.edgeMaterial.label}';
 
   /// Название выбранного крепежа подвижных сторон строчными: «поворотные
@@ -2229,8 +2229,8 @@ class WindowSpec {
       final band = gaps.band;
       parts.add(
         '${params.isScreen ? 'полоса скрина' : 'спайка'} '
-        '${formatMm(band)} мм (слева ${formatMm(gaps.left)}, '
-        'справа ${formatMm(gaps.right)} мм)',
+        '${formatMm(band)} ${unitSuffix()} (слева ${formatMm(gaps.left)}, '
+        'справа ${formatMm(gaps.right)} ${unitSuffix()})',
       );
     }
     return '${params.zippers.length} шт — ${parts.join('; ')}';
@@ -2242,16 +2242,16 @@ class WindowSpec {
     final parts = <String>[
       for (final cutout in layers.cutouts)
         cutout.isCircle
-            ? 'Ø${formatMm(cutout.spec.width)} мм в точке '
+            ? 'Ø${formatMm(cutout.spec.width)} ${unitSuffix()} в точке '
                   '${formatMm(cutout.spec.centerXMm)}×'
-                  '${formatMm(cutout.spec.centerYMm)} мм'
-            : '${formatMm(cutout.spec.width)}×${formatMm(cutout.spec.height)} мм '
+                  '${formatMm(cutout.spec.centerYMm)} ${unitSuffix()}'
+            : '${formatMm(cutout.spec.width)}×${formatMm(cutout.spec.height)} ${unitSuffix()} '
                   'в точке ${formatMm(cutout.spec.centerXMm)}×'
-                  '${formatMm(cutout.spec.centerYMm)} мм',
+                  '${formatMm(cutout.spec.centerYMm)} ${unitSuffix()}',
     ];
     return '${params.cutouts.length} шт: ${parts.join('; ')}; '
         '${params.isScreen ? 'подворот по контуру' : 'окантовка по контуру'} '
-        '${formatMm(layers.cutoutPerimeterMm)} мм';
+        '${formatMm(layers.cutoutPerimeterMm)} ${unitSuffix()}';
   }
 
   /// Спайка с соседними окнами.
@@ -2261,8 +2261,8 @@ class WindowSpec {
     for (final annex in tAnnexes.where((annex) => annex.welded)) {
       parts.add(
         'шов по общей стороне пристройки ${annex.number} '
-        '(${annex.side.label.toLowerCase()}, ${formatMm(annex.sharedLength)} мм) '
-        '— полотна свариваются внахлёст ${formatMm(windowWeldWidth)} мм, '
+        '(${annex.side.label.toLowerCase()}, ${formatMm(annex.sharedLength)} ${unitSuffix()}) '
+        '— полотна свариваются внахлёст ${formatMm(windowWeldWidth)} ${unitSuffix()}, '
         'окантовка по ней не ставится',
       );
     }
@@ -2282,11 +2282,11 @@ class WindowSpec {
           .join(', ');
       parts.add(
         '$sides сторона — спайка с соседним окном внахлёст '
-        '${formatMm(windowWeldWidth)} мм, окантовка не ставится',
+        '${formatMm(windowWeldWidth)} ${unitSuffix()}, окантовка не ставится',
       );
     }
     if (parts.isEmpty) return '—';
-    return '${parts.join('; ')} (всего ${formatMm(layers.weldLengthMm)} мм)';
+    return '${parts.join('; ')} (всего ${formatMm(layers.weldLengthMm)} ${unitSuffix()})';
   }
 
   String get zipperSummary {
@@ -2294,12 +2294,12 @@ class WindowSpec {
     final gaps = layers.zipperGaps;
     final position = params.zipperCentered
         ? 'по центру'
-        : '${formatMm(params.zipperOffsetMm)} мм от левого края';
+        : '${formatMm(params.zipperOffsetMm)} ${unitSuffix()} от левого края';
     // У скрина видимая кромка — линия подворота, у ПВХ — кромка плёнки.
     final edge = params.isScreen ? 'кромки подворота' : 'кромок плёнки';
     final around = gaps == null
         ? ''
-        : ', слева ${formatMm(gaps.left)} / справа ${formatMm(gaps.right)} мм '
+        : ', слева ${formatMm(gaps.left)} / справа ${formatMm(gaps.right)} ${unitSuffix()} '
               'до $edge';
     return 'вертикальная, $position$around';
   }
@@ -2312,14 +2312,14 @@ class WindowSpec {
     final bandLength = piece.$2;
     if (params.isScreen) {
       return '$zipperSummary; полоса скрина ${formatMm(bandWidth)} × '
-          '${formatMm(bandLength)} мм, шов ${formatMm(screenSeamMm)} мм '
+          '${formatMm(bandLength)} ${unitSuffix()}, шов ${formatMm(screenSeamMm)} ${unitSuffix()} '
           'по краям полосы';
     }
     final reduction = zipperBandTotalMm > 0
-        ? ', ширина кроя −${formatMm(zipperBandTotalMm)} мм'
+        ? ', ширина кроя −${formatMm(zipperBandTotalMm)} ${unitSuffix()}'
         : '';
     return '$zipperSummary; полоса тента ${formatMm(bandWidth)} × '
-        '${formatMm(bandLength)} мм$reduction';
+        '${formatMm(bandLength)} ${unitSuffix()}$reduction';
   }
 
   /// Примечания для штампа.
@@ -2333,75 +2333,75 @@ class WindowSpec {
         'Скрин: технология без тента и окантовки — материал подворачивается '
             'сам; молния ставится в полосу из скрина '
             '(подворот или накладная полоса), шов '
-            '${formatMm(screenSeamMm)} мм по краям полосы',
+            '${formatMm(screenSeamMm)} ${unitSuffix()} по краям полосы',
         'Подворот материала по сторонам — ${params.hemBySideLabel} '
             '(низ/право/верх/лево); шов сварки подворота '
-            '${formatMm(screenSeamMm)} мм с каждой стороны',
+            '${formatMm(screenSeamMm)} ${unitSuffix()} с каждой стороны',
         'Заготовка скрина — готовый габарит плюс прибавка по каждой оси: '
             'среднее двух подворотов оси плюс '
-            '${formatMm(screenHemAxisExtraMm)} мм на шов и запас. По высоте '
+            '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} на шов и запас. По высоте '
             '(низ ${formatMm(params.hemBottomMm)} + верх '
             '${formatMm(params.hemTopMm)}) / 2 + '
             '${formatMm(screenHemAxisExtraMm)} = '
-            '${formatMm(params.hemAxisBottomTopIncrease)} мм, по ширине '
+            '${formatMm(params.hemAxisBottomTopIncrease)} ${unitSuffix()}, по ширине '
             '(лево ${formatMm(params.hemLeftMm)} + право '
             '${formatMm(params.hemRightMm)}) / 2 + '
             '${formatMm(screenHemAxisExtraMm)} = '
-            '${formatMm(params.hemAxisLeftRightIncrease)} мм '
+            '${formatMm(params.hemAxisLeftRightIncrease)} ${unitSuffix()} '
             '(при (40, 60) это 70 мм, при (120, 120) — 140 мм)'
             '${widthSlopeExtraMm.abs() >= 0.5 || heightSlopeExtraMm.abs() >= 0.5 ? '; у трапеции/окна с разными высотами наклон сторон добавляет к габариту по ширине '
                       '${formatSignedMm(widthSlopeExtraMm)}, по высоте '
-                      '${formatSignedMm(heightSlopeExtraMm)} мм' : ''}',
+                      '${formatSignedMm(heightSlopeExtraMm)} ${unitSuffix()}' : ''}',
         'Заготовка скрина: ${formatMm(filmCutWidthWithAllowance)} × '
-            '${formatMm(filmCutHeightWithAllowance)} мм '
-            '(${formatMm(filmCutWidth)} × ${formatMm(filmCutHeight)} мм '
+            '${formatMm(filmCutHeightWithAllowance)} ${unitSuffix()} '
+            '(${formatMm(filmCutWidth)} × ${formatMm(filmCutHeight)} ${unitSuffix()} '
             'до припуска); усадки нет',
         'Расход скрина — площадь заготовки по фактическому контуру '
             '${formatMeters(filmCutAreaWithShrinkageM2)} м²'
             '${zipperBandTotalMm > 0 ? ' (ширина уже без полосы молнии '
-                      '${formatMm(zipperBandTotalMm)} мм)' : ''}',
+                      '${formatMm(zipperBandTotalMm)} ${unitSuffix()})' : ''}',
       ] else ...[
         'Окантовка складывается пополам; запайка плёнки под окантовку '
-            '${formatMm(params.weldOverlapMm)} мм по всему периметру',
+            '${formatMm(params.weldOverlapMm)} ${unitSuffix()} по всему периметру',
         'Окантовка по сторонам — ${edgeBySideSummary.lowercaseFirst}',
         'Расход окантовки: ${edgeConsumptionLabels.join(', ')}',
       ],
       if (params.isTShape) tShapeSummary,
       if (params.isTShape && tLayout!.weldedAnnexes.isNotEmpty)
-        'Спайка по общей стороне пристроек: ${formatMm(tWeldedSeamLength)} мм, '
-            'шов ${formatMm(windowWeldWidth)} мм внахлёст; окантовка идёт '
-            'только по внешнему периметру (${formatMm(edgePerimeterMm)} мм), '
+        'Спайка по общей стороне пристроек: ${formatMm(tWeldedSeamLength)} ${unitSuffix()}, '
+            'шов ${formatMm(windowWeldWidth)} ${unitSuffix()} внахлёст; окантовка идёт '
+            'только по внешнему периметру (${formatMm(edgePerimeterMm)} ${unitSuffix()}), '
             'на общей стороне её нет',
       if (params.isTShape && tLayout!.separateAnnexes.isNotEmpty)
         'Пристройки без спайки (${tLayout!.separateAnnexes.map((annex) => annex.number).join(', ')}) '
             '— отдельные окна: окантовка считается по периметру каждой части '
-            '(${formatMm(edgePerimeterMm)} мм)',
+            '(${formatMm(edgePerimeterMm)} ${unitSuffix()})',
       if (params.isTShape)
         'Заготовка Т-окна — прямоугольник по каждой части: '
-            '${filmPartBounds.map((rect) => '${formatMm(rect.width)} × ${formatMm(rect.height)}').join(', ')} мм',
+            '${filmPartBounds.map((rect) => '${formatMm(rect.width)} × ${formatMm(rect.height)}').join(', ')} ${unitSuffix()}',
       ?tAnnexConflict,
       'Полотно ${params.isScreen ? 'скрина' : 'ПВХ 700 мкм'} в раскрое: '
           'заготовка ${formatMm(filmCutWidthWithAllowance)} × '
-          '${formatMm(filmCutHeightWithAllowance)} мм'
+          '${formatMm(filmCutHeightWithAllowance)} ${unitSuffix()}'
           '${params.isScreen
               ? ''
               : params.hasShrinkage
               ? '; с усадкой '
                     '${formatPercent(params.effectiveShrinkagePercent)} — '
                     '${formatMm(filmCutWidthWithShrinkage)} × '
-                    '${formatMm(filmCutHeightWithShrinkage)} мм'
+                    '${formatMm(filmCutHeightWithShrinkage)} ${unitSuffix()}'
               : '; усадка не учитывается'}',
       if (params.hasAllowance)
-        'Припуск на раскрой: ширина ${params.allowanceWidthLabel} мм, '
-            'высота ${params.allowanceHeightLabel} мм'
+        'Припуск на раскрой: ширина ${params.allowanceWidthLabel} ${unitSuffix()}, '
+            'высота ${params.allowanceHeightLabel} ${unitSuffix()}'
             '${params.hasAutoHeightAllowance ? ' (в том числе авто '
-                      '${formatMm(params.autoHeightAllowanceMm)} мм к высоте для ПВХ)' : ''} — '
+                      '${formatMm(params.autoHeightAllowanceMm)} ${unitSuffix()} к высоте для ПВХ)' : ''} — '
             '${params.isScreen ? 'скрин кроится' : 'плёнка кроится'} '
             '${formatMm(filmCutWidthWithAllowance)} × '
-            '${formatMm(filmCutHeightWithAllowance)} мм',
-      'Люверсы ${eyeletType.label.toLowerCase()}: интервал задан '
-          '${formatMm(params.eyeletStep)} мм, факт $eyeletStepLabel по '
-          'сторонам, от угла ${formatMm(params.eyeletCornerOffset)} мм, '
+            '${formatMm(filmCutHeightWithAllowance)} ${unitSuffix()}',
+      'Люверсы ${eyeletType.displayLabel.toLowerCase()}: интервал задан '
+          '${formatMm(params.eyeletStep)} ${unitSuffix()}, факт $eyeletStepLabel по '
+          'сторонам, от угла ${formatMm(params.eyeletCornerOffset)} ${unitSuffix()}, '
           'всего $eyeletCount шт'
           '${params.roundEyeletsEnabled ? '' : '; круглые люверсы в углах '
                     'отключены — угловых точек нет'}'
@@ -2410,7 +2410,7 @@ class WindowSpec {
       'Крепёж: ${fastenerSummary.toLowerCase()}',
       if (params.isLifting && !params.isScreen)
         'Подъёмные ремни: $strapCount шт, '
-            '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} мм '
+            '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} ${unitSuffix()} '
             '(2 шт до 2 м ширины, далее +1 на метр)',
       if (params.zippers.length == 1) 'Молния: $zipperBandSummary',
       if (params.zippers.length > 1) 'Молнии: $zippersSummary',
@@ -2418,26 +2418,26 @@ class WindowSpec {
           layers.zipperGaps != null &&
           params.zippers.length == 1)
         params.isScreen
-            ? 'Полоса молнии из скрина ${formatMm(params.zipperBandWidth)} мм; '
+            ? 'Полоса молнии из скрина ${formatMm(params.zipperBandWidth)} ${unitSuffix()}; '
                   'от полосы до кромки подворота: слева '
-                  '${formatMm(layers.zipperGaps!.left)} мм, справа '
-                  '${formatMm(layers.zipperGaps!.right)} мм (не меньше '
-                  '${formatMm(minScreenZipperHemMm)} мм)'
-            : 'Спайка молнии ${formatMm(params.zipperBandWidth)} мм; от спайки '
-                  'до кромок плёнки: слева ${formatMm(layers.zipperGaps!.left)} мм, '
-                  'справа ${formatMm(layers.zipperGaps!.right)} мм',
+                  '${formatMm(layers.zipperGaps!.left)} ${unitSuffix()}, справа '
+                  '${formatMm(layers.zipperGaps!.right)} ${unitSuffix()} (не меньше '
+                  '${formatMm(minScreenZipperHemMm)} ${unitSuffix()})'
+            : 'Спайка молнии ${formatMm(params.zipperBandWidth)} ${unitSuffix()}; от спайки '
+                  'до кромок плёнки: слева ${formatMm(layers.zipperGaps!.left)} ${unitSuffix()}, '
+                  'справа ${formatMm(layers.zipperGaps!.right)} ${unitSuffix()}',
       if (zipperWidthReductionLabel != null)
         params.isScreen
             ? 'Ширина кроя скрина уменьшена на полосу молнии '
-                  '${formatMm(zipperBandTotalMm)} мм: '
+                  '${formatMm(zipperBandTotalMm)} ${unitSuffix()}: '
                   '${formatMm(filmCutWidthBeforeZipper)} → '
-                  '${formatMm(filmCutWidth)} мм до припуска (площадь полосы '
+                  '${formatMm(filmCutWidth)} ${unitSuffix()} до припуска (площадь полосы '
                   '${formatMeters(screenZipperBandAreaM2)} м² отдельно не '
                   'считается)'
             : 'Ширина кроя плёнки уменьшена на полосу (спайку) молнии '
-                  '${formatMm(zipperBandTotalMm)} мм: '
+                  '${formatMm(zipperBandTotalMm)} ${unitSuffix()}: '
                   '${formatMm(filmCutWidthBeforeZipper)} → '
-                  '${formatMm(filmCutWidth)} мм до припуска; полоса тента '
+                  '${formatMm(filmCutWidth)} ${unitSuffix()} до припуска; полоса тента '
                   'идёт в расход окантовки',
       if (params.cutouts.isNotEmpty) 'Вырезы: $cutoutsSummary',
       if (params.weldedSides.isNotEmpty) 'Спайка окон: $weldSummary',
@@ -2445,7 +2445,7 @@ class WindowSpec {
         'Дренаж: ${params.drainCount.round()} отв. Ø6 мм в нижней окантовке',
       if (params.pocket || params.pocketTop) _pocketNote(),
       'Полотно: ${params.material.thickness}; доступные рулоны '
-          '${params.material.rollWidthsLabel} см',
+          '${params.material.rollWidthsLabel} ${unitSuffix()}',
       if (params.isScreen)
         'Скрин сваривается горячим воздухом 400–500 °C, морозостойкость '
             'до −30 °C'
@@ -2464,13 +2464,13 @@ class WindowSpec {
       (false, false) => '',
     };
     if (params.isScreen) {
-      return 'Фартук $where: подворот ${formatMm(params.pocketWidth)} мм, '
+      return 'Фартук $where: подворот ${formatMm(params.pocketWidth)} ${unitSuffix()}, '
           'угловой люверс со стороны фартука смещён на '
-          '${formatMm(pocketCornerOffset)} мм';
+          '${formatMm(pocketCornerOffset)} ${unitSuffix()}';
     }
-    return 'Фартук $where: тент ${formatMm(pocketRollWidth)} мм сложен '
-        'пополам → ${formatMm(params.pocketWidth)} мм; угловой люверс со '
-        'стороны фартука смещён на ${formatMm(pocketCornerOffset)} мм';
+    return 'Фартук $where: тент ${formatMm(pocketRollWidth)} ${unitSuffix()} сложен '
+        'пополам → ${formatMm(params.pocketWidth)} ${unitSuffix()}; угловой люверс со '
+        'стороны фартука смещён на ${formatMm(pocketCornerOffset)} ${unitSuffix()}';
   }
 }
 
@@ -2541,8 +2541,8 @@ void _checkEyeletStep(WindowParams params, List<ParamIssue> issues) {
     issues.add(
       ParamIssue(
         ParamField.eyeletStep,
-        'Интервал люверсов: ${formatMm(step)} мм — меньше минимума '
-        '${formatMm(minEyeletStepMm)} мм',
+        'Интервал люверсов: ${formatMm(step)} ${unitSuffix()} — меньше минимума '
+        '${formatMm(minEyeletStepMm)} ${unitSuffix()}',
       ),
     );
     return;
@@ -2551,8 +2551,8 @@ void _checkEyeletStep(WindowParams params, List<ParamIssue> issues) {
     issues.add(
       ParamIssue(
         ParamField.eyeletStep,
-        'Интервал люверсов: ${formatMm(step)} мм — больше максимума '
-        '${formatMm(maxEyeletStepMm)} мм',
+        'Интервал люверсов: ${formatMm(step)} ${unitSuffix()} — больше максимума '
+        '${formatMm(maxEyeletStepMm)} ${unitSuffix()}',
       ),
     );
     return;
@@ -2561,7 +2561,7 @@ void _checkEyeletStep(WindowParams params, List<ParamIssue> issues) {
     issues.add(
       ParamIssue(
         ParamField.eyeletStep,
-        'Интервал люверсов: ${formatMm(step)} мм — полотно будет парусить '
+        'Интервал люверсов: ${formatMm(step)} ${unitSuffix()} — полотно будет парусить '
         'между креплениями',
         severity: ParamIssueSeverity.warning,
       ),
@@ -2572,7 +2572,7 @@ void _checkEyeletStep(WindowParams params, List<ParamIssue> issues) {
     issues.add(
       ParamIssue(
         ParamField.eyeletStep,
-        'Интервал люверсов: ${formatMm(step)} мм — перерасход люверсов и узкая '
+        'Интервал люверсов: ${formatMm(step)} ${unitSuffix()} — перерасход люверсов и узкая '
         'перемычка',
         severity: ParamIssueSeverity.warning,
       ),
@@ -2584,9 +2584,9 @@ void _checkEyeletStep(WindowParams params, List<ParamIssue> issues) {
     issues.add(
       ParamIssue(
         ParamField.eyeletStep,
-        'Интервал люверсов: ${formatMm(step)} мм — вне рекомендуемых '
+        'Интервал люверсов: ${formatMm(step)} ${unitSuffix()} — вне рекомендуемых '
         '${formatMm(recommendedEyeletStepMinMm)}–'
-        '${formatMm(recommendedEyeletStepMaxMm)} мм, но так тоже делают',
+        '${formatMm(recommendedEyeletStepMaxMm)} ${unitSuffix()}, но так тоже делают',
         severity: ParamIssueSeverity.info,
       ),
     );
@@ -2673,8 +2673,8 @@ List<ParamIssue> validateParams(WindowParams params) {
           ParamIssue(
             heightField,
             '${annex.label} длиннее общей стороны на '
-            '${formatMm(annexAlong - along)} мм — в чертеже она подрезана по '
-            'стороне ${formatMm(along)} мм',
+            '${formatMm(annexAlong - along)} ${unitSuffix()} — в чертеже она подрезана по '
+            'стороне ${formatMm(along)} ${unitSuffix()}',
             isError: false,
           ),
         );
@@ -2781,7 +2781,7 @@ List<ParamIssue> validateParams(WindowParams params) {
       issues.add(
         ParamIssue(
           field,
-          'Припуск на раскрой, $axis: ${formatMm(value)} мм — отрицательный, '
+          'Припуск на раскрой, $axis: ${formatMm(value)} ${unitSuffix()} — отрицательный, '
           'изделие будет меньше замера',
           isError: false,
         ),
@@ -2792,8 +2792,8 @@ List<ParamIssue> validateParams(WindowParams params) {
       issues.add(
         ParamIssue(
           field,
-          'Припуск на раскрой, $axis: ${formatMm(value)} мм — больше '
-          '${formatMm(maxAllowanceMm)} мм, проверьте значение',
+          'Припуск на раскрой, $axis: ${formatMm(value)} ${unitSuffix()} — больше '
+          '${formatMm(maxAllowanceMm)} ${unitSuffix()}, проверьте значение',
           isError: false,
         ),
       );
@@ -2825,7 +2825,7 @@ List<ParamIssue> validateParams(WindowParams params) {
       issues.add(
         ParamIssue(
           ParamField.topOffset,
-          'Верх выступает вправо на ${formatMm(geometry.rightOverhang)} мм',
+          'Верх выступает вправо на ${formatMm(geometry.rightOverhang)} ${unitSuffix()}',
           isError: false,
         ),
       );
@@ -2834,7 +2834,7 @@ List<ParamIssue> validateParams(WindowParams params) {
       issues.add(
         ParamIssue(
           ParamField.topOffset,
-          'Верх выступает влево на ${formatMm(geometry.leftOverhang)} мм',
+          'Верх выступает влево на ${formatMm(geometry.leftOverhang)} ${unitSuffix()}',
           isError: false,
         ),
       );
@@ -2851,8 +2851,8 @@ List<ParamIssue> validateParams(WindowParams params) {
     issues.add(
       ParamIssue(
         ParamField.weldOverlap,
-        'Запайка под окантовку: ${formatMm(params.weldOverlapMm)} мм — вне '
-        'диапазона ${formatMm(minWeldOverlapMm)}–${formatMm(maxWeldOverlapMm)} мм',
+        'Запайка под окантовку: ${formatMm(params.weldOverlapMm)} ${unitSuffix()} — вне '
+        'диапазона ${formatMm(minWeldOverlapMm)}–${formatMm(maxWeldOverlapMm)} ${unitSuffix()}',
         isError: !params.weldOverlapMm.isFinite,
       ),
     );
@@ -2885,8 +2885,8 @@ List<ParamIssue> validateParams(WindowParams params) {
         issues.add(
           ParamIssue(
             field,
-            'Подворот, $name: ${formatMm(hem)} мм — вне диапазона '
-            '${formatMm(minScreenHemMm)}–${formatMm(maxScreenHemMm)} мм',
+            'Подворот, $name: ${formatMm(hem)} ${unitSuffix()} — вне диапазона '
+            '${formatMm(minScreenHemMm)}–${formatMm(maxScreenHemMm)} ${unitSuffix()}',
             isError: false,
           ),
         );
@@ -2931,8 +2931,8 @@ List<ParamIssue> validateParams(WindowParams params) {
         issues.add(
           ParamIssue(
             ParamField.bottomWidth,
-            'Окантовка, $name: ${formatMm(raw)} мм — вне диапазона '
-            '${formatMm(minEdgeRollWidth)}–${formatMm(maxEdgeRollWidth)} мм',
+            'Окантовка, $name: ${formatMm(raw)} ${unitSuffix()} — вне диапазона '
+            '${formatMm(minEdgeRollWidth)}–${formatMm(maxEdgeRollWidth)} ${unitSuffix()}',
             isError: false,
           ),
         );
@@ -2946,9 +2946,9 @@ List<ParamIssue> validateParams(WindowParams params) {
         issues.add(
           ParamIssue(
             ParamField.bottomWidth,
-            'Окантовка, $name: готовая полоса ${formatMm(finished)} мм — уже '
-            '${formatMm(minFinishedForWeld)} мм, запайке '
-            '${formatMm(params.weldOverlapMm)} мм не хватает ленты',
+            'Окантовка, $name: готовая полоса ${formatMm(finished)} ${unitSuffix()} — уже '
+            '${formatMm(minFinishedForWeld)} ${unitSuffix()}, запайке '
+            '${formatMm(params.weldOverlapMm)} ${unitSuffix()} не хватает ленты',
             isError: false,
           ),
         );
@@ -2985,9 +2985,9 @@ List<ParamIssue> validateParams(WindowParams params) {
             ParamField.bottomWidth,
             params.isScreen
                 ? 'Молния №${i + 1} выходит за пределы заготовки '
-                      '(ширина по кромке подворота ${formatMm(limit)} мм)'
+                      '(ширина по кромке подворота ${formatMm(limit)} ${unitSuffix()})'
                 : 'Молния №${i + 1} выходит за пределы плёнки '
-                      '(доступно ${formatMm(limit)} мм)',
+                      '(доступно ${formatMm(limit)} ${unitSuffix()})',
           ),
         );
       }
@@ -3003,8 +3003,8 @@ List<ParamIssue> validateParams(WindowParams params) {
             ParamIssue(
               ParamField.bottomWidth,
               'Молния №${i + 1} на скрине: до кромки подворота '
-              '${formatMm(near)} мм — меньше '
-              '${formatMm(minScreenZipperHemMm)} мм',
+              '${formatMm(near)} ${unitSuffix()} — меньше '
+              '${formatMm(minScreenZipperHemMm)} ${unitSuffix()}',
               isError: false,
             ),
           );

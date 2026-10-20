@@ -83,7 +83,7 @@ class FastenerSpanLabel {
       ? compact
             ? '${approximate ? '≈' : ''}${formatFastenerSpanMm(spanMm)} × $count'
             : 'шаг ${approximate ? '≈' : ''}'
-                  '${formatFastenerSpanMm(spanMm)} мм × $count'
+                  '${formatFastenerSpanMm(spanMm)} ${unitSuffix()} × $count'
       : formatFastenerSpanMm(spanMm);
 
   @override
@@ -339,7 +339,7 @@ bool _summaryFits(
       pxPerMm;
   final fontSize = fastenerSpanFontSizePx(bandPx);
   final full =
-      'шаг ${approximate ? '≈' : ''}${formatFastenerSpanMm(spanMm)} мм '
+      'шаг ${approximate ? '≈' : ''}${formatFastenerSpanMm(spanMm)} ${unitSuffix()} '
       '× $count';
   return _estimatedTextWidth(full, fontSize) <= spanMm * pxPerMm - 2;
 }

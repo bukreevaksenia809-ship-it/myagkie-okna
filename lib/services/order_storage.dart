@@ -1,6 +1,7 @@
 import '../models/order_json.dart';
 import '../models/order_project.dart';
 import 'costs_summary.dart';
+import 'units.dart';
 import 'order_store.dart';
 
 /// Краткая информация о сохранённом заказе — для списка и отчётности.
@@ -96,8 +97,10 @@ Map<String, dynamic> orderSummaryToJson(OrderProject project) {
     'edgeByRoll': summary.edgeConsumptionLabels,
     'rolls': [
       for (final plan in summary.rollPlans)
-        '${plan.material.label}: ${plan.rollWidth} × '
-            '${plan.layout.requiredLength} мм, отход '
+        '${plan.material.label}: '
+            '${DisplayUnits.formatNumber(plan.rollWidth)} × '
+            '${DisplayUnits.formatNumber(plan.layout.requiredLength)} '
+            '${unitSuffix()}, отход '
             '${plan.wastePercent.toStringAsFixed(1)}%',
     ],
     'totalWastePercent': summary.rollWastePercent,

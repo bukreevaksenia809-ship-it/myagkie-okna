@@ -1,5 +1,11 @@
 import 'dart:math' as math;
 
+import '../services/units.dart';
+
+// Единицы и подписи доступны всем, кто импортирует модель параметров:
+// подавляющее большинство подписей живёт рядом с formatMm.
+export '../services/units.dart';
+
 /// Тип мягкого окна по способу открывания.
 enum WindowType {
   fixed,
@@ -172,7 +178,7 @@ enum FilmMaterial {
       rollWidths.contains(2000) ? 2000 : rollWidths.last;
 
   String get rollWidthsLabel =>
-      rollWidths.map((width) => formatCm(width)).join(', ');
+      rollWidths.map((width) => formatMm(width)).join(', ');
 }
 
 /// Разумный диапазон ширины рулона окантовки, мм.
@@ -226,7 +232,7 @@ enum EdgeRoll {
   /// Готовая ширина окантовки после складывания пополам, мм.
   double get finishedWidth => rawWidth / 2;
 
-  String get shortLabel => 'Тент ${rawWidth.toStringAsFixed(0)} мм';
+  String get shortLabel => 'Тент ${rawWidth.toStringAsFixed(0)} ${unitSuffix()}';
 
   /// Ширина рулона по имени пресета («roll200» → 200) или null, если имя
   /// не распознано. Нужна для чтения старых заказов с шириной-строкой.
@@ -242,7 +248,7 @@ enum EdgeRoll {
 /// «150 мм». Работает и для пресетов, и для своей ширины.
 String edgeBandLabel(double rawWidth, {bool short = false}) {
   if (!rawWidth.isFinite) return short ? '—' : 'Тент — мм';
-  final width = '${formatMm(rawWidth)} мм';
+  final width = '${formatMm(rawWidth)} ${unitSuffix()}';
   return short ? width : 'Тент $width';
 }
 
@@ -326,6 +332,14 @@ enum EyeletType {
   final double holeHeight;
 
   bool get isRound => this == EyeletType.round10;
+
+  /// Размер в текущей единице: «Ø10 мм» или «Ø1,0 см», «42×22 мм» / «4,2×2,2 см».
+  String get sizeLabel => isRound
+      ? 'Ø${formatMm(10)} ${unitSuffix()}'
+      : '${formatMm(42)}×${formatMm(22)} ${unitSuffix()}';
+
+  /// Полное название для подписей: «Круглый Ø10 мм», «Овальный 42×22 мм».
+  String get displayLabel => isRound ? 'Круглый $sizeLabel' : 'Овальный $sizeLabel';
 }
 
 /// Крепёж подвижных сторон (низ и бока подъёмного окна).
@@ -1007,13 +1021,13 @@ class WindowParams {
   /// Разбивка припуска по высоте для панели и документов:
   /// «Припуск по высоте: 10 мм (авто) + 0 мм (вручную) = 10 мм».
   String get heightAllowanceBreakdownLabel =>
-      'Припуск по высоте: ${formatMm(autoHeightAllowanceMm)} мм (авто) + '
-      '${formatMm(allowanceHeightMm)} мм (вручную) = '
-      '${formatMm(effectiveAllowanceHeightMm)} мм';
+      'Припуск по высоте: ${formatMm(autoHeightAllowanceMm)} ${unitSuffix()} (авто) + '
+      '${formatMm(allowanceHeightMm)} ${unitSuffix()} (вручную) = '
+      '${formatMm(effectiveAllowanceHeightMm)} ${unitSuffix()}';
 
   /// Подпись припуска для документов: «припуск +120/+10 мм».
   String get allowanceLabel => hasAllowance
-      ? 'припуск $allowanceWidthLabel/$allowanceHeightLabel мм'
+      ? 'припуск $allowanceWidthLabel/$allowanceHeightLabel ${unitSuffix()}'
       : 'припуск 0/0 мм';
 
   // Размеры заготовки плёнки с припуском на раскрой. Изделие при этом
@@ -1202,13 +1216,13 @@ class WindowParams {
   String get hemBySideLabel =>
       'низ ${formatMm(hemBottomMm)}, '
       'право ${formatMm(hemRightMm)}, верх ${formatMm(hemTopMm)}, '
-      'лево ${formatMm(hemLeftMm)} мм';
+      'лево ${formatMm(hemLeftMm)} ${unitSuffix()}';
 
   /// Короткая подпись подворотов по сторонам: «40/50/60/40 мм»
   /// (низ/право/верх/лево).
   String get hemBySideShortLabel =>
       '${formatMm(hemBottomMm)}/${formatMm(hemRightMm)}/'
-      '${formatMm(hemTopMm)}/${formatMm(hemLeftMm)} мм';
+      '${formatMm(hemTopMm)}/${formatMm(hemLeftMm)} ${unitSuffix()}';
 
   WindowParams copyWith({
     String? projectName,
@@ -1560,20 +1574,17 @@ class DrawingOptions {
       '$showDimensions|$showGrid|$showEdgeLengths|$showCallouts';
 }
 
-/// Форматирует миллиметры в стиле «3 000».
-String formatMm(double value, {int decimals = 0}) {
-  if (!value.isFinite) return '—';
-  final text = value.toStringAsFixed(decimals);
-  final negative = text.startsWith('-');
-  final body = negative ? text.substring(1) : text;
-  final parts = body.split('.');
-  final grouped = _groupThousands(parts.first);
-  final fraction = parts.length > 1 ? ',${parts[1]}' : '';
-  return '${negative ? '−' : ''}$grouped$fraction';
-}
+/// Форматирует длину в ТЕКУЩЕЙ единице отображения: «3 000» или «300,0».
+///
+/// В миллиметрах сохраняется прежнее поведение (0 знаков по умолчанию),
+/// в сантиметрах — не меньше одного знака. Рядом с числом подпись единицы
+/// ставится через [unitSuffix]: «${formatMm(x)} ${unitSuffix()}».
+String formatMm(double value, {int decimals = 0}) =>
+    DisplayUnits.formatNumber(value, decimals: decimals);
 
-/// Сантиметры из миллиметров: «654».
-String formatCm(double millimeters) => formatMm(millimeters / 10);
+/// Сантиметры из миллиметров: «654». Не зависит от переключателя единиц.
+String formatCm(double millimeters) =>
+    formatDecimal(millimeters / 10, decimals: 0);
 
 /// Знаковое число миллиметров: «+120», «−30» (минус U+2212), «0».
 String formatSignedMm(double value) {
@@ -1596,15 +1607,6 @@ String formatPercent(double percent) {
       .replaceAll(RegExp(r'\.$'), '')
       .replaceAll('.', ',');
   return '$text %';
-}
-
-String _groupThousands(String digits) {
-  final buffer = StringBuffer();
-  for (var i = 0; i < digits.length; i++) {
-    if (i > 0 && (digits.length - i) % 3 == 0) buffer.write('\u202F');
-    buffer.write(digits[i]);
-  }
-  return buffer.toString();
 }
 
 /// Разбирает ввод пользователя: поддерживает запятую и точку как разделитель.

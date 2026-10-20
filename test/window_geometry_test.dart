@@ -161,7 +161,7 @@ void main() {
       expect(edgeBandLabel(150, short: true), '150 мм');
     });
 
-    test('расход окантовки совпадает с примером заказчика (654 см + 150 см)', () {
+    test('расход окантовки совпадает с примером заказчика (6 540 + 1 500 мм)', () {
       const params = WindowParams(
         bottomWidth: 1500,
         topWidth: 1500,
@@ -175,7 +175,7 @@ void main() {
       final spec = WindowSpec.of(params);
 
       expect(spec.edgeConsumptionLabels,
-          ['Тент 100 мм — 654 см', 'Тент 200 мм — 150 см']);
+          ['Тент 100 мм — 6\u202F540 мм', 'Тент 200 мм — 1\u202F500 мм']);
     });
 
     test('площадь готового изделия считается по наружному контуру', () {
@@ -2789,9 +2789,10 @@ void _rollWidthRules() {
       // Список отсортирован: из него строятся чипы панели.
       final sorted = [...FilmMaterial.screen.rollWidths]..sort();
       expect(FilmMaterial.screen.rollWidths, orderedEquals(sorted));
-      // Подпись доступных рулонов показывает новые ширины в сантиметрах.
-      expect(FilmMaterial.screen.rollWidthsLabel, contains('250'));
-      expect(FilmMaterial.screen.rollWidthsLabel, contains('500'));
+      // Подпись доступных рулонов показывает ширины в текущей единице;
+      // по умолчанию это миллиметры.
+      expect(FilmMaterial.screen.rollWidthsLabel, contains('2\u202F500'));
+      expect(FilmMaterial.screen.rollWidthsLabel, contains('5\u202F000'));
       // Панель берёт список из материала окна.
       expect(
         const WindowParams(material: FilmMaterial.screen).availableRollWidths,

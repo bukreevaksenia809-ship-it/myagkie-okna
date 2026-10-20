@@ -138,7 +138,7 @@ class Estimate {
                     'среднее подворотов по оси + 20 мм'
                     '${summary.screenZipperCount > 0 ? ', ширина кроя уменьшена на '
                               'полосу молнии '
-                              '${formatMm(summary.screenZipperBandWidthMm)} мм' : ''}'
+                              '${formatMm(summary.screenZipperBandWidthMm)} ${unitSuffix()}' : ''}'
               : '${entry.key.thickness}; заготовка-прямоугольник'
                     '${hasTShape ? ' (Т-окно: основное полотно + пристройки)' : ''}'
                     '${summary.hasShrinkage ? ' с компенсацией усадки' : ''}'
@@ -146,7 +146,7 @@ class Estimate {
                               '+10 мм к высоте (ПВХ)' : ''}'
                     '${summary.pvcZipperCount > 0 ? ', ширина кроя уменьшена на '
                               'полосу (спайку) молнии '
-                              '${formatMm(summary.pvcZipperBandWidthMm)} мм' : ''}',
+                              '${formatMm(summary.pvcZipperBandWidthMm)} ${unitSuffix()}' : ''}',
           quantity: entry.value,
           unit: 'м²',
           unitPrice: pricePerM2,
@@ -172,7 +172,7 @@ class Estimate {
           title: 'Окантовка ${edgeBandLabel(rawWidth)}',
           note:
               'готовая полоса '
-              '${formatMm(WindowParams.finishedEdgeWidth(rawWidth))} мм',
+              '${formatMm(WindowParams.finishedEdgeWidth(rawWidth))} ${unitSuffix()}',
           quantity: meters,
           unit: 'м',
           unitPrice: prices.edgePerMeterForWidth(rawWidth),
@@ -261,12 +261,12 @@ class Estimate {
           ? 'полотно и вставка с впайкой, ${summary.zipperCount} шт'
           : summary.screenZipperCount == summary.zipperCount
           ? 'полотно и вставка; полоса из скрина со швом '
-                '${formatMm(screenSeamMm)} мм по краям — '
+                '${formatMm(screenSeamMm)} ${unitSuffix()} по краям — '
                 '${summary.screenZipperCount} шт'
           : 'полотно и вставка: с полосой тента '
                 '${summary.zipperCount - summary.screenZipperCount} шт, '
                 'с полосой скрина ${summary.screenZipperCount} шт (шов '
-                '${formatMm(screenSeamMm)} мм)';
+                '${formatMm(screenSeamMm)} ${unitSuffix()})';
       lines.add(
         EstimateLine(
           title: 'Молния тракторная',
@@ -300,7 +300,7 @@ class Estimate {
       lines.add(
         EstimateLine(
           title: 'Подъёмные ремни',
-          note: '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} мм',
+          note: '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} ${unitSuffix()}',
           quantity: summary.strapCount.toDouble(),
           unit: 'шт',
           unitPrice: prices.strapPrice,
@@ -426,14 +426,14 @@ class Estimate {
       final hemMeters = summary.screenHemLengthMm / 1000;
       lines.add(
         EstimateLine(
-          title: 'Подворот скрина и шов ${formatMm(screenSeamMm)} мм',
+          title: 'Подворот скрина и шов ${formatMm(screenSeamMm)} ${unitSuffix()}',
           note:
               'подворот по сторонам (низ, право, верх, лево): '
               '${formatMeters(hemMeters)} м × '
               '${_unitPriceLabel(prices.screenHemPerM)} ₽/м — '
               '${summary.screenZipperCount > 0 ? 'периметр готового изделия плюс '
                         'швы полос молний '
-                        '(${formatMm(summary.screenZipperBandLengthMm)} мм)' : 'длина по периметру '
+                        '(${formatMm(summary.screenZipperBandLengthMm)} ${unitSuffix()})' : 'длина по периметру '
                         'готового изделия'}',
           quantity: hemMeters,
           unit: 'м',

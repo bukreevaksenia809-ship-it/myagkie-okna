@@ -348,7 +348,8 @@ class WindowDrawingPainter extends CustomPainter {
     this.showScaleBar = true,
     this.labelScale = 1,
     this.fastenerImage,
-  });
+    LengthUnit? unit,
+  }) : unit = unit ?? DisplayUnits.unit;
 
   final WindowParams params;
   final DrawingLayout layout;
@@ -367,6 +368,11 @@ class WindowDrawingPainter extends CustomPainter {
   /// Фото французского замка (декодированное). Пока null — рисуется
   /// прежний векторный замок, чтобы на листе не было пустого места.
   final ui.Image? fastenerImage;
+
+  /// Единица подписей на момент создания пейнтера. Сравнивается в
+  /// [shouldRepaint]: при переключении мм/см лист перерисовывается, даже
+  /// если размеры изделия не менялись.
+  final LengthUnit unit;
 
   // Цвета по ТЗ: размеры чёрные, плёнка голубая полупрозрачная,
   // окантовка — цвет материала, люверсы — серый металл.
@@ -440,6 +446,7 @@ class WindowDrawingPainter extends CustomPainter {
       oldDelegate.labelFontFamily != labelFontFamily ||
       oldDelegate.showScaleBar != showScaleBar ||
       oldDelegate.labelScale != labelScale ||
+      oldDelegate.unit != unit ||
       // Картинка крепежа догружается после первой сборки листа — по этому
       // сравнению лист один раз перерисуется уже с фотографией.
       oldDelegate.fastenerImage != fastenerImage;
@@ -615,7 +622,7 @@ class WindowDrawingPainter extends CustomPainter {
       _label(
         canvas,
         annex.welded
-            ? '${annex.label}: спайка ${formatMm(annex.sharedLength)} мм'
+            ? '${annex.label}: спайка ${formatMm(annex.sharedLength)} ${unitSuffix()}'
             : '${annex.label}: не спаяно — отдельное окно',
         anchor + normal * 16,
         angle: _uprightAngle(b - a),
@@ -772,8 +779,8 @@ class WindowDrawingPainter extends CustomPainter {
       final bPx = layout.toPxPoint(b);
       final normal = _uprightNormal(aPx, bPx);
       final text = params.isScreen
-          ? '${side.label}: подворот ${formatMm(layers.hemWidthFor(side))} мм'
-          : '${side.label}: окантовка ${formatMm(layers.finishedWidthFor(side))} мм';
+          ? '${side.label}: подворот ${formatMm(layers.hemWidthFor(side))} ${unitSuffix()}'
+          : '${side.label}: окантовка ${formatMm(layers.finishedWidthFor(side))} ${unitSuffix()}';
       final halfLength = _textPainter(
         text,
         color: _metalDark,
@@ -1113,7 +1120,7 @@ class WindowDrawingPainter extends CustomPainter {
     )!;
     _label(
       canvas,
-      'шов ${formatMm(screenSeamMm)} мм',
+      'шов ${formatMm(screenSeamMm)} ${unitSuffix()}',
       seamPoint + const Offset(0, 17),
       small: true,
       color: seamColor,
@@ -1665,7 +1672,7 @@ class WindowDrawingPainter extends CustomPainter {
       }
       _label(
         canvas,
-        'шов ${formatMm(screenSeamMm)} мм по краям полосы',
+        'шов ${formatMm(screenSeamMm)} ${unitSuffix()} по краям полосы',
         Offset(length * 0.5, -half - 13),
         small: true,
         color: const Color(0xFF5B6B80),
@@ -3070,13 +3077,13 @@ class WindowDrawingPainter extends CustomPainter {
     final zipperBand = layers.zipperBandTotalMm;
     final zipperNote = zipperBand > 0
         ? ' · ширина ${formatMm(layers.filmCutBounds.width)}'
-              ' → ${formatMm(layers.blankWidth)} мм, минус полоса молнии '
-              '${formatMm(zipperBand)} мм'
+              ' → ${formatMm(layers.blankWidth)} ${unitSuffix()}, минус полоса молнии '
+              '${formatMm(zipperBand)} ${unitSuffix()}'
         : '';
     final edgeHint = params.isScreen ? ' (пунктир — край заготовки)' : '';
     _label(
       canvas,
-      'заготовка ${formatMm(blankWidth)} × ${formatMm(blankHeight)} мм'
+      'заготовка ${formatMm(blankWidth)} × ${formatMm(blankHeight)} ${unitSuffix()}'
       '$edgeHint$zipperNote',
       Offset(size.width / 2, size.height - 10),
       small: true,
@@ -3259,7 +3266,7 @@ class WindowDrawingPainter extends CustomPainter {
           : meters.toStringAsFixed(1).replaceAll('.', ',');
       return '$text м';
     }
-    return '${formatMm(millimeters)} мм';
+    return '${formatMm(millimeters)} ${unitSuffix()}';
   }
 
   double _barLength(double scale) {
