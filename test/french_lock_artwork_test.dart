@@ -20,6 +20,7 @@ import 'package:soft_window_drawer/models/order_project.dart';
 import 'package:soft_window_drawer/models/window_geometry.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/fastener_artwork.dart';
+import 'package:soft_window_drawer/services/pdf_export.dart';
 import 'package:soft_window_drawer/widgets/drawing_sheet.dart';
 import 'package:soft_window_drawer/widgets/window_painter.dart';
 
@@ -58,7 +59,11 @@ const _frenchScreen = WindowParams(
   hemLeftMm: 70,
 );
 
-WindowDrawingPainter _painter(WindowParams params, {ui.Image? image}) {
+WindowDrawingPainter _painter(
+  WindowParams params, {
+  ui.Image? image,
+  DrawingOptions options = const DrawingOptions(),
+}) {
   final spec = WindowSpec.of(params);
   final layout = DrawingLayout(
     size: const Size(560, 420),
@@ -68,7 +73,7 @@ WindowDrawingPainter _painter(WindowParams params, {ui.Image? image}) {
     params: spec.params,
     layout: layout,
     layers: spec.layers,
-    options: const DrawingOptions(),
+    options: options,
     labelFontFamily: testFontFamily,
     fastenerImage: image,
   );
@@ -78,10 +83,15 @@ Future<Uint8List> _render(
   WidgetTester tester,
   WindowDrawingPainter painter, {
   Size size = const Size(560, 420),
+  int pixelRatio = 1,
 }) async {
   final bytes = await tester.runAsync(() async {
     final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, Offset.zero & size);
+    final canvas = Canvas(
+      recorder,
+      Offset.zero & Size(size.width * pixelRatio, size.height * pixelRatio),
+    );
+    canvas.scale(pixelRatio.toDouble());
     canvas.drawRect(
       Offset.zero & size,
       Paint()..color = const Color(0xFFFFFFFF),
@@ -89,8 +99,8 @@ Future<Uint8List> _render(
     painter.paint(canvas, size);
     final picture = recorder.endRecording();
     final image = await picture.toImage(
-      size.width.round(),
-      size.height.round(),
+      (size.width * pixelRatio).round(),
+      (size.height * pixelRatio).round(),
     );
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
@@ -211,6 +221,87 @@ void main() {
     });
   });
 
+  group('перерисовка и печать', () {
+    testWidgets('shouldRepaint реагирует на смену типа крепежа', (tester) async {
+      final french = _painter(_frenchWindow);
+      final buckles = _painter(
+        _frenchWindow.copyWith(fastenerType: FastenerType.turnBuckles),
+      );
+      expect(
+        french.shouldRepaint(buckles),
+        isTrue,
+        reason: 'французский замок → скоба обязана перерисовать лист',
+      );
+      expect(
+        buckles.shouldRepaint(french),
+        isTrue,
+        reason: 'скоба → французский замок тоже',
+      );
+    });
+
+    testWidgets('shouldRepaint реагирует на появление картинки', (tester) async {
+      FastenerArtwork.reset();
+      final image = await tester.runAsync(
+        () => FastenerArtwork.ensureFrenchLock(),
+      );
+      expect(image, isNotNull);
+      final vector = _painter(_frenchWindow);
+      final photo = _painter(_frenchWindow, image: image);
+      expect(photo.fastenerImage, isNotNull);
+      expect(
+        photo.shouldRepaint(vector),
+        isTrue,
+        reason: 'когда фото догрузилось, лист перерисовывается фотографией',
+      );
+      expect(
+        vector.shouldRepaint(_painter(_frenchWindow)),
+        isFalse,
+        reason: 'без изменений перерисовки нет',
+      );
+    });
+
+    testWidgets('PDF-путь снимает лист, когда фото уже декодировано', (
+      tester,
+    ) async {
+      FastenerArtwork.reset();
+      tester.view.physicalSize = const Size(
+        DrawingSheet.a4Width + 40,
+        DrawingSheet.a4Height + 40,
+      );
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final captureKey = GlobalKey();
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: Scaffold(
+            body: DrawingSheet(
+              project: const OrderProject(windows: [_frenchWindow]),
+              captureKey: captureKey,
+              labelFontFamily: testFontFamily,
+            ),
+          ),
+        ),
+      );
+      // Лист впервые нарисован ещё без фото (идёт загрузка ассета).
+      await tester.pump();
+      final pages = <Uint8List>[];
+      final count = await tester.runAsync(
+        () => renderSheetPagesEach(
+          captureKey: captureKey,
+          onPage: (png, index) async => pages.add(png),
+          pageFormat: SheetPageFormat.a4Portrait,
+        ),
+      );
+      expect(count, greaterThanOrEqualTo(1));
+      expect(pages, isNotEmpty);
+      expect(pages.first.length, greaterThan(5000));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('лист чертежа', () {
     testWidgets('лист получает картинку и перерисовывается один раз', (
       tester,
@@ -290,6 +381,68 @@ void main() {
       expect(file.lengthSync(), greaterThan(2000));
       // ignore: avoid_print
       print('Превью записано: ${file.path} (${file.lengthSync()} байт)');
+    });
+
+    testWidgets('пишет крупные превью замка: низ и бок — фотографией', (
+      tester,
+    ) async {
+      FastenerArtwork.reset();
+      final image = await tester.runAsync(
+        () => FastenerArtwork.ensureFrenchLock(),
+      );
+      expect(image, isNotNull);
+
+      const bottom = WindowParams(
+        windowType: WindowType.lifting,
+        bottomWidth: 1800,
+        topWidth: 1800,
+        leftHeight: 600,
+        rightHeight: 600,
+        rollBottom: 200,
+        rollRight: 200,
+        rollTop: 200,
+        rollLeft: 200,
+        fastenerType: FastenerType.frenchLocks,
+        eyeletStep: 400,
+        pvcHeightAllowanceEnabled: false,
+      );
+      const side = WindowParams(
+        windowType: WindowType.lifting,
+        bottomWidth: 600,
+        topWidth: 600,
+        leftHeight: 1800,
+        rightHeight: 1800,
+        rollBottom: 200,
+        rollRight: 200,
+        rollTop: 200,
+        rollLeft: 200,
+        fastenerType: FastenerType.frenchLocks,
+        eyeletStep: 400,
+        pvcHeightAllowanceEnabled: false,
+      );
+      // Только изделие и крепёж: подписи и сетка не мешают разглядеть фото.
+      const options = DrawingOptions(
+        showDimensions: false,
+        showGrid: false,
+        showEdgeLengths: false,
+        showCallouts: false,
+      );
+      final cases = <String, WindowParams>{
+        'zamok-francuzskiy-niz': bottom,
+        'zamok-francuzskiy-bok': side,
+      };
+      for (final entry in cases.entries) {
+        final bytes = await _render(
+          tester,
+          _painter(entry.value, image: image, options: options),
+          pixelRatio: 4,
+        );
+        final file = File('build/preview/${entry.key}.png')
+          ..writeAsBytesSync(bytes);
+        expect(file.lengthSync(), greaterThan(5000));
+        // ignore: avoid_print
+        print('Превью записано: ${file.path} (${file.lengthSync()} байт)');
+      }
     });
 
     testWidgets('пишет PNG-превью листа с французским замком', (tester) async {

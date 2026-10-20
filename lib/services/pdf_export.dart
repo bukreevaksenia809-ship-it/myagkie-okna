@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -92,6 +93,24 @@ double effectiveSheetPixelRatio(
   return math.min(pixelRatio, cap / largest).clamp(floor, pixelRatio);
 }
 
+/// Ждёт кадр, в котором лист перерисован с фотографией крепежа.
+///
+/// В приложении кадр приходит по vsync; в тестах его может не быть вовсе,
+/// поэтому ждём не дольше [timeout] и снимаем лист как есть. Задержка нужна
+/// только при первой загрузке картинки, дальше она уже в кэше.
+Future<void> _waitForArtworkFrame({
+  Duration timeout = const Duration(milliseconds: 150),
+}) async {
+  final binding = SchedulerBinding.instance;
+  binding.ensureVisualUpdate();
+  try {
+    await binding.endOfFrame.timeout(timeout);
+  } on TimeoutException {
+    // Кадр не пришёл (например, тестовое окружение без pump) — снимаем
+    // то, что уже нарисовано; векторный fallback остаётся страховкой.
+  }
+}
+
 /// Снимает лист с экрана и отдаёт его страницы-картинки по одной.
 ///
 /// Одна картинка — одна страница PDF: длинный лист режется последовательно,
@@ -121,9 +140,15 @@ Future<int> renderSheetPagesEach({
   }
 
   // Перед снимком убеждаемся, что фото крепежа декодировано: иначе на листе
-  // останется векторный fallback, а заказчик ждёт фотографию замка. Лист
-  // перерисовывается сам, когда картинка готова (см. DrawingSheet).
+  // останется векторный fallback, а заказчик ждёт фотографию замка.
+  //
+  // Одного декодирования мало: ValueListenableBuilder помечает лист к
+  // перестройке, но кадр ещё не нарисован, а `toImage` снимает готовый слой.
+  // Поэтому после первой загрузки ждём кадр — иначе в PDF попадёт старый
+  // векторный замок.
+  final hadArtwork = FastenerArtwork.frenchLock.value != null;
   await FastenerArtwork.ensureFrenchLock();
+  if (!hadArtwork) await _waitForArtworkFrame();
 
   final renderObject = captureKey.currentContext?.findRenderObject();
   if (renderObject is! RenderRepaintBoundary) {
