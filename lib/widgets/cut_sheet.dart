@@ -73,12 +73,21 @@ class CutSheet extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        // Если родитель дал бесконечные ограничения, не строим лист
+        // бесконечного размера: берём разумную ширину листа. Иначе
+        // Container с width: Infinity просто не рисует заготовку.
+        final viewportWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 1360.0;
+        final viewportHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : 900.0;
         final sheetWidth = math.max(
-          constraints.maxWidth - _outerPadding * 2,
+          viewportWidth - _outerPadding * 2,
           320.0,
         );
         final sheetHeight = math.max(
-          constraints.maxHeight - _outerPadding * 2,
+          viewportHeight - _outerPadding * 2,
           320.0,
         );
         final contentWidth = math.max(sheetWidth - _innerPadding * 2, 160.0);
@@ -203,22 +212,43 @@ class CutPiece {
   /// раскрой и компенсацией усадки ПВХ (см.
   /// [WindowSpec.filmCutPolygonWithShrinkage]).
   factory CutPiece.ofSpec(WindowSpec spec) {
-    final polygons = spec.filmCutPolygonsWithShrinkage;
     final areaM2 = spec.filmCutAreaWithShrinkageM2;
-    if (polygons.isEmpty) {
+    // Заготовка обычного окна (в том числе трапеции и окна с разными
+    // высотами) — ВСЕГДА прямоугольник ширина × высота. Размеры берём из
+    // filmCut*WithShrinkage, а не из габарита полигона: даже если контур
+    // почему-то окажется пустым или схлопнутым, лист «Раскрой» не останется
+    // без заготовки.
+    final width = _positive(spec.filmCutWidthWithShrinkage);
+    final height = _positive(spec.filmCutHeightWithShrinkage);
+    if (!spec.params.isTShape) {
       return CutPiece(
-        widthMm: _positive(spec.filmCutWidthWithShrinkage),
-        heightMm: _positive(spec.filmCutHeightWithShrinkage),
+        widthMm: width,
+        heightMm: height,
+        outline: [
+          Offset.zero,
+          Offset(width, 0),
+          Offset(width, height),
+          Offset(0, height),
+        ],
         areaM2: areaM2,
       );
     }
+
     // У Т-окна без спайки заготовок две: каждая нормализуется к общему
-    // габариту, чтобы лист «Раскрой» показал фактическую форму обеих частей.
+    // габариту, чтобы лист «Раскрой» показал обе части.
+    final polygons = spec.filmCutPolygonsWithShrinkage;
+    if (polygons.isEmpty) {
+      return CutPiece(
+        widthMm: width,
+        heightMm: height,
+        areaM2: areaM2,
+      );
+    }
     final bounds = boundsOfAll(polygons);
     if (bounds.width <= 0 || bounds.height <= 0) {
       return CutPiece(
-        widthMm: _positive(bounds.width),
-        heightMm: _positive(bounds.height),
+        widthMm: width,
+        heightMm: height,
         areaM2: areaM2,
       );
     }
