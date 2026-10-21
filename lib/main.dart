@@ -400,9 +400,11 @@ class _BuilderScreenState extends State<BuilderScreen> {
   /// Чертёж — A4 в портретной ориентации: лист построен ровно в пропорциях
   /// A4 и печатается без масштабирования и обрезки. Табличным листам
   /// (расходы, смета, техкарта, раскрой) нужна широкая страница A3.
-  SheetPageFormat _pageFormatFor(SheetTab tab) => tab == SheetTab.drawing
-      ? SheetPageFormat.a4Portrait
-      : SheetPageFormat.a3LandscapeAuto;
+  SheetPageFormat _pageFormatFor(SheetTab tab) => switch (tab) {
+    // Чертёж и раскрой — ровно A4: раскрой теперь всегда один лист A4.
+    SheetTab.drawing || SheetTab.cut => SheetPageFormat.a4Portrait,
+    _ => SheetPageFormat.a3LandscapeAuto,
+  };
 
   String get _sheetPrefix => switch (_tab) {
     SheetTab.drawing => 'Чертёж',

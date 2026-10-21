@@ -10,6 +10,7 @@ import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/file_saver.dart';
 import 'package:soft_window_drawer/services/image_slice.dart';
 import 'package:soft_window_drawer/services/pdf_export.dart';
+import 'package:soft_window_drawer/widgets/cut_sheet.dart';
 import 'package:soft_window_drawer/widgets/drawing_sheet.dart';
 
 import 'test_fonts.dart';
@@ -27,10 +28,7 @@ const _params = WindowParams(
 Future<Uint8List> _solidPng(Color color) async {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
-  canvas.drawRect(
-    const Rect.fromLTWH(0, 0, 200, 100),
-    Paint()..color = color,
-  );
+  canvas.drawRect(const Rect.fromLTWH(0, 0, 200, 100), Paint()..color = color);
   final picture = recorder.endRecording();
   final image = await picture.toImage(200, 100);
   final data = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -126,8 +124,9 @@ void main() {
     print('PDF записан: ${file.absolute.path} (${file.lengthSync()} байт)');
   });
 
-  testWidgets('длинный подробный лист сохраняется на несколько страниц A4',
-      (tester) async {
+  testWidgets('длинный подробный лист сохраняется на несколько страниц A4', (
+    tester,
+  ) async {
     const viewport = Size(1500, 900);
     final project = const OrderProject()
         .addWindow()
@@ -174,8 +173,11 @@ void main() {
     expect(saved, isNotNull);
     final bytes = File(saved!.path!).readAsBytesSync();
     final boxes = _mediaBoxes(bytes);
-    expect(boxes.length, greaterThan(1),
-        reason: 'длинный лист должен резаться на страницы');
+    expect(
+      boxes.length,
+      greaterThan(1),
+      reason: 'длинный лист должен резаться на страницы',
+    );
 
     // Каждая страница — ровно A4 (210 × 297 мм): ничего не «размазано»
     // и не обрезано.
@@ -185,8 +187,9 @@ void main() {
     }
   });
 
-  testWidgets('чертёж на 5 окон — несколько страниц A4, окно не разрезано',
-      (tester) async {
+  testWidgets('чертёж на 5 окон — несколько страниц A4, окно не разрезано', (
+    tester,
+  ) async {
     const viewport = Size(1500, 900);
     // 5 окон по три в ряд — два ряда, две страницы A4.
     final project = const OrderProject()
@@ -246,66 +249,68 @@ void main() {
     }
   });
 
-  testWidgets('чертёж на 5 окон в колонку: пять страниц A4, без разрезанных окон',
-      (tester) async {
-    const viewport = Size(1500, 900);
-    final project = const OrderProject()
-        .addWindow()
-        .addWindow()
-        .addWindow()
-        .addWindow()
-        .setSheetMode(SheetMode.grid)
-        .setGridColumns(1);
-    final sheetSize = DrawingSheet.detailedSheetSize(project, viewport)!;
+  testWidgets(
+    'чертёж на 5 окон в колонку: пять страниц A4, без разрезанных окон',
+    (tester) async {
+      const viewport = Size(1500, 900);
+      final project = const OrderProject()
+          .addWindow()
+          .addWindow()
+          .addWindow()
+          .addWindow()
+          .setSheetMode(SheetMode.grid)
+          .setGridColumns(1);
+      final sheetSize = DrawingSheet.detailedSheetSize(project, viewport)!;
 
-    final captureKey = GlobalKey();
-    tester.view.physicalSize = Size(sheetSize.width, sheetSize.height);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+      final captureKey = GlobalKey();
+      tester.view.physicalSize = Size(sheetSize.width, sheetSize.height);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: DrawingSheet(
-            project: project,
-            captureKey: captureKey,
-            labelFontFamily: testFontFamily,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DrawingSheet(
+              project: project,
+              captureKey: captureKey,
+              labelFontFamily: testFontFamily,
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final breaks = DrawingSheet.safeBreakFractions(project, viewport);
-    expect(breaks, [
-      closeTo(0.2, 1e-9),
-      closeTo(0.4, 1e-9),
-      closeTo(0.6, 1e-9),
-      closeTo(0.8, 1e-9),
-    ]);
-
-    final pages = await tester.runAsync(
-      () => renderSheetPages(
-        captureKey: captureKey,
-        pixelRatio: 1,
-        safeBreakFractions: breaks,
-        pageFormat: SheetPageFormat.a4Portrait,
-      ),
-    );
-
-    expect(pages, isNotNull);
-    // Пять рядов — пять страниц A4: ни один ряд не разрезан пополам.
-    expect(pages!.length, 5);
-    for (final png in pages) {
-      final image = await tester.runAsync(() => decodeImageFromList(png));
-      // Каждая страница — ровно пропорции A4, а не «обрезок» на пол-ряда.
-      expect(
-        image!.height / image.width,
-        closeTo(_a4HeightPt / _a4WidthPt, 0.01),
       );
-    }
-  });
+      await tester.pumpAndSettle();
+
+      final breaks = DrawingSheet.safeBreakFractions(project, viewport);
+      expect(breaks, [
+        closeTo(0.2, 1e-9),
+        closeTo(0.4, 1e-9),
+        closeTo(0.6, 1e-9),
+        closeTo(0.8, 1e-9),
+      ]);
+
+      final pages = await tester.runAsync(
+        () => renderSheetPages(
+          captureKey: captureKey,
+          pixelRatio: 1,
+          safeBreakFractions: breaks,
+          pageFormat: SheetPageFormat.a4Portrait,
+        ),
+      );
+
+      expect(pages, isNotNull);
+      // Пять рядов — пять страниц A4: ни один ряд не разрезан пополам.
+      expect(pages!.length, 5);
+      for (final png in pages) {
+        final image = await tester.runAsync(() => decodeImageFromList(png));
+        // Каждая страница — ровно пропорции A4, а не «обрезок» на пол-ряда.
+        expect(
+          image!.height / image.width,
+          closeTo(_a4HeightPt / _a4WidthPt, 0.01),
+        );
+      }
+    },
+  );
 
   testWidgets('лист чертежа — A4 в портретной ориентации', (tester) async {
     final captureKey = GlobalKey();
@@ -328,8 +333,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final boundary = captureKey.currentContext!.findRenderObject()!
-        as RenderRepaintBoundary;
+    final boundary =
+        captureKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
     expect(boundary.size.width, DrawingSheet.a4Width);
     expect(boundary.size.height, DrawingSheet.a4Height);
     // Пропорции A4 — 1 : 1,4142 (допуск 0,5 %).
@@ -340,8 +345,9 @@ void main() {
     expect(DrawingSheet.a4Aspect, closeTo(1.4142, 0.005));
   });
 
-  testWidgets('в PDF чертежа первая страница — A4 (595 × 842 pt)',
-      (tester) async {
+  testWidgets('в PDF чертежа первая страница — A4 (595 × 842 pt)', (
+    tester,
+  ) async {
     final captureKey = GlobalKey();
     tester.view.physicalSize = const Size(
       DrawingSheet.a4Width + 40,
@@ -365,11 +371,8 @@ void main() {
     await tester.pumpAndSettle();
 
     final bytes = await tester.runAsync(
-      () => buildSheetPdf(
-        captureKey: captureKey,
-        params: _params,
-        pixelRatio: 1,
-      ),
+      () =>
+          buildSheetPdf(captureKey: captureKey, params: _params, pixelRatio: 1),
     );
     expect(bytes, isNotNull);
     final boxes = _mediaBoxes(bytes!);
@@ -379,19 +382,54 @@ void main() {
     expect(boxes.first.heightPt, closeTo(_a4HeightPt, 2));
   });
 
+  testWidgets('раскрой на 24 окна — ровно одна страница A4', (tester) async {
+    final project = OrderProject(
+      windows: [for (var i = 0; i < 24; i++) _params],
+    );
+    final sheetSize = CutSheet.sheetSize(project, const Size(1720, 1080));
+    tester.view.physicalSize = sheetSize;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final captureKey = GlobalKey();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CutSheet(
+            project: project,
+            captureKey: captureKey,
+            labelFontFamily: testFontFamily,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final pages = await tester.runAsync(
+      () => renderSheetPages(
+        captureKey: captureKey,
+        pixelRatio: 1,
+        pageFormat: SheetPageFormat.a4Portrait,
+      ),
+    );
+    expect(pages, isNotNull);
+    expect(pages!.length, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('табличный лист остаётся на широкой странице A3', (tester) async {
     final pages = await tester.runAsync(
-      () async => <Uint8List>[
-        await _solidPng(const Color(0xFFFF0000)),
-      ],
+      () async => <Uint8List>[await _solidPng(const Color(0xFFFF0000))],
     );
 
     // По умолчанию (как у расходов, сметы, техкарты и раскроя) — широкая
     // страница A3, высота — по пропорциям снимка.
     final builder = SheetPdfBuilder(title: 'Таблица');
     builder.addPageImage(pages!.first);
-    final bytes =
-        await tester.runAsync(() => builder.save(balanceEventLoop: false));
+    final bytes = await tester.runAsync(
+      () => builder.save(balanceEventLoop: false),
+    );
 
     final boxes = _mediaBoxes(bytes!);
     expect(boxes.length, 1);
@@ -400,8 +438,9 @@ void main() {
     expect(boxes.first.heightPt, closeTo(210 * _mmToPt, 2));
   });
 
-  testWidgets('смешанный PDF: чертёж на A4 и таблица на широкой странице',
-      (tester) async {
+  testWidgets('смешанный PDF: чертёж на A4 и таблица на широкой странице', (
+    tester,
+  ) async {
     final pages = await tester.runAsync(
       () async => <Uint8List>[
         await _solidPng(const Color(0xFFFF0000)),
@@ -415,8 +454,9 @@ void main() {
     builder.addPageImage(pages.last);
     expect(builder.pageCount, 2);
 
-    final bytes =
-        await tester.runAsync(() => builder.save(balanceEventLoop: false));
+    final bytes = await tester.runAsync(
+      () => builder.save(balanceEventLoop: false),
+    );
     final boxes = _mediaBoxes(bytes!);
     expect(boxes.length, 2);
     // Чертёж — A4 в портретной ориентации.
@@ -427,14 +467,12 @@ void main() {
     expect(boxes[1].widthPt, greaterThan(boxes[1].heightPt));
   });
 
-  testWidgets('рез идёт ровно по границе страницы A4: ряд не рвётся',
-      (tester) async {
+  testWidgets('рез идёт ровно по границе страницы A4: ряд не рвётся', (
+    tester,
+  ) async {
     final captureKey = GlobalKey();
     const pageHeight = DrawingSheet.a4Height;
-    tester.view.physicalSize = const Size(
-      DrawingSheet.a4Width,
-      pageHeight * 2,
-    );
+    tester.view.physicalSize = const Size(DrawingSheet.a4Width, pageHeight * 2);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -600,11 +638,14 @@ void main() {
     expect(builder.isEmpty, isFalse);
     expect(builder.isClosed, isFalse);
 
-    final bytes =
-        await tester.runAsync(() => builder.save(balanceEventLoop: false));
+    final bytes = await tester.runAsync(
+      () => builder.save(balanceEventLoop: false),
+    );
     expect(String.fromCharCodes(bytes!.take(5)), '%PDF-');
     expect(
-      RegExp(r'/Type\s*/Page[^s]').allMatches(String.fromCharCodes(bytes)).length,
+      RegExp(
+        r'/Type\s*/Page[^s]',
+      ).allMatches(String.fromCharCodes(bytes)).length,
       3,
     );
 
@@ -613,8 +654,9 @@ void main() {
     expect(() => builder.addPageImage(pages.first), throwsStateError);
   });
 
-  testWidgets('лист отдаётся по одной странице, список не копится',
-      (tester) async {
+  testWidgets('лист отдаётся по одной странице, список не копится', (
+    tester,
+  ) async {
     final captureKey = GlobalKey();
     tester.view.physicalSize = const Size(400, 1200);
     tester.view.devicePixelRatio = 1;
@@ -689,11 +731,14 @@ void main() {
     // Счётчик растёт ровно на единицу за страницу.
     expect(steps, List<dynamic>.generate(added!, (index) => index + 1));
 
-    final bytes =
-        await tester.runAsync(() => builder.save(balanceEventLoop: false));
+    final bytes = await tester.runAsync(
+      () => builder.save(balanceEventLoop: false),
+    );
     expect(bytes!.length, greaterThan(1000));
     expect(
-      RegExp(r'/Type\s*/Page[^s]').allMatches(String.fromCharCodes(bytes)).length,
+      RegExp(
+        r'/Type\s*/Page[^s]',
+      ).allMatches(String.fromCharCodes(bytes)).length,
       added,
     );
   });
