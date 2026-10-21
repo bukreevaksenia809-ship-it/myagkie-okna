@@ -33,6 +33,10 @@ class CutSheet extends StatelessWidget {
   /// Высота штампа снизу — как на остальных листах.
   static const double titleBlockHeight = 118;
 
+  /// Лист «Раскрой» всегда один A4 (портрет), как и остальные листы.
+  static const double a4Width = 1240;
+  static const double a4Height = 1754;
+
   static const double _outerPadding = 20;
   static const double _innerPadding = 20;
   static const double _captionBarHeight = 42;
@@ -46,8 +50,9 @@ class CutSheet extends StatelessWidget {
       titleBlockHeight +
       _piecesVerticalPadding * 2;
 
-  /// То же плюс поля вокруг листа — полная высота «обвязки» листа.
-  static const double _sheetChrome = _chromeHeight + _outerPadding * 2;
+  /// Свободная часть A4 под заготовки (без обвязки и полей).
+  static const double a4ContentWidth = a4Width - _innerPadding * 2;
+  static const double a4ContentHeight = a4Height - _chromeHeight;
 
   /// Заготовки заказа: по одной на окно, в порядке окон.
   static List<CutPiece> piecesOf(OrderProject project) => [
@@ -55,17 +60,13 @@ class CutSheet extends StatelessWidget {
       CutPiece.ofSpec(WindowSpec.of(window)),
   ];
 
-  /// Размер листа раскроя. null — заготовки влезают, лист заполняет окно.
-  static Size? sheetSize(OrderProject project, Size viewport) {
-    final paperWidth = math.max(viewport.width - _outerPadding * 2, 1320.0);
-    final contentWidth = math.max(paperWidth - _innerPadding * 2, 240.0);
-    // Раскладку считаем по «естественной» полосе ряда: масштаб задаётся шириной
-    // листа, поэтому высота листа не зависит от высоты окна и не «разъезжается».
-    final layout = CutLayout.natural(piecesOf(project), contentWidth);
-    final needed = layout.contentHeight + _sheetChrome;
-    if (needed <= viewport.height) return null;
-    return Size(paperWidth + _outerPadding * 2, needed);
-  }
+  /// Размер листа раскроя — всегда один A4 с полями рабочей области.
+  ///
+  /// Заготовки укладываются в свободную часть листа и при необходимости
+  /// уменьшаются общим масштабом, поэтому лист не растёт и не переносится
+  /// на вторую страницу.
+  static Size sheetSize(OrderProject project, Size viewport) =>
+      Size(a4Width + _outerPadding * 2, a4Height + _outerPadding * 2);
 
   @override
   Widget build(BuildContext context) {
@@ -77,14 +78,9 @@ class CutSheet extends StatelessWidget {
         // Если родитель дал бесконечные ограничения, не строим лист
         // бесконечного размера: берём разумную ширину листа. Иначе
         // Container с width: Infinity просто не рисует заготовку.
-        final viewportWidth = constraints.maxWidth.isFinite
-            ? constraints.maxWidth
-            : 1360.0;
-        final viewportHeight = constraints.maxHeight.isFinite
-            ? constraints.maxHeight
-            : 900.0;
-        final sheetWidth = math.max(viewportWidth - _outerPadding * 2, 320.0);
-        final sheetHeight = math.max(viewportHeight - _outerPadding * 2, 320.0);
+        // Строго один A4: размеры листа не зависят от окна программы.
+        final sheetWidth = a4Width;
+        final sheetHeight = a4Height;
         final contentWidth = math.max(sheetWidth - _innerPadding * 2, 160.0);
         final area = Size(
           contentWidth,
@@ -104,80 +100,81 @@ class CutSheet extends StatelessWidget {
           color: const Color(0xFFE7EBF2),
           padding: const EdgeInsets.all(_outerPadding),
           child: Center(
-            child: RepaintBoundary(
-              key: captureKey,
-              child: Container(
-                width: sheetWidth,
-                height: sheetHeight,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: const Color(0xFFC3CCDA)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.10),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      height: _captionBarHeight,
-                      width: double.infinity,
-                      color: const Color(0xFF0B62C4),
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      alignment: Alignment.centerLeft,
-                      child: Row(
-                        children: [
-                          const Text(
-                            'Раскрой плёнки',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            'Заготовок: ${pieces.length} шт',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ],
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: RepaintBoundary(
+                key: captureKey,
+                child: Container(
+                  width: sheetWidth,
+                  height: sheetHeight,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFC3CCDA)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.10),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
                       ),
-                    ),
-                    Expanded(
-                      child: ClipRect(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: _innerPadding,
-                            vertical: _piecesVerticalPadding,
-                          ),
-                          child: pieces.isEmpty
-                              ? const Center(
-                                  child: Text(
-                                    'В заказе нет окон — кроить нечего',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Color(0xFF66748A),
-                                    ),
-                                  ),
-                                )
-                              : layout.contentHeight <= area.height
-                              ? Center(child: paint)
-                              : SingleChildScrollView(child: paint),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        height: _captionBarHeight,
+                        width: double.infinity,
+                        color: const Color(0xFF0B62C4),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          children: [
+                            const Text(
+                              'Раскрой плёнки',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              'Заготовок: ${pieces.length} шт',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    _CutTotalsBlock(specs: specs),
-                    SizedBox(
-                      height: titleBlockHeight,
-                      child: _CutTitleBlock(project: project, specs: specs),
-                    ),
-                  ],
+                      Expanded(
+                        child: ClipRect(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: _innerPadding,
+                              vertical: _piecesVerticalPadding,
+                            ),
+                            child: pieces.isEmpty
+                                ? const Center(
+                                    child: Text(
+                                      'В заказе нет окон — кроить нечего',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFF66748A),
+                                      ),
+                                    ),
+                                  )
+                                : Center(child: paint),
+                          ),
+                        ),
+                      ),
+                      _CutTotalsBlock(specs: specs),
+                      SizedBox(
+                        height: titleBlockHeight,
+                        child: _CutTitleBlock(project: project, specs: specs),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -435,6 +432,11 @@ class CutLayout {
     final height = (area.height.isFinite && area.height > 0)
         ? area.height
         : preferredRowHeight;
+    // Запас для подгонки: подписи и зазоры считаются целыми, и без запаса
+    // округление могло вытолкнуть нижнюю подпись за край A4. Естественный
+    // масштаб (75 % полосы) считается от полной высоты, чтобы не менять
+    // привычный вид одной заготовки.
+    final fitHeight = math.max(height - 2, 40.0);
 
     final naturalLayout = _wrap(
       pieces,
@@ -448,11 +450,11 @@ class CutLayout {
     var low = naturalLayout.scale * 0.001;
     var high = naturalLayout.scale;
     var best = _wrap(pieces, low, width);
-    if (best.contentHeight > height) return best;
+    if (best.contentHeight > fitHeight) return best;
     for (var i = 0; i < 30; i++) {
       final middle = (low + high) / 2;
       final candidate = _wrap(pieces, middle, width);
-      if (candidate.contentHeight <= height) {
+      if (candidate.contentHeight <= fitHeight) {
         best = candidate;
         low = middle;
       } else {
@@ -573,7 +575,7 @@ class CutLayout {
       final heightPx = piece.heightMm * scale;
       final cellWidth = widthPx + 2 * sideMargin;
       // Перенос на новый ряд, когда заготовка не влезает по ширине.
-      if (row.isNotEmpty && x + cellWidth > width + 0.5) flushRow();
+      if (row.isNotEmpty && x + cellWidth > width) flushRow();
       row.add((
         index: i,
         piece: piece,

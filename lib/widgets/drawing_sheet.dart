@@ -314,13 +314,43 @@ class DrawingSheet extends StatelessWidget {
     );
   }
 
+  /// Крупная плашка «ФАРТУК СНИЗУ / СВЕРХУ» в нижней части чертежа.
+  Widget _apronBanner({required bool bottom, required bool top}) {
+    if (!bottom && !top) return const SizedBox.shrink();
+    final label = bottom && top
+        ? 'ФАРТУК СНИЗУ И СВЕРХУ'
+        : bottom
+        ? 'ФАРТУК СНИЗУ'
+        : 'ФАРТУК СВЕРХУ';
+    return Container(
+      key: const Key('apron-banner'),
+      height: 32,
+      width: double.infinity,
+      alignment: Alignment.center,
+      color: const Color(0xFFFFF4E0),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 1.2,
+          color: Color(0xFF8A4B00),
+        ),
+      ),
+    );
+  }
+
   /// Лист одного окна (или одного выбранного окна заказа): одна страница A4.
   Widget _buildSingle(ui.Image? fastenerImage) {
     final params = project.selected;
     final spec = WindowSpec.of(params);
+    final apronHeight = (params.pocket || params.pocketTop) ? 32.0 : 0.0;
     final area = Size(
       math.max(a4Width - sidePanelWidth - 1, 160.0),
-      math.max(a4Height - titleBlockHeight - _captionHeight, 120.0),
+      math.max(
+        a4Height - titleBlockHeight - _captionHeight - apronHeight,
+        120.0,
+      ),
     );
     final frame = _drawingFrame(area, spec);
     // Раскладку считаем уже от рамки: в ней и рисуется чертёж.
@@ -375,6 +405,7 @@ class DrawingSheet extends StatelessWidget {
             ],
           ),
         ),
+        _apronBanner(bottom: params.pocket, top: params.pocketTop),
         SizedBox(
           height: titleBlockHeight,
           child: _TitleBlock(project: project, scaleLabel: layout.scaleLabel),
@@ -425,6 +456,10 @@ class DrawingSheet extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+                _apronBanner(
+                  bottom: project.windows.any((window) => window.pocket),
+                  top: project.windows.any((window) => window.pocketTop),
                 ),
                 SizedBox(
                   height: titleBlockHeight,
@@ -1042,7 +1077,7 @@ class _SidePanel extends StatelessWidget {
                       style: TextStyle(
                         fontSize: math.min(
                           labelSettings.pxFor(LabelKind.legend),
-                          14.0,
+                          16.0,
                         ),
                         color: const Color(0xFF2B3440),
                       ),

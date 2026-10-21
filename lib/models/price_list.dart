@@ -100,6 +100,9 @@ class PriceItemKeys {
   /// Ремень, ₽/шт: одна позиция прайса на подъёмный ремень и на силиконовый
   /// ремень-крепёж — это один и тот же материал ленты.
   static const String strap = 'strap';
+
+  /// Алюминиевый бокс, ₽/м: одна ширина на окно.
+  static const String aluminumBox = 'aluminumBox';
   static const String drain = 'drain';
   static const String cutout = 'cutout';
 
@@ -132,6 +135,7 @@ class PriceItemKeys {
     weld,
     pocket,
     strap,
+    aluminumBox,
     drain,
     cutout,
     turnBuckle,
@@ -203,6 +207,9 @@ const double defaultZipperPerM = 780;
 /// Спайка полотен двух соседних окон между собой, ₽/м (горячий воздух).
 const double defaultWeldPerM = 450;
 
+/// Алюминиевый бокс, ₽/м. Считается по одной ширине на каждое окно.
+const double defaultAluminumBoxPerM = 0;
+
 /// Фартук (бывший карман) под утяжитель (тент 200 мм, сложенный пополам), ₽/м.
 const double defaultPocketPerM = 380;
 
@@ -257,6 +264,9 @@ const double defaultMarkupPercent = 0;
 
 /// Скидка по умолчанию, %.
 const double defaultDiscountPercent = 0;
+
+/// Монтаж, % от суммы позиций заказа. 0 — монтаж не считать.
+const double defaultInstallationPercent = 0;
 
 /// НДС по умолчанию, %. Считается «сверху» — см. комментарий у [PriceList].
 const double defaultVatPercent = 20;
@@ -343,6 +353,7 @@ class PriceList {
     this.weldPerM = defaultWeldPerM,
     this.pocketPerM = defaultPocketPerM,
     this.strapPrice = defaultStrapPrice,
+    this.aluminumBoxPerM = defaultAluminumBoxPerM,
     this.turnBucklePrice = defaultTurnBucklePrice,
     this.frenchLockPrice = defaultFrenchLockPrice,
     this.screwPrice = defaultScrewPrice,
@@ -352,6 +363,7 @@ class PriceList {
     this.cuttingPerM2 = defaultCuttingPerM2,
     this.markupPercent = defaultMarkupPercent,
     this.discountPercent = defaultDiscountPercent,
+    this.installationPercent = defaultInstallationPercent,
     this.vatPercent = defaultVatPercent,
     this.currency = defaultCurrencySymbol,
     this.disabledItems = const <String>{},
@@ -393,6 +405,9 @@ class PriceList {
   final double pocketPerM;
   final double strapPrice;
 
+  /// Алюминиевый бокс, ₽/м.
+  final double aluminumBoxPerM;
+
   /// Поворотная скоба, ₽/шт.
   final double turnBucklePrice;
 
@@ -415,6 +430,9 @@ class PriceList {
   // --- Настройки расчёта ---------------------------------------------------
   final double markupPercent;
   final double discountPercent;
+
+  /// Монтаж, % от суммы позиций заказа.
+  final double installationPercent;
 
   /// НДС «сверху», %.
   final double vatPercent;
@@ -604,6 +622,7 @@ class PriceList {
     double? weldPerM,
     double? pocketPerM,
     double? strapPrice,
+    double? aluminumBoxPerM,
     double? turnBucklePrice,
     double? frenchLockPrice,
     double? screwPrice,
@@ -612,6 +631,7 @@ class PriceList {
     double? laborPerM2,
     double? markupPercent,
     double? discountPercent,
+    double? installationPercent,
     double? vatPercent,
     // Дополнительные поля модели (панель может их не показывать).
     double? eyeletOvalPrice,
@@ -639,6 +659,7 @@ class PriceList {
       weldPerM: weldPerM ?? this.weldPerM,
       pocketPerM: pocketPerM ?? this.pocketPerM,
       strapPrice: strapPrice ?? this.strapPrice,
+      aluminumBoxPerM: aluminumBoxPerM ?? this.aluminumBoxPerM,
       turnBucklePrice: turnBucklePrice ?? this.turnBucklePrice,
       frenchLockPrice: frenchLockPrice ?? this.frenchLockPrice,
       screwPrice: screwPrice ?? this.screwPrice,
@@ -648,6 +669,7 @@ class PriceList {
       cuttingPerM2: cuttingPerM2 ?? this.cuttingPerM2,
       markupPercent: markupPercent ?? this.markupPercent,
       discountPercent: discountPercent ?? this.discountPercent,
+      installationPercent: installationPercent ?? this.installationPercent,
       vatPercent: vatPercent ?? this.vatPercent,
       currency: currency ?? this.currency,
       disabledItems: disabledItems ?? this.disabledItems,
@@ -725,6 +747,10 @@ class PriceList {
       weldPerM: _price(json['weldPerM'], fallback.weldPerM),
       pocketPerM: _price(json['pocketPerM'], fallback.pocketPerM),
       strapPrice: _price(json['strapPrice'], fallback.strapPrice),
+      aluminumBoxPerM: _price(
+        json['aluminumBoxPerM'],
+        fallback.aluminumBoxPerM,
+      ),
       // Старый прайс без цен крепежа читается с дефолтами: строки крепежа
       // в смете считаются, а не пропадают с нулём.
       turnBucklePrice: _price(

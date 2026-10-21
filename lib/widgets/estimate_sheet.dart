@@ -384,18 +384,22 @@ class EstimateSheet extends StatelessWidget {
       width: 300,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F9FC),
-        border: Border.all(color: const Color(0xFFD9E0EA)),
-        borderRadius: BorderRadius.circular(8),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFF4F9FF), Color(0xFFEAF2FB)],
+        ),
+        border: Border.all(color: const Color(0xFFC7DDF6)),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _text(
-            'МАТЕРИАЛЫ',
+            'МАТЕРИАЛЫ ЗАКАЗА',
             size: 9,
             weight: FontWeight.w700,
-            color: const Color(0xFF5B6B80),
+            color: const Color(0xFF0B62C4),
             letterSpacing: 0.5,
           ),
           const SizedBox(height: 6),
@@ -403,10 +407,23 @@ class EstimateSheet extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (hasPvc)
-                Expanded(child: _materialPreview('ПВХ', screen: false)),
+                Expanded(
+                  child: _materialPreview(
+                    'ПВХ',
+                    screen: false,
+                    caption: 'Защита от снега и дождя. Срок службы 10 лет.',
+                  ),
+                ),
               if (hasPvc && hasScreen) const SizedBox(width: 10),
               if (hasScreen)
-                Expanded(child: _materialPreview('Скрин', screen: true)),
+                Expanded(
+                  child: _materialPreview(
+                    'Скрин',
+                    screen: true,
+                    caption:
+                        'Защита от пыли, пуха и насекомых. Окно проветривается.',
+                  ),
+                ),
             ],
           ),
         ],
@@ -414,22 +431,31 @@ class EstimateSheet extends StatelessWidget {
     );
   }
 
-  Widget _materialPreview(String label, {required bool screen}) {
+  Widget _materialPreview(
+    String label, {
+    required bool screen,
+    required String caption,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          height: 48,
-          width: double.infinity,
-          child: MaterialThumb(screen: screen),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: SizedBox(
+            height: 62,
+            width: double.infinity,
+            child: MaterialThumb(screen: screen),
+          ),
         ),
         const SizedBox(height: 4),
         _text(
           label,
-          size: 10,
-          weight: FontWeight.w600,
+          size: 10.5,
+          weight: FontWeight.w700,
           color: const Color(0xFF2B3440),
         ),
+        const SizedBox(height: 2),
+        _text(caption, size: 8.5, height: 1.2, color: const Color(0xFF5B6B80)),
       ],
     );
   }
@@ -451,7 +477,19 @@ class EstimateSheet extends StatelessWidget {
         formatRubles(estimate.workSubtotal),
         false,
       ),
+      if (estimate.extraSubtotal > 0)
+        (
+          EstimateGroup.extra.subtotalLabel,
+          formatRubles(estimate.extraSubtotal),
+          false,
+        ),
       ('Итого по позициям', formatRubles(estimate.subtotal), true),
+      if (estimate.installationPercent > 0)
+        (
+          'Монтаж ${_percentText(estimate.installationPercent)} %',
+          formatRubles(estimate.installationAmount),
+          false,
+        ),
       if (estimate.markupPercent > 0)
         (
           'Наценка ${_percentText(estimate.markupPercent)} %',

@@ -105,27 +105,31 @@ void main() {
     final estimate = Estimate.of(_project, PriceList.defaults());
 
     // Окантовка: расход из CostsSummary, переведённый в метры.
-    final edgeMm =
-        summary.edgeByRoll.values.fold<double>(0, (sum, value) => sum + value);
+    final edgeMm = summary.edgeByRoll.values.fold<double>(
+      0,
+      (sum, value) => sum + value,
+    );
     expect(edgeMm, greaterThan(0));
-    final edgeLine = estimate.lines
-        .firstWhere((line) => line.title.startsWith('Окантовка'));
+    final edgeLine = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Окантовка'),
+    );
     expect(edgeLine.unit, 'м');
     expect(edgeLine.quantity, closeTo(edgeMm / 1000, 1e-9));
 
     // Люверсы: ровно столько, сколько в сводке.
-    final eyeletLine = estimate.lines
-        .firstWhere((line) => line.title.startsWith('Люверсы'));
+    final eyeletLine = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Люверсы'),
+    );
     expect(eyeletLine.unit, 'шт');
     expect(eyeletLine.quantity, closeTo(summary.eyeletTotal.toDouble(), 1e-9));
 
     // Плёнка: площадь заготовки по контуру с усадкой — та, по которой
     // реально кроится полотно.
-    final filmLine = estimate.lines
-        .firstWhere((line) => line.title.startsWith('Полотно'));
+    final filmLine = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Полотно'),
+    );
     expect(filmLine.quantity, closeTo(summary.filmAreaWithShrinkageM2, 1e-9));
-    expect(filmLine.quantity,
-        greaterThanOrEqualTo(summary.filmAreaM2 - 1e-9));
+    expect(filmLine.quantity, greaterThanOrEqualTo(summary.filmAreaM2 - 1e-9));
 
     // Люверс считается с установкой.
     final prices = PriceList.defaults();
@@ -164,8 +168,9 @@ void main() {
     expect(allTitles, isNot(contains('Напайк')));
     expect(allTitles, isNot(contains('Молния')));
     // Полотно скрина: площадь заготовки 2040 × 2060 = 4,20 м².
-    final filmLine = estimate.lines
-        .firstWhere((line) => line.title.startsWith('Полотно'));
+    final filmLine = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Полотно'),
+    );
     expect(filmLine.title, contains('Скрин'));
     expect(filmLine.quantity, closeTo(4.2024, 1e-9));
     // Цена — из прайса скрина, подпись объясняет площадь заготовки.
@@ -173,10 +178,14 @@ void main() {
     expect(filmLine.unitPrice, prices.filmScreenPerM2);
     expect(filmLine.note, contains('заготовка'));
     expect(filmLine.note, contains('4,20'));
-    expect(filmLine.note, contains('${prices.filmScreenPerM2.toStringAsFixed(0)} ₽/м²'));
+    expect(
+      filmLine.note,
+      contains('${prices.filmScreenPerM2.toStringAsFixed(0)} ₽/м²'),
+    );
     // Работа: подворот по периметру 4 × 2 м и шов 3 мм.
-    final hemLine = estimate.lines
-        .firstWhere((line) => line.title.startsWith('Подворот скрина'));
+    final hemLine = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Подворот скрина'),
+    );
     expect(hemLine.title, contains('3'));
     expect(hemLine.quantity, closeTo(8.0, 1e-9));
     expect(hemLine.unit, 'м');
@@ -184,49 +193,53 @@ void main() {
     expect(hemLine.note, contains('8,00'));
     expect(hemLine.note, contains('низ, право, верх, лево'));
     // Люверсы скрина — по цене люверса с установкой.
-    final eyeletLine = estimate.lines
-        .firstWhere((line) => line.title.startsWith('Люверсы'));
-    expect(eyeletLine.quantity,
-        closeTo(summary.eyeletTotal.toDouble(), 1e-9));
-    expect(eyeletLine.unitPrice,
-        closeTo(prices.eyeletPrice + prices.eyeletInstall, 1e-9));
-    // Усадки нет — площадь с усадкой совпадает с заготовкой.
+    final eyeletLine = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Люверсы'),
+    );
+    expect(eyeletLine.quantity, closeTo(summary.eyeletTotal.toDouble(), 1e-9));
     expect(
-      summary.filmAreaWithShrinkageM2,
-      closeTo(summary.filmAreaM2, 1e-9),
+      eyeletLine.unitPrice,
+      closeTo(prices.eyeletPrice + prices.eyeletInstall, 1e-9),
     );
+    // Усадки нет — площадь с усадкой совпадает с заготовкой.
+    expect(summary.filmAreaWithShrinkageM2, closeTo(summary.filmAreaM2, 1e-9));
   });
 
-  test('смета скрина: смешанные подвороты меняют заготовку, но не периметр', () {
-    // Низ 40, право 50, верх 60, лево 40 → половина каждой стороны:
-    // ширина 2000 + 20 + 25 = 2045, высота 2000 + 20 + 30 + 20 = 2070,
-    // периметр готового изделия остаётся 8000 мм.
-    const screen = WindowParams(
-      material: FilmMaterial.screen,
-      bottomWidth: 2000,
-      topWidth: 2000,
-      leftHeight: 2000,
-      rightHeight: 2000,
-      hemBottomMm: 40,
-      hemRightMm: 50,
-      hemTopMm: 60,
-      hemLeftMm: 40,
-    );
-    final project = const OrderProject(windows: [screen]);
-    final summary = CostsSummary(project);
-    final estimate = Estimate.of(project, PriceList.defaults());
+  test(
+    'смета скрина: смешанные подвороты меняют заготовку, но не периметр',
+    () {
+      // Низ 40, право 50, верх 60, лево 40 → половина каждой стороны:
+      // ширина 2000 + 20 + 25 = 2045, высота 2000 + 20 + 30 + 20 = 2070,
+      // периметр готового изделия остаётся 8000 мм.
+      const screen = WindowParams(
+        material: FilmMaterial.screen,
+        bottomWidth: 2000,
+        topWidth: 2000,
+        leftHeight: 2000,
+        rightHeight: 2000,
+        hemBottomMm: 40,
+        hemRightMm: 50,
+        hemTopMm: 60,
+        hemLeftMm: 40,
+      );
+      final project = const OrderProject(windows: [screen]);
+      final summary = CostsSummary(project);
+      final estimate = Estimate.of(project, PriceList.defaults());
 
-    expect(summary.filmAreaM2, closeTo(2.045 * 2.070, 1e-9));
-    expect(summary.screenHemLengthMm, closeTo(8000, 1e-9));
-    final filmLine = estimate.lines
-        .firstWhere((line) => line.title.startsWith('Полотно'));
-    // Площадь заготовки скрина идёт в смету, а не площадь изделия.
-    expect(filmLine.quantity, closeTo(4.23315, 1e-3));
-    expect(filmLine.quantity, isNot(closeTo(4.0, 1e-6)));
-    final hemLine = estimate.lines
-        .firstWhere((line) => line.title.startsWith('Подворот скрина'));
-    expect(hemLine.quantity, closeTo(8.0, 1e-9));
-  });
+      expect(summary.filmAreaM2, closeTo(2.045 * 2.070, 1e-9));
+      expect(summary.screenHemLengthMm, closeTo(8000, 1e-9));
+      final filmLine = estimate.lines.firstWhere(
+        (line) => line.title.startsWith('Полотно'),
+      );
+      // Площадь заготовки скрина идёт в смету, а не площадь изделия.
+      expect(filmLine.quantity, closeTo(4.23315, 1e-3));
+      expect(filmLine.quantity, isNot(closeTo(4.0, 1e-6)));
+      final hemLine = estimate.lines.firstWhere(
+        (line) => line.title.startsWith('Подворот скрина'),
+      );
+      expect(hemLine.quantity, closeTo(8.0, 1e-9));
+    },
+  );
 
   test('смета скрина с крепежом: цена овального люверса под скобу', () {
     // Скрин с французским замком: по низу и бокам ставится выбранный крепёж,
@@ -247,10 +260,12 @@ void main() {
     );
     final prices = PriceList.defaults();
     final estimate = Estimate.ofWindow(screen, prices);
-    final ovalLine = estimate.lines
-        .firstWhere((line) => line.title.contains(EyeletType.oval42x22.label));
-    final roundLine = estimate.lines
-        .firstWhere((line) => line.title.contains(EyeletType.round10.label));
+    final ovalLine = estimate.lines.firstWhere(
+      (line) => line.title.contains(EyeletType.oval42x22.label),
+    );
+    final roundLine = estimate.lines.firstWhere(
+      (line) => line.title.contains(EyeletType.round10.label),
+    );
 
     // Цена выбранного крепежа/люверса — из прайса.
     expect(ovalLine.unitPrice, prices.eyeletOvalPrice + prices.eyeletInstall);
@@ -292,22 +307,25 @@ void main() {
     // Площадь самой полосы (0,1 м²) справочная и в расход не добавляется.
     expect(summary.screenZipperBandAreaM2, closeTo(0.1, 1e-9));
     expect(summary.filmAreaWithShrinkageM2, closeTo(4.0994, 1e-9));
-    final filmLine = estimate.lines
-        .firstWhere((line) => line.title.startsWith('Полотно'));
+    final filmLine = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Полотно'),
+    );
     expect(filmLine.quantity, closeTo(4.0994, 1e-9));
     expect(filmLine.unitPrice, prices.filmScreenPerM2);
     expect(filmLine.note, contains('полосу молнии 50 мм'));
 
     // Работа: периметр 8 м плюс шов полосы 2 м — по цене подворота скрина.
-    final hemLine = estimate.lines
-        .firstWhere((line) => line.title.startsWith('Подворот скрина'));
+    final hemLine = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Подворот скрина'),
+    );
     expect(hemLine.quantity, closeTo(10.0, 1e-9));
     expect(hemLine.unitPrice, prices.screenHemPerM);
     expect(hemLine.note, contains('швы полос молний'));
 
     // Молния: 2 м по цене прайса, подпись про полосу скрина.
-    final zipperLine = estimate.lines
-        .firstWhere((line) => line.title.startsWith('Молния'));
+    final zipperLine = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Молния'),
+    );
     expect(zipperLine.quantity, closeTo(2.0, 1e-9));
     expect(zipperLine.unitPrice, prices.zipperPerM);
     expect(zipperLine.note, contains('скрина'));
@@ -335,20 +353,20 @@ void main() {
 
     // Заготовка без молнии 2040 × 2060 = 4,2024 м², с полосой 50 мм —
     // 1990 × 2060 = 4,0994 м²: ровно на 50 × 2060 = 0,103 м² меньше.
-    final filmA =
-        a.lines.firstWhere((line) => line.title.startsWith('Полотно'));
-    final filmB =
-        b.lines.firstWhere((line) => line.title.startsWith('Полотно'));
+    final filmA = a.lines.firstWhere(
+      (line) => line.title.startsWith('Полотно'),
+    );
+    final filmB = b.lines.firstWhere(
+      (line) => line.title.startsWith('Полотно'),
+    );
     expect(filmA.quantity, closeTo(4.2024, 1e-9));
     expect(filmB.quantity, closeTo(4.0994, 1e-9));
     expect(filmA.quantity - filmB.quantity, closeTo(0.103, 1e-9));
     expect(filmB.note, contains('полосу молнии 50 мм'));
 
     // Раскрой считается по той же площади заготовки — тоже дешевле.
-    final cutA =
-        a.lines.firstWhere((line) => line.title.startsWith('Раскрой'));
-    final cutB =
-        b.lines.firstWhere((line) => line.title.startsWith('Раскрой'));
+    final cutA = a.lines.firstWhere((line) => line.title.startsWith('Раскрой'));
+    final cutB = b.lines.firstWhere((line) => line.title.startsWith('Раскрой'));
     expect(cutA.quantity - cutB.quantity, closeTo(0.103, 1e-9));
 
     // Деньги: полотно и раскрой уменьшились на площадь полосы по своим
@@ -366,8 +384,9 @@ void main() {
       a.materialsSubtotal - b.materialsSubtotal,
       closeTo(0.103 * prices.filmScreenPerM2, 0.02),
     );
-    final zipperLine = b.lines
-        .firstWhere((line) => line.title.startsWith('Молния'));
+    final zipperLine = b.lines.firstWhere(
+      (line) => line.title.startsWith('Молния'),
+    );
     expect(zipperLine.quantity, closeTo(2.0, 1e-9));
     // Готовая площадь изделия не меняется: молния не уменьшает само окно.
     expect(b.productAreaM2, closeTo(a.productAreaM2, 1e-9));
@@ -383,8 +402,9 @@ void main() {
     );
     final summary = CostsSummary(const OrderProject(windows: [withoutTop]));
     final estimate = Estimate.ofWindow(withoutTop, PriceList.defaults());
-    final eyeletLine = estimate.lines
-        .firstWhere((line) => line.title.startsWith('Люверсы'));
+    final eyeletLine = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Люверсы'),
+    );
 
     // Окно 2000 × 1500 даёт 24 люверса, верх без люверсов — 17.
     expect(summary.eyeletTotal, 17);
@@ -431,11 +451,13 @@ void main() {
       rollBottom: 150,
     );
     final estimate = Estimate.ofWindow(custom, prices);
-    final line = estimate.lines
-        .firstWhere((candidate) => candidate.title.contains('Тент 150 мм'));
+    final line = estimate.lines.firstWhere(
+      (candidate) => candidate.title.contains('Тент 150 мм'),
+    );
 
     // Ожидание считаем от пресетов прайса: 150 мм лежит между 120 и 200.
-    final expected = prices.edge120PerM +
+    final expected =
+        prices.edge120PerM +
         (prices.edge200PerM - prices.edge120PerM) * (150 - 120) / (200 - 120);
     expect(expected, closeTo(189.375, 1e-9));
     expect(prices.edgePerMeterForWidth(150), closeTo(expected, 1e-9));
@@ -470,11 +492,15 @@ void main() {
   test('скидка 10 % уменьшает ИТОГО ровно на 10 %', () {
     final base = PriceList.defaults();
     final full = Estimate.of(_project, base);
-    final discounted =
-        Estimate.of(_project, base.copyWith(discountPercent: 10));
+    final discounted = Estimate.of(
+      _project,
+      base.copyWith(discountPercent: 10),
+    );
 
-    expect(discounted.discountAmount,
-        closeTo(discounted.afterMarkup * 0.1, 0.005));
+    expect(
+      discounted.discountAmount,
+      closeTo(discounted.afterMarkup * 0.1, 0.005),
+    );
     // Скидка считается от суммы после наценки, а та округлена до копейки,
     // поэтому итог отличается от «× 0,9» на копейки — допускаем 2 копейки.
     expect(discounted.total, closeTo(full.total * 0.9, 0.02));
@@ -491,20 +517,19 @@ void main() {
   });
 
   test('НДС считается от суммы после наценки и скидки', () {
-    final prices = PriceList.defaults()
-        .copyWith(markupPercent: 10, discountPercent: 10);
+    final prices = PriceList.defaults().copyWith(
+      markupPercent: 10,
+      discountPercent: 10,
+    );
     final estimate = Estimate.of(_project, prices);
 
-    expect(estimate.markupAmount,
-        closeTo(estimate.subtotal * 0.1, 0.005));
-    expect(estimate.discountAmount,
-        closeTo(estimate.afterMarkup * 0.1, 0.005));
+    expect(estimate.markupAmount, closeTo(estimate.subtotal * 0.1, 0.005));
+    expect(estimate.discountAmount, closeTo(estimate.afterMarkup * 0.1, 0.005));
     expect(
       estimate.taxableAmount,
       closeTo(estimate.afterMarkup - estimate.discountAmount, 0.001),
     );
-    expect(estimate.vatAmount,
-        closeTo(estimate.taxableAmount * 0.2, 0.005));
+    expect(estimate.vatAmount, closeTo(estimate.taxableAmount * 0.2, 0.005));
     expect(
       estimate.total,
       closeTo(estimate.taxableAmount + estimate.vatAmount, 0.001),
@@ -517,7 +542,10 @@ void main() {
   });
 
   test('пустой заказ и нулевые цены не ломают расчёт', () {
-    final empty = Estimate.of(const OrderProject(windows: []), PriceList.defaults());
+    final empty = Estimate.of(
+      const OrderProject(windows: []),
+      PriceList.defaults(),
+    );
     expect(empty.total, 0);
     expect(empty.pricePerWindow, 0);
     expect(empty.lines, isEmpty);
@@ -538,6 +566,7 @@ void main() {
         weldPerM: 0,
         pocketPerM: 0,
         strapPrice: 0,
+        aluminumBoxPerM: 0,
         drainPrice: 0,
         cutoutPrice: 0,
         laborPerM2: 0,
@@ -649,10 +678,7 @@ void main() {
 
   test('размер листа: пустой — заполняет окно, длинный — задаёт высоту', () {
     // Небольшая смета в большом окне — лист заполняет окно (null).
-    expect(
-      EstimateSheet.sheetSize(_project, const Size(1720, 1080)),
-      isNull,
-    );
+    expect(EstimateSheet.sheetSize(_project, const Size(1720, 1080)), isNull);
     // В маленьком окне лист становится длиннее окна.
     final small = EstimateSheet.sheetSize(_project, const Size(900, 700));
     expect(small, isNotNull);
@@ -691,8 +717,9 @@ void main() {
     await tester.pumpAndSettle();
 
     final bytes = await tester.runAsync(() async {
-      final boundary = captureKey.currentContext!.findRenderObject()!
-          as RenderRepaintBoundary;
+      final boundary =
+          captureKey.currentContext!.findRenderObject()!
+              as RenderRepaintBoundary;
       final image = await boundary.toImage(pixelRatio: 2.2);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       return data!.buffer.asUint8List();

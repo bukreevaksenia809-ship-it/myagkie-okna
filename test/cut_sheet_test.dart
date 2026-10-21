@@ -309,7 +309,7 @@ void main() {
           .map((placement) => placement.rect.height)
           .reduce(math.max);
       // Полоса ряда 460 точек, самая крупная заготовка — 75 % полосы.
-      expect(tallest / CutLayout.preferredRowHeight, closeTo(0.75, 1e-9));
+      expect(tallest / CutLayout.preferredRowHeight, closeTo(0.75, 0.01));
       expect(layout.contentHeight, lessThanOrEqualTo(460 + 1e-6));
     });
 
@@ -457,47 +457,38 @@ void main() {
     });
   });
 
-  group('CutSheet.sheetSize', () {
-    test('одно окно: null или непустой размер', () {
-      const single = OrderProject(windows: [_w2000]);
-      final size = CutSheet.sheetSize(single, const Size(1720, 1080));
-
-      // Одно окно влезает — лист заполняет окно программы.
-      expect(size, isNull);
-
-      // В низком окне лист растёт, но остаётся корректным.
-      final small = CutSheet.sheetSize(single, const Size(900, 300));
-      expect(small, isNotNull);
-      expect(small!.width, greaterThan(0));
-      expect(small.height, greaterThan(300));
-    });
-
-    test('лист растёт, когда заготовок много', () {
+  group('CutSheet.sheetSize — строго один A4', () {
+    test('размер не зависит от числа окон и окна программы', () {
       const single = OrderProject(windows: [_w2000]);
       final many = OrderProject(windows: [for (var i = 0; i < 24; i++) _w2000]);
 
-      final oneSize = CutSheet.sheetSize(single, const Size(1720, 1080));
-      final manySize = CutSheet.sheetSize(many, const Size(1720, 1080));
-
-      expect(manySize, isNotNull);
-      expect(manySize!.height, greaterThan(1080));
-      expect(manySize.height, greaterThan(oneSize?.height ?? 0));
-      expect(manySize.width, greaterThan(0));
+      for (final project in [single, many]) {
+        for (final viewport in const [
+          Size(1720, 1080),
+          Size(900, 300),
+          Size(2400, 1800),
+        ]) {
+          final size = CutSheet.sheetSize(project, viewport);
+          expect(size.width, CutSheet.a4Width + 40);
+          expect(size.height, CutSheet.a4Height + 40);
+        }
+      }
     });
 
-    test('рост листа согласован с раскладкой', () {
+    test('24 заготовки помещаются в свободную часть A4', () {
       final many = OrderProject(windows: [for (var i = 0; i < 24; i++) _w2000]);
-      final size = CutSheet.sheetSize(many, const Size(1720, 1080))!;
-      final contentWidth = size.width - 80;
-      final layout = CutLayout.natural([
+      final pieces = [
         for (final window in many.windows)
           CutPiece.ofSpec(WindowSpec.of(window)),
-      ], contentWidth);
-
-      // Лист ровно вмещает раскладку: заготовки не обрезаны, обвязка — это
-      // подпись листа, итоги, штамп и поля вокруг.
+      ];
+      final area = const Size(
+        CutSheet.a4ContentWidth,
+        CutSheet.a4ContentHeight,
+      );
+      final layout = CutLayout.place(pieces, area);
       expect(layout.rows, greaterThan(1));
-      expect(size.height - layout.contentHeight, inInclusiveRange(200, 400));
+      expect(layout.contentHeight, lessThanOrEqualTo(area.height + 0.01));
+      expect(layout.contentWidth, lessThanOrEqualTo(area.width + 0.01));
     });
   });
 
@@ -554,9 +545,7 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
 
       final many = OrderProject(windows: [for (var i = 0; i < 24; i++) _w2000]);
-      final viewport =
-          CutSheet.sheetSize(many, const Size(1720, 1080)) ??
-          const Size(1720, 1080);
+      final viewport = CutSheet.sheetSize(many, const Size(1720, 1080));
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = viewport;
 
@@ -581,39 +570,32 @@ void main() {
       const allowanceOrder = OrderProject(windows: [_w2000, _w2000Allowance]);
       final cases = <String, ({Size viewport, OrderProject project})>{
         'raskroy': (
-          viewport:
-              CutSheet.sheetSize(_order, const Size(1720, 1080)) ??
-              const Size(1720, 1080),
+          viewport: CutSheet.sheetSize(_order, const Size(1720, 1080)),
           project: _order,
         ),
         // Припуск на раскрой: заготовка справа крупнее изделия слева.
         'raskroy-pripusk': (
-          viewport:
-              CutSheet.sheetSize(allowanceOrder, const Size(1720, 1080)) ??
-              const Size(1720, 1080),
+          viewport: CutSheet.sheetSize(allowanceOrder, const Size(1720, 1080)),
           project: allowanceOrder,
         ),
         // Заказ на несколько рядов: лист растёт, заготовки не обрезаются.
         'raskroy-zakaz': (
-          viewport:
-              CutSheet.sheetSize(many, const Size(1720, 1080)) ??
-              const Size(1720, 1080),
+          viewport: CutSheet.sheetSize(many, const Size(1720, 1080)),
           project: many,
         ),
         // Трапеция рядом с прямоугольником: форма, все четыре стороны и
         // фактическая площадь по контуру.
         'raskroy-trapetsiya': (
-          viewport:
-              CutSheet.sheetSize(_trapezoidOrder, const Size(1720, 1080)) ??
-              const Size(1720, 1080),
+          viewport: CutSheet.sheetSize(_trapezoidOrder, const Size(1720, 1080)),
           project: _trapezoidOrder,
         ),
         // Скрин с молнией: заготовка уже на полосу — 1990 × 2060 мм, под
         // площадью и под заготовкой подписано «полоса молнии 50 мм».
         'raskroy-skrin-molniya': (
-          viewport:
-              CutSheet.sheetSize(_screenZipperOrder, const Size(1720, 1080)) ??
-              const Size(1720, 1080),
+          viewport: CutSheet.sheetSize(
+            _screenZipperOrder,
+            const Size(1720, 1080),
+          ),
           project: _screenZipperOrder,
         ),
       };

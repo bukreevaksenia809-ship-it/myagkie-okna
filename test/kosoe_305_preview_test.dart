@@ -80,8 +80,7 @@ void main() {
     }
 
     final cutViewport =
-        CutSheet.sheetSize(project, const Size(1720, 1080)) ??
-        const Size(1720, 1080);
+        CutSheet.sheetSize(project, const Size(1720, 1080));
     await shoot(
       'raskroy-kosoe-305',
       cutViewport,

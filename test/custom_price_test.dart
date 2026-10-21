@@ -98,9 +98,9 @@ void main() {
     expect(line.unit, 'шт');
     expect(line.unitPrice, 500);
     expect(line.amount, 1000);
-    expect(line.group, EstimateGroup.work);
+    expect(line.group, EstimateGroup.extra);
     expect(
-      estimate.workSubtotal - Estimate.of(project, base).workSubtotal,
+      estimate.extraSubtotal - Estimate.of(project, base).extraSubtotal,
       closeTo(1000, 1e-9),
     );
   });

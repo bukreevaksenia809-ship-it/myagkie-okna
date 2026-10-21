@@ -20,12 +20,16 @@ export '../models/price_list.dart'
 enum EstimateGroup {
   materials,
   hardware,
-  work;
+  work,
+
+  /// Свободные позиции ручного ввода из прайса.
+  extra;
 
   String get label => switch (this) {
     EstimateGroup.materials => 'Материалы',
     EstimateGroup.hardware => 'Фурнитура и спецэлементы',
     EstimateGroup.work => 'Работы',
+    EstimateGroup.extra => 'Доп',
   };
 
   /// Подпись для итоговой строки раздела.
@@ -33,6 +37,7 @@ enum EstimateGroup {
     EstimateGroup.materials => 'Итого материалы',
     EstimateGroup.hardware => 'Итого фурнитура',
     EstimateGroup.work => 'Итого работы',
+    EstimateGroup.extra => 'Итого доп',
   };
 }
 
@@ -448,6 +453,32 @@ class Estimate {
       );
     }
 
+    // Алюминиевый бокс: по одной ширине на каждое окно. Метраж — сумма
+    // ширин изделий; цена задаётся в прайсе за метр.
+    final aluminumMeters =
+        summary.specs.fold<double>(
+          0,
+          (sum, spec) => sum + spec.geometry.bottomWidth,
+        ) /
+        1000;
+    if (aluminumMeters > 0 &&
+        prices.aluminumBoxPerM > 0 &&
+        prices.isEnabled(PriceItemKeys.aluminumBox)) {
+      lines.add(
+        EstimateLine(
+          title: 'Алюминиевый бокс',
+          note:
+              'одна ширина на окно; всего '
+              '${formatMeters(aluminumMeters)} м',
+          quantity: aluminumMeters,
+          unit: 'м',
+          unitPrice: prices.aluminumBoxPerM,
+          group: EstimateGroup.hardware,
+          itemKey: PriceItemKeys.aluminumBox,
+        ),
+      );
+    }
+
     // Свободные позиции ручного ввода из прайса: название, количество,
     // единица и цена. Идут отдельной строкой в работах, без привязки к окну.
     for (final item in prices.customItems) {
@@ -460,7 +491,7 @@ class Estimate {
           quantity: item.quantity,
           unit: item.unit,
           unitPrice: item.unitPrice,
-          group: EstimateGroup.work,
+          group: EstimateGroup.extra,
         ),
       );
     }
@@ -492,10 +523,12 @@ class Estimate {
   double get materialsSubtotal => subtotalFor(EstimateGroup.materials);
   double get hardwareSubtotal => subtotalFor(EstimateGroup.hardware);
   double get workSubtotal => subtotalFor(EstimateGroup.work);
+  double get extraSubtotal => subtotalFor(EstimateGroup.extra);
 
   /// Сумма всех позиций без наценки, скидки и НДС.
-  double get subtotal =>
-      roundMoney(materialsSubtotal + hardwareSubtotal + workSubtotal);
+  double get subtotal => roundMoney(
+    materialsSubtotal + hardwareSubtotal + workSubtotal + extraSubtotal,
+  );
 
   double get markupPercent =>
       prices.markupPercent.isFinite ? math.max(prices.markupPercent, 0) : 0;
@@ -504,6 +537,18 @@ class Estimate {
       ? prices.discountPercent.clamp(0, 100).toDouble()
       : 0;
 
+  /// Монтаж, % от суммы позиций (до наценки и скидки).
+  double get installationPercent => prices.installationPercent.isFinite
+      ? prices.installationPercent.clamp(0, 100).toDouble()
+      : 0;
+
+  /// База для монтажа — сумма всех позиций.
+  double get installationBase => subtotal;
+
+  /// Стоимость монтажа, ₽.
+  double get installationAmount =>
+      roundMoney(installationBase * installationPercent / 100);
+
   double get vatPercent => prices.vatPercent.isFinite
       ? prices.vatPercent.clamp(0, 100).toDouble()
       : 0;
@@ -511,8 +556,9 @@ class Estimate {
   /// Наценка в рублях.
   double get markupAmount => roundMoney(subtotal * markupPercent / 100);
 
-  /// Сумма с наценкой — база для скидки.
-  double get afterMarkup => roundMoney(subtotal + markupAmount);
+  /// Сумма с монтажом и наценкой — база для скидки.
+  double get afterMarkup =>
+      roundMoney(subtotal + installationAmount + markupAmount);
 
   /// Скидка в рублях.
   double get discountAmount => roundMoney(afterMarkup * discountPercent / 100);

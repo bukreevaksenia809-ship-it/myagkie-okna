@@ -147,8 +147,7 @@ void main() {
 
     const project = OrderProject(windows: [_trapezoid, _differentHeights]);
     final viewport =
-        CutSheet.sheetSize(project, const Size(1720, 1080)) ??
-        const Size(1720, 1080);
+CutSheet.sheetSize(project, const Size(1720, 1080));
     tester.view.physicalSize = viewport;
 
     final captureKey = GlobalKey();

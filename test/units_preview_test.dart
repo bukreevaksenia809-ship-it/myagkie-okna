@@ -82,8 +82,7 @@ void main() {
     // 2. Раскрой в см.
     const project = OrderProject(windows: [_window]);
     final viewport =
-        CutSheet.sheetSize(project, const Size(1720, 1080)) ??
-        const Size(1720, 1080);
+        CutSheet.sheetSize(project, const Size(1720, 1080));
     tester.view.physicalSize = viewport;
     final cutKey = GlobalKey();
     await tester.pumpWidget(

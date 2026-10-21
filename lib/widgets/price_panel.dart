@@ -192,6 +192,19 @@ class _PricePanelState extends State<PricePanel> {
                 (value) => _set(prices.copyWith(strapPrice: value)),
                 itemKey: PriceItemKeys.strap,
               ),
+              _row(
+                'Алюминиевый бокс, ₽/м',
+                prices.aluminumBoxPerM,
+                (value) => _set(prices.copyWith(aluminumBoxPerM: value)),
+                itemKey: PriceItemKeys.aluminumBox,
+              ),
+              const Padding(
+                padding: EdgeInsets.only(left: 2, bottom: 4),
+                child: Text(
+                  '0 — не считать; метраж = одна ширина на окно',
+                  style: TextStyle(fontSize: 9.5, color: Color(0xFF8A93A0)),
+                ),
+              ),
               // Крепёж подвижных сторон: все три типа — за штуку.
               _row(
                 'Поворотная скоба, ₽/шт',
@@ -257,6 +270,11 @@ class _PricePanelState extends State<PricePanel> {
                 'Скидка, %',
                 prices.discountPercent,
                 (value) => _set(prices.copyWith(discountPercent: value)),
+              ),
+              _row(
+                'Монтаж, % от суммы позиций',
+                prices.installationPercent,
+                (value) => _set(prices.copyWith(installationPercent: value)),
               ),
               _row(
                 'НДС, %',
