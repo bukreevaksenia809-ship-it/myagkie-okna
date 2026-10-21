@@ -71,6 +71,17 @@ String _sheetsWord(int count) {
   return 'листов';
 }
 
+/// Заказ в верхнем списке: имя и проект с окнами.
+class _OrderDraft {
+  _OrderDraft({required this.name, required this.project});
+
+  final String name;
+  final OrderProject project;
+
+  _OrderDraft copyWith({String? name, OrderProject? project}) =>
+      _OrderDraft(name: name ?? this.name, project: project ?? this.project);
+}
+
 class BuilderScreen extends StatefulWidget {
   const BuilderScreen({super.key});
 
@@ -79,7 +90,15 @@ class BuilderScreen extends StatefulWidget {
 }
 
 class _BuilderScreenState extends State<BuilderScreen> {
-  OrderProject _project = const OrderProject();
+  /// Заказы сверху: у каждого своё имя и свои окна. Активный — [_orderIndex].
+  List<_OrderDraft> _drafts = [
+    _OrderDraft(name: 'Заказ 1', project: const OrderProject()),
+  ];
+  int _orderIndex = 0;
+
+  /// Проект активного заказа.
+  OrderProject get _project => _drafts[_orderIndex].project;
+
   PriceList _prices = const PriceList.defaults();
   SheetTab _tab = SheetTab.drawing;
   List<SavedOrder> _orders = const [];
@@ -144,13 +163,105 @@ class _BuilderScreenState extends State<BuilderScreen> {
     }
   }
 
-  void _updateProject(OrderProject project) =>
-      setState(() => _project = project);
+  void _updateProject(OrderProject project) => setState(() {
+    _drafts[_orderIndex] = _drafts[_orderIndex].copyWith(project: project);
+  });
 
   void _reset() => setState(() {
-    _project = const OrderProject();
+    _drafts[_orderIndex] = _drafts[_orderIndex].copyWith(
+      project: const OrderProject(),
+    );
     _zoom.value = Matrix4.identity();
   });
+
+  // ---------------------------------------------------------- верхние заказы
+
+  void _selectOrderDraft(int index) {
+    if (index < 0 || index >= _drafts.length) return;
+    setState(() => _orderIndex = index);
+    _resetZoom();
+  }
+
+  Future<void> _createOrderDraft() async {
+    final name = await _askOrderName(
+      title: 'Новый заказ',
+      initial: 'Заказ ${_drafts.length + 1}',
+    );
+    if (name == null || !mounted) return;
+    setState(() {
+      _drafts = [
+        ..._drafts,
+        _OrderDraft(name: name, project: const OrderProject()),
+      ];
+      _orderIndex = _drafts.length - 1;
+    });
+    _resetZoom();
+  }
+
+  Future<void> _renameOrderDraft(int index) async {
+    if (index < 0 || index >= _drafts.length) return;
+    final name = await _askOrderName(
+      title: 'Переименовать заказ',
+      initial: _drafts[index].name,
+    );
+    if (name == null || !mounted) return;
+    setState(() {
+      _drafts[index] = _drafts[index].copyWith(name: name);
+    });
+  }
+
+  void _deleteOrderDraft(int index) {
+    if (_drafts.length <= 1 || index < 0 || index >= _drafts.length) return;
+    final next = [..._drafts]..removeAt(index);
+    var selected = _orderIndex;
+    if (index < selected) selected--;
+    if (selected >= next.length) selected = next.length - 1;
+    setState(() {
+      _drafts = next;
+      _orderIndex = selected;
+    });
+  }
+
+  Future<String?> _askOrderName({
+    required String title,
+    required String initial,
+  }) async {
+    final controller = TextEditingController(text: initial);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          key: const Key('order-name-field'),
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            labelText: 'Название заказа',
+            hintText: 'Например: Дача, Беседка, Кухня',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            key: const Key('save-order-name'),
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    // Диалог закрывается анимацией: поле ещё перерисовывается несколько
+    // кадров, поэтому controller нельзя освобождать сразу.
+    Future<void>.delayed(const Duration(milliseconds: 400), controller.dispose);
+    final trimmed = result?.trim() ?? '';
+    return trimmed.isEmpty ? null : trimmed;
+  }
 
   // ------------------------------------------------------------------ заказы
 
@@ -168,7 +279,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _ordersBusy = true);
     try {
-      final saved = await saveOrder(_project);
+      final saved = await saveOrder(_project, name: _drafts[_orderIndex].name);
       await _refreshOrders();
       messenger.showSnackBar(
         SnackBar(
@@ -191,7 +302,11 @@ class _BuilderScreenState extends State<BuilderScreen> {
       final project = await loadOrder(order);
       if (!mounted) return;
       setState(() {
-        _project = project;
+        _drafts = [
+          ..._drafts,
+          _OrderDraft(name: order.title, project: project),
+        ];
+        _orderIndex = _drafts.length - 1;
         _ordersBusy = false;
       });
       _resetZoom();
@@ -660,8 +775,22 @@ class _BuilderScreenState extends State<BuilderScreen> {
                   issues: issues,
                   onChanged: _updateProject,
                   onReset: _reset,
+                  prices: _prices,
+                  orderOverviews: [
+                    for (var i = 0; i < _drafts.length; i++)
+                      OrderOverview(
+                        name: _drafts[i].name,
+                        windowCount: _drafts[i].project.windowCount,
+                      ),
+                  ],
+                  selectedOrderIndex: _orderIndex,
+                  onSelectOrder: _selectOrderDraft,
+                  onCreateOrder: _createOrderDraft,
+                  onRenameOrder: _renameOrderDraft,
+                  onDeleteOrder: _deleteOrderDraft,
                   pricesSection: PricePanel(
                     prices: _prices,
+                    materials: _project.materialsInOrder,
                     onChanged: (prices) => setState(() => _prices = prices),
                   ),
                   techSection: _techSection(),

@@ -39,7 +39,7 @@ class OrdersPanel extends StatelessWidget {
             children: [
               const Expanded(
                 child: Text(
-                  'ЗАКАЗЫ (ОТЧЁТНОСТЬ)',
+                  'СОХРАНЁННЫЕ ЗАКАЗЫ (ФАЙЛЫ)',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,

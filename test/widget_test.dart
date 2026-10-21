@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/main.dart';
@@ -6,8 +5,9 @@ import 'package:soft_window_drawer/models/order_project.dart';
 import 'package:soft_window_drawer/widgets/params_panel.dart';
 
 void main() {
-  testWidgets('экран конструктора: панель, лист и переключение вкладок',
-      (WidgetTester tester) async {
+  testWidgets('экран конструктора: панель, лист и переключение вкладок', (
+    WidgetTester tester,
+  ) async {
     // Высокое окно, чтобы вся панель параметров была построена без прокрутки.
     // Панель выросла (тумблеры усадки и авто-припуска +10 мм), поэтому
     // берём запас по высоте.
@@ -20,10 +20,13 @@ void main() {
     await tester.pumpAndSettle();
 
     // Панель параметров и список окон заказа.
-    expect(find.text('Мягкие окна — чертежи, раскрой, раскладка'), findsOneWidget);
+    expect(
+      find.text('Мягкие окна — чертежи, раскрой, раскладка'),
+      findsOneWidget,
+    );
     expect(find.text('Ширина низ'), findsOneWidget);
     expect(find.text('Ширина верх'), findsOneWidget);
-    expect(find.text('Добавить окно'), findsOneWidget);
+    expect(find.text('Создать окно'), findsOneWidget);
     expect(find.text('Глухое'), findsWidgets);
     expect(find.text('Подъёмное'), findsWidgets);
 
@@ -34,9 +37,11 @@ void main() {
     expect(find.text('Добавить молнию'), findsOneWidget);
     expect(find.text('Добавить фартук'), findsOneWidget);
 
-    // Раздел «Полотно»: материалы и доступные ширины рулонов.
-    expect(find.text('Обычный ПВХ'), findsWidgets);
-    expect(find.text('Тонированный ПВХ'), findsWidgets);
+    // Раздел «Материал окна»: ПВХ с видами и скрин.
+    expect(find.text('ПВХ'), findsWidgets);
+    expect(find.text('Скрин'), findsWidgets);
+    expect(find.text('Прозрачное'), findsWidgets);
+    expect(find.text('Тонированное'), findsWidgets);
     expect(find.text('Москитная сетка'), findsWidgets);
 
     // Режимы листа.
@@ -46,8 +51,18 @@ void main() {
     // Номер окна подписан на листе.
     expect(find.textContaining('Окно №1'), findsWidgets);
 
-    // Раздел заказов в панели: сохранение и отчётность.
-    expect(find.text('ЗАКАЗЫ (ОТЧЁТНОСТЬ)'), findsOneWidget);
+    // Раздел сохранённых заказов — внизу панели: прокручиваем к нему.
+    await tester.scrollUntilVisible(
+      find.text('СОХРАНЁННЫЕ ЗАКАЗЫ (ФАЙЛЫ)'),
+      800,
+      scrollable: find
+          .descendant(
+            of: find.byType(ParamsPanel),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(find.text('СОХРАНЁННЫЕ ЗАКАЗЫ (ФАЙЛЫ)'), findsOneWidget);
     expect(find.text('Сохранить заказ'), findsOneWidget);
 
     // Вкладка расходов.
@@ -67,8 +82,9 @@ void main() {
     expect(find.textContaining('Окно №1'), findsWidgets);
   });
 
-  testWidgets('панель 420: своя ширина окантовки вводится руками',
-      (WidgetTester tester) async {
+  testWidgets('панель 420: своя ширина окантовки вводится руками', (
+    WidgetTester tester,
+  ) async {
     // Узкая панель (420) и высокое окно: весь раздел «Окантовка» построен,
     // по ширине ничего не переполняется.
     tester.view.physicalSize = const Size(420, 9000);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/price_list.dart';
+import '../models/window_params.dart';
 
 /// Раздел «Прайс-лист»: цены материалов, фурнитуры и работ для сметы.
 ///
@@ -12,10 +13,16 @@ class PricePanel extends StatefulWidget {
     super.key,
     required this.prices,
     required this.onChanged,
+    this.materials = const [],
   });
 
   final PriceList prices;
   final ValueChanged<PriceList> onChanged;
+
+  /// Материалы заказа: по ним показываем превью ПВХ/скрина и продающие
+  /// подписи. Пустой список — панель без превью (так её используют тесты,
+  /// которым нужен только прайс).
+  final List<FilmMaterial> materials;
 
   @override
   State<PricePanel> createState() => _PricePanelState();
@@ -76,39 +83,32 @@ class _PricePanelState extends State<PricePanel> {
             'Всё в рублях за единицу.',
             style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
+          _materialsPreview(),
           if (_open) ...[
             const SizedBox(height: 10),
             _group('Полотно, ₽/м²', [
               _row(
                 'Обычный ПВХ',
                 prices.film(PriceField.filmClear),
-                (value) => _set(prices.copyWith(
-                  filmClearPerM2: value,
-                )),
+                (value) => _set(prices.copyWith(filmClearPerM2: value)),
                 itemKey: PriceItemKeys.filmClear,
               ),
               _row(
                 'Тонированный',
                 prices.film(PriceField.filmTinted),
-                (value) => _set(prices.copyWith(
-                  filmTintedPerM2: value,
-                )),
+                (value) => _set(prices.copyWith(filmTintedPerM2: value)),
                 itemKey: PriceItemKeys.filmTinted,
               ),
               _row(
                 'Москитная сетка',
                 prices.film(PriceField.filmMesh),
-                (value) => _set(prices.copyWith(
-                  filmMeshPerM2: value,
-                )),
+                (value) => _set(prices.copyWith(filmMeshPerM2: value)),
                 itemKey: PriceItemKeys.filmMesh,
               ),
               _row(
                 'Скрин, ₽/м²',
                 prices.film(PriceField.filmScreen),
-                (value) => _set(prices.copyWith(
-                  filmScreenPerM2: value,
-                )),
+                (value) => _set(prices.copyWith(filmScreenPerM2: value)),
                 itemKey: PriceItemKeys.filmScreen,
               ),
             ]),
@@ -277,6 +277,104 @@ class _PricePanelState extends State<PricePanel> {
 
   void _set(PriceList prices) => widget.onChanged(prices);
 
+  /// Превью материалов заказа: ПВХ, скрин или оба рядом. Рисуются программно,
+  /// без новых пакетов и картинок в assets.
+  Widget _materialsPreview() {
+    final materials = widget.materials;
+    if (materials.isEmpty) return const SizedBox.shrink();
+    final hasPvc = materials.any((material) => material != FilmMaterial.screen);
+    final hasScreen = materials.any(
+      (material) => material == FilmMaterial.screen,
+    );
+    return Column(
+      key: const Key('price-material-previews'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        const Text(
+          'МАТЕРИАЛЫ ЗАКАЗА',
+          style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+            color: Color(0xFF7C8798),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (hasPvc)
+              _materialCard(
+                key: const Key('price-material-pvc'),
+                title: 'ПВХ',
+                caption:
+                    'Лучшее решение в межсезонье — защита от снега и дождя. '
+                    'Срок службы 10 лет.',
+                screen: false,
+              ),
+            if (hasScreen)
+              _materialCard(
+                key: const Key('price-material-screen'),
+                title: 'Скрин',
+                caption:
+                    'Защита от пыли, пуха и насекомых — окно при этом '
+                    'проветривается.',
+                screen: true,
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _materialCard({
+    required Key key,
+    required String title,
+    required String caption,
+    required bool screen,
+  }) {
+    return Container(
+      key: key,
+      width: 165,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F9FC),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 58,
+            width: double.infinity,
+            child: CustomPaint(painter: _MaterialThumbPainter(screen: screen)),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF2B3440),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            caption,
+            style: const TextStyle(
+              fontSize: 10,
+              height: 1.25,
+              color: Color(0xFF66748A),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _group(String title, List<Widget> children) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -357,8 +455,10 @@ class _PricePanelState extends State<PricePanel> {
                 decoration: const InputDecoration(
                   isDense: true,
                   border: OutlineInputBorder(),
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
                 ),
                 style: const TextStyle(fontSize: 12.5),
                 onChanged: (text) {
@@ -383,8 +483,7 @@ class _PricePanelState extends State<PricePanel> {
       tooltip: enabled
           ? 'Не учитывать в смете: $label'
           : 'Учитывать в смете: $label',
-      onPressed: () =>
-          _set(widget.prices.withItem(itemKey, enabled: !enabled)),
+      onPressed: () => _set(widget.prices.withItem(itemKey, enabled: !enabled)),
       icon: Icon(
         enabled ? Icons.check_box : Icons.check_box_outline_blank,
         size: 18,
@@ -401,4 +500,60 @@ class _PricePanelState extends State<PricePanel> {
     if (value == value.roundToDouble()) return value.toStringAsFixed(0);
     return value.toStringAsFixed(2).replaceAll('.', ',');
   }
+}
+
+/// Мини-превью материала: полупрозрачное полотно ПВХ или серая сетка скрина.
+class _MaterialThumbPainter extends CustomPainter {
+  const _MaterialThumbPainter({required this.screen});
+
+  final bool screen;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final border = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = const Color(0xFF9AA7B8);
+    if (screen) {
+      canvas.drawRect(rect, Paint()..color = const Color(0xFFE1E6EC));
+      final mesh = Paint()
+        ..color = const Color(0xFF6D7A8A).withValues(alpha: 0.6)
+        ..strokeWidth = 0.7;
+      for (var x = 0.0; x <= size.width; x += 5) {
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), mesh);
+      }
+      for (var y = 0.0; y <= size.height; y += 5) {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), mesh);
+      }
+      canvas.drawRect(rect.deflate(0.5), border);
+      return;
+    }
+    // ПВХ: голубоватое полупрозрачное полотно с бликом.
+    canvas.drawRect(rect, Paint()..color = const Color(0x3359A6D8));
+    final sheenRect = Rect.fromLTWH(
+      size.width * 0.08,
+      0,
+      size.width * 0.34,
+      size.height,
+    );
+    final sheen = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0x00FFFFFF), Color(0x99FFFFFF), Color(0x00FFFFFF)],
+      ).createShader(sheenRect);
+    final path = Path()
+      ..moveTo(size.width * 0.08, size.height)
+      ..lineTo(size.width * 0.42, 0)
+      ..lineTo(size.width * 0.58, 0)
+      ..lineTo(size.width * 0.24, size.height)
+      ..close();
+    canvas.drawPath(path, sheen);
+    canvas.drawRect(rect.deflate(0.5), border);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MaterialThumbPainter oldDelegate) =>
+      oldDelegate.screen != screen;
 }

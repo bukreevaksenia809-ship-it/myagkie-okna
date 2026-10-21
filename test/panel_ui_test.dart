@@ -465,7 +465,7 @@ void _screenAndWeldRules() {
     expect(tester.takeException(), isNull);
 
     // --- Запайка под окантовку: возвращаемся на ПВХ и вводим 10 мм ---
-    final pvcChip = find.text('Обычный ПВХ');
+    final pvcChip = find.byKey(const Key('material-pvc'));
     await tester.ensureVisible(pvcChip);
     await tester.tap(pvcChip);
     await tester.pumpAndSettle();
