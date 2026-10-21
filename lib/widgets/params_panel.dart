@@ -1590,7 +1590,22 @@ class _ParamsPanelState extends State<ParamsPanel> {
           '${formatMm(params.weldOverlapMm)} ${unitSuffix()} может не хватить ленты.',
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
+        _weldOverlapField(params),
+      ],
+    );
+  }
+
+  /// «Спайка с соседним окном» — сворачиваемый блок в самом низу панели.
+  Widget _weldingSection(WindowParams params) {
+    final sides = params.weldedSides;
+    return _expansion(
+      title: 'Спайка с соседним окном',
+      subtitle: sides.isEmpty
+          ? 'не включена'
+          : 'спаяно: ${sides.map((side) => side.label).join(', ')}',
+      initiallyExpanded: false,
+      children: [
         const Text(
           'Спайка с соседним окном',
           style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
@@ -1671,8 +1686,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
             ),
           ),
         ],
-        const SizedBox(height: 12),
-        _weldOverlapField(params),
       ],
     );
   }
@@ -2168,6 +2181,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
             const SizedBox(height: 12),
             widget.pricesSection!,
           ],
+          const SizedBox(height: 12),
+          _weldingSection(params),
         ],
       ),
     );
@@ -3153,6 +3168,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     required String title,
     required String subtitle,
     required List<Widget> children,
+    bool initiallyExpanded = true,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -3161,7 +3177,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
         border: Border.all(color: const Color(0xFFD9E0EA)),
       ),
       child: ExpansionTile(
-        initiallyExpanded: true,
+        initiallyExpanded: initiallyExpanded,
         shape: const Border(),
         collapsedShape: const Border(),
         tilePadding: const EdgeInsets.symmetric(horizontal: 12),

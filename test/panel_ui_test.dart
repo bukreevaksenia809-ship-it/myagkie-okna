@@ -78,12 +78,24 @@ void main() {
     expect(hostKey.currentState!.project.selected.cutouts, hasLength(1));
     expect(tester.takeException(), isNull);
 
-    // 2. Спайка: четыре чипа по кругу и кнопки добавления окна стороной.
+    // 2. Спайка — сворачиваемый блок в самом низу панели.
+    final panelScroll = find
+        .descendant(
+          of: find.byType(ParamsPanel),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.drag(panelScroll, const Offset(0, -9000));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Спайка с соседним окном'));
+    await tester.pumpAndSettle();
     expect(find.text('Спаяно снизу'), findsOneWidget);
     expect(find.text('Спаяно справа'), findsOneWidget);
     expect(find.text('Спаяно сверху'), findsOneWidget);
     expect(find.text('Спаяно слева'), findsOneWidget);
 
+    await tester.ensureVisible(find.byKey(const Key('add-welded-bottom')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('add-welded-bottom')));
     await tester.pumpAndSettle();
 

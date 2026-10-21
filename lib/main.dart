@@ -377,7 +377,11 @@ class _BuilderScreenState extends State<BuilderScreen> {
     SheetTab.roll => null,
     SheetTab.cut => CutSheet.sheetSize(_project, viewport),
     SheetTab.costs => CostsSheet.sheetSize(_project, viewport),
-    SheetTab.estimate => EstimateSheet.sheetSize(_project, viewport),
+    SheetTab.estimate => EstimateSheet.sheetSize(
+      _project,
+      viewport,
+      prices: _prices,
+    ),
     SheetTab.techCard => TechCardSheet.sheetSize(_project, viewport),
   };
 

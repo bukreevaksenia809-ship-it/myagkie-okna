@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/order_project.dart';
 import '../models/window_params.dart';
 import '../services/estimate.dart';
+import 'material_thumb.dart';
 
 /// Лист «Смета на заказ»: стоимость материалов, фурнитуры и работ.
 ///
@@ -30,7 +31,11 @@ class EstimateSheet extends StatelessWidget {
   static const double _captionHeight = 42;
 
   /// Размер листа сметы. null — лист заполняет окно программы.
-  static Size? sheetSize(OrderProject project, Size viewport) {
+  static Size? sheetSize(
+    OrderProject project,
+    Size viewport, {
+    PriceList? prices,
+  }) {
     final paperWidth = math.max(viewport.width - 48, 1320.0);
     // Строк примерно: шапка, три раздела и позиции; на каждое окно заказа
     // добавляются плёнка, окантовка, люверсы, спецэлементы и работы, а также
@@ -42,7 +47,10 @@ class EstimateSheet extends StatelessWidget {
       if (!window.isLifting && !window.isScreen) return sum;
       return sum + (window.fastenerType == FastenerType.eyeletsOnly ? 1 : 2);
     });
-    final approxRows = 9 + project.windowCount * 6 + fastenerRows;
+    final customRows =
+        prices?.customItems.where((item) => item.isFilled).length ?? 0;
+    // Карточка материалов — отдельный блок; свободные позиции — строки.
+    final approxRows = 10 + project.windowCount * 6 + fastenerRows + customRows;
     final contentHeight =
         _captionHeight +
         16 +
@@ -295,7 +303,7 @@ class EstimateSheet extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: _summaryBlocks(estimate)),
+            Expanded(child: _summaryBlocks(estimate, project)),
             const SizedBox(width: 14),
             SizedBox(width: 540, child: _totalsPanel(estimate)),
           ],
@@ -311,7 +319,7 @@ class EstimateSheet extends StatelessWidget {
     );
   }
 
-  Widget _summaryBlocks(Estimate estimate) {
+  Widget _summaryBlocks(Estimate estimate, OrderProject project) {
     final blocks = <(String, List<String>)>[
       (
         'Состав заказа',
@@ -360,6 +368,68 @@ class EstimateSheet extends StatelessWidget {
               ],
             ),
           ),
+        if (project.materialsInOrder.isNotEmpty) _materialsCard(project),
+      ],
+    );
+  }
+
+  /// Карточка материалов в смете: те же программные превью, что в прайсе.
+  Widget _materialsCard(OrderProject project) {
+    final materials = project.materialsInOrder;
+    final hasPvc = materials.any((material) => material != FilmMaterial.screen);
+    final hasScreen = materials.any(
+      (material) => material == FilmMaterial.screen,
+    );
+    return Container(
+      width: 300,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F9FC),
+        border: Border.all(color: const Color(0xFFD9E0EA)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _text(
+            'МАТЕРИАЛЫ',
+            size: 9,
+            weight: FontWeight.w700,
+            color: const Color(0xFF5B6B80),
+            letterSpacing: 0.5,
+          ),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (hasPvc)
+                Expanded(child: _materialPreview('ПВХ', screen: false)),
+              if (hasPvc && hasScreen) const SizedBox(width: 10),
+              if (hasScreen)
+                Expanded(child: _materialPreview('Скрин', screen: true)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _materialPreview(String label, {required bool screen}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 48,
+          width: double.infinity,
+          child: MaterialThumb(screen: screen),
+        ),
+        const SizedBox(height: 4),
+        _text(
+          label,
+          size: 10,
+          weight: FontWeight.w600,
+          color: const Color(0xFF2B3440),
+        ),
       ],
     );
   }

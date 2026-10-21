@@ -23,42 +23,41 @@ enum PriceField {
 
   /// Подпись для поля ввода в панели.
   String get label => switch (this) {
-        PriceField.filmClear => 'Плёнка ПВХ прозрачная',
-        PriceField.filmTinted => 'Плёнка ПВХ тонированная',
-        PriceField.filmMesh => 'Москитная сетка',
-        PriceField.filmScreen => 'Скрин (ткань)',
-        PriceField.edge80 => 'Окантовка, рулон 80 мм (готово 40)',
-        PriceField.edge100 => 'Окантовка, рулон 100 мм (готово 50)',
-        PriceField.edge120 => 'Окантовка, рулон 120 мм (готово 60)',
-        PriceField.edge200 => 'Окантовка, рулон 200 мм (готово 100)',
-        PriceField.edge240 => 'Окантовка, рулон 240 мм (готово 120)',
-      };
+    PriceField.filmClear => 'Плёнка ПВХ прозрачная',
+    PriceField.filmTinted => 'Плёнка ПВХ тонированная',
+    PriceField.filmMesh => 'Москитная сетка',
+    PriceField.filmScreen => 'Скрин (ткань)',
+    PriceField.edge80 => 'Окантовка, рулон 80 мм (готово 40)',
+    PriceField.edge100 => 'Окантовка, рулон 100 мм (готово 50)',
+    PriceField.edge120 => 'Окантовка, рулон 120 мм (готово 60)',
+    PriceField.edge200 => 'Окантовка, рулон 200 мм (готово 100)',
+    PriceField.edge240 => 'Окантовка, рулон 240 мм (готово 120)',
+  };
 
   /// Короткая подпись — для колонок и итогов.
   String get shortLabel => switch (this) {
-        PriceField.filmClear => 'ПВХ прозрачный',
-        PriceField.filmTinted => 'ПВХ тонированный',
-        PriceField.filmMesh => 'Сетка',
-        PriceField.filmScreen => 'Скрин',
-        PriceField.edge80 => 'Тент 80',
-        PriceField.edge100 => 'Тент 100',
-        PriceField.edge120 => 'Тент 120',
-        PriceField.edge200 => 'Тент 200',
-        PriceField.edge240 => 'Тент 240',
-      };
+    PriceField.filmClear => 'ПВХ прозрачный',
+    PriceField.filmTinted => 'ПВХ тонированный',
+    PriceField.filmMesh => 'Сетка',
+    PriceField.filmScreen => 'Скрин',
+    PriceField.edge80 => 'Тент 80',
+    PriceField.edge100 => 'Тент 100',
+    PriceField.edge120 => 'Тент 120',
+    PriceField.edge200 => 'Тент 200',
+    PriceField.edge240 => 'Тент 240',
+  };
 
   /// Ключ позиции прайса: имя поля уже совпадает с [PriceItemKeys].
   String get itemKey => name;
 
   /// Единица измерения цены.
   String get unit => switch (this) {
-        PriceField.filmClear ||
-        PriceField.filmTinted ||
-        PriceField.filmMesh ||
-        PriceField.filmScreen =>
-          '₽/м²',
-        _ => '₽/м',
-      };
+    PriceField.filmClear ||
+    PriceField.filmTinted ||
+    PriceField.filmMesh ||
+    PriceField.filmScreen => '₽/м²',
+    _ => '₽/м',
+  };
 }
 
 /// Ключи позиций прайса — одно место для модели, панели цен и сметы.
@@ -265,6 +264,58 @@ const double defaultVatPercent = 20;
 /// Символ валюты.
 const String defaultCurrencySymbol = '₽';
 
+/// Свободная позиция прайса: название работы/материала, количество,
+/// единица и цена. Нужна для ручного ввода того, чего нет в стандартном
+/// прайсе; попадает в смету отдельной строкой.
+class CustomPriceItem {
+  const CustomPriceItem({
+    this.name = '',
+    this.quantity = 1,
+    this.unit = 'шт',
+    this.unitPrice = 0,
+  });
+
+  final String name;
+  final double quantity;
+  final String unit;
+  final double unitPrice;
+
+  /// Позиция попадает в смету, только когда заполнено название.
+  bool get isFilled => name.trim().isNotEmpty;
+
+  double get amount {
+    final value = quantity * unitPrice;
+    return value.isFinite && value > 0 ? value : 0;
+  }
+
+  CustomPriceItem copyWith({
+    String? name,
+    double? quantity,
+    String? unit,
+    double? unitPrice,
+  }) => CustomPriceItem(
+    name: name ?? this.name,
+    quantity: quantity ?? this.quantity,
+    unit: unit ?? this.unit,
+    unitPrice: unitPrice ?? this.unitPrice,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'quantity': quantity,
+    'unit': unit,
+    'unitPrice': unitPrice,
+  };
+
+  factory CustomPriceItem.fromJson(Map<String, dynamic> json) =>
+      CustomPriceItem(
+        name: json['name'] is String ? json['name'] as String : '',
+        quantity: _price(json['quantity'], 1),
+        unit: _customUnit(json['unit']),
+        unitPrice: _price(json['unitPrice'], 0),
+      );
+}
+
 /// Прайс-лист: цены за единицу и настройки расчёта сметы.
 ///
 /// Про НДС: выбран режим **«НДС сверху»** — налог начисляется на сумму
@@ -304,6 +355,7 @@ class PriceList {
     this.vatPercent = defaultVatPercent,
     this.currency = defaultCurrencySymbol,
     this.disabledItems = const <String>{},
+    this.customItems = const <CustomPriceItem>[],
   });
 
   /// Цены «как в цехе» — те же, что и в конструкторе по умолчанию.
@@ -380,6 +432,9 @@ class PriceList {
   /// и [copyWith], иначе состояние панели и сохранённого заказа разъедется.
   final Set<String> disabledItems;
 
+  /// Свободные позиции ручного ввода: название, количество, единица, цена.
+  final List<CustomPriceItem> customItems;
+
   /// Учитывать ли позицию [key] в смете. Неизвестный ключ считается
   /// включённым — это безопасный ответ для старого или будущего прайса.
   bool isEnabled(String key) => !disabledItems.contains(key);
@@ -397,11 +452,11 @@ class PriceList {
 
   /// Ключ позиции прайса для материала полотна.
   static String filmItemKey(FilmMaterial material) => switch (material) {
-        FilmMaterial.clearPvc => PriceItemKeys.filmClear,
-        FilmMaterial.tintedPvc => PriceItemKeys.filmTinted,
-        FilmMaterial.mosquitoNet => PriceItemKeys.filmMesh,
-        FilmMaterial.screen => PriceItemKeys.filmScreen,
-      };
+    FilmMaterial.clearPvc => PriceItemKeys.filmClear,
+    FilmMaterial.tintedPvc => PriceItemKeys.filmTinted,
+    FilmMaterial.mosquitoNet => PriceItemKeys.filmMesh,
+    FilmMaterial.screen => PriceItemKeys.filmScreen,
+  };
 
   /// Ключ позиции прайса для ширины рулона окантовки.
   ///
@@ -425,20 +480,20 @@ class PriceList {
 
   /// Цена плёнки по материалу, ₽/м².
   double filmPerM2(FilmMaterial material) => switch (material) {
-        FilmMaterial.clearPvc => filmClearPerM2,
-        FilmMaterial.tintedPvc => filmTintedPerM2,
-        FilmMaterial.mosquitoNet => filmMeshPerM2,
-        FilmMaterial.screen => filmScreenPerM2,
-      };
+    FilmMaterial.clearPvc => filmClearPerM2,
+    FilmMaterial.tintedPvc => filmTintedPerM2,
+    FilmMaterial.mosquitoNet => filmMeshPerM2,
+    FilmMaterial.screen => filmScreenPerM2,
+  };
 
   /// Цена окантовки по типу рулона, ₽/м.
   double edgePerMeter(EdgeRoll roll) => switch (roll) {
-        EdgeRoll.roll80 => edge80PerM,
-        EdgeRoll.roll100 => edge100PerM,
-        EdgeRoll.roll120 => edge120PerM,
-        EdgeRoll.roll200 => edge200PerM,
-        EdgeRoll.roll240 => edge240PerM,
-      };
+    EdgeRoll.roll80 => edge80PerM,
+    EdgeRoll.roll100 => edge100PerM,
+    EdgeRoll.roll120 => edge120PerM,
+    EdgeRoll.roll200 => edge200PerM,
+    EdgeRoll.roll240 => edge240PerM,
+  };
 
   /// Цена окантовки для произвольной ширины рулона, ₽/м.
   ///
@@ -502,33 +557,33 @@ class PriceList {
   /// строкой. Силиконовый ремень считается по цене ремня: это одна позиция
   /// прайса на подъёмный и на силиконовый ремень.
   double fastenerPerEach(FastenerType type) => switch (type) {
-        FastenerType.eyeletsOnly => 0,
-        FastenerType.turnBuckles => turnBucklePrice,
-        FastenerType.frenchLocks => frenchLockPrice,
-        FastenerType.straps => strapPrice,
-      };
+    FastenerType.eyeletsOnly => 0,
+    FastenerType.turnBuckles => turnBucklePrice,
+    FastenerType.frenchLocks => frenchLockPrice,
+    FastenerType.straps => strapPrice,
+  };
 
   /// Цена позиции панели цен по её полю.
   ///
   /// Чужая группа возвращает 0 — панель не должна падать, если перепутает
   /// поле, а ошибку видно по нулю в смете.
   double film(PriceField field) => switch (field) {
-        PriceField.filmClear => filmClearPerM2,
-        PriceField.filmTinted => filmTintedPerM2,
-        PriceField.filmMesh => filmMeshPerM2,
-        PriceField.filmScreen => filmScreenPerM2,
-        _ => 0,
-      };
+    PriceField.filmClear => filmClearPerM2,
+    PriceField.filmTinted => filmTintedPerM2,
+    PriceField.filmMesh => filmMeshPerM2,
+    PriceField.filmScreen => filmScreenPerM2,
+    _ => 0,
+  };
 
   /// Цена окантовки по полю панели цен. См. [film].
   double edge(PriceField field) => switch (field) {
-        PriceField.edge80 => edge80PerM,
-        PriceField.edge100 => edge100PerM,
-        PriceField.edge120 => edge120PerM,
-        PriceField.edge200 => edge200PerM,
-        PriceField.edge240 => edge240PerM,
-        _ => 0,
-      };
+    PriceField.edge80 => edge80PerM,
+    PriceField.edge100 => edge100PerM,
+    PriceField.edge120 => edge120PerM,
+    PriceField.edge200 => edge200PerM,
+    PriceField.edge240 => edge240PerM,
+    _ => 0,
+  };
 
   /// НДС начисляется сверху (см. комментарий у класса).
   bool get isVatOnTop => vatPercent > 0;
@@ -564,6 +619,7 @@ class PriceList {
     double? cuttingPerM2,
     String? currency,
     Set<String>? disabledItems,
+    List<CustomPriceItem>? customItems,
   }) {
     return PriceList(
       filmClearPerM2: filmClearPerM2 ?? this.filmClearPerM2,
@@ -595,43 +651,46 @@ class PriceList {
       vatPercent: vatPercent ?? this.vatPercent,
       currency: currency ?? this.currency,
       disabledItems: disabledItems ?? this.disabledItems,
+      customItems: customItems ?? this.customItems,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'filmClearPerM2': filmClearPerM2,
-        'filmTintedPerM2': filmTintedPerM2,
-        'filmMeshPerM2': filmMeshPerM2,
-        'filmScreenPerM2': filmScreenPerM2,
-        'screenHemPerM': screenHemPerM,
-        'edge80PerM': edge80PerM,
-        'edge100PerM': edge100PerM,
-        'edge120PerM': edge120PerM,
-        'edge200PerM': edge200PerM,
-        'edge240PerM': edge240PerM,
-        'eyeletPrice': eyeletPrice,
-        'eyeletOvalPrice': eyeletOvalPrice,
-        'eyeletInstall': eyeletInstall,
-        'zipperPerM': zipperPerM,
-        'weldPerM': weldPerM,
-        'pocketPerM': pocketPerM,
-        'strapPrice': strapPrice,
-        'turnBucklePrice': turnBucklePrice,
-        'frenchLockPrice': frenchLockPrice,
-        'screwPrice': screwPrice,
-        'drainPrice': drainPrice,
-        'cutoutPrice': cutoutPrice,
-        'laborPerM2': laborPerM2,
-        'cuttingPerM2': cuttingPerM2,
-        'markupPercent': markupPercent,
-        'discountPercent': discountPercent,
-        'vatPercent': vatPercent,
-        'currency': currency,
-        // Пустой набор не пишем: старый формат JSON остаётся прежним, а
-        // «нет поля» читается как «всё включено».
-        if (disabledItems.isNotEmpty)
-          'disabledItems': (disabledItems.toList()..sort()),
-      };
+    'filmClearPerM2': filmClearPerM2,
+    'filmTintedPerM2': filmTintedPerM2,
+    'filmMeshPerM2': filmMeshPerM2,
+    'filmScreenPerM2': filmScreenPerM2,
+    'screenHemPerM': screenHemPerM,
+    'edge80PerM': edge80PerM,
+    'edge100PerM': edge100PerM,
+    'edge120PerM': edge120PerM,
+    'edge200PerM': edge200PerM,
+    'edge240PerM': edge240PerM,
+    'eyeletPrice': eyeletPrice,
+    'eyeletOvalPrice': eyeletOvalPrice,
+    'eyeletInstall': eyeletInstall,
+    'zipperPerM': zipperPerM,
+    'weldPerM': weldPerM,
+    'pocketPerM': pocketPerM,
+    'strapPrice': strapPrice,
+    'turnBucklePrice': turnBucklePrice,
+    'frenchLockPrice': frenchLockPrice,
+    'screwPrice': screwPrice,
+    'drainPrice': drainPrice,
+    'cutoutPrice': cutoutPrice,
+    'laborPerM2': laborPerM2,
+    'cuttingPerM2': cuttingPerM2,
+    'markupPercent': markupPercent,
+    'discountPercent': discountPercent,
+    'vatPercent': vatPercent,
+    'currency': currency,
+    // Пустой набор не пишем: старый формат JSON остаётся прежним, а
+    // «нет поля» читается как «всё включено».
+    if (disabledItems.isNotEmpty)
+      'disabledItems': (disabledItems.toList()..sort()),
+    if (customItems.isNotEmpty)
+      'customItems': [for (final item in customItems) item.toJson()],
+  };
 
   /// Прайс ← JSON. Разбор устойчивый: неизвестные и битые поля заменяются
   /// значениями по умолчанию (как в `order_json.dart`).
@@ -639,11 +698,15 @@ class PriceList {
     const fallback = PriceList.defaults();
     return PriceList(
       filmClearPerM2: _price(json['filmClearPerM2'], fallback.filmClearPerM2),
-      filmTintedPerM2:
-          _price(json['filmTintedPerM2'], fallback.filmTintedPerM2),
+      filmTintedPerM2: _price(
+        json['filmTintedPerM2'],
+        fallback.filmTintedPerM2,
+      ),
       filmMeshPerM2: _price(json['filmMeshPerM2'], fallback.filmMeshPerM2),
-      filmScreenPerM2:
-          _price(json['filmScreenPerM2'], fallback.filmScreenPerM2),
+      filmScreenPerM2: _price(
+        json['filmScreenPerM2'],
+        fallback.filmScreenPerM2,
+      ),
       screenHemPerM: _price(json['screenHemPerM'], fallback.screenHemPerM),
       // Старый прайс без цен 80/120 мм читается с дефолтами: опорные точки
       // кривой цены остаются на месте, а нестандартная ширина интерполируется.
@@ -653,8 +716,10 @@ class PriceList {
       edge200PerM: _price(json['edge200PerM'], fallback.edge200PerM),
       edge240PerM: _price(json['edge240PerM'], fallback.edge240PerM),
       eyeletPrice: _price(json['eyeletPrice'], fallback.eyeletPrice),
-      eyeletOvalPrice:
-          _price(json['eyeletOvalPrice'], fallback.eyeletOvalPrice),
+      eyeletOvalPrice: _price(
+        json['eyeletOvalPrice'],
+        fallback.eyeletOvalPrice,
+      ),
       eyeletInstall: _price(json['eyeletInstall'], fallback.eyeletInstall),
       zipperPerM: _price(json['zipperPerM'], fallback.zipperPerM),
       weldPerM: _price(json['weldPerM'], fallback.weldPerM),
@@ -662,39 +727,63 @@ class PriceList {
       strapPrice: _price(json['strapPrice'], fallback.strapPrice),
       // Старый прайс без цен крепежа читается с дефолтами: строки крепежа
       // в смете считаются, а не пропадают с нулём.
-      turnBucklePrice:
-          _price(json['turnBucklePrice'], fallback.turnBucklePrice),
-      frenchLockPrice:
-          _price(json['frenchLockPrice'], fallback.frenchLockPrice),
+      turnBucklePrice: _price(
+        json['turnBucklePrice'],
+        fallback.turnBucklePrice,
+      ),
+      frenchLockPrice: _price(
+        json['frenchLockPrice'],
+        fallback.frenchLockPrice,
+      ),
       screwPrice: _price(json['screwPrice'], fallback.screwPrice),
       drainPrice: _price(json['drainPrice'], fallback.drainPrice),
       cutoutPrice: _price(json['cutoutPrice'], fallback.cutoutPrice),
       laborPerM2: _price(json['laborPerM2'], fallback.laborPerM2),
       cuttingPerM2: _price(json['cuttingPerM2'], fallback.cuttingPerM2),
-      markupPercent:
-          _percent(json['markupPercent'], fallback.markupPercent, max: 1000),
-      discountPercent:
-          _percent(json['discountPercent'], fallback.discountPercent, max: 100),
+      markupPercent: _percent(
+        json['markupPercent'],
+        fallback.markupPercent,
+        max: 1000,
+      ),
+      discountPercent: _percent(
+        json['discountPercent'],
+        fallback.discountPercent,
+        max: 100,
+      ),
       vatPercent: _percent(json['vatPercent'], fallback.vatPercent, max: 100),
-      currency: json['currency'] is String && (json['currency'] as String).isNotEmpty
+      currency:
+          json['currency'] is String && (json['currency'] as String).isNotEmpty
           ? json['currency'] as String
           : fallback.currency,
       // Старый прайс без поля — всё включено. Неизвестные ключи (из будущих
       // версий) отбрасываем: модель не должна тащить мусор в панель и смету.
       disabledItems: _disabledItems(json['disabledItems']),
+      customItems: _customItems(json['customItems']),
     );
   }
 
   /// Короткая строка условий расчёта для панели и сметы.
   String get termsLabel => [
-        if (vatPercent > 0)
-          'НДС ${_trim(vatPercent)} % сверху'
-        else
-          'без НДС',
-        if (markupPercent > 0) 'наценка ${_trim(markupPercent)} %',
-        if (discountPercent > 0) 'скидка ${_trim(discountPercent)} %',
-        'валюта $currency',
-      ].join(', ');
+    if (vatPercent > 0) 'НДС ${_trim(vatPercent)} % сверху' else 'без НДС',
+    if (markupPercent > 0) 'наценка ${_trim(markupPercent)} %',
+    if (discountPercent > 0) 'скидка ${_trim(discountPercent)} %',
+    'валюта $currency',
+  ].join(', ');
+}
+
+/// Свободные позиции из JSON: битые строки пропускаем, неизвестные единицы
+/// заменяем на «шт».
+List<CustomPriceItem> _customItems(Object? value) {
+  if (value is! List) return const <CustomPriceItem>[];
+  return [
+    for (final item in value)
+      if (item is Map) CustomPriceItem.fromJson(item.cast<String, dynamic>()),
+  ];
+}
+
+String _customUnit(Object? value) {
+  final text = value is String ? value.trim() : '';
+  return const {'шт', 'м', 'м²'}.contains(text) ? text : 'шт';
 }
 
 /// Выключенные позиции из JSON.
@@ -727,7 +816,9 @@ double _percent(Object? value, double fallback, {required double max}) {
 
 String _trim(double value) {
   if (value == value.roundToDouble()) return value.toStringAsFixed(0);
-  return value.toStringAsFixed(2).replaceAll(RegExp(r'0+$'), '')
+  return value
+      .toStringAsFixed(2)
+      .replaceAll(RegExp(r'0+$'), '')
       .replaceAll(RegExp(r'\.$'), '');
 }
 

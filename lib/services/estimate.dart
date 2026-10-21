@@ -448,6 +448,23 @@ class Estimate {
       );
     }
 
+    // Свободные позиции ручного ввода из прайса: название, количество,
+    // единица и цена. Идут отдельной строкой в работах, без привязки к окну.
+    for (final item in prices.customItems) {
+      final title = item.name.trim();
+      if (title.isEmpty) continue;
+      lines.add(
+        EstimateLine(
+          title: 'Дополнительно: $title',
+          note: 'свободная позиция из прайса (ручной ввод)',
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: item.unitPrice,
+          group: EstimateGroup.work,
+        ),
+      );
+    }
+
     return Estimate(
       prices: prices,
       lines: lines,

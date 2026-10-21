@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/price_list.dart';
 import '../models/window_params.dart';
+import 'material_thumb.dart';
 
 /// Раздел «Прайс-лист»: цены материалов, фурнитуры и работ для сметы.
 ///
@@ -30,11 +31,15 @@ class PricePanel extends StatefulWidget {
 
 class _PricePanelState extends State<PricePanel> {
   final _controllers = <String, TextEditingController>{};
+  final _customControllers = <String, TextEditingController>{};
   bool _open = false;
 
   @override
   void dispose() {
     for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _customControllers.values) {
       controller.dispose();
     }
     super.dispose();
@@ -241,6 +246,7 @@ class _PricePanelState extends State<PricePanel> {
             ]),
             // Проценты — не позиции, а условия расчёта: у них нет тумблера,
             // «не считать» выражается нулём.
+            _customItemsSection(prices),
             _group('Условия расчёта', [
               _row(
                 'Наценка, %',
@@ -273,6 +279,207 @@ class _PricePanelState extends State<PricePanel> {
         ],
       ),
     );
+  }
+
+  /// Свободные позиции ручного ввода: название, количество, единица, цена.
+  Widget _customItemsSection(PriceList prices) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'СВОБОДНАЯ ПОЗИЦИЯ',
+            style: TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+              color: Color(0xFF7C8798),
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'Название работы или материала, количество, единица и цена — '
+            'вручную. Позиция попадает в смету отдельной строкой.',
+            style: TextStyle(fontSize: 10, color: Color(0xFF66748A)),
+          ),
+          const SizedBox(height: 6),
+          for (var index = 0; index < prices.customItems.length; index++)
+            _customCard(prices, index),
+          TextButton.icon(
+            key: const Key('add-custom-item'),
+            onPressed: () => _set(
+              prices.copyWith(
+                customItems: [...prices.customItems, const CustomPriceItem()],
+              ),
+            ),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Добавить свободную строку'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _customCard(PriceList prices, int index) {
+    final item = prices.customItems[index];
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F9FC),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: Key('custom-name-$index'),
+                  controller: _customController('$index-name', item.name),
+                  decoration: const InputDecoration(
+                    labelText: 'Название работы или материала',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  style: const TextStyle(fontSize: 12),
+                  onChanged: (text) =>
+                      _updateCustom(index, item.copyWith(name: text)),
+                ),
+              ),
+              IconButton(
+                key: Key('delete-custom-item-$index'),
+                tooltip: 'Удалить свободную строку',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _removeCustom(index),
+                icon: const Icon(Icons.delete_outline, size: 18),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              SizedBox(
+                width: 78,
+                child: TextField(
+                  key: Key('custom-qty-$index'),
+                  controller: _customController(
+                    '$index-qty',
+                    _formatQuantity(item.quantity),
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Кол-во',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  style: const TextStyle(fontSize: 12),
+                  onChanged: (text) {
+                    final value = parsePrice(text);
+                    if (value != null) {
+                      _updateCustom(index, item.copyWith(quantity: value));
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              DropdownButton<String>(
+                key: Key('custom-unit-$index'),
+                value: item.unit,
+                underline: const SizedBox.shrink(),
+                style: const TextStyle(fontSize: 12, color: Color(0xFF2B3440)),
+                items: const [
+                  DropdownMenuItem(value: 'шт', child: Text('шт')),
+                  DropdownMenuItem(value: 'м', child: Text('м')),
+                  DropdownMenuItem(value: 'м²', child: Text('м²')),
+                ],
+                onChanged: (unit) {
+                  if (unit != null) {
+                    _updateCustom(index, item.copyWith(unit: unit));
+                  }
+                },
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: TextField(
+                  key: Key('custom-price-$index'),
+                  controller: _customController(
+                    '$index-price',
+                    _format(item.unitPrice),
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Цена, ₽',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  style: const TextStyle(fontSize: 12),
+                  onChanged: (text) {
+                    final value = parsePrice(text);
+                    if (value != null) {
+                      _updateCustom(index, item.copyWith(unitPrice: value));
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              'Сумма: ${formatRubles(item.amount)}',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF0B62C4),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  TextEditingController _customController(String key, String text) {
+    final controller = _customControllers.putIfAbsent(
+      key,
+      () => TextEditingController(text: text),
+    );
+    if (controller.text != text) {
+      controller.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+    }
+    return controller;
+  }
+
+  String _formatQuantity(double value) {
+    if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+    return value.toStringAsFixed(2).replaceAll('.', ',');
+  }
+
+  void _updateCustom(int index, CustomPriceItem item) {
+    final prices = widget.prices;
+    if (index < 0 || index >= prices.customItems.length) return;
+    final next = [...prices.customItems];
+    next[index] = item;
+    _set(prices.copyWith(customItems: next));
+  }
+
+  void _removeCustom(int index) {
+    final prices = widget.prices;
+    if (index < 0 || index >= prices.customItems.length) return;
+    final next = [...prices.customItems]..removeAt(index);
+    _set(prices.copyWith(customItems: next));
   }
 
   void _set(PriceList prices) => widget.onChanged(prices);
@@ -350,7 +557,7 @@ class _PricePanelState extends State<PricePanel> {
           SizedBox(
             height: 58,
             width: double.infinity,
-            child: CustomPaint(painter: _MaterialThumbPainter(screen: screen)),
+            child: MaterialThumb(screen: screen),
           ),
           const SizedBox(height: 5),
           Text(
@@ -500,60 +707,4 @@ class _PricePanelState extends State<PricePanel> {
     if (value == value.roundToDouble()) return value.toStringAsFixed(0);
     return value.toStringAsFixed(2).replaceAll('.', ',');
   }
-}
-
-/// Мини-превью материала: полупрозрачное полотно ПВХ или серая сетка скрина.
-class _MaterialThumbPainter extends CustomPainter {
-  const _MaterialThumbPainter({required this.screen});
-
-  final bool screen;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    final border = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = const Color(0xFF9AA7B8);
-    if (screen) {
-      canvas.drawRect(rect, Paint()..color = const Color(0xFFE1E6EC));
-      final mesh = Paint()
-        ..color = const Color(0xFF6D7A8A).withValues(alpha: 0.6)
-        ..strokeWidth = 0.7;
-      for (var x = 0.0; x <= size.width; x += 5) {
-        canvas.drawLine(Offset(x, 0), Offset(x, size.height), mesh);
-      }
-      for (var y = 0.0; y <= size.height; y += 5) {
-        canvas.drawLine(Offset(0, y), Offset(size.width, y), mesh);
-      }
-      canvas.drawRect(rect.deflate(0.5), border);
-      return;
-    }
-    // ПВХ: голубоватое полупрозрачное полотно с бликом.
-    canvas.drawRect(rect, Paint()..color = const Color(0x3359A6D8));
-    final sheenRect = Rect.fromLTWH(
-      size.width * 0.08,
-      0,
-      size.width * 0.34,
-      size.height,
-    );
-    final sheen = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0x00FFFFFF), Color(0x99FFFFFF), Color(0x00FFFFFF)],
-      ).createShader(sheenRect);
-    final path = Path()
-      ..moveTo(size.width * 0.08, size.height)
-      ..lineTo(size.width * 0.42, 0)
-      ..lineTo(size.width * 0.58, 0)
-      ..lineTo(size.width * 0.24, size.height)
-      ..close();
-    canvas.drawPath(path, sheen);
-    canvas.drawRect(rect.deflate(0.5), border);
-  }
-
-  @override
-  bool shouldRepaint(covariant _MaterialThumbPainter oldDelegate) =>
-      oldDelegate.screen != screen;
 }
