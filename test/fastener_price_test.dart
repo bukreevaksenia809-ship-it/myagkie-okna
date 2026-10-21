@@ -1,7 +1,7 @@
 // Тесты цен на крепёж (Шаг 2): скоба, французский замок, саморез верхнего ряда.
 //
 // Проверяем значения по умолчанию, JSON (включая старый прайс без полей),
-// строки панели «Прайс-лист» и блок «Цены прайса» листа «Смета».
+// строки панели «Прайс-лист» и отсутствие блока «Цены прайса» на листе «Смета».
 //
 // Запуск: flutter test test/fastener_price_test.dart
 import 'package:flutter/material.dart';
@@ -211,9 +211,10 @@ void main() {
     expect(edited.screwPrice, 18);
 
     // Правка строки панели сразу меняет смету окна с французским замком.
-    final lockLine = Estimate.ofWindow(_frenchWindow, edited).lines.singleWhere(
-      (line) => line.itemKey == PriceItemKeys.frenchLock,
-    );
+    final lockLine = Estimate.ofWindow(
+      _frenchWindow,
+      edited,
+    ).lines.singleWhere((line) => line.itemKey == PriceItemKeys.frenchLock);
     expect(lockLine.unitPrice, 430);
 
     // Выключение позиции крепежа видно в модели и убирает строку из сметы.
@@ -226,16 +227,17 @@ void main() {
       isFalse,
     );
     expect(
-      Estimate.ofWindow(_frenchWindow, hostKey.currentState!.prices)
-          .lines
-          .any((line) => line.itemKey == PriceItemKeys.frenchLock),
+      Estimate.ofWindow(
+        _frenchWindow,
+        hostKey.currentState!.prices,
+      ).lines.any((line) => line.itemKey == PriceItemKeys.frenchLock),
       isFalse,
     );
     // Панель 420 px: переполнений нет.
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('лист «Смета»: цены крепежа в блоке «Цены прайса»', (
+  testWidgets('лист «Смета»: блока «Цены прайса» нет, суммы считаются', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1720, 1400);
@@ -259,46 +261,18 @@ void main() {
     }
 
     await pumpSheet(PriceList.defaults());
-    expect(find.textContaining('Поворотная скоба — 220,00 ₽/шт'), findsOneWidget);
-    expect(
-      find.textContaining('Французский замок — 400,00 ₽/шт'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('Саморез верхнего ряда — 20,00 ₽/шт'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('Ремень: подъёмный и силиконовый — 190,00 ₽/шт'),
-      findsOneWidget,
-    );
+    // Блок цен прайса убран: на листе только сама смета.
+    expect(find.textContaining('Цены прайса'), findsNothing);
+    expect(find.textContaining('Поворотная скоба — 220,00 ₽/шт'), findsNothing);
+    expect(find.textContaining('Смета на заказ'), findsOneWidget);
 
-    // Цены — из прайса: меняются вместе с моделью.
-    await pumpSheet(
-      PriceList.defaults().copyWith(
-        turnBucklePrice: 260,
-        frenchLockPrice: 450,
-        screwPrice: 25,
-      ),
-    );
-    expect(find.textContaining('Поворотная скоба — 260,00 ₽/шт'), findsOneWidget);
-    expect(
-      find.textContaining('Французский замок — 450,00 ₽/шт'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('Саморез верхнего ряда — 25,00 ₽/шт'),
-      findsOneWidget,
-    );
-
-    // Выключенная позиция помечена на листе.
-    await pumpSheet(
-      PriceList.defaults().withItem(PriceItemKeys.frenchLock, enabled: false),
-    );
-    expect(
-      find.textContaining('Французский замок — 400,00 ₽/шт · выключено'),
-      findsOneWidget,
-    );
+    // Цены по-прежнему участвуют в расчёте: подняли скобу — ИТОГО выросло.
+    final base = Estimate.ofWindow(_window, PriceList.defaults()).total;
+    final raised = Estimate.ofWindow(
+      _window,
+      PriceList.defaults().copyWith(turnBucklePrice: 300),
+    ).total;
+    expect(raised, greaterThan(base));
     expect(tester.takeException(), isNull);
   });
 }

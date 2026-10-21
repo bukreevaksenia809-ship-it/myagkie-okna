@@ -40,11 +40,11 @@ class EstimateSheet extends StatelessWidget {
     // берём запас — лучше чуть выше лист, чем обрезанный PDF.
     final fastenerRows = project.windows.fold<int>(0, (sum, window) {
       if (!window.isLifting && !window.isScreen) return sum;
-      return sum +
-          (window.fastenerType == FastenerType.eyeletsOnly ? 1 : 2);
+      return sum + (window.fastenerType == FastenerType.eyeletsOnly ? 1 : 2);
     });
     final approxRows = 9 + project.windowCount * 6 + fastenerRows;
-    final contentHeight = _captionHeight +
+    final contentHeight =
+        _captionHeight +
         16 +
         approxRows * rowHeight +
         300 +
@@ -60,10 +60,14 @@ class EstimateSheet extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final sheetWidth =
-            math.max(constraints.maxWidth - _outerPadding * 2, 320.0);
-        final sheetHeight =
-            math.max(constraints.maxHeight - _outerPadding * 2, 320.0);
+        final sheetWidth = math.max(
+          constraints.maxWidth - _outerPadding * 2,
+          320.0,
+        );
+        final sheetHeight = math.max(
+          constraints.maxHeight - _outerPadding * 2,
+          320.0,
+        );
 
         return Container(
           color: const Color(0xFFE7EBF2),
@@ -309,33 +313,15 @@ class EstimateSheet extends StatelessWidget {
 
   Widget _summaryBlocks(Estimate estimate) {
     final blocks = <(String, List<String>)>[
-      ('Состав заказа', [
-        'Окон в заказе: ${estimate.windowCount} шт',
-        'Площадь изделий: ${formatMeters(estimate.productAreaM2)} м²',
-        'Площадь плёнки в раскрое: ${formatMeters(estimate.filmAreaM2)} м²',
-        'Цена за одно окно: ${formatRubles(estimate.pricePerWindow)}',
-      ]),
-      ('Цены прайса', [
-        for (final field in PriceField.values)
-          '${field.shortLabel} — ${formatRubles(_priceOf(field))} '
-              '${field.unit}'
-              // Выключенная позиция не идёт в смету — на листе это видно.
-              '${prices.isEnabled(field.itemKey) ? '' : ' · выключено'}',
-        'Работа: сварка ${formatRubles(prices.laborPerM2)} ₽/м², '
-            'раскрой ${formatRubles(prices.cuttingPerM2)} ₽/м²',
-        'Подворот скрина и шов 3 мм — '
-            '${formatRubles(prices.screenHemPerM)} ₽/м',
-        // Крепёж подвижных сторон — за штуку: ставятся на низ и бока.
-        'Поворотная скоба — ${formatRubles(prices.turnBucklePrice)}/шт'
-            '${_disabledMark(PriceItemKeys.turnBuckle)}',
-        'Французский замок — ${formatRubles(prices.frenchLockPrice)}/шт'
-            '${_disabledMark(PriceItemKeys.frenchLock)}',
-        'Саморез верхнего ряда — ${formatRubles(prices.screwPrice)}/шт'
-            '${_disabledMark(PriceItemKeys.screw)}',
-        'Ремень: подъёмный и силиконовый — '
-            '${formatRubles(prices.strapPrice)}/шт'
-            '${_disabledMark(PriceItemKeys.strap)}',
-      ]),
+      (
+        'Состав заказа',
+        [
+          'Окон в заказе: ${estimate.windowCount} шт',
+          'Площадь изделий: ${formatMeters(estimate.productAreaM2)} м²',
+          'Площадь плёнки в раскрое: ${formatMeters(estimate.filmAreaM2)} м²',
+          'Цена за одно окно: ${formatRubles(estimate.pricePerWindow)}',
+        ],
+      ),
     ];
 
     return Wrap(
@@ -377,20 +363,6 @@ class EstimateSheet extends StatelessWidget {
       ],
     );
   }
-
-  /// Пометка выключенной позиции для блока «Цены прайса»:
-  /// « · выключено» или пустая строка.
-  String _disabledMark(String itemKey) =>
-      prices.isEnabled(itemKey) ? '' : ' · выключено';
-
-  double _priceOf(PriceField field) => switch (field) {
-        PriceField.filmClear ||
-        PriceField.filmTinted ||
-        PriceField.filmMesh ||
-        PriceField.filmScreen =>
-          prices.film(field),
-        _ => prices.edge(field),
-      };
 
   Widget _totalsPanel(Estimate estimate) {
     final rows = <(String, String, bool)>[
@@ -444,9 +416,7 @@ class EstimateSheet extends StatelessWidget {
                 color: rows[i].$3 ? const Color(0xFFF7F9FC) : Colors.white,
                 border: i == 0
                     ? null
-                    : const Border(
-                        top: BorderSide(color: Color(0xFFE4E9F1)),
-                      ),
+                    : const Border(top: BorderSide(color: Color(0xFFE4E9F1))),
               ),
               child: Row(
                 children: [
@@ -513,18 +483,17 @@ class EstimateSheet extends StatelessWidget {
     double height = 1.25,
     double letterSpacing = 0,
     TextAlign? align,
-  }) =>
-      Text(
-        value,
-        textAlign: align,
-        style: _style(
-          size: size,
-          color: color,
-          weight: weight,
-          height: height,
-          letterSpacing: letterSpacing,
-        ),
-      );
+  }) => Text(
+    value,
+    textAlign: align,
+    style: _style(
+      size: size,
+      color: color,
+      weight: weight,
+      height: height,
+      letterSpacing: letterSpacing,
+    ),
+  );
 
   TextStyle _style({
     double size = 10.5,
@@ -532,15 +501,14 @@ class EstimateSheet extends StatelessWidget {
     FontWeight weight = FontWeight.w400,
     double height = 1.25,
     double letterSpacing = 0,
-  }) =>
-      TextStyle(
-        fontFamily: labelFontFamily,
-        fontSize: size,
-        height: height,
-        letterSpacing: letterSpacing,
-        fontWeight: weight,
-        color: color,
-      );
+  }) => TextStyle(
+    fontFamily: labelFontFamily,
+    fontSize: size,
+    height: height,
+    letterSpacing: letterSpacing,
+    fontWeight: weight,
+    color: color,
+  );
 }
 
 /// Штамп снизу: изделие, заказчик, окна, дата, площадь, итог.
@@ -563,7 +531,8 @@ class _EstimateTitleBlock extends StatelessWidget {
         ? const WindowParams()
         : project.windows.first;
     final now = DateTime.now();
-    final date = '${now.day.toString().padLeft(2, '0')}.'
+    final date =
+        '${now.day.toString().padLeft(2, '0')}.'
         '${now.month.toString().padLeft(2, '0')}.${now.year}';
 
     return Container(
@@ -630,8 +599,9 @@ class _EstimateTitleBlock extends StatelessWidget {
             style: TextStyle(
               fontFamily: fontFamily,
               fontSize: emphasis ? 15 : 12.5,
-              color:
-                  emphasis ? const Color(0xFF0B62C4) : const Color(0xFF1B1F27),
+              color: emphasis
+                  ? const Color(0xFF0B62C4)
+                  : const Color(0xFF1B1F27),
               fontWeight: FontWeight.w700,
             ),
           ),

@@ -13,6 +13,7 @@ const String techWeldSpeedHint = '2–3 м/мин';
 
 /// Вид операции. По нему строится порядок операций и оформление листа.
 enum TechOperationKind {
+  material('Материал'),
   cutting('Раскрой'),
   welding('Сварка'),
   weldNeighbor('Спайка окон'),
@@ -272,6 +273,34 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
 
   final visible = layers.filmVisibleBounds;
   final isScreen = params.isScreen;
+
+  // ------------------------------------------------------- 0. материал
+  if (isScreen) {
+    add(
+      kind: TechOperationKind.material,
+      title: 'Материал — скрин',
+      description:
+          'Скрин НЕ выдерживает длительного УФ-излучения: на солнце ткань '
+          'теряет прочность и срок службы сокращается — учитывайте это при '
+          'выборе места эксплуатации. Технология скрина: подворот по сторонам, '
+          'шов ${formatMm(screenSeamMm)} ${unitSuffix()}, люверсы и крепёж по '
+          'линии подворота; тента и окантовки нет, усадки нет.',
+      materials: [
+        TechMaterial(
+          name: 'Материал полотна',
+          size: params.material.label,
+          note:
+              'скрин — сетчатая ткань для проветривания; '
+              'подворот ${params.hemBySideShortLabel} (низ/право/верх/лево), '
+              'шов ${formatMm(screenSeamMm)} ${unitSuffix()}',
+        ),
+      ],
+      tool: 'Раскроечный стол, нож, рулетка',
+      control:
+          'Проверить партию скрина на равномерность сетки и отсутствие '
+          'УФ-повреждений; не хранить под прямым солнцем',
+    );
+  }
 
   // ---------------------------------------------------------- 1. раскрой
   if (isScreen) {
