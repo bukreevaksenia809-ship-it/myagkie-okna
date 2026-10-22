@@ -279,7 +279,7 @@ class _PricePanelState extends State<PricePanel> {
               const Padding(
                 padding: EdgeInsets.only(left: 2, bottom: 4),
                 child: Text(
-                  '450 ₽/м² × общая площадь окон',
+                  'Цена за м² × общая площадь окон',
                   style: TextStyle(fontSize: 9.5, color: Color(0xFF8A93A0)),
                 ),
               ),
