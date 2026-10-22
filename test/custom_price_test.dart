@@ -202,6 +202,8 @@ void main() {
 
     final key = GlobalKey();
     final prices = const PriceList.defaults().copyWith(
+      installationPerM2: 450,
+      aluminumBoxPerM: 450,
       customItems: const [
         CustomPriceItem(
           name: 'Доставка и подъём на этаж',

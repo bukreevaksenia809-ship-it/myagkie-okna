@@ -265,8 +265,8 @@ const double defaultMarkupPercent = 0;
 /// Скидка по умолчанию, %.
 const double defaultDiscountPercent = 0;
 
-/// Монтаж, % от общей стоимости материалов. 0 — монтаж не считать.
-const double defaultInstallationPercent = 0;
+/// Монтаж, ₽/м² общей площади окон. 0 — монтаж не считать.
+const double defaultInstallationPerM2 = 450;
 
 /// НДС по умолчанию, %. Считается «сверху» — см. комментарий у [PriceList].
 const double defaultVatPercent = 20;
@@ -363,7 +363,7 @@ class PriceList {
     this.cuttingPerM2 = defaultCuttingPerM2,
     this.markupPercent = defaultMarkupPercent,
     this.discountPercent = defaultDiscountPercent,
-    this.installationPercent = defaultInstallationPercent,
+    this.installationPerM2 = defaultInstallationPerM2,
     this.vatPercent = defaultVatPercent,
     this.currency = defaultCurrencySymbol,
     this.disabledItems = const <String>{},
@@ -431,8 +431,8 @@ class PriceList {
   final double markupPercent;
   final double discountPercent;
 
-  /// Монтаж, % от общей стоимости материалов.
-  final double installationPercent;
+  /// Монтаж, ₽/м² общей площади окон.
+  final double installationPerM2;
 
   /// НДС «сверху», %.
   final double vatPercent;
@@ -631,7 +631,7 @@ class PriceList {
     double? laborPerM2,
     double? markupPercent,
     double? discountPercent,
-    double? installationPercent,
+    double? installationPerM2,
     double? vatPercent,
     // Дополнительные поля модели (панель может их не показывать).
     double? eyeletOvalPrice,
@@ -669,7 +669,7 @@ class PriceList {
       cuttingPerM2: cuttingPerM2 ?? this.cuttingPerM2,
       markupPercent: markupPercent ?? this.markupPercent,
       discountPercent: discountPercent ?? this.discountPercent,
-      installationPercent: installationPercent ?? this.installationPercent,
+      installationPerM2: installationPerM2 ?? this.installationPerM2,
       vatPercent: vatPercent ?? this.vatPercent,
       currency: currency ?? this.currency,
       disabledItems: disabledItems ?? this.disabledItems,
@@ -704,6 +704,7 @@ class PriceList {
     'cuttingPerM2': cuttingPerM2,
     'markupPercent': markupPercent,
     'discountPercent': discountPercent,
+    'installationPerM2': installationPerM2,
     'vatPercent': vatPercent,
     'currency': currency,
     // Пустой набор не пишем: старый формат JSON остаётся прежним, а
@@ -776,6 +777,10 @@ class PriceList {
         fallback.discountPercent,
         max: 100,
       ),
+      installationPerM2: _price(
+        json['installationPerM2'],
+        fallback.installationPerM2,
+      ),
       vatPercent: _percent(json['vatPercent'], fallback.vatPercent, max: 100),
       currency:
           json['currency'] is String && (json['currency'] as String).isNotEmpty
@@ -793,7 +798,7 @@ class PriceList {
     if (vatPercent > 0) 'НДС ${_trim(vatPercent)} % сверху' else 'без НДС',
     if (markupPercent > 0) 'наценка ${_trim(markupPercent)} %',
     if (discountPercent > 0) 'скидка ${_trim(discountPercent)} %',
-    if (installationPercent > 0) 'монтаж ${_trim(installationPercent)} %',
+    if (installationPerM2 > 0) 'монтаж ${_trim(installationPerM2)} ₽/м²',
     'валюта $currency',
   ].join(', ');
 }

@@ -460,9 +460,10 @@ class EstimateSheet extends StatelessWidget {
           false,
         ),
       ('Итого по позициям', formatRubles(estimate.subtotal), true),
-      if (estimate.installationPercent > 0)
+      if (estimate.installationPerM2 > 0)
         (
-          'Монтаж ${_percentText(estimate.installationPercent)} % от материалов',
+          'Монтаж ${formatRubles(estimate.installationPerM2)}/м² '
+              '× ${formatMeters(estimate.installationAreaM2)} м²',
           formatRubles(estimate.installationAmount),
           false,
         ),

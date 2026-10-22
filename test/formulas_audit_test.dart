@@ -199,95 +199,102 @@ void _filamentBlankAudit() {
 // 2. Скрин: размер заготовки
 // ---------------------------------------------------------------------------
 void _screenBlankAudit() {
-  group('2. Скрин: заготовка = готовый размер + половина подворотов, к высоте +20 мм', () {
-    for (final hem in <double>[40, 50, 60]) {
-      final expectedWidth = 2000 + hem;
-      final expectedHeight = 2000 + hem + 20;
-      test('подворот ${hem.toStringAsFixed(0)} на все стороны → '
-          '${expectedWidth.toStringAsFixed(0)} × '
-          '${expectedHeight.toStringAsFixed(0)}', () {
-        final params = WindowParams(
+  group(
+    '2. Скрин: заготовка = готовый размер + половина подворотов, к высоте +20 мм',
+    () {
+      for (final hem in <double>[40, 50, 60]) {
+        final expectedWidth = 2000 + hem;
+        final expectedHeight = 2000 + hem + 20;
+        test('подворот ${hem.toStringAsFixed(0)} на все стороны → '
+            '${expectedWidth.toStringAsFixed(0)} × '
+            '${expectedHeight.toStringAsFixed(0)}', () {
+          final params = WindowParams(
+            bottomWidth: 2000,
+            topWidth: 2000,
+            leftHeight: 2000,
+            rightHeight: 2000,
+            material: FilmMaterial.screen,
+            hemBottomMm: hem,
+            hemRightMm: hem,
+            hemTopMm: hem,
+            hemLeftMm: hem,
+          );
+          final spec = WindowSpec.of(params);
+
+          // Вручную: ширина 2000 + hem / 2 + hem / 2 = 2000 + hem;
+          // высота 2000 + hem / 2 + hem / 2 + 20 = 2000 + hem + 20.
+          expectClose(spec.filmCutWidth, expectedWidth, 'заготовка по ширине');
+          expectClose(
+            spec.filmCutHeight,
+            expectedHeight,
+            'заготовка по высоте',
+          );
+          // Шов 3 мм на сторону не входит в габарит заготовки, усадки у скрина
+          // нет: с «усадкой» те же размеры.
+          expectClose(
+            spec.filmCutWidthWithShrinkage,
+            expectedWidth,
+            'у скрина усадки нет',
+          );
+          expectClose(
+            spec.filmCutHeightWithShrinkage,
+            expectedHeight,
+            'у скрина усадки нет',
+          );
+          // Видимый размер скрина — готовый контур изделия.
+          expectClose(spec.filmVisibleWidth, 2000, 'видимый размер 2000');
+          expect(
+            params.hasUniformHem,
+            isTrue,
+            reason: 'подворот одинаков со всех сторон',
+          );
+        });
+      }
+
+      test('смешанный подворот (низ 40, право 50, верх 60, лево 40) '
+          '→ 2045 × 2070', () {
+        const params = WindowParams(
           bottomWidth: 2000,
           topWidth: 2000,
           leftHeight: 2000,
           rightHeight: 2000,
           material: FilmMaterial.screen,
-          hemBottomMm: hem,
-          hemRightMm: hem,
-          hemTopMm: hem,
-          hemLeftMm: hem,
+          hemBottomMm: 40,
+          hemRightMm: 50,
+          hemTopMm: 60,
+          hemLeftMm: 40,
         );
         final spec = WindowSpec.of(params);
 
-        // Вручную: ширина 2000 + hem / 2 + hem / 2 = 2000 + hem;
-        // высота 2000 + hem / 2 + hem / 2 + 20 = 2000 + hem + 20.
-        expectClose(spec.filmCutWidth, expectedWidth, 'заготовка по ширине');
-        expectClose(spec.filmCutHeight, expectedHeight, 'заготовка по высоте');
-        // Шов 3 мм на сторону не входит в габарит заготовки, усадки у скрина
-        // нет: с «усадкой» те же размеры.
+        // Вручную: в заготовку идёт половина подворота каждой стороны.
+        // Ширина = 2000 + 20 + 25 = 2045;
+        // высота = 2000 + 20 + 30 + 20 = 2070.
+        expectClose(spec.filmCutWidth, 2045, 'ширина 2045');
+        expectClose(spec.filmCutHeight, 2070, 'высота 2070');
+        expectClose(
+          params.hemAxisLeftRightIncrease,
+          45,
+          'ширина: 40 / 2 + 50 / 2 = 45',
+        );
+        expectClose(
+          params.hemAxisBottomTopIncrease,
+          70,
+          'высота: 40 / 2 + 60 / 2 + 20 = 70',
+        );
+        expect(params.hasUniformHem, isFalse, reason: 'подвороты разные');
         expectClose(
           spec.filmCutWidthWithShrinkage,
-          expectedWidth,
-          'у скрина усадки нет',
+          2045,
+          'у скрина усадки нет (ширина)',
         );
         expectClose(
           spec.filmCutHeightWithShrinkage,
-          expectedHeight,
-          'у скрина усадки нет',
-        );
-        // Видимый размер скрина — готовый контур изделия.
-        expectClose(spec.filmVisibleWidth, 2000, 'видимый размер 2000');
-        expect(
-          params.hasUniformHem,
-          isTrue,
-          reason: 'подворот одинаков со всех сторон',
+          2070,
+          'у скрина усадки нет (высота)',
         );
       });
-    }
-
-    test('смешанный подворот (низ 40, право 50, верх 60, лево 40) '
-        '→ 2045 × 2070', () {
-      const params = WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 2000,
-        rightHeight: 2000,
-        material: FilmMaterial.screen,
-        hemBottomMm: 40,
-        hemRightMm: 50,
-        hemTopMm: 60,
-        hemLeftMm: 40,
-      );
-      final spec = WindowSpec.of(params);
-
-      // Вручную: в заготовку идёт половина подворота каждой стороны.
-      // Ширина = 2000 + 20 + 25 = 2045;
-      // высота = 2000 + 20 + 30 + 20 = 2070.
-      expectClose(spec.filmCutWidth, 2045, 'ширина 2045');
-      expectClose(spec.filmCutHeight, 2070, 'высота 2070');
-      expectClose(
-        params.hemAxisLeftRightIncrease,
-        45,
-        'ширина: 40 / 2 + 50 / 2 = 45',
-      );
-      expectClose(
-        params.hemAxisBottomTopIncrease,
-        70,
-        'высота: 40 / 2 + 60 / 2 + 20 = 70',
-      );
-      expect(params.hasUniformHem, isFalse, reason: 'подвороты разные');
-      expectClose(
-        spec.filmCutWidthWithShrinkage,
-        2045,
-        'у скрина усадки нет (ширина)',
-      );
-      expectClose(
-        spec.filmCutHeightWithShrinkage,
-        2070,
-        'у скрина усадки нет (высота)',
-      );
-    });
-  });
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -603,7 +610,10 @@ void _areaAudit() {
           );
       final spec = WindowSpec.of(params);
       final summary = CostsSummary(OrderProject(windows: [params]));
-      final estimate = Estimate.ofWindow(params, PriceList.defaults());
+      final estimate = Estimate.ofWindow(
+        params,
+        PriceList.defaults().copyWith(installationPerM2: 0),
+      );
 
       // Вручную: заготовка 2020 × 2040 (высота включает авто +10 мм ПВХ),
       // плёнка кроится 2050,3 × 2070,6 мм = 4,24535118 м².
@@ -706,7 +716,10 @@ void _areaAudit() {
         rightHeight: 1000,
         weldOverlapMm: 25,
       );
-      final estimate = Estimate.ofWindow(params, PriceList.defaults());
+      final estimate = Estimate.ofWindow(
+        params,
+        PriceList.defaults().copyWith(installationPerM2: 0),
+      );
       final film = estimate.lines.firstWhere(
         (line) => line.title.startsWith('Полотно'),
       );
@@ -792,6 +805,7 @@ void _estimateAudit() {
       final prices = PriceList.defaults().copyWith(
         markupPercent: 20,
         discountPercent: 10,
+        installationPerM2: 0,
         vatPercent: 20,
       );
       // Усадку включаем явно: по умолчанию она выключена. Тумблер

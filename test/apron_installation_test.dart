@@ -83,16 +83,19 @@ void main() {
     );
   });
 
-  test('монтаж: процент от суммы позиций', () {
+  test('монтаж: цена за м² × площадь окон', () {
     final project = const OrderProject(windows: [_pvcWithoutPocket]);
-    final base = Estimate.of(project, const PriceList.defaults());
-    final prices = const PriceList.defaults().copyWith(installationPercent: 10);
+    final base = Estimate.of(
+      project,
+      const PriceList.defaults().copyWith(installationPerM2: 0),
+    );
+    final prices = const PriceList.defaults().copyWith(installationPerM2: 450);
     final estimate = Estimate.of(project, prices);
-    expect(estimate.installationPercent, 10);
-    expect(estimate.installationBase, closeTo(base.materialsSubtotal, 1e-9));
+    expect(estimate.installationPerM2, 450);
+    expect(estimate.installationAreaM2, closeTo(base.productAreaM2, 1e-9));
     expect(
       estimate.installationAmount,
-      closeTo(roundMoney(base.materialsSubtotal * 0.10), 1e-9),
+      closeTo(roundMoney(base.productAreaM2 * 450), 1e-9),
     );
     expect(estimate.total, greaterThan(base.total));
     expect(
@@ -109,7 +112,7 @@ void main() {
 
     final prices = const PriceList.defaults().copyWith(
       aluminumBoxPerM: 450,
-      installationPercent: 10,
+      installationPerM2: 450,
     );
     await tester.pumpWidget(
       MaterialApp(
@@ -123,7 +126,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('Алюминиевый бокс'), findsOneWidget);
-    expect(find.textContaining('Монтаж 10 %'), findsOneWidget);
+    expect(find.textContaining('Монтаж 450,00 ₽/м²'), findsOneWidget);
     expect(find.textContaining('МАТЕРИАЛЫ ЗАКАЗА'), findsOneWidget);
     expect(find.textContaining('Защита от снега и дождя'), findsOneWidget);
     expect(tester.takeException(), isNull);

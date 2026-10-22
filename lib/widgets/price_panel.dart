@@ -272,9 +272,16 @@ class _PricePanelState extends State<PricePanel> {
                 (value) => _set(prices.copyWith(discountPercent: value)),
               ),
               _row(
-                'Монтаж, % от стоимости материалов',
-                prices.installationPercent,
-                (value) => _set(prices.copyWith(installationPercent: value)),
+                'Монтаж, ₽/м² площади окон',
+                prices.installationPerM2,
+                (value) => _set(prices.copyWith(installationPerM2: value)),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(left: 2, bottom: 4),
+                child: Text(
+                  '450 ₽/м² × общая площадь окон',
+                  style: TextStyle(fontSize: 9.5, color: Color(0xFF8A93A0)),
+                ),
               ),
               _row(
                 'НДС, %',

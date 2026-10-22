@@ -538,17 +538,17 @@ class Estimate {
       ? prices.discountPercent.clamp(0, 100).toDouble()
       : 0;
 
-  /// Монтаж, % от общей стоимости материалов (до наценки и скидки).
-  double get installationPercent => prices.installationPercent.isFinite
-      ? prices.installationPercent.clamp(0, 100).toDouble()
+  /// Монтаж, ₽/м² общей площади окон.
+  double get installationPerM2 => prices.installationPerM2.isFinite
+      ? math.max(prices.installationPerM2, 0)
       : 0;
 
-  /// База для монтажа — общая стоимость материалов.
-  double get installationBase => materialsSubtotal;
+  /// Общая площадь окон для монтажа, м².
+  double get installationAreaM2 => productAreaM2;
 
-  /// Стоимость монтажа, ₽.
+  /// Стоимость монтажа: площадь окон × цена за м².
   double get installationAmount =>
-      roundMoney(installationBase * installationPercent / 100);
+      roundMoney(installationAreaM2 * installationPerM2);
 
   double get vatPercent => prices.vatPercent.isFinite
       ? prices.vatPercent.clamp(0, 100).toDouble()

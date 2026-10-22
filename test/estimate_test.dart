@@ -507,7 +507,7 @@ void main() {
   });
 
   test('наценка 20 % увеличивает подытог на 20 %', () {
-    final base = PriceList.defaults();
+    final base = PriceList.defaults().copyWith(installationPerM2: 0);
     final full = Estimate.of(_project, base);
     final marked = Estimate.of(_project, base.copyWith(markupPercent: 20));
 
@@ -571,6 +571,7 @@ void main() {
         cutoutPrice: 0,
         laborPerM2: 0,
         cuttingPerM2: 0,
+        installationPerM2: 0,
         vatPercent: 0,
       ),
     );
