@@ -391,9 +391,13 @@ class _BuilderScreenState extends State<BuilderScreen> {
 
   /// То же, но для конкретного листа: при печати пачки вкладки переключаются.
   List<double>? _safeBreakFractionsFor(SheetTab tab, Size viewport) =>
-      tab == SheetTab.drawing
-      ? DrawingSheet.safeBreakFractions(_project, viewport)
-      : null;
+      switch (tab) {
+        SheetTab.drawing => DrawingSheet.safeBreakFractions(_project, viewport),
+        // Смета и раскрой — всегда один лист A4: режем ровно по его краям,
+        // чтобы даже погрешность пропорций не добавила вторую страницу.
+        SheetTab.estimate || SheetTab.cut => const [0.0, 1.0],
+        _ => null,
+      };
 
   /// Формат страницы PDF для вкладки.
   ///

@@ -461,6 +461,47 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('смета в PDF — ровно одна страница A4', (tester) async {
+    final project = OrderProject(
+      windows: [for (var i = 0; i < 6; i++) _params],
+    );
+    final sheetSize = EstimateSheet.sheetSize(
+      project,
+      const Size(1720, 1080),
+      prices: const PriceList.defaults(),
+    );
+    tester.view.physicalSize = sheetSize;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final captureKey = GlobalKey();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EstimateSheet(
+            project: project,
+            prices: const PriceList.defaults(),
+            captureKey: captureKey,
+            labelFontFamily: testFontFamily,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final bytes = await tester.runAsync(
+      () => buildSheetPdf(
+        captureKey: captureKey,
+        params: _params,
+        pixelRatio: 1,
+        pageFormat: SheetPageFormat.a4Portrait,
+      ),
+    );
+    expect(bytes, isNotNull);
+    expect(_mediaBoxes(bytes!).length, 1);
+  });
+
   testWidgets('табличный лист остаётся на широкой странице A3', (tester) async {
     final pages = await tester.runAsync(
       () async => <Uint8List>[await _solidPng(const Color(0xFFFF0000))],

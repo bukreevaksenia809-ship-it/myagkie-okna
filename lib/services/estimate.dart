@@ -453,14 +453,15 @@ class Estimate {
       );
     }
 
-    // Алюминиевый бокс: по одной ширине на каждое окно. Метраж — сумма
-    // ширин изделий; цена задаётся в прайсе за метр.
+    // Алюминиевый бокс: по две ширины на каждое окно. Метраж — удвоенная
+    // сумма ширин изделий; цена задаётся в прайсе за метр.
     final aluminumMeters =
         summary.specs.fold<double>(
           0,
           (sum, spec) => sum + spec.geometry.bottomWidth,
         ) /
-        1000;
+        1000 *
+        2;
     if (aluminumMeters > 0 &&
         prices.aluminumBoxPerM > 0 &&
         prices.isEnabled(PriceItemKeys.aluminumBox)) {
@@ -468,7 +469,7 @@ class Estimate {
         EstimateLine(
           title: 'Алюминиевый бокс',
           note:
-              'одна ширина на окно; всего '
+              'две ширины на окно; всего '
               '${formatMeters(aluminumMeters)} м',
           quantity: aluminumMeters,
           unit: 'м',

@@ -445,25 +445,28 @@ class DrawingSheet extends StatelessWidget {
                       Expanded(
                         child: _buildGridRow(page, columns, fastenerImage),
                       ),
-                      const VerticalDivider(
-                        width: 1,
-                        thickness: 1,
-                        color: Color(0xFFC3CCDA),
-                      ),
-                      SizedBox(
-                        width: gridSideWidth,
-                        child: _SidePanel(
-                          project: project,
-                          labelFontFamily: labelFontFamily,
-                          scaleLabel: 'по окнам',
-                          // У набора окон масштаб у каждого свой — линейку
-                          // показывает только лист одного окна.
-                          scaleDenominator: 0,
+                      if (columns != 2) ...[
+                        const VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: Color(0xFFC3CCDA),
                         ),
-                      ),
+                        SizedBox(
+                          width: gridSideWidth,
+                          child: _SidePanel(
+                            project: project,
+                            labelFontFamily: labelFontFamily,
+                            scaleLabel: 'по окнам',
+                            // У набора окон масштаб у каждого свой — линейку
+                            // показывает только лист одного окна.
+                            scaleDenominator: 0,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
+                if (columns == 2) const _CompactLegend(),
                 _apronBanner(
                   bottom: project.windows.any((window) => window.pocket),
                   top: project.windows.any((window) => window.pocketTop),
@@ -496,7 +499,9 @@ class DrawingSheet extends StatelessWidget {
                     page * columns + column,
                     Size(cellWidth, cellHeight),
                     fastenerImage,
-                    pad: columns == 2 ? 82 : _cellPad,
+                    pad: columns == 2 ? 100 : _cellPad,
+                    labelScale: columns == 2 ? 0.9 : 0.66,
+                    fitExactly: columns == 2,
                   ),
                 ),
             ],
@@ -519,6 +524,8 @@ class DrawingSheet extends StatelessWidget {
     Size cellSize,
     ui.Image? fastenerImage, {
     double pad = _cellPad,
+    double labelScale = 0.9,
+    bool fitExactly = false,
   }) {
     if (index >= project.windows.length) return const SizedBox.shrink();
     final params = project.windows[index];
@@ -536,7 +543,7 @@ class DrawingSheet extends StatelessWidget {
       padRight: pad,
       padTop: pad,
       padBottom: pad,
-      fitExactly: true,
+      fitExactly: fitExactly,
     );
     final layout = _drawingLayout(
       frame,
@@ -546,7 +553,7 @@ class DrawingSheet extends StatelessWidget {
       padRight: pad,
       padTop: pad,
       padBottom: pad,
-      fitExactly: true,
+      fitExactly: fitExactly,
     );
 
     return Container(
@@ -566,7 +573,7 @@ class DrawingSheet extends StatelessWidget {
                 spec: spec,
                 paintScale: 1,
                 // Подробный режим: подписи крупные, в ячейке они чуть мельче.
-                labelScale: 0.9,
+                labelScale: labelScale,
                 fastenerImage: fastenerImage,
               ),
             ),
@@ -581,6 +588,128 @@ class DrawingSheet extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Компактная легенда листа «2 в ряд» — горизонтальная полоса внизу.
+class _CompactLegend extends StatelessWidget {
+  const _CompactLegend();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 58,
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF7F9FC),
+        border: Border(top: BorderSide(color: Color(0xFFD9E0EA))),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 104,
+            child: Text(
+              'ОБОЗНАЧЕНИЯ',
+              style: TextStyle(
+                fontSize: 8,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.7,
+                color: Color(0xFF66748A),
+              ),
+            ),
+          ),
+          for (final item in const [
+            ('Окантовка', _LegendMarkKind.edge),
+            ('Запайка', _LegendMarkKind.seam),
+            ('Люверс Ø10', _LegendMarkKind.eyelet),
+            ('Крепёж', _LegendMarkKind.fastener),
+            ('Молния', _LegendMarkKind.zipper),
+            ('Фартук', _LegendMarkKind.pocket),
+          ])
+            Expanded(
+              child: Row(
+                children: [
+                  _LegendMark(item.$2),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      item.$1,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 8.5,
+                        color: Color(0xFF2B3440),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(
+            width: 112,
+            child: Text(
+              'масштаб по окнам',
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: 8, color: Color(0xFF7C8798)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _LegendMarkKind { edge, seam, eyelet, fastener, zipper, pocket }
+
+class _LegendMark extends StatelessWidget {
+  const _LegendMark(this.kind);
+
+  final _LegendMarkKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    final (color, shape, border) = switch (kind) {
+      _LegendMarkKind.edge => (
+        const Color(0xFF8B5A2B),
+        BoxShape.rectangle,
+        null,
+      ),
+      _LegendMarkKind.seam => (
+        Colors.white,
+        BoxShape.rectangle,
+        const Color(0xFF8B5A2B),
+      ),
+      _LegendMarkKind.eyelet => (
+        Colors.white,
+        BoxShape.circle,
+        const Color(0xFF1B1F27),
+      ),
+      _LegendMarkKind.fastener => (
+        const Color(0xFF7C8798),
+        BoxShape.rectangle,
+        null,
+      ),
+      _LegendMarkKind.zipper => (
+        const Color(0xFF1B1F27),
+        BoxShape.rectangle,
+        null,
+      ),
+      _LegendMarkKind.pocket => (
+        const Color(0xFFC8A46B),
+        BoxShape.rectangle,
+        null,
+      ),
+    };
+    return Container(
+      width: 12,
+      height: 12,
+      decoration: BoxDecoration(
+        color: color,
+        shape: shape,
+        border: border == null ? null : Border.all(color: border, width: 1),
       ),
     );
   }

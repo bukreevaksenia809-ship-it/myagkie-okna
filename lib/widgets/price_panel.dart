@@ -201,7 +201,7 @@ class _PricePanelState extends State<PricePanel> {
               const Padding(
                 padding: EdgeInsets.only(left: 2, bottom: 4),
                 child: Text(
-                  '0 — не считать; метраж = одна ширина на окно',
+                  '0 — не считать; метраж = две ширины на окно',
                   style: TextStyle(fontSize: 9.5, color: Color(0xFF8A93A0)),
                 ),
               ),

@@ -101,7 +101,7 @@ class PriceItemKeys {
   /// ремень-крепёж — это один и тот же материал ленты.
   static const String strap = 'strap';
 
-  /// Алюминиевый бокс, ₽/м: одна ширина на окно.
+  /// Алюминиевый бокс, ₽/м: две ширины на окно.
   static const String aluminumBox = 'aluminumBox';
   static const String drain = 'drain';
   static const String cutout = 'cutout';
@@ -207,7 +207,7 @@ const double defaultZipperPerM = 780;
 /// Спайка полотен двух соседних окон между собой, ₽/м (горячий воздух).
 const double defaultWeldPerM = 450;
 
-/// Алюминиевый бокс, ₽/м. Считается по одной ширине на каждое окно.
+/// Алюминиевый бокс, ₽/м. Считается по две ширины на каждое окно.
 const double defaultAluminumBoxPerM = 0;
 
 /// Фартук (бывший карман) под утяжитель (тент 200 мм, сложенный пополам), ₽/м.

@@ -408,10 +408,10 @@ class WindowDrawingPainter extends CustomPainter {
     final base = kind == LabelKind.fastenerChain
         ? fastenerSpanFontSizePx(0)
         : drawingLabelFontPx;
-    return math.min(
-      labelSettings.pxFor(kind) * labelScale,
-      base * _maxLabelGrowth,
-    );
+    // Размерные числа — главный ориентир на чертеже: им разрешаем расти
+    // сильнее остальных подписей (до ~16,5 pt), иначе на печати они мелкие.
+    final maxGrowth = kind == LabelKind.dimensionChain ? 2.0 : _maxLabelGrowth;
+    return math.min(labelSettings.pxFor(kind) * labelScale, base * maxGrowth);
   }
 
   // Цвета по ТЗ: размеры чёрные, плёнка голубая полупрозрачная,
@@ -2942,12 +2942,13 @@ class WindowDrawingPainter extends CustomPainter {
     _arrowHead(canvas, b2, unit);
 
     final middle = (a2 + b2) / 2;
+    final dimensionPx = _labelPx(LabelKind.dimensionChain);
     _label(
       canvas,
       text,
-      middle + outward * 13,
+      middle + outward * (12 + dimensionPx * 0.55),
       angle: math.atan2(unit.dy, unit.dx),
-      fontSize: _labelPx(LabelKind.dimensionChain),
+      fontSize: dimensionPx,
     );
   }
 
