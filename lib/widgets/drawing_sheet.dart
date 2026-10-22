@@ -217,6 +217,7 @@ class DrawingSheet extends StatelessWidget {
     double padRight = _detailPadRight,
     double padTop = _detailPadTop,
     double padBottom = _detailPadBottom,
+    bool fitExactly = false,
   }) => DrawingLayout(
     size: area / paintScale,
     geometry: spec.geometry,
@@ -224,6 +225,7 @@ class DrawingSheet extends StatelessWidget {
     padRight: padRight,
     padTop: padTop,
     padBottom: padBottom,
+    fitExactly: fitExactly,
   );
 
   /// Рамка чертежа: масштаб выбираем по свободному полю, затем строим рамку
@@ -240,6 +242,7 @@ class DrawingSheet extends StatelessWidget {
     double padRight = _detailPadRight,
     double padTop = _detailPadTop,
     double padBottom = _detailPadBottom,
+    bool fitExactly = false,
   }) {
     final layout = _drawingLayout(
       area,
@@ -249,6 +252,7 @@ class DrawingSheet extends StatelessWidget {
       padRight: padRight,
       padTop: padTop,
       padBottom: padBottom,
+      fitExactly: fitExactly,
     );
     return Size(
       (spec.geometry.spanX * layout.scale + padLeft + padRight) * paintScale +
@@ -424,6 +428,9 @@ class DrawingSheet extends StatelessWidget {
         ? _columnsFor(project.windowCount)
         : project.gridColumns;
 
+    // Для двух окон на листе отдаём максимум ширины чертежам: боковая
+    // панель уже, поля ячеек меньше. Иначе окна стоят узкими столбиками.
+    final gridSideWidth = columns == 2 ? 160.0 : sidePanelWidth;
     return Column(
       children: [
         for (var page = 0; page < pages; page++)
@@ -444,7 +451,7 @@ class DrawingSheet extends StatelessWidget {
                         color: Color(0xFFC3CCDA),
                       ),
                       SizedBox(
-                        width: sidePanelWidth,
+                        width: gridSideWidth,
                         child: _SidePanel(
                           project: project,
                           labelFontFamily: labelFontFamily,
@@ -475,7 +482,7 @@ class DrawingSheet extends StatelessWidget {
   /// Ряд окон одной страницы A4.
   Widget _buildGridRow(int page, int columns, ui.Image? fastenerImage) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 4, 4),
+      padding: const EdgeInsets.fromLTRB(2, 2, 2, 2),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final cellWidth = constraints.maxWidth / columns;
@@ -489,6 +496,7 @@ class DrawingSheet extends StatelessWidget {
                     page * columns + column,
                     Size(cellWidth, cellHeight),
                     fastenerImage,
+                    pad: columns == 2 ? 82 : _cellPad,
                   ),
                 ),
             ],
@@ -506,36 +514,43 @@ class DrawingSheet extends StatelessWidget {
     return 4;
   }
 
-  Widget _buildCell(int index, Size cellSize, ui.Image? fastenerImage) {
+  Widget _buildCell(
+    int index,
+    Size cellSize,
+    ui.Image? fastenerImage, {
+    double pad = _cellPad,
+  }) {
     if (index >= project.windows.length) return const SizedBox.shrink();
     final params = project.windows[index];
     final spec = WindowSpec.of(params);
     final isSelected = index == project.selectedIndex;
     final area = Size(
-      math.max(cellSize.width - 12, 80.0),
-      math.max(cellSize.height - 12 - _captionHeight, 60.0),
+      math.max(cellSize.width - 4, 80.0),
+      math.max(cellSize.height - 4 - _captionHeight, 60.0),
     );
     final frame = _drawingFrame(
       area,
       spec,
       paintScale: 1,
-      padLeft: _cellPad,
-      padRight: _cellPad,
-      padTop: _cellPad,
-      padBottom: _cellPad,
+      padLeft: pad,
+      padRight: pad,
+      padTop: pad,
+      padBottom: pad,
+      fitExactly: true,
     );
     final layout = _drawingLayout(
       frame,
       spec,
       paintScale: 1,
-      padLeft: _cellPad,
-      padRight: _cellPad,
-      padTop: _cellPad,
-      padBottom: _cellPad,
+      padLeft: pad,
+      padRight: pad,
+      padTop: pad,
+      padBottom: pad,
+      fitExactly: true,
     );
 
     return Container(
-      margin: const EdgeInsets.all(6),
+      margin: const EdgeInsets.all(2),
       decoration: BoxDecoration(
         color: isSelected ? const Color(0x0F0B62C4) : null,
         borderRadius: BorderRadius.circular(6),

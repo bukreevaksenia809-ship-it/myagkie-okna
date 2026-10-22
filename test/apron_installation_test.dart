@@ -89,10 +89,10 @@ void main() {
     final prices = const PriceList.defaults().copyWith(installationPercent: 10);
     final estimate = Estimate.of(project, prices);
     expect(estimate.installationPercent, 10);
-    expect(estimate.installationBase, closeTo(base.subtotal, 1e-9));
+    expect(estimate.installationBase, closeTo(base.materialsSubtotal, 1e-9));
     expect(
       estimate.installationAmount,
-      closeTo(roundMoney(base.subtotal * 0.10), 1e-9),
+      closeTo(roundMoney(base.materialsSubtotal * 0.10), 1e-9),
     );
     expect(estimate.total, greaterThan(base.total));
     expect(

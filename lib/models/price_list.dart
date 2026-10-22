@@ -265,7 +265,7 @@ const double defaultMarkupPercent = 0;
 /// Скидка по умолчанию, %.
 const double defaultDiscountPercent = 0;
 
-/// Монтаж, % от суммы позиций заказа. 0 — монтаж не считать.
+/// Монтаж, % от общей стоимости материалов. 0 — монтаж не считать.
 const double defaultInstallationPercent = 0;
 
 /// НДС по умолчанию, %. Считается «сверху» — см. комментарий у [PriceList].
@@ -431,7 +431,7 @@ class PriceList {
   final double markupPercent;
   final double discountPercent;
 
-  /// Монтаж, % от суммы позиций заказа.
+  /// Монтаж, % от общей стоимости материалов.
   final double installationPercent;
 
   /// НДС «сверху», %.
@@ -793,6 +793,7 @@ class PriceList {
     if (vatPercent > 0) 'НДС ${_trim(vatPercent)} % сверху' else 'без НДС',
     if (markupPercent > 0) 'наценка ${_trim(markupPercent)} %',
     if (discountPercent > 0) 'скидка ${_trim(discountPercent)} %',
+    if (installationPercent > 0) 'монтаж ${_trim(installationPercent)} %',
     'валюта $currency',
   ].join(', ');
 }

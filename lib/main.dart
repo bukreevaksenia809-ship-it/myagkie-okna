@@ -397,12 +397,14 @@ class _BuilderScreenState extends State<BuilderScreen> {
 
   /// Формат страницы PDF для вкладки.
   ///
-  /// Чертёж — A4 в портретной ориентации: лист построен ровно в пропорциях
-  /// A4 и печатается без масштабирования и обрезки. Табличным листам
-  /// (расходы, смета, техкарта, раскрой) нужна широкая страница A3.
+  /// Чертёж, раскрой и смета — A4 в портретной ориентации: каждый лист
+  /// построен ровно в пропорциях A4 и печатается без масштабирования.
+  /// Остальным табличным листам (расходы, техкарта) нужна широкая A3.
   SheetPageFormat _pageFormatFor(SheetTab tab) => switch (tab) {
-    // Чертёж и раскрой — ровно A4: раскрой теперь всегда один лист A4.
-    SheetTab.drawing || SheetTab.cut => SheetPageFormat.a4Portrait,
+    // Чертёж, раскрой и смета — ровно A4: каждый лист теперь один A4.
+    SheetTab.drawing ||
+    SheetTab.cut ||
+    SheetTab.estimate => SheetPageFormat.a4Portrait,
     _ => SheetPageFormat.a3LandscapeAuto,
   };
 

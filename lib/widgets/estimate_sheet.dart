@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../models/order_project.dart';
@@ -30,127 +28,105 @@ class EstimateSheet extends StatelessWidget {
   static const double _outerPadding = 20;
   static const double _captionHeight = 42;
 
-  /// Размер листа сметы. null — лист заполняет окно программы.
-  static Size? sheetSize(
+  /// Лист сметы всегда один A4 — как чертёж и раскрой.
+  static const double a4Width = 1240;
+  static const double a4Height = 1754;
+
+  /// Размер листа сметы — всегда один A4 с полями рабочей области.
+  static Size sheetSize(
     OrderProject project,
     Size viewport, {
     PriceList? prices,
-  }) {
-    final paperWidth = math.max(viewport.width - 48, 1320.0);
-    // Строк примерно: шапка, три раздела и позиции; на каждое окно заказа
-    // добавляются плёнка, окантовка, люверсы, спецэлементы и работы, а также
-    // строки крепежа: тип крепежа низа и боков и саморезы верхнего ряда.
-    // Крепёж есть у подъёмного окна и у скрина; у глухого ПВХ строк нет.
-    // Точное число позиций зависит от цен и набора спецэлементов, поэтому
-    // берём запас — лучше чуть выше лист, чем обрезанный PDF.
-    final fastenerRows = project.windows.fold<int>(0, (sum, window) {
-      if (!window.isLifting && !window.isScreen) return sum;
-      return sum + (window.fastenerType == FastenerType.eyeletsOnly ? 1 : 2);
-    });
-    final customRows =
-        prices?.customItems.where((item) => item.isFilled).length ?? 0;
-    // Карточка материалов — отдельный блок; свободные позиции — строки.
-    final approxRows = 10 + project.windowCount * 6 + fastenerRows + customRows;
-    final contentHeight =
-        _captionHeight +
-        16 +
-        approxRows * rowHeight +
-        300 +
-        titleBlockHeight +
-        _outerPadding * 2;
-    if (contentHeight <= viewport.height) return null;
-    return Size(paperWidth + _outerPadding * 2, contentHeight);
-  }
+  }) => Size(a4Width + _outerPadding * 2, a4Height + _outerPadding * 2);
 
   @override
   Widget build(BuildContext context) {
     final estimate = Estimate.of(project, prices);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final sheetWidth = math.max(
-          constraints.maxWidth - _outerPadding * 2,
-          320.0,
-        );
-        final sheetHeight = math.max(
-          constraints.maxHeight - _outerPadding * 2,
-          320.0,
-        );
-
-        return Container(
-          color: const Color(0xFFE7EBF2),
-          padding: const EdgeInsets.all(_outerPadding),
-          child: Center(
-            child: RepaintBoundary(
-              key: captureKey,
-              child: Container(
-                width: sheetWidth,
-                height: sheetHeight,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: const Color(0xFFC3CCDA)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.10),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
+    return Container(
+      color: const Color(0xFFE7EBF2),
+      padding: const EdgeInsets.all(_outerPadding),
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: RepaintBoundary(
+            key: captureKey,
+            child: Container(
+              width: a4Width,
+              height: a4Height,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: const Color(0xFFC3CCDA)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.10),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    height: _captionHeight,
+                    width: double.infinity,
+                    color: const Color(0xFF0B62C4),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      children: [
+                        _text(
+                          'Смета на заказ',
+                          size: 15,
+                          weight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                        const Spacer(),
+                        _text(
+                          'Окон в заказе: ${project.windowCount}   ·   '
+                          'ИТОГО: ${formatRubles(estimate.total)}',
+                          size: 12,
+                          color: Colors.white70,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      height: _captionHeight,
-                      width: double.infinity,
-                      color: const Color(0xFF0B62C4),
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      alignment: Alignment.centerLeft,
-                      child: Row(
-                        children: [
-                          _text(
-                            'Смета на заказ',
-                            size: 15,
-                            weight: FontWeight.w700,
-                            color: Colors.white,
+                  ),
+                  Expanded(
+                    child: ClipRect(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.topCenter,
+                        child: SizedBox(
+                          width: a4Width,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _positionsTable(estimate),
+                                const SizedBox(height: 18),
+                                _totals(estimate),
+                              ],
+                            ),
                           ),
-                          const Spacer(),
-                          _text(
-                            'Окон в заказе: ${project.windowCount}   ·   '
-                            'ИТОГО: ${formatRubles(estimate.total)}',
-                            size: 12,
-                            color: Colors.white70,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _positionsTable(estimate),
-                            const SizedBox(height: 18),
-                            _totals(estimate),
-                          ],
                         ),
                       ),
                     ),
-                    SizedBox(
-                      height: titleBlockHeight,
-                      child: _EstimateTitleBlock(
-                        estimate: estimate,
-                        project: project,
-                        fontFamily: labelFontFamily,
-                      ),
+                  ),
+                  SizedBox(
+                    height: titleBlockHeight,
+                    child: _EstimateTitleBlock(
+                      estimate: estimate,
+                      project: project,
+                      fontFamily: labelFontFamily,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -486,7 +462,7 @@ class EstimateSheet extends StatelessWidget {
       ('Итого по позициям', formatRubles(estimate.subtotal), true),
       if (estimate.installationPercent > 0)
         (
-          'Монтаж ${_percentText(estimate.installationPercent)} %',
+          'Монтаж ${_percentText(estimate.installationPercent)} % от материалов',
           formatRubles(estimate.installationAmount),
           false,
         ),

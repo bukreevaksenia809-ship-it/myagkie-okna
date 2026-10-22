@@ -6,12 +6,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
+import 'package:soft_window_drawer/models/price_list.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/file_saver.dart';
 import 'package:soft_window_drawer/services/image_slice.dart';
 import 'package:soft_window_drawer/services/pdf_export.dart';
 import 'package:soft_window_drawer/widgets/cut_sheet.dart';
 import 'package:soft_window_drawer/widgets/drawing_sheet.dart';
+import 'package:soft_window_drawer/widgets/estimate_sheet.dart';
 
 import 'test_fonts.dart';
 
@@ -398,6 +400,47 @@ void main() {
         home: Scaffold(
           body: CutSheet(
             project: project,
+            captureKey: captureKey,
+            labelFontFamily: testFontFamily,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final pages = await tester.runAsync(
+      () => renderSheetPages(
+        captureKey: captureKey,
+        pixelRatio: 1,
+        pageFormat: SheetPageFormat.a4Portrait,
+      ),
+    );
+    expect(pages, isNotNull);
+    expect(pages!.length, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('смета на 6 окон — ровно одна страница A4', (tester) async {
+    final project = OrderProject(
+      windows: [for (var i = 0; i < 6; i++) _params],
+    );
+    final sheetSize = EstimateSheet.sheetSize(
+      project,
+      const Size(1720, 1080),
+      prices: const PriceList.defaults(),
+    );
+    tester.view.physicalSize = sheetSize;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final captureKey = GlobalKey();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EstimateSheet(
+            project: project,
+            prices: const PriceList.defaults(),
             captureKey: captureKey,
             labelFontFamily: testFontFamily,
           ),

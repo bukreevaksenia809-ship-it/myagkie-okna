@@ -262,6 +262,18 @@ void main() {
           labelFontFamily: testFontFamily,
         ),
       ),
+      'zakaz-2-okna': (
+        viewport: a4Viewport,
+        build: (key) => DrawingSheet(
+          project: const OrderProject(
+            windows: [_fixed, _lifting],
+            sheetMode: SheetMode.grid,
+            gridColumns: 2,
+          ),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
       'zakaz-5-okon': (
         viewport: twoPagesViewport,
         build: (key) => DrawingSheet(
@@ -376,7 +388,9 @@ void main() {
       'spayka-vertikalnaya': (
         viewport: a4Viewport,
         build: (key) => DrawingSheet(
-          project: const OrderProject(windows: [_weldedVertically, _weldedVertically]),
+          project: const OrderProject(
+            windows: [_weldedVertically, _weldedVertically],
+          ),
           captureKey: key,
           labelFontFamily: testFontFamily,
         ),
@@ -414,12 +428,12 @@ void main() {
       await tester.pumpAndSettle();
 
       final bytes = await tester.runAsync(() async {
-        final boundary = captureKey.currentContext!.findRenderObject()!
-            as RenderRepaintBoundary;
+        final boundary =
+            captureKey.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary;
         // Лист может быть длинным (несколько A4) — держим превью разумного
         // размера, чтобы файл можно было открыть и посмотреть глазами.
-        final longest =
-            math.max(boundary.size.width, boundary.size.height);
+        final longest = math.max(boundary.size.width, boundary.size.height);
         final ratio = math.min(2.2, 10000 / longest);
         final image = await boundary.toImage(pixelRatio: ratio);
         final data = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -469,8 +483,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text(entry.value), findsOneWidget,
-          reason: 'крепёж ${entry.key}');
+      expect(
+        find.text(entry.value),
+        findsOneWidget,
+        reason: 'крепёж ${entry.key}',
+      );
       expect(tester.takeException(), isNull);
     }
   });

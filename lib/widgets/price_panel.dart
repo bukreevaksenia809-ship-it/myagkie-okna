@@ -272,7 +272,7 @@ class _PricePanelState extends State<PricePanel> {
                 (value) => _set(prices.copyWith(discountPercent: value)),
               ),
               _row(
-                'Монтаж, % от суммы позиций',
+                'Монтаж, % от стоимости материалов',
                 prices.installationPercent,
                 (value) => _set(prices.copyWith(installationPercent: value)),
               ),

@@ -537,13 +537,13 @@ class Estimate {
       ? prices.discountPercent.clamp(0, 100).toDouble()
       : 0;
 
-  /// Монтаж, % от суммы позиций (до наценки и скидки).
+  /// Монтаж, % от общей стоимости материалов (до наценки и скидки).
   double get installationPercent => prices.installationPercent.isFinite
       ? prices.installationPercent.clamp(0, 100).toDouble()
       : 0;
 
-  /// База для монтажа — сумма всех позиций.
-  double get installationBase => subtotal;
+  /// База для монтажа — общая стоимость материалов.
+  double get installationBase => materialsSubtotal;
 
   /// Стоимость монтажа, ₽.
   double get installationAmount =>

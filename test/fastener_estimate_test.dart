@@ -73,8 +73,9 @@ void main() {
 
     // Люверс под замок остаётся отдельной строкой — это другая позиция.
     expect(
-      estimate.lines.any((candidate) =>
-          candidate.itemKey == PriceItemKeys.eyeletOval),
+      estimate.lines.any(
+        (candidate) => candidate.itemKey == PriceItemKeys.eyeletOval,
+      ),
       isTrue,
     );
   });
@@ -84,9 +85,10 @@ void main() {
     final summary = CostsSummary(project);
     final spec = summary.specs.first;
     final prices = PriceList.defaults();
-    final estimate =
-        Estimate.ofWindow(_lifting.copyWith(fastenerType: FastenerType.turnBuckles),
-            prices);
+    final estimate = Estimate.ofWindow(
+      _lifting.copyWith(fastenerType: FastenerType.turnBuckles),
+      prices,
+    );
 
     final expected = spec.layers.movableSideEyelets.length;
     expect(expected, greaterThan(0));
@@ -112,8 +114,11 @@ void main() {
 
     final expected = WindowSpec.of(params).layers.movableSideEyelets.length;
     expect(summary.fastenerCount[FastenerType.straps], expected);
-    expect(summary.strapCount, params.liftStrapCount,
-        reason: 'подъёмные ремни — отдельно');
+    expect(
+      summary.strapCount,
+      params.liftStrapCount,
+      reason: 'подъёмные ремни — отдельно',
+    );
     expect(summary.strapCount, 2, reason: 'окно 1500 мм — два ремня');
 
     final line = estimate.lines.firstWhere(
@@ -182,8 +187,7 @@ void main() {
     );
     final fixedEstimate = Estimate.ofWindow(fixed, prices);
     expect(
-      fixedEstimate.lines
-          .any((line) => line.title == 'Саморезы верхнего ряда'),
+      fixedEstimate.lines.any((line) => line.title == 'Саморезы верхнего ряда'),
       isFalse,
     );
     expect(CostsSummary(const OrderProject(windows: [fixed])).screwCount, 0);
@@ -195,8 +199,9 @@ void main() {
     );
     final screenEstimate = Estimate.ofWindow(_lockScreen, prices);
     expect(
-      screenEstimate.lines
-          .any((line) => line.title == 'Саморезы верхнего ряда'),
+      screenEstimate.lines.any(
+        (line) => line.title == 'Саморезы верхнего ряда',
+      ),
       isTrue,
     );
   });
@@ -213,16 +218,14 @@ void main() {
       _lockScreen,
       prices.withItem(PriceItemKeys.frenchLock, enabled: false),
     );
-    expect(
-      off.lines.any((line) => line.title == 'Французский замок'),
-      isFalse,
-    );
+    expect(off.lines.any((line) => line.title == 'Французский замок'), isFalse);
     expect(off.subtotal, closeTo(full.subtotal - lockLine.amount, 0.011));
 
     // Включение возвращает строку и сумму.
     final back = Estimate.ofWindow(
       _lockScreen,
-      prices.withItem(PriceItemKeys.frenchLock, enabled: false)
+      prices
+          .withItem(PriceItemKeys.frenchLock, enabled: false)
           .withItem(PriceItemKeys.frenchLock, enabled: true),
     );
     expect(back.subtotal, closeTo(full.subtotal, 1e-9));
@@ -260,8 +263,9 @@ void main() {
   test('техкарта: материал крепежа совпадает с расходом по типу', () {
     final summary = CostsSummary(const OrderProject(windows: [_lockScreen]));
     final card = TechCard.forWindow(_lockScreen);
-    final eyelets = card.operations
-        .firstWhere((operation) => operation.kind == TechOperationKind.eyelets);
+    final eyelets = card.operations.firstWhere(
+      (operation) => operation.kind == TechOperationKind.eyelets,
+    );
     final fastener = eyelets.materials.firstWhere(
       (material) => material.name.contains('Крепёж низа и боков'),
     );
@@ -282,39 +286,42 @@ void main() {
     expect(eyelets.description, contains('французский замок'));
 
     // «Только люверсы»: строки крепежа нет — техкарта сходится с расходом.
-    final onlyEyelets = TechCard.forWindow(
-      _lockScreen.copyWith(fastenerType: FastenerType.eyeletsOnly),
-    ).operations
-        .firstWhere((operation) => operation.kind == TechOperationKind.eyelets);
+    final onlyEyelets =
+        TechCard.forWindow(
+          _lockScreen.copyWith(fastenerType: FastenerType.eyeletsOnly),
+        ).operations.firstWhere(
+          (operation) => operation.kind == TechOperationKind.eyelets,
+        );
     expect(
-      onlyEyelets.materials
-          .any((material) => material.name.contains('Крепёж низа и боков')),
+      onlyEyelets.materials.any(
+        (material) => material.name.contains('Крепёж низа и боков'),
+      ),
       isFalse,
     );
-    expect(onlyEyelets.description, contains('Отдельного крепежа низа и боков'));
+    expect(
+      onlyEyelets.description,
+      contains('Отдельного крепежа низа и боков'),
+    );
   });
 
-  test('размер листа сметы: строки крепежа заложены в запас', () {
-    const viewport = Size(1720, 1080);
-    // Глухое окно: строк крепежа нет — короткая смета заполняет окно.
-    const plain = WindowParams(
-      bottomWidth: 1500,
-      topWidth: 1500,
-      leftHeight: 2520,
-      rightHeight: 2520,
-    );
-    expect(
-      EstimateSheet.sheetSize(const OrderProject(windows: [plain]), viewport),
-      isNull,
-    );
-    // Скрин с замком: плюс замок и саморезы — лист выше окна, но строки
-    // крепежа в запас уже заложены (иначе низ таблицы обрезался бы в PDF).
-    final tall = EstimateSheet.sheetSize(
-      const OrderProject(windows: [_lockScreen]),
-      viewport,
-    );
-    expect(tall, isNotNull);
-    expect(tall!.height, greaterThan(viewport.height));
+  test('размер листа сметы — всегда один A4', () {
+    for (final project in const [
+      OrderProject(
+        windows: [
+          WindowParams(
+            bottomWidth: 1500,
+            topWidth: 1500,
+            leftHeight: 2520,
+            rightHeight: 2520,
+          ),
+        ],
+      ),
+      OrderProject(windows: [_lockScreen]),
+    ]) {
+      final size = EstimateSheet.sheetSize(project, const Size(1720, 1080));
+      expect(size.width, EstimateSheet.a4Width + 40);
+      expect(size.height, EstimateSheet.a4Height + 40);
+    }
   });
 
   testWidgets('лист «Смета»: строка замка с суммой', (tester) async {
@@ -340,14 +347,18 @@ void main() {
     final count = WindowSpec.of(_lockScreen).layers.movableSideEyelets.length;
     expect(find.text('Французский замок'), findsOneWidget);
     expect(
-      find.textContaining('$count шт × ${prices.frenchLockPrice.toStringAsFixed(0)} ₽/шт'),
+      find.textContaining(
+        '$count шт × ${prices.frenchLockPrice.toStringAsFixed(0)} ₽/шт',
+      ),
       findsOneWidget,
     );
     expect(find.textContaining('Саморезы верхнего ряда'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('лист «Расходы»: крепёж в спецэлементах и итогах', (tester) async {
+  testWidgets('лист «Расходы»: крепёж в спецэлементах и итогах', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1720, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -367,12 +378,12 @@ void main() {
     await tester.pumpAndSettle();
 
     // В спецэлементах окна — тип крепежа и число точек.
+    expect(find.textContaining('французский замок $count'), findsOneWidget);
+    // В итогах — отдельный блок с крепежом по типам.
     expect(
-      find.textContaining('французский замок $count'),
+      find.textContaining('Французский замок — $count шт'),
       findsOneWidget,
     );
-    // В итогах — отдельный блок с крепежом по типам.
-    expect(find.textContaining('Французский замок — $count шт'), findsOneWidget);
     expect(find.textContaining('Всего крепежа: $count шт'), findsOneWidget);
     expect(
       find.textContaining('Саморезы верхнего ряда: ${summary.screwCount} шт'),

@@ -397,18 +397,18 @@ class CutLayout {
   final double smallestSidePx;
 
   /// Зазор между заготовками по горизонтали, точки.
-  static const double columnGap = 26;
+  static const double columnGap = 44;
 
   /// Зазор между рядами, точки.
-  static const double rowGap = 16;
+  static const double rowGap = 24;
 
   /// Поля под размерные линии: слева и справа, сверху и снизу.
-  static const double sideMargin = 42;
-  static const double topMargin = 34;
-  static const double bottomMargin = 36;
+  static const double sideMargin = 58;
+  static const double topMargin = 56;
+  static const double bottomMargin = 58;
 
   /// Место под подписи «№1 · материал» и «с усадкой …» под заготовкой.
-  static const double captionHeight = 44;
+  static const double captionHeight = 112;
 
   /// Естественная высота полосы ряда: одна строка занимает ~420–460 точек.
   static const double preferredRowHeight = 460;
@@ -865,7 +865,9 @@ class CutSheetPainter extends CustomPainter {
             (middle - normal - center).distance) {
           normal = -normal;
         }
-        final offset = normal * 16;
+        // Размерные числа у стрелок — в три раза крупнее обычных подписей.
+        final dimensionPx = _basePx * 3.0;
+        final offset = normal * (16 + dimensionPx * 0.55);
         final a2 = a + offset;
         final b2 = b + offset;
 
@@ -881,9 +883,9 @@ class CutSheetPainter extends CustomPainter {
           formatMm(
             nominal != null && i < nominal.length ? nominal[i] : lengths[i],
           ),
-          (a2 + b2) / 2 + normal * 11,
+          (a2 + b2) / 2 + normal * (dimensionPx * 0.55),
           angle: _uprightAngle(direction),
-          small: true,
+          fontSize: dimensionPx,
           color: _dim,
         );
       }
@@ -922,7 +924,7 @@ class CutSheetPainter extends CustomPainter {
       canvas,
       // «Обычный ПВХ» → «обычный ПВХ», аббревиатуру не трогаем.
       '№${index + 1} · ${material[0].toLowerCase()}${material.substring(1)}',
-      Offset(rect.center.dx, rect.bottom + 48),
+      Offset(rect.center.dx, rect.bottom + 78),
       color: _ink,
     );
     final parts = <String>[
@@ -938,8 +940,6 @@ class CutSheetPainter extends CustomPainter {
       if (params.hasManualAllowance)
         'припуск ${params.allowanceWidthLabel}/'
             '${params.manualAllowanceHeightLabel} ${unitSuffix()}',
-      if (params.hasAutoHeightAllowance)
-        'авто +${formatMm(params.autoHeightAllowanceMm)} ${unitSuffix()} к высоте (ПВХ)',
       if (params.hasShrinkage)
         'с усадкой ${formatPercent(params.effectiveShrinkagePercent)}: '
             '${formatMm(spec.filmCutWidthWithShrinkage)} × '
@@ -949,7 +949,7 @@ class CutSheetPainter extends CustomPainter {
       _label(
         canvas,
         parts.join(' · '),
-        Offset(rect.center.dx, rect.bottom + 64),
+        Offset(rect.center.dx, rect.bottom + 96),
         small: true,
         color: _dim,
       );

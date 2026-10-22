@@ -17,14 +17,23 @@ class DrawingLayout {
     this.padRight = 84,
     this.padTop = 60,
     this.padBottom = 76,
+    bool fitExactly = false,
   }) {
     final spanX = math.max(geometry.spanX, 1.0);
     final spanY = math.max(geometry.spanY, 1.0);
     final availableWidth = math.max(size.width - padLeft - padRight, 40.0);
     final availableHeight = math.max(size.height - padTop - padBottom, 40.0);
     final ideal = math.min(availableWidth / spanX, availableHeight / spanY);
-    scaleDenominator = niceScaleDenominator(ideal);
-    scale = (96 / 25.4) / scaleDenominator;
+    if (fitExactly) {
+      // В режиме «Все окна» масштаб не округляем до стандартного: ячейка
+      // должна быть заполнена максимально крупно. Подпись «по окнам» и так
+      // не обещает единый масштаб.
+      scale = ideal;
+      scaleDenominator = (96 / 25.4) / scale;
+    } else {
+      scaleDenominator = niceScaleDenominator(ideal);
+      scale = (96 / 25.4) / scaleDenominator;
+    }
     scaleLabelOverride = formatScaleLabel(scale);
   }
 

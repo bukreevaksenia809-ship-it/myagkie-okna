@@ -676,21 +676,44 @@ void main() {
     expect(formatQuantity(28, 'шт'), '28');
   });
 
-  test('размер листа: пустой — заполняет окно, длинный — задаёт высоту', () {
-    // Небольшая смета в большом окне — лист заполняет окно (null).
-    expect(EstimateSheet.sheetSize(_project, const Size(1720, 1080)), isNull);
-    // В маленьком окне лист становится длиннее окна.
-    final small = EstimateSheet.sheetSize(_project, const Size(900, 700));
-    expect(small, isNotNull);
-    expect(small!.height, greaterThan(700));
-    expect(small.width, greaterThanOrEqualTo(1320));
-    // Большой заказ — лист выше окна.
-    final many = EstimateSheet.sheetSize(
+  test('размер листа сметы — строго один A4', () {
+    for (final project in [
+      _project,
       OrderProject(windows: List.filled(6, _window)),
-      const Size(1720, 1080),
+    ]) {
+      for (final viewport in const [
+        Size(1720, 1080),
+        Size(900, 700),
+        Size(2400, 1800),
+      ]) {
+        final size = EstimateSheet.sheetSize(project, viewport);
+        expect(size.width, EstimateSheet.a4Width + 40);
+        expect(size.height, EstimateSheet.a4Height + 40);
+      }
+    }
+  });
+
+  testWidgets('смета на 6 окон не выходит за A4', (tester) async {
+    tester.view.physicalSize = const Size(
+      EstimateSheet.a4Width + 40,
+      EstimateSheet.a4Height + 40,
     );
-    expect(many, isNotNull);
-    expect(many!.height, greaterThan(1080));
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EstimateSheet(
+            project: OrderProject(windows: List.filled(6, _window)),
+            prices: model.PriceList.defaults(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('пишет PNG-превью листа «Смета»', (tester) async {
