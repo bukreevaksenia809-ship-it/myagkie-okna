@@ -199,6 +199,7 @@ class CutPiece {
     this.contours = const [],
     this.areaM2 = 0,
     this.nominalSideLengths = const [],
+    this.materials = const [],
   });
 
   /// Заготовка к раскрою: плёнка с напайкой под окантовку, припуском на
@@ -211,12 +212,16 @@ class CutPiece {
   /// [WindowSpec.blankSideLengths]).
   factory CutPiece.ofSpec(WindowSpec spec) {
     final areaM2 = spec.filmCutAreaWithShrinkageM2;
+    // Составное окно: у каждого контура свой материал (ПВХ + скрин/ПВХ).
+    final compositeMaterials = spec.isComposite
+        ? [spec.params.material, spec.params.composite.material]
+        : const <FilmMaterial>[];
     final width = _positive(spec.filmCutWidthWithShrinkage);
     final height = _positive(spec.filmCutHeightWithShrinkage);
     final polygons = spec.filmCutPolygonsWithShrinkage;
     // У Т-окна сторон больше четырёх (основное полотно плюс пристройки):
     // номинальные четыре стороны обычного окна к нему не применимы.
-    final nominal = spec.params.isTShape
+    final nominal = spec.params.isTShape || spec.params.isComposite
         ? const <double>[]
         : spec.filmCutSideLengths;
     if (polygons.isEmpty) {
@@ -225,6 +230,7 @@ class CutPiece {
         heightMm: height,
         areaM2: areaM2,
         nominalSideLengths: nominal,
+        materials: compositeMaterials,
       );
     }
     final bounds = boundsOfAll(polygons);
@@ -250,6 +256,7 @@ class CutPiece {
       contours: contours,
       areaM2: areaM2,
       nominalSideLengths: nominal,
+      materials: compositeMaterials,
     );
   }
   final double widthMm;
@@ -279,6 +286,16 @@ class CutPiece {
       (!value.isFinite || value <= 0) ? 1 : value;
 
   bool get hasContour => allContours.isNotEmpty;
+
+  /// Материал каждого контура: у составного окна их два.
+  final List<FilmMaterial> materials;
+
+  /// Материал контура [index] (по умолчанию — первый/общий).
+  FilmMaterial? materialFor(int index) {
+    if (materials.isEmpty) return null;
+    if (index < materials.length) return materials[index];
+    return materials.first;
+  }
 
   /// Все контуры: явный список [contours] или одиночный [outline].
   List<List<Offset>> get allContours => contours.isNotEmpty
@@ -696,20 +713,46 @@ class CutSheetPainter extends CustomPainter {
     WindowSpec spec,
     CutPlacement placement,
   ) {
-    final palette = CutPalette.of(spec.params.material);
-    final path = _piecePath(rect, placement.piece);
+    final piece = placement.piece;
 
     // Полупрозрачная плёнка, как на чертеже. Форма — фактический контур:
     // прямоугольник, трапеция или четырёхугольник с разными высотами.
-    canvas.drawPath(path, Paint()..color = palette.fill);
-    if (palette.mesh) _paintMesh(canvas, path, rect, palette.meshColor);
-    canvas.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.6
-        ..color = palette.edge,
-    );
+    final contours = cutSheetContours(rect, piece);
+    if (contours.isEmpty) {
+      final palette = CutPalette.of(spec.params.material);
+      final path = _piecePath(rect, piece);
+      canvas.drawPath(path, Paint()..color = palette.fill);
+      if (palette.mesh) _paintMesh(canvas, path, rect, palette.meshColor);
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6
+          ..color = palette.edge,
+      );
+    } else {
+      for (var index = 0; index < contours.length; index++) {
+        final points = contours[index];
+        if (points.isEmpty) continue;
+        final material = piece.materialFor(index) ?? spec.params.material;
+        final palette = CutPalette.of(material);
+        final path = Path()
+          ..moveTo(points.first.dx, points.first.dy);
+        for (final point in points.skip(1)) {
+          path.lineTo(point.dx, point.dy);
+        }
+        path.close();
+        canvas.drawPath(path, Paint()..color = palette.fill);
+        if (palette.mesh) _paintMesh(canvas, path, rect, palette.meshColor);
+        canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.6
+            ..color = palette.edge,
+        );
+      }
+    }
 
     _paintArea(canvas, rect, placement.piece, spec);
     _paintDimensions(canvas, rect, placement);
@@ -919,11 +962,18 @@ class CutSheetPainter extends CustomPainter {
   /// Подпись под заготовкой: номер и материал, припуск и усадка.
   void _paintCaption(Canvas canvas, Rect rect, WindowSpec spec, int index) {
     final params = spec.params;
-    final material = params.material.label;
+    final materials = <String>[
+      for (final material in spec.isComposite
+          ? [params.material, params.composite.material]
+          : [params.material])
+        material.label,
+    ];
+    final material = materials.toSet().join(' + ');
     _label(
       canvas,
       // «Обычный ПВХ» → «обычный ПВХ», аббревиатуру не трогаем.
-      '№${index + 1} · ${material[0].toLowerCase()}${material.substring(1)}',
+      '№${index + 1} · ${material[0].toLowerCase()}${material.substring(1)}'
+      '${spec.isComposite ? ' — две детали, шов общий' : ''}',
       Offset(rect.center.dx, rect.bottom + 78),
       color: _ink,
     );
@@ -932,6 +982,7 @@ class CutSheetPainter extends CustomPainter {
       // молнии у всех материалов. Показываем оба числа, чтобы подпись не
       // расходилась с готовым размером и подворотами/запайкой
       // (2 530 → 2 480 мм при полосе 50 мм).
+      if (spec.zipperSegmentsLabel.isNotEmpty) spec.zipperSegmentsLabel,
       if (spec.zipperBandTotalMm > 0)
         'ширина заготовки '
             '${formatMm(spec.filmCutWidthBeforeZipper)}'

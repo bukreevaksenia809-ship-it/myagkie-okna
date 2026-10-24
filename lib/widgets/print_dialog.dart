@@ -20,12 +20,26 @@ const String kWebManySheetsHint =
 bool shouldWarnManySheets(int selectedCount, {bool? isWeb}) =>
     (isWeb ?? kIsWeb) && selectedCount > kWebManySheetsThreshold;
 
+/// Листы, которые печатаются снимком экрана.
+///
+/// «Документация» сюда не входит: это редактор со своей A4-страницей, у него
+/// собственные PDF и печать, а снимать его как лист чертежа нельзя.
+const List<SheetTab> printableSheetTabs = [
+  SheetTab.drawing,
+  SheetTab.cut,
+  SheetTab.roll,
+  SheetTab.costs,
+  SheetTab.estimate,
+  SheetTab.techCard,
+];
+
 /// Название листа — как на вкладке.
 String sheetTabTitle(SheetTab tab) => switch (tab) {
       SheetTab.drawing => 'Чертёж',
       SheetTab.cut => 'Раскрой',
       SheetTab.roll => 'Раскладка на рулоне',
       SheetTab.costs => 'Расходы',
+      SheetTab.docs => 'Документация',
       SheetTab.estimate => 'Смета',
       SheetTab.techCard => 'Техкарта',
     };
@@ -63,6 +77,7 @@ String _tabHint(SheetTab tab, bool isMultiWindow) => switch (tab) {
       SheetTab.cut => 'Заготовки плёнки',
       SheetTab.roll => 'Как лягут полотна на рулоне',
       SheetTab.costs => 'Ведомость расхода',
+      SheetTab.docs => 'Документы заказа: акт, договор, КП, спецификация…',
       SheetTab.estimate => 'Стоимость по позициям заказа',
       SheetTab.techCard => 'Технологическая карта',
     };
@@ -89,12 +104,14 @@ class _PrintSheetDialogState extends State<_PrintSheetDialog> {
   void initState() {
     super.initState();
     // Текущий лист отмечен по умолчанию.
-    _selected.add(widget.current);
+    if (printableSheetTabs.contains(widget.current)) {
+      _selected.add(widget.current);
+    }
   }
 
   /// Выбранные листы в порядке вкладок, а не в порядке нажатий.
   List<SheetTab> get _orderedSelection => [
-        for (final tab in SheetTab.values)
+        for (final tab in printableSheetTabs)
           if (_selected.contains(tab)) tab,
       ];
 
@@ -111,7 +128,7 @@ class _PrintSheetDialogState extends State<_PrintSheetDialog> {
   void _toggleAll(bool? checked) {
     setState(() {
       _selected.clear();
-      if (checked ?? false) _selected.addAll(SheetTab.values);
+      if (checked ?? false) _selected.addAll(printableSheetTabs);
     });
   }
 
@@ -121,7 +138,7 @@ class _PrintSheetDialogState extends State<_PrintSheetDialog> {
     // список не переполнялся по горизонтали.
     final screenWidth = MediaQuery.sizeOf(context).width;
     final width = math.min(380.0, math.max(200.0, screenWidth - 96));
-    final allSelected = _selected.length == SheetTab.values.length;
+    final allSelected = _selected.length == printableSheetTabs.length;
     final showWarning = shouldWarnManySheets(
       _selected.length,
       isWeb: widget.warnManySheets,
@@ -139,7 +156,7 @@ class _PrintSheetDialogState extends State<_PrintSheetDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (final tab in SheetTab.values) _tabTile(tab),
+              for (final tab in printableSheetTabs) _tabTile(tab),
               const Divider(height: 1),
               CheckboxListTile(
                 dense: true,

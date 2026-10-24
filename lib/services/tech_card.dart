@@ -381,6 +381,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       title: 'Раскрой плёнки',
       description:
           '${params.isTShape ? 'Т-образное окно: выкроить основное полотно и пристройки, затем сварить по общим сторонам. ' : ''}'
+          '${params.isComposite ? 'Составное окно: выкроить ПВХ-полотно и второй сегмент (${params.composite.material.label}), затем сварить по общему шву; сторона шва без окантовки/подворота. ' : ''}'
           'Отрезать полотно по раскрою: видимый размер '
           '${formatMm(visible.width)} × ${formatMm(visible.height)} ${unitSuffix()}, плюс '
           'запайка ${formatMm(params.weldOverlapMm)} ${unitSuffix()} с каждой стороны'
@@ -425,6 +426,26 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
               ? 'ширина × высота заготовки, с припуском и усадкой, без вырезов'
               : 'ширина × высота заготовки, с припуском, без площади вырезов',
         ),
+        if (params.isComposite && spec.filmPartBounds.length >= 2) ...[
+          TechMaterial(
+            name: 'Основное полотно (составное)',
+            size:
+                '${formatMm(spec.filmPartBounds[0].width)} × '
+                '${formatMm(spec.filmPartBounds[0].height)} ${unitSuffix()}',
+            note: 'ПВХ, окантовка по свободным кромкам, сторона шва без окантовки',
+          ),
+          TechMaterial(
+            name:
+                'Второй сегмент: ${params.composite.material.label}',
+            size:
+                '${formatMm(spec.filmPartBounds[1].width)} × '
+                '${formatMm(spec.filmPartBounds[1].height)} ${unitSuffix()}',
+            note:
+                '${params.composite.side.label.toLowerCase()}, '
+                '${params.composite.isDiagonal ? 'диагональный' : 'прямой'} шов; '
+                '${params.composite.isDiagonal ? 'наклонная кромка — шов' : 'сторона шва без окантовки/подворота'}',
+          ),
+        ],
         if (params.isTShape && spec.filmPartBounds.length >= 2) ...[
           TechMaterial(
             name: 'Основное полотно (Т-окно)',
@@ -560,11 +581,10 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
 
   // ------------------------------------------ 3. спайка полотен / окон
   // У Т-окна со спайкой общая сторона — отдельная операция: по ней
-  // свариваются два полотна. Спайки с соседними окнами (weldedSides) идут
-  // тем же видом операции, но отдельными материалами по сторонам.
-  if (params.weldedSides.isNotEmpty ||
-      (params.isTShape && spec.tWeldedSeamLength > 0)) {
-    final bySide = layers.edgeLengthsBySide;
+  // свариваются два полотна. У составного окна — шов между материалами.
+  // Спайки с соседними окнами удалены.
+  final compositeSeam = spec.compositeSeamLength;
+  if ((params.isTShape && spec.tWeldedSeamLength > 0) || compositeSeam > 0) {
     final weldedMaterials = <TechMaterial>[];
     for (final annex in spec.layers.tAnnexes.where((annex) => annex.welded)) {
       weldedMaterials.add(
@@ -581,24 +601,27 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         ),
       );
     }
-    for (final side in EdgeSide.values) {
-      if (!params.isWelded(side)) continue;
-      final length = bySide[side] ?? 0;
-      if (length <= 0) continue;
+    if (compositeSeam > 0) {
       weldedMaterials.add(
         TechMaterial(
           name:
-              'Спайка с соседним окном внахлёст '
+              'Спайка составного окна внахлёст '
               '${formatMm(windowWeldWidth)} ${unitSuffix()}',
-          size: '${formatMm(length)} ${unitSuffix()}',
-          quantity: length,
-          side: side.label,
+          size: '${formatMm(compositeSeam)} ${unitSuffix()}',
+          quantity: compositeSeam,
+          note:
+              '${params.composite.side.label.toLowerCase()}, '
+              '${params.composite.isDiagonal ? 'диагональный' : 'прямой'} шов; '
+              '${params.composite.material.label} + ПВХ',
         ),
       );
     }
     add(
       kind: TechOperationKind.weldNeighbor,
-      title: params.isTShape && spec.tWeldedSeamLength > 0
+      title: compositeSeam > 0 &&
+              !(params.isTShape && spec.tWeldedSeamLength > 0)
+          ? 'Спайка составного окна'
+          : params.isTShape && spec.tWeldedSeamLength > 0
           ? 'Спайка полотен по общим сторонам'
           : 'Спайка с соседним окном',
       description:
@@ -627,7 +650,6 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     final edgeMaterials = <TechMaterial>[];
     final bySide = layers.edgeLengthsBySide;
     for (final side in EdgeSide.values) {
-      if (params.isWelded(side)) continue;
       final length = bySide[side] ?? 0;
       if (length <= 0) continue;
       final roll = params.rollForSide(side);
@@ -702,10 +724,22 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
   // люверсы. Тип крепежа у скрина больше не игнорируется.
   // Числа крепежа — те же, что в расходе и смете: точки низа и боков без
   // углов плюс саморезы верхнего ряда.
-  final movableFastenerCount = layers.movableSideEyelets.length;
+  final isFrenchLock = params.fastenerType == FastenerType.frenchLocks;
+  // Французские замки стоят по вертикали: на окно — сумма левой и правой
+  // высот ÷ шаг, вверх до чётного. Плюс 2 шт — запас на весь заказ, поэтому
+  // в техкарте окна он показан отдельной пометкой, а не в количестве.
+  final frenchLockCount = _frenchLockCountForWindow(params);
+  final movableFastenerCount =
+      isFrenchLock ? frenchLockCount : layers.movableSideEyelets.length;
   final topScrewCount = layers.topEyelets.length;
   final String fastenerNote;
-  if (params.fastenerType == FastenerType.eyeletsOnly) {
+  if (isFrenchLock) {
+    fastenerNote = 'Крепёж: французский замок — по вертикали: '
+        '(${formatMm(params.leftHeight)} + ${formatMm(params.rightHeight)}) '
+        '${unitSuffix()} ÷ шаг ${formatMm(params.eyeletStep)} ${unitSuffix()} '
+        '= $frenchLockCount шт на окно (вверх до чётного); '
+        '+2 шт — на заказ.';
+  } else if (params.fastenerType == FastenerType.eyeletsOnly) {
     fastenerNote = isScreen
         ? '${spec.fastenerSummary}. Отдельного крепежа низа и боков нет — '
               'только люверсы.'
@@ -776,18 +810,21 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         // Строка крепежа есть только у реального крепежа: у «только люверсы»
         // её нет ни на ПВХ, ни на скрине — иначе техкарта разошлась бы с
         // расходом (там fastenerCount для этого типа равен нулю).
-        if (layers.movableSideEyelets.isNotEmpty &&
+        if ((isFrenchLock || layers.movableSideEyelets.isNotEmpty) &&
             params.fastenerType != FastenerType.eyeletsOnly &&
-            (params.isLifting || isScreen))
+            (params.isLifting || isScreen || isFrenchLock))
           TechMaterial(
-            name:
-                'Крепёж низа и боков: '
-                '${params.fastenerType.label.toLowerCase()}'
-                '${isScreen ? ' (по подвороту)' : ''}',
-            size: '${layers.movableSideEyelets.length} шт',
-            quantity: layers.movableSideEyelets.length.toDouble(),
+            name: isFrenchLock
+                ? 'Крепёж: французский замок по вертикали'
+                : 'Крепёж низа и боков: '
+                      '${params.fastenerType.label.toLowerCase()}'
+                      '${isScreen ? ' (по подвороту)' : ''}',
+            size: '$movableFastenerCount шт',
+            quantity: movableFastenerCount.toDouble(),
             unit: 'шт',
-            note: isScreen
+            note: isFrenchLock
+                ? 'левая + правая высота ÷ шаг, вверх до чётного; +2 шт на заказ'
+                : isScreen
                 ? 'кроме углов — там круглые люверсы; полоса крепежа — подворот'
                 : 'кроме углов — там круглые люверсы',
           ),
@@ -980,8 +1017,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       description:
           'Приварить/пришить ${spec.strapCount} шт ремней '
           '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} ${unitSuffix()} по '
-          'верхней кромке, сверху вниз, равномерно по ширине (2 шт до 2 м '
-          'ширины, далее +1 на каждый метр).',
+          'верхней кромке, сверху вниз'
+          '${params.liftStrapOffsets.isEmpty ? ', равномерно по ширине (2 шт до 2 м ширины, далее +1 на каждый метр)' : ' — положения заданы вручную, каждый начинается на линии тента (на косом окне кромка наклонена)'}.',
       materials: [
         TechMaterial(
           name: 'Подъёмный ремень (заготовка)',
@@ -995,7 +1032,9 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       control:
           'Ремни на одном уровне, шаг равный, шов на всю ширину ремня; '
           'нагрузку держат',
-      source: 'WindowParams.liftStrapCount; ремень 50 × 500 мм',
+      source: params.liftStrapOffsets.isEmpty
+          ? 'WindowParams.liftStrapCount; ремень 50 × 500 мм'
+          : 'WindowParams.liftStrapOffsets; ремень 50 × 500 мм',
     );
   }
 
@@ -1051,4 +1090,17 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
   );
 
   return operations;
+}
+
+
+/// Французские замки на одно окно: сумма левой и правой высот делится на шаг
+/// крепления и округляется вверх до чётного. Запас +2 шт считается на заказ
+/// (см. CostsSummary), в техкарте окна он только упоминается.
+int _frenchLockCountForWindow(WindowParams params) {
+  final step = params.eyeletStep;
+  final vertical = params.leftHeight + params.rightHeight;
+  if (!(step > 0) || !(vertical > 0)) return 0;
+  var count = (vertical / step).ceil();
+  if (count.isOdd) count += 1;
+  return count;
 }

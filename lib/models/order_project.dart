@@ -23,7 +23,9 @@ class OrderProject {
     this.rollGap = 20,
     this.options = const DrawingOptions(),
     this.sheetMode = SheetMode.single,
-    this.gridColumns = 2,
+    // 0 — «Авто, окон в ряду»: для 2–3 окон программа сама перебирает
+    // раскладки с поворотом и выбирает самую крупную.
+    this.gridColumns = 0,
   });
 
   /// Окна заказа. Номер окна — его позиция в списке (нумерация с единицы).
@@ -112,34 +114,6 @@ class OrderProject {
         windows: [...windows, selected.copyWith(drawingNumber: '')],
         selectedIndex: windows.length,
       );
-
-  /// Добавить окно к спайке: копия выбранного окна встаёт рядом (после него)
-  /// и сваривается с ним по указанной стороне.
-  ///
-  /// Копия повторяет шаблон целиком — размеры, материал, окантовку, молнии,
-  /// вырезы, фартук; отличается только маркировка ([WindowParams.drawingNumber]
-  /// очищается) и сторона спайки: у копии это [EdgeSide.opposite]. Работает
-  /// для всех четырёх сторон: справа/слева и сверху/снизу. Повторный вызов с
-  /// той же стороной не дублирует её в [WindowParams.weldedSides].
-  OrderProject addWeldedWindow(EdgeSide side) {
-    final index = selectedIndex.clamp(0, windows.length - 1);
-    final source = windows[index];
-
-    final current = source.isWelded(side)
-        ? source
-        : source.copyWith(weldedSides: [...source.weldedSides, side]);
-
-    final opposite = side.opposite;
-    final copyBase = source.copyWith(drawingNumber: '');
-    final copy = copyBase.isWelded(opposite)
-        ? copyBase
-        : copyBase.copyWith(weldedSides: [...copyBase.weldedSides, opposite]);
-
-    final next = [...windows];
-    next[index] = current;
-    next.insert(index + 1, copy);
-    return copyWith(windows: next, selectedIndex: index + 1);
-  }
 
   OrderProject removeSelected() {
     if (windows.length <= 1) return this;

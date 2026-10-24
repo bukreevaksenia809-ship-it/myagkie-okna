@@ -421,8 +421,8 @@ class FastenerChainLabel {
 
   /// Позиция вдоль стороны от её начала, мм.
   ///
-  /// Начало: низ и верх — левый угол, лево и право — ВЕРХНИЙ угол (высоты
-  /// считаются сверху вниз, ширины — слева направо). Угловое крепление даёт
+  /// Начало: низ и верх — левый угол, лево и право — НИЖНИЙ угол (высоты
+  /// считаются снизу вверх, ширины — слева направо). Угловое крепление даёт
   /// 0, крепление с отступом — величину отступа.
   final double positionMm;
 
@@ -448,7 +448,7 @@ class FastenerChainLabel {
 ///  * первая точка в углу — «0», смещённая — величина отступа;
 ///  * каждая следующая — сумма всех расстояний от угла (накопление);
 ///  * стороны без крепежа остаются без подписей;
-///  * высоты считаются сверху вниз, ширины — слева направо.
+///  * высоты считаются СНИЗУ ВВЕРХ, ширины — слева направо.
 ///
 /// Расстояния меряются по линии центров креплений (у ПВХ она на середине
 /// окантовки). Поэтому отступ углового крепления от кромки канта (половина
@@ -460,7 +460,6 @@ List<FastenerChainLabel> fastenerChainLabels(WindowSpec spec) {
   if (eyelets.isEmpty) return const [];
 
   final labels = <FastenerChainLabel>[];
-  final shapeCenter = boundsOf(outer).center;
   for (var i = 0; i < outer.length; i++) {
     final a = outer[i];
     final b = outer[(i + 1) % outer.length];
@@ -480,7 +479,8 @@ List<FastenerChainLabel> fastenerChainLabels(WindowSpec spec) {
         end = a;
       }
     } else {
-      if (a.dy >= b.dy) {
+      // Высоты — снизу вверх: началом стороны считается нижний угол.
+      if (a.dy <= b.dy) {
         start = a;
         end = b;
       } else {
@@ -492,18 +492,13 @@ List<FastenerChainLabel> fastenerChainLabels(WindowSpec spec) {
     final length = direction.distance;
     if (length < 1) continue;
     final unit = direction / length;
-    // Нормаль внутрь контура: линия центров креплений сдвинута от кромки
-    // на половину канта (pad), поэтому центр крепления — не на кромке.
-    final normalCandidate = Offset(-unit.dy, unit.dx);
-    final inward =
-        (start + normalCandidate - shapeCenter).distance <
-            (start - normalCandidate - shapeCenter).distance
-        ? normalCandidate
-        : -normalCandidate;
 
     // Крепления этой кромки. Ряд — ближайший к наружному контуру.
     final candidates = <_Node>[];
     for (final eyelet in eyelets) {
+      // Только крепления этой стороны; угловые принадлежат сразу двум
+      // сторонам, поэтому для них даём «0» на обеих.
+      if (eyelet.side != side && !eyelet.isCorner) continue;
       final relative = eyelet.center - start;
       final along = relative.dx * unit.dx + relative.dy * unit.dy;
       if (along < -0.75 || along > length + 0.75) continue;
@@ -511,39 +506,58 @@ List<FastenerChainLabel> fastenerChainLabels(WindowSpec spec) {
       candidates.add(_Node(along, perp, eyelet.center));
     }
     if (candidates.isEmpty) continue;
-    final pad = candidates
+    // Углы соседних сторон тоже попадают в кандидаты: оставляем только те,
+    // что лежат у ЭТОЙ кромки (у составного окна рядов два — ПВХ и скрин).
+    final nearest = candidates
         .map((node) => node.perp)
         .reduce((left, right) => left < right ? left : right);
-    final row =
-        candidates.where((node) => (node.perp - pad).abs() <= 1.0).toList()
-          ..sort((left, right) => left.along.compareTo(right.along));
-
-    final positions = <double>[];
-    for (final node in row) {
-      // Отступ от кромки канта (половина полосы) — не расстояние от угла:
-      // угловое крепление должно дать 0.
-      final position = node.along - pad;
-      if (position < -0.5) continue;
-      final value = position.abs() < 0.05 ? 0.0 : position;
-      if (positions.isNotEmpty && (value - positions.last).abs() < 1) {
-        continue;
-      }
-      positions.add(value);
+    candidates.removeWhere((node) => node.perp > nearest + 60);
+    if (candidates.isEmpty) continue;
+    // Крепления могут лежать в нескольких «рядах» от кромки: у составного
+    // окна ПВХ-часть утоплена под окантовку, а скрин стоит по подвороту.
+    // Группируем по удалению от кромки и считаем каждую группу от её канта.
+    final rows = <List<_Node>>[];
+    for (final node in candidates) {
+      final row = rows.firstWhere(
+        (existing) => (existing.first.perp - node.perp).abs() <= 1.0,
+        orElse: () {
+          final created = <_Node>[];
+          rows.add(created);
+          return created;
+        },
+      );
+      row.add(node);
     }
-    if (positions.isEmpty) continue;
 
-    for (var k = 0; k < positions.length; k++) {
-      // Накопленное расстояние от угла — это и есть позиция вдоль стороны,
-      // посчитанная от угла: каждая следующая цифра включает предыдущие.
-      final cumulative = positions[k];
-      final point = start + unit * (pad + positions[k]) + inward * pad;
+    final entries = <({double position, Offset point})>[];
+    for (final row in rows) {
+      row.sort((left, right) => left.along.compareTo(right.along));
+      final pad = row.first.perp;
+      for (final node in row) {
+        // Отступ от кромки канта (половина полосы) — не расстояние от угла:
+        // угловое крепление должно дать 0.
+        final position = node.along - pad;
+        if (position < -0.5) continue;
+        final value = position.abs() < 0.05 ? 0.0 : position;
+        entries.add((position: value, point: node.center));
+      }
+    }
+    if (entries.isEmpty) continue;
+    entries.sort((left, right) => left.position.compareTo(right.position));
+
+    var previous = double.negativeInfinity;
+    for (final entry in entries) {
+      // Две детали могут дать точки почти в одном месте (шов) — оставляем
+      // одну, чтобы цифры не сливались.
+      if (entry.position - previous < 1) continue;
+      previous = entry.position;
       labels.add(
         FastenerChainLabel(
           edgeIndex: i,
           side: side,
-          pointMm: point,
-          positionMm: positions[k],
-          cumulativeMm: cumulative,
+          pointMm: entry.point,
+          positionMm: entry.position,
+          cumulativeMm: entry.position,
         ),
       );
     }

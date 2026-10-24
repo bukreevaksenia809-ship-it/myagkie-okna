@@ -55,7 +55,6 @@ const _rich = WindowParams(
     ),
     Cutout(width: 400, height: 300, centerXMm: 400, centerYMm: 700),
   ],
-  weldedSides: [EdgeSide.right],
   pocket: true,
   drainHoles: true,
 );
@@ -297,42 +296,6 @@ void main() {
     });
   });
 
-  group('спайка с соседним окном', () {
-    final base = TechCard.forWindow(_window);
-    final weldedParams = _window.copyWith(weldedSides: const [EdgeSide.right]);
-    final weldedSpec = WindowSpec.of(weldedParams);
-    final welded = TechCard.forWindow(weldedParams);
-
-    test('появляется операция про спайку', () {
-      final weld = _op(welded, TechOperationKind.weldNeighbor);
-      expect(weld.title, 'Спайка с соседним окном');
-      expect(weld.text, contains(weldedSpec.weldSummary));
-      expect(weld.text, contains(formatMm(weldedSpec.layers.weldLengthMm)));
-      expect(weld.materials.first.side, 'Право');
-    });
-
-    test('окантовка по правой стороне исчезает', () {
-      final edging = _op(welded, TechOperationKind.edging);
-      expect(
-        edging.materials.any((material) => material.side == 'Право'),
-        isFalse,
-      );
-      expect(
-        edging.materials.any((material) => material.side == 'Низ'),
-        isTrue,
-      );
-
-      final sums = _edgeSumsFromMaterials(edging);
-      expect(sums.keys.toSet(), weldedSpec.edgeConsumption.keys.toSet());
-      for (final entry in weldedSpec.edgeConsumption.entries) {
-        expect(sums[entry.key], closeTo(entry.value, 1e-6));
-      }
-
-      // Из расхода ушла ровно длина правой стороны.
-      final rightLength = weldedSpec.geometry.sideLengths[1];
-      expect(base.edgeTotalMm - welded.edgeTotalMm, closeTo(rightLength, 1e-6));
-    });
-  });
 
   test('карта заказа из трёх окон содержит три карты', () {
     const project = OrderProject(windows: [_window, _rich, _mesh]);
@@ -421,16 +384,6 @@ void main() {
       expect(
         _op(card, TechOperationKind.control).text,
         isNot(contains(formatMm(spec.filmCutWidthWithAllowance))),
-      );
-      final weldCard = TechCard.forWindow(
-        withAllowance.copyWith(weldedSides: const [EdgeSide.right]),
-      );
-      final weldBase = TechCard.forWindow(
-        plain.copyWith(weldedSides: const [EdgeSide.right]),
-      );
-      expect(
-        _op(weldCard, TechOperationKind.weldNeighbor).text,
-        _op(weldBase, TechOperationKind.weldNeighbor).text,
       );
     });
   });

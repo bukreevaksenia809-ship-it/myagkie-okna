@@ -1,12 +1,14 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../models/order_project.dart';
 import '../models/window_geometry.dart';
 import '../models/window_params.dart';
 import '../services/fastener_artwork.dart';
+import '../services/company_branding.dart';
 import '../services/label_settings.dart';
 import 'window_painter.dart';
 
@@ -17,6 +19,8 @@ class DrawingSheet extends StatelessWidget {
     required this.project,
     this.captureKey,
     this.labelFontFamily,
+    this.company,
+    this.onParamsChanged,
   });
 
   final OrderProject project;
@@ -26,6 +30,12 @@ class DrawingSheet extends StatelessWidget {
 
   /// Шрифт подписей на чертеже; null — системный шрифт.
   final String? labelFontFamily;
+
+  /// Компания для штампа: логотип и реквизиты (если включено).
+  final CompanyBrandingState? company;
+
+  /// Правка параметров прямо на чертеже (перетаскивание люверсов).
+  final ValueChanged<WindowParams>? onParamsChanged;
 
   /// Ширина листа A4 в логических точках: 210 мм при 150 dpi.
   static const double a4Width = 1240;
@@ -52,6 +62,12 @@ class DrawingSheet extends StatelessWidget {
 
   static const double _outerPadding = 20;
   static const double _captionHeight = 42;
+
+  /// Высота компактной легенды внизу листа (точек).
+  static const double compactLegendHeight = 58;
+
+  /// Внутренний отступ ячейки раскладки 2–3 окон.
+  static const double _cellMargin = 2;
 
   /// Размер листа в рабочей области: сам лист A4 плюс поля рабочей области.
   ///
@@ -82,6 +98,32 @@ class DrawingSheet extends StatelessWidget {
   bool get _showGrid =>
       project.sheetMode == SheetMode.grid && project.isMultiWindow;
 
+  /// Свободное поле страницы A4 под оптимизированную раскладку 2–3 окон.
+  ///
+  /// Формула повторяет колонку страницы в [build]: страница A4 минус
+  /// компактная легенда, при необходимости фартук и штамп. Отдельный метод
+  /// нужен тестам и превью: они проверяют ту же геометрию, что и виджет.
+  static Size optimizedGridArea({double apronHeight = 0}) => Size(
+    a4Width,
+    a4Height - titleBlockHeight - compactLegendHeight - apronHeight,
+  );
+
+  /// Включать ли автоматический перебор раскладки для 2–3 окон.
+  ///
+  /// Только режим «Авто, окон в ряду» ([OrderProject.gridColumns] == 0):
+  /// явные 1–4 колонки остаются осмысленными и работают как раньше.
+  bool get _useOptimizedGrid =>
+      _showGrid &&
+      project.gridColumns == 0 &&
+      project.windowCount >= 2 &&
+      project.windowCount <= 3;
+
+  /// Высота плашки «фартук» на странице, точек.
+  double get _apronHeight =>
+      project.windows.any((window) => window.pocket || window.pocketTop)
+      ? 32
+      : 0;
+
   /// Доли высоты листа, по которым PDF режется ровно по границам A4.
   ///
   /// Лист собран из страниц A4 одинаковой высоты, поэтому резать можно только
@@ -101,14 +143,13 @@ class DrawingSheet extends StatelessWidget {
   /// чертёж: у обычного окна, у Т-окна с одной и с двумя пристройками она
   /// должна быть сопоставимой.
   static DrawingSheetMetrics metricsFor(OrderProject project) {
-    final sheet = DrawingSheet(project: project);
     final spec = WindowSpec.of(project.selected);
     final area = Size(
       math.max(a4Width - sidePanelWidth - 1, 160.0),
       math.max(a4Height - titleBlockHeight - _captionHeight, 120.0),
     );
-    final frame = sheet._drawingFrame(area, spec);
-    final layout = sheet._drawingLayout(frame, spec);
+    final frame = _drawingFrame(area, spec);
+    final layout = _drawingLayout(frame, spec);
     return DrawingSheetMetrics(
       frame: frame,
       area: area,
@@ -200,6 +241,13 @@ class DrawingSheet extends StatelessWidget {
   /// окна на 52–75 точек, и при меньшем поле их обрежет рамка.
   static const double _cellPad = 88;
 
+  /// Поля автоматической раскладки 2–3 окон.
+  ///
+  /// 100 точек — как у прежних «2 в ряд»: размерная подпись встаёт в 62
+  /// точки от контура плюс запас на крупный кегль из настроек (до 85 точек),
+  /// поэтому после поворота на 90° она не упирается в рамку ячейки.
+  static const double _optimizedGridPad = 100;
+
   /// Запас к размеру рамки: страхует пересчёт масштаба от погрешности.
   static const double _frameSlack = 2;
 
@@ -209,7 +257,7 @@ class DrawingSheet extends StatelessWidget {
   /// масштаб (1:10, 1:15, 1:20 …) совпадает с масштабной линейкой. Поэтому
   /// поле переводим в эти точки делением на [paintScale], а поля оставляем
   /// как есть: их размеры заданы в тех же точках, что и выноски чертежа.
-  DrawingLayout _drawingLayout(
+  static DrawingLayout _drawingLayout(
     Size area,
     WindowSpec spec, {
     double paintScale = _paintScale,
@@ -234,7 +282,7 @@ class DrawingSheet extends StatelessWidget {
   /// К размеру рамки добавлен небольшой запас: тогда масштаб, пересчитанный
   /// от рамки, не «прыгнет» на следующий стандартный из-за погрешности
   /// округления, и чертёж гарантированно влезает в рамку.
-  Size _drawingFrame(
+  static Size _drawingFrame(
     Size area,
     WindowSpec spec, {
     double paintScale = _paintScale,
@@ -276,6 +324,7 @@ class DrawingSheet extends StatelessWidget {
     double paintScale = _paintScale,
     double labelScale = 1,
     ui.Image? fastenerImage,
+    ValueChanged<WindowParams>? onParamsChanged,
   }) {
     final paintSize = frame / paintScale;
     return SizedBox(
@@ -293,23 +342,37 @@ class DrawingSheet extends StatelessWidget {
             child: SizedBox(
               width: paintSize.width,
               height: paintSize.height,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(color: const Color(0xFF9FB0C6)),
-                ),
-                child: CustomPaint(
-                  painter: WindowDrawingPainter(
+              child: Builder(
+                builder: (context) {
+                  final drawing = DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFF9FB0C6)),
+                    ),
+                    child: CustomPaint(
+                      key: const Key('drawing-canvas'),
+                      painter: WindowDrawingPainter(
+                        params: params,
+                        layout: layout,
+                        layers: spec.layers,
+                        options: project.options,
+                        labelFontFamily: labelFontFamily,
+                        showScaleBar: false,
+                        labelScale: labelScale,
+                        fastenerImage: fastenerImage,
+                      ),
+                      size: Size.infinite,
+                    ),
+                  );
+                  if (onParamsChanged == null) return drawing;
+                  return _EyeletDragLayer(
+                    key: const Key('drawing-eyelet-layer'),
                     params: params,
+                    spec: spec,
                     layout: layout,
-                    layers: spec.layers,
-                    options: project.options,
-                    labelFontFamily: labelFontFamily,
-                    showScaleBar: false,
-                    labelScale: labelScale,
-                    fastenerImage: fastenerImage,
-                  ),
-                  size: Size.infinite,
-                ),
+                    onChanged: onParamsChanged,
+                    child: drawing,
+                  );
+                },
               ),
             ),
           ),
@@ -386,6 +449,7 @@ class DrawingSheet extends StatelessWidget {
                           params: params,
                           spec: spec,
                           fastenerImage: fastenerImage,
+                          onParamsChanged: onParamsChanged,
                         ),
                       ),
                     ),
@@ -412,7 +476,11 @@ class DrawingSheet extends StatelessWidget {
         _apronBanner(bottom: params.pocket, top: params.pocketTop),
         SizedBox(
           height: titleBlockHeight,
-          child: _TitleBlock(project: project, scaleLabel: layout.scaleLabel),
+          child: _TitleBlock(
+            project: project,
+            scaleLabel: layout.scaleLabel,
+            company: company,
+          ),
         ),
       ],
     );
@@ -428,6 +496,23 @@ class DrawingSheet extends StatelessWidget {
         ? _columnsFor(project.windowCount)
         : project.gridColumns;
 
+    // 2–3 окна в режиме «Авто»: раскладку и повороты выбирает перебор
+    // ([optimizedGridPlan]), а не фиксированное число колонок. Лист из 2–3
+    // окон всегда занимает ровно одну страницу A4.
+    final plan = _useOptimizedGrid && pages == 1
+        ? optimizedGridPlan(
+            project,
+            optimizedGridArea(apronHeight: _apronHeight),
+          )
+        : null;
+    final optimized = plan != null;
+    // 2–3 окна на листе отдают площадь чертежам: боковой панели нет, её
+    // заменяет компактная легенда внизу. У прежних «2 в ряд» (в том числе
+    // для 4+ окон) панели не было изначально — сохраняем это. Исключение —
+    // явное «1 в ряд (подробно)»: подробному листу одного окна панель нужна.
+    final compactPage =
+        optimized || columns == 2 || (columns >= 2 && project.windowCount <= 3);
+
     // Для двух окон на листе отдаём максимум ширины чертежам: боковая
     // панель уже, поля ячеек меньше. Иначе окна стоят узкими столбиками.
     final gridSideWidth = columns == 2 ? 160.0 : sidePanelWidth;
@@ -439,46 +524,127 @@ class DrawingSheet extends StatelessWidget {
             child: Column(
               children: [
                 Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        child: _buildGridRow(page, columns, fastenerImage),
-                      ),
-                      if (columns != 2) ...[
-                        const VerticalDivider(
-                          width: 1,
-                          thickness: 1,
-                          color: Color(0xFFC3CCDA),
+                  child: optimized && page == 0
+                      ? _buildOptimizedPage(plan, fastenerImage)
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: _buildGridRow(
+                                page,
+                                columns,
+                                fastenerImage,
+                              ),
+                            ),
+                            // В автоматической раскладке и для 2–3 окон
+                            // боковой панели нет: всё поле страницы отдано
+                            // чертежам, обозначения — полосой внизу.
+                            if (!compactPage && columns != 2) ...[
+                              const VerticalDivider(
+                                width: 1,
+                                thickness: 1,
+                                color: Color(0xFFC3CCDA),
+                              ),
+                              SizedBox(
+                                width: gridSideWidth,
+                                child: _SidePanel(
+                                  project: project,
+                                  labelFontFamily: labelFontFamily,
+                                  scaleLabel: 'по окнам',
+                                  // У набора окон масштаб у каждого свой —
+                                  // линейку показывает только лист одного
+                                  // окна.
+                                  scaleDenominator: 0,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                        SizedBox(
-                          width: gridSideWidth,
-                          child: _SidePanel(
-                            project: project,
-                            labelFontFamily: labelFontFamily,
-                            scaleLabel: 'по окнам',
-                            // У набора окон масштаб у каждого свой — линейку
-                            // показывает только лист одного окна.
-                            scaleDenominator: 0,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
                 ),
-                if (columns == 2) const _CompactLegend(),
+                if (compactPage) const _CompactLegend(),
                 _apronBanner(
                   bottom: project.windows.any((window) => window.pocket),
                   top: project.windows.any((window) => window.pocketTop),
                 ),
                 SizedBox(
                   height: titleBlockHeight,
-                  child: _TitleBlock(project: project, scaleLabel: 'по окнам'),
+                  child: _TitleBlock(
+                    project: project,
+                    scaleLabel: 'по окнам',
+                    company: company,
+                  ),
                 ),
               ],
             ),
           ),
       ],
+    );
+  }
+
+  /// Страница с автоматически выбранной раскладкой и поворотами.
+  ///
+  /// Ячейки ставим абсолютно по координатам плана: тогда геометрия, которую
+  /// проверили тесты, совпадает с тем, что нарисовано на листе.
+  Widget _buildOptimizedPage(DrawingGridPlan plan, ui.Image? fastenerImage) {
+    return SizedBox.expand(
+      child: Stack(
+        children: [
+          for (final cell in plan.cells)
+            Positioned.fromRect(
+              rect: cell.rect,
+              child: _buildPlanCell(cell, fastenerImage),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Ячейка автоматической раскладки: чертёж (при необходимости повёрнутый)
+  /// и горизонтальная подпись окна под ним.
+  Widget _buildPlanCell(DrawingGridCellPlan cell, ui.Image? fastenerImage) {
+    final params = project.windows[cell.windowIndex];
+    final spec = WindowSpec.of(params);
+    final isSelected = cell.windowIndex == project.selectedIndex;
+    final drawing = _drawingBox(
+      frame: cell.frame,
+      layout: cell.layout,
+      params: params,
+      spec: spec,
+      paintScale: 1,
+      labelScale: cell.labelScale,
+      fastenerImage: fastenerImage,
+    );
+    return Container(
+      margin: const EdgeInsets.all(_cellMargin),
+      decoration: BoxDecoration(
+        color: isSelected ? const Color(0x0F0B62C4) : null,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: Center(
+              // Поворачиваем весь чертёж целиком: RotatedBox меняет местами
+              // оси, поэтому размерные линии и подписи поворачиваются вместе
+              // с контуром и остаются в системе самого painter.
+              child: cell.quarterTurns == 0
+                  ? drawing
+                  : RotatedBox(quarterTurns: cell.quarterTurns, child: drawing),
+            ),
+          ),
+          SizedBox(
+            height: _captionHeight,
+            child: _Caption(
+              number: cell.windowIndex + 1,
+              params: params,
+              spec: spec,
+              highlighted: isSelected,
+              scaleLabel: formatExactScaleLabel(cell.scale),
+              quarterTurns: cell.quarterTurns,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -517,6 +683,298 @@ class DrawingSheet extends StatelessWidget {
     if (count == 4) return 2;
     if (count <= 9) return 3;
     return 4;
+  }
+
+  // ------------------------------------------- автоматическая раскладка
+  //
+  // Задача: для 2–3 окон на одном A4 выбрать самую крупную раскладку.
+  // Перебор явный и конечный:
+  //
+  //  2 окна: «2 в ряд», «2 в столбец»                — 2 раскладки;
+  //  3 окна: «3 в ряд», «3 в столбец», «2+1», «1+2»  — 4 раскладки,
+  //          причём в «2+1»/«1+2» одиночным перебираем каждое из трёх окон
+  //          (3 варианта), потому что окна разного размера;
+  //  повороты: каждое окно независимо — 0° или 90° (2² = 4 и 2³ = 8);
+  //  пропорции строк: 29 вариантов для двух строк (15…85 %, шаг 2,5 %) и
+  //          с шагом 5 % для трёх строк (обе границы 10…80 %, сумма ≤ 90 %).
+  //
+  // Для каждого варианта масштаб окна считается точным ([DrawingLayout] с
+  // fitExactly), затем вариант оценивается метрикой:
+  //   1) максимум минимального масштаба по окнам — чтобы самое мелкое окно
+  //      было как можно крупнее;
+  //   2) при равенстве — максимум суммарной площади чертежей;
+  //   3) при равенстве — меньше поворотов (привычнее читать);
+  //   4) при равенстве — ровнее строки.
+  // Так «магии» нет: видно, какие варианты перебраны и по какому правилу
+  // выбран победитель.
+
+  /// Перебирает раскладки 2–3 окон и возвращает самую крупную.
+  ///
+  /// [pageArea] — поле страницы A4 под чертежи (без легенды, фартука и
+  /// штампа). Для 2–3 окон авто-режима это [optimizedGridArea].
+  static DrawingGridPlan? optimizedGridPlan(
+    OrderProject project,
+    Size pageArea, {
+    double pad = _optimizedGridPad,
+  }) {
+    final count = project.windowCount;
+    if (count < 2 || count > 3) return null;
+    if (pageArea.width <= 0 || pageArea.height <= 0) return null;
+    final area = Rect.fromLTWH(0, 0, pageArea.width, pageArea.height);
+    final specs = [for (final params in project.windows) WindowSpec.of(params)];
+
+    DrawingGridPlan? best;
+    for (final arrangement in DrawingGridArrangement.values) {
+      for (final rows in _rowAssignments(arrangement, count)) {
+        for (final heights in _rowSplits(rows.length)) {
+          for (var rotations = 0; rotations < (1 << count); rotations++) {
+            final candidate = _evaluateLayout(
+              arrangement: arrangement,
+              specs: specs,
+              area: area,
+              rows: rows,
+              heights: heights,
+              rotations: rotations,
+              pad: pad,
+            );
+            if (candidate == null) continue;
+            if (best == null || candidate.isBetterThan(best)) {
+              best = candidate;
+            }
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  /// Какие окна в каких строках для каждой раскладки.
+  static List<List<List<int>>> _rowAssignments(
+    DrawingGridArrangement arrangement,
+    int count,
+  ) {
+    if (count == 2) {
+      return switch (arrangement) {
+        DrawingGridArrangement.twoInRow => const [
+          [
+            [0, 1],
+          ],
+        ],
+        DrawingGridArrangement.twoInColumn => const [
+          [
+            [0],
+            [1],
+          ],
+        ],
+        _ => const [],
+      };
+    }
+    const all = [0, 1, 2];
+    return switch (arrangement) {
+      DrawingGridArrangement.threeInRow => const [
+        [
+          [0, 1, 2],
+        ],
+      ],
+      DrawingGridArrangement.threeInColumn => const [
+        [
+          [0],
+          [1],
+          [2],
+        ],
+      ],
+      // «2+1»: два окна сверху, одно снизу. Одиночным может быть любое окно.
+      DrawingGridArrangement.twoPlusOne => [
+        for (final single in all)
+          [
+            [
+              for (final index in all)
+                if (index != single) index,
+            ],
+            [single],
+          ],
+      ],
+      // «1+2»: одно окно сверху на всю ширину, два снизу.
+      DrawingGridArrangement.onePlusTwo => [
+        for (final single in all)
+          [
+            [single],
+            [
+              for (final index in all)
+                if (index != single) index,
+            ],
+          ],
+      ],
+      _ => const [],
+    };
+  }
+
+  /// Доли высоты строк. Перебираем конечный набор, а не решаем «на глаз».
+  static List<List<double>> _rowSplits(int rows) {
+    if (rows <= 1) {
+      return const [
+        [1],
+      ];
+    }
+    if (rows == 2) {
+      // Верхняя строка — от 15 до 85 %: слишком узкие строки отсеет проверка
+      // читаемости ниже, зато не пропустим выгодную неравную раскладку.
+      return [
+        for (var step = 0; step <= 28; step++)
+          [0.15 + step * 0.025, 0.85 - step * 0.025],
+      ];
+    }
+    final result = <List<double>>[];
+    for (var first = 10; first <= 80; first += 5) {
+      for (var second = 10; second <= 80; second += 5) {
+        if (first + second > 90) continue;
+        result.add([first / 100, second / 100, (100 - first - second) / 100]);
+      }
+    }
+    return result;
+  }
+
+  /// Один вариант раскладки: считает масштаб каждого окна и метрику.
+  ///
+  /// Возвращает null, если вариант физически не влезает или подписи станут
+  /// нечитаемыми — такие варианты не участвуют в сравнении.
+  static DrawingGridPlan? _evaluateLayout({
+    required DrawingGridArrangement arrangement,
+    required List<WindowSpec> specs,
+    required Rect area,
+    required List<List<int>> rows,
+    required List<double> heights,
+    required int rotations,
+    required double pad,
+  }) {
+    final cells = <DrawingGridCellPlan>[];
+    var top = area.top;
+    var minScale = double.infinity;
+    var totalArea = 0.0;
+    var rotatedCount = 0;
+
+    for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      final rowWindows = rows[rowIndex];
+      final rowHeight = area.height * heights[rowIndex];
+      final cellWidth = area.width / rowWindows.length;
+      for (var column = 0; column < rowWindows.length; column++) {
+        final windowIndex = rowWindows[column];
+        final rect = Rect.fromLTWH(
+          area.left + column * cellWidth,
+          top,
+          cellWidth,
+          rowHeight,
+        );
+        // Поле под чертёж: без подписи окна и внутреннего отступа ячейки.
+        final available = Size(
+          rect.width - _cellMargin * 2,
+          rect.height - _cellMargin * 2 - _captionHeight,
+        );
+        // Ниже 120 точек размерные линии и подписи сливаются — вариант
+        // нечитаем и в переборе не участвует.
+        if (available.width < 120 || available.height < 120) {
+          return null;
+        }
+
+        final rotated = (rotations & (1 << windowIndex)) != 0;
+        // Оставляем место под запас рамки (_frameSlack), чтобы готовый
+        // чертёж вошёл в поле ячейки без обрезки.
+        final fitArea = rotated
+            ? Size(
+                available.height - _frameSlack,
+                available.width - _frameSlack,
+              )
+            : Size(
+                available.width - _frameSlack,
+                available.height - _frameSlack,
+              );
+        final frame = _drawingFrame(
+          fitArea,
+          specs[windowIndex],
+          paintScale: 1,
+          padLeft: pad,
+          padRight: pad,
+          padTop: pad,
+          padBottom: pad,
+          fitExactly: true,
+        );
+        final layout = _drawingLayout(
+          frame,
+          specs[windowIndex],
+          paintScale: 1,
+          padLeft: pad,
+          padRight: pad,
+          padTop: pad,
+          padBottom: pad,
+          fitExactly: true,
+        );
+        final scale = layout.scale;
+        if (!scale.isFinite || scale <= 0) return null;
+        final footprint = rotated ? Size(frame.height, frame.width) : frame;
+        if (footprint.width > available.width + 0.001 ||
+            footprint.height > available.height + 0.001) {
+          return null;
+        }
+        final drawingRect = Rect.fromCenter(
+          center: Offset(
+            rect.center.dx,
+            rect.top + _cellMargin + available.height / 2,
+          ),
+          width: footprint.width,
+          height: footprint.height,
+        );
+        cells.add(
+          DrawingGridCellPlan(
+            windowIndex: windowIndex,
+            rect: rect,
+            drawingRect: drawingRect,
+            available: available,
+            frame: frame,
+            scale: scale,
+            quarterTurns: rotated ? 1 : 0,
+            layout: layout,
+            // Крупная ячейка — подписи как на подробном листе (1,0);
+            // в тесной ячейке чуть мельче, но не ниже 0,8 — иначе при
+            // печати цифры размеров не прочитать.
+            labelScale: available.shortestSide >= 560
+                ? 1.0
+                : available.shortestSide >= 420
+                ? 0.9
+                : 0.8,
+          ),
+        );
+        minScale = math.min(minScale, scale);
+        totalArea +=
+            specs[windowIndex].geometry.spanX *
+            specs[windowIndex].geometry.spanY *
+            scale *
+            scale;
+        if (rotated) rotatedCount++;
+      }
+      top += rowHeight;
+    }
+    cells.sort((a, b) => a.windowIndex.compareTo(b.windowIndex));
+    return DrawingGridPlan(
+      arrangement: arrangement,
+      area: area,
+      cells: cells,
+      minScale: minScale,
+      totalArea: totalArea,
+      pad: pad,
+      rotatedCount: rotatedCount,
+      rowBalance: _rowBalance(heights),
+    );
+  }
+
+  /// Насколько строки далеки от равных: 0 — одинаковые.
+  static double _rowBalance(List<double> heights) {
+    final even = 1 / heights.length;
+    var sum = 0.0;
+    for (final height in heights) {
+      final delta = height - even;
+      sum += delta * delta;
+    }
+    return sum;
   }
 
   Widget _buildCell(
@@ -593,6 +1051,170 @@ class DrawingSheet extends StatelessWidget {
   }
 }
 
+/// Взаимное расположение 2–3 окон на одном A4.
+enum DrawingGridArrangement {
+  twoInRow('2 в ряд'),
+  twoInColumn('2 в столбец'),
+  threeInRow('3 в ряд'),
+  threeInColumn('3 в столбец'),
+  twoPlusOne('2 + 1'),
+  onePlusTwo('1 + 2');
+
+  const DrawingGridArrangement(this.label);
+
+  /// Человеческая подпись варианта — для отчётов, тестов и отладки.
+  final String label;
+}
+
+/// Одна ячейка выбранной автоматической раскладки.
+///
+/// Хранит готовую геометрию, поэтому лист рисует ровно то, что проверил
+/// перебор: ничего не пересчитывается второй раз «примерно так же».
+class DrawingGridCellPlan {
+  const DrawingGridCellPlan({
+    required this.windowIndex,
+    required this.rect,
+    required this.drawingRect,
+    required this.available,
+    required this.frame,
+    required this.scale,
+    required this.quarterTurns,
+    required this.layout,
+    required this.labelScale,
+  });
+
+  /// Номер окна в заказе, с нуля.
+  final int windowIndex;
+
+  /// Внешняя ячейка: чертёж и подпись окна.
+  final Rect rect;
+
+  /// Рамка чертежа на листе, уже с учётом поворота.
+  final Rect drawingRect;
+
+  /// Поле под чертёж внутри ячейки: без подписи и внутреннего отступа.
+  final Size available;
+
+  /// Размер рамки в системе painter (до поворота).
+  final Size frame;
+
+  /// Точек листа на миллиметр модели. Точный, без округления до стандартного.
+  final double scale;
+
+  /// 0 — окно как нарисовано, 1 — повёрнуто на 90° по часовой.
+  final int quarterTurns;
+
+  /// Раскладка painter для этой ячейки — её же получает [WindowDrawingPainter].
+  final DrawingLayout layout;
+
+  /// Кегль подписей в ячейке (1 — как в подробном листе).
+  final double labelScale;
+
+  /// Повёрнуто ли окно (подписи и размерные линии повёрнуты вместе с ним).
+  bool get isRotated => quarterTurns.isOdd;
+
+  /// Габарит рамки на листе с учётом поворота.
+  Size get footprint => isRotated ? Size(frame.height, frame.width) : frame;
+
+  /// Габарит изделия на листе с учётом поворота, точки.
+  Size get productSize => isRotated
+      ? Size(layout.geometry.spanY * scale, layout.geometry.spanX * scale)
+      : Size(layout.geometry.spanX * scale, layout.geometry.spanY * scale);
+}
+
+/// Результат перебора: выбранная раскладка, повороты и масштабы окон.
+class DrawingGridPlan {
+  const DrawingGridPlan({
+    required this.arrangement,
+    required this.area,
+    required this.cells,
+    required this.minScale,
+    required this.totalArea,
+    required this.pad,
+    required this.rotatedCount,
+    required this.rowBalance,
+  });
+
+  /// Какая раскладка победила.
+  final DrawingGridArrangement arrangement;
+
+  /// Поле страницы, на котором построен план.
+  final Rect area;
+
+  /// Ячейки в порядке номеров окон.
+  final List<DrawingGridCellPlan> cells;
+
+  /// Минимальный масштаб по окнам, точек листа на миллиметр модели.
+  final double minScale;
+
+  /// Суммарная площадь чертежей изделий, точек² — вторая метрика.
+  final double totalArea;
+
+  /// Поле под размерные линии в каждой ячейке, точек.
+  final double pad;
+
+  /// Сколько окон повёрнуто на 90°.
+  final int rotatedCount;
+
+  /// Насколько строки далеки от равных: 0 — одинаковые.
+  final double rowBalance;
+
+  /// Есть ли повёрнутые окна.
+  bool get hasRotations => rotatedCount > 0;
+
+  /// Точные масштабы окон одной строкой — для подписи и отчёта.
+  String get scaleSummary {
+    final labels = <String>[];
+    for (final cell in cells) {
+      final label = formatExactScaleLabel(cell.scale);
+      if (!labels.contains(label)) labels.add(label);
+    }
+    return labels.join(' · ');
+  }
+
+  /// Лучше ли этот план, чем [other], по метрике из задачи.
+  bool isBetterThan(DrawingGridPlan other) {
+    // 1. Максимальный минимальный масштаб: самое мелкое окно — крупнее.
+    final scaleDelta = minScale - other.minScale;
+    final scaleTolerance = math.max(1e-12, other.minScale.abs() * 1e-9);
+    if (scaleDelta.abs() > scaleTolerance) return scaleDelta > 0;
+
+    // 2. При равном минимуме — максимальная суммарная площадь чертежей.
+    final areaTolerance = math.max(1e-6, other.totalArea.abs() * 1e-9);
+    if ((totalArea - other.totalArea).abs() > areaTolerance) {
+      return totalArea > other.totalArea;
+    }
+
+    // 3. Меньше поворотов — чертёж привычнее читать.
+    if (rotatedCount != other.rotatedCount) {
+      return rotatedCount < other.rotatedCount;
+    }
+
+    // 4. Ровнее строки — лист выглядит аккуратнее.
+    return rowBalance < other.rowBalance - 1e-12;
+  }
+
+  @override
+  String toString() =>
+      'DrawingGridPlan(${arrangement.label}, '
+      'min 1:${((96 / 25.4) / minScale).toStringAsFixed(1)}, '
+      'rotated=$rotatedCount, cells=${cells.length})';
+}
+
+/// Точный масштаб чертежа без округления до стандартного ряда.
+///
+/// [formatScaleLabel] подбирает ближайший «красивый» знаменатель (1:20), а в
+/// автоматической раскладке масштаб точный: подпись должна быть точной, иначе
+/// по ней нельзя измерить чертёж. Например, «М 1:18,4».
+String formatExactScaleLabel(double pxPerMm) {
+  if (pxPerMm <= 0 || !pxPerMm.isFinite) return 'М 1:—';
+  final denominator = (96 / 25.4) / pxPerMm;
+  final rounded = denominator >= 100
+      ? denominator.toStringAsFixed(0)
+      : denominator.toStringAsFixed(1);
+  return 'М 1:${rounded.replaceAll('.', ',')}';
+}
+
 /// Компактная легенда листа «2 в ряд» — горизонтальная полоса внизу.
 class _CompactLegend extends StatelessWidget {
   const _CompactLegend();
@@ -600,7 +1222,7 @@ class _CompactLegend extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 58,
+      height: DrawingSheet.compactLegendHeight,
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
       decoration: const BoxDecoration(
@@ -722,6 +1344,8 @@ class _Caption extends StatelessWidget {
     required this.params,
     required this.spec,
     required this.highlighted,
+    this.scaleLabel,
+    this.quarterTurns = 0,
   });
 
   final int number;
@@ -729,11 +1353,22 @@ class _Caption extends StatelessWidget {
   final WindowSpec spec;
   final bool highlighted;
 
+  /// Точный масштаб окна для автоматической раскладки: «М 1:18,4».
+  final String? scaleLabel;
+
+  /// Поворот чертежа: в подписи показываем «поворот 90°», если окно
+  /// повёрнуто вместе с размерами и надписями.
+  final int quarterTurns;
+
   @override
   Widget build(BuildContext context) {
     final extra = params.drawingNumber.trim().isEmpty
         ? ''
         : ' · ${params.drawingNumber.trim()}';
+    final badge = [
+      if (quarterTurns.isOdd) 'поворот 90°',
+      if (scaleLabel != null && scaleLabel!.isNotEmpty) scaleLabel!,
+    ].join(' · ');
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -753,17 +1388,38 @@ class _Caption extends StatelessWidget {
               color: highlighted ? Colors.white : const Color(0xFF1B1F27),
             ),
           ),
-          Text(
-            '${formatMm(spec.geometry.spanX)}×${formatMm(spec.geometry.overallHeight)} ${unitSuffix()} · '
-            '${formatMeters(spec.productAreaM2)} м² · '
-            '${params.windowType.label.toLowerCase()} · люверсов ${spec.eyeletCount}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 10.5,
-              height: 1.15,
-              color: highlighted ? Colors.white70 : const Color(0xFF66748A),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${formatMm(spec.geometry.spanX)}×${formatMm(spec.geometry.overallHeight)} ${unitSuffix()} · '
+                  '${formatMeters(spec.productAreaM2)} м² · '
+                  '${params.windowType.label.toLowerCase()} · люверсов ${spec.eyeletCount}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    height: 1.15,
+                    color: highlighted
+                        ? Colors.white70
+                        : const Color(0xFF66748A),
+                  ),
+                ),
+              ),
+              if (badge.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(
+                  badge,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    height: 1.15,
+                    fontWeight: FontWeight.w700,
+                    color: highlighted ? Colors.white : const Color(0xFF0B62C4),
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -794,7 +1450,13 @@ String _shortSizeLabel(WindowParams params) => params.isTShape
     : '${formatMm(params.bottomWidth)}×${formatMm(params.leftHeight)}';
 
 class _TitleBlock extends StatelessWidget {
-  const _TitleBlock({required this.project, required this.scaleLabel});
+  const _TitleBlock({
+    required this.project,
+    required this.scaleLabel,
+    this.company,
+  });
+
+  final CompanyBrandingState? company;
 
   /// Настоящий масштаб листа — тот же, что на масштабной линейке.
   final String scaleLabel;
@@ -846,7 +1508,10 @@ class _TitleBlock extends StatelessWidget {
           Expanded(
             child: Row(
               children: [
-                Expanded(flex: 3, child: _cell('Изделие', first.projectName)),
+                Expanded(
+                  flex: 3,
+                  child: _companyCell('Изделие', first.projectName),
+                ),
                 Expanded(flex: 2, child: _cell('Заказчик', first.customer)),
                 Expanded(
                   flex: 2,
@@ -982,6 +1647,92 @@ class _TitleBlock extends StatelessWidget {
     );
   }
 
+  /// Ячейка штампа с логотипом и реквизитами компании (если включён показ).
+  Widget _companyCell(String label, String value, {int maxLines = 1}) {
+    final branding = company;
+    if (branding == null || !branding.isVisible) {
+      return _cell(label, value, maxLines: maxLines);
+    }
+    final stampPx = math.min(LabelSettings.value.pxFor(LabelKind.stamp), 20.0);
+    final contact = [
+      if (branding.details.name.trim().isNotEmpty) branding.details.name.trim(),
+      if (branding.details.phone.trim().isNotEmpty)
+        'тел. ${branding.details.phone.trim()}',
+    ].join(' · ');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: const BoxDecoration(
+        border: Border(left: BorderSide(color: Color(0xFFC3CCDA))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            label.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: stampPx * 0.68,
+              height: 1.15,
+              letterSpacing: 0.4,
+              color: const Color(0xFF7C8798),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Expanded(
+            child: Row(
+              children: [
+                if (branding.logo != null) ...[
+                  SizedBox(
+                    height: 34,
+                    child: Image.memory(
+                      branding.logo!,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.medium,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        value.isEmpty ? '—' : value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: stampPx,
+                          height: 1.15,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF1B1F27),
+                        ),
+                      ),
+                      if (contact.isNotEmpty)
+                        Text(
+                          contact,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: stampPx * 0.72,
+                            height: 1.15,
+                            color: const Color(0xFF5B6B80),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _cell(String label, String value, {int maxLines = 1}) {
     // Двухстрочное значение (размеры с припуском) набираем мельче и с
     // меньшими отступами, чтобы клетка штампа не переполнялась.
@@ -1079,9 +1830,7 @@ class _SidePanel extends StatelessWidget {
     final anyZipper = windows.any((window) => window.hasZipper);
     final anyCutout = windows.any((window) => window.cutouts.isNotEmpty);
     final anyWeld = windows.any(
-      (window) =>
-          window.weldedSides.isNotEmpty ||
-          (window.isTShape && window.tAnyWelded),
+      (window) => window.isTShape && window.tAnyWelded,
     );
     final anyPocket = windows.any((window) => window.pocket);
     final anyDrain = windows.any((window) => window.drainHoles);
@@ -1898,4 +2647,427 @@ class DrawingSheetMetrics {
       'frame=${frame.width.toStringAsFixed(0)}×'
       '${frame.height.toStringAsFixed(0)}, '
       'fill=${(frameFill * 100).toStringAsFixed(1)}%)';
+}
+
+
+/// Перетаскивание люверсов по линии окантовки прямо на чертеже.
+///
+/// Жест включается только если палец/мышь нажали рядом с люверсом: иначе
+/// событие уходит родительскому `InteractiveViewer`, и лист панорамируется
+/// как обычно. После перетаскивания рядом с точкой появляется меню:
+/// удалить, поставить круглый люверс, французский замок или поворотную скобу.
+class _EyeletDragLayer extends StatefulWidget {
+  const _EyeletDragLayer({
+    super.key,
+    required this.params,
+    required this.spec,
+    required this.layout,
+    required this.onChanged,
+    required this.child,
+  });
+
+  final WindowParams params;
+  final WindowSpec spec;
+  final DrawingLayout layout;
+  final ValueChanged<WindowParams> onChanged;
+  final Widget child;
+
+  @override
+  State<_EyeletDragLayer> createState() => _EyeletDragLayerState();
+}
+
+class _EyeletDragLayerState extends State<_EyeletDragLayer> {
+  static const double _hitRadius = 14;
+  static const double _menuWidth = 214;
+
+  EdgeSide? _side;
+  int _index = -1;
+  List<EyeletPosition> _points = const [];
+  Offset _edgeStart = Offset.zero;
+  Offset _edgeEnd = Offset.zero;
+  OverlayEntry? _menuEntry;
+
+  @override
+  void dispose() {
+    _closeMenu();
+    super.dispose();
+  }
+
+  _EyeletCandidate? _findCandidate(Offset local) {
+    // Цели: люверсы и ручные замки/скобы — замок на чертеже тоже должен
+    // ловиться мышкой, иначе его нельзя ни сдвинуть, ни удалить.
+    final targets = <({Offset center, WindowSide side})>[
+      for (final eyelet in widget.spec.layers.eyelets)
+        (center: eyelet.center, side: eyelet.side),
+      for (final fastener in widget.spec.layers.manualFasteners)
+        (center: fastener.center, side: fastener.side),
+    ];
+    if (targets.isEmpty) return null;
+    final layout = widget.layout;
+    ({Offset center, WindowSide side})? bestTarget;
+    var best = _hitRadius;
+    for (final target in targets) {
+      final point = layout.toPxPoint(target.center);
+      final distance = (point - local).distance;
+      if (distance < best) {
+        best = distance;
+        bestTarget = target;
+      }
+    }
+    if (bestTarget == null) return null;
+    final side = WindowLayers.edgeSideOf(bestTarget.side);
+    final edge = _edgeFor(side);
+    if (edge == null) return null;
+    final points = _currentPoints(side, edge.$1, edge.$2);
+    final dragged = _fractionOf(bestTarget.center, edge.$1, edge.$2);
+    var index = 0;
+    var closest = double.infinity;
+    for (var i = 0; i < points.length; i++) {
+      final distance = (points[i].fraction - dragged).abs();
+      if (distance < closest) {
+        closest = distance;
+        index = i;
+      }
+    }
+    return _EyeletCandidate(
+      side: side,
+      index: index,
+      points: points,
+      start: edge.$1,
+      end: edge.$2,
+    );
+  }
+
+  /// Ребро контура люверсов для стороны (у обычного окна оно одно).
+  (Offset, Offset)? _edgeFor(EdgeSide side) {
+    final polygons = widget.spec.layers.eyeletPolygons;
+    if (polygons.isEmpty) return null;
+    final polygon = polygons.first;
+    for (var i = 0; i < polygon.length; i++) {
+      final windowSide = widget.spec.layers.sideOfEdge(polygon, i);
+      if (WindowLayers.edgeSideOf(windowSide) != side) continue;
+      return (polygon[i], polygon[(i + 1) % polygon.length]);
+    }
+    return null;
+  }
+
+  /// Точки стороны: ручные (с их типами) или материализованные из авто-шага.
+  List<EyeletPosition> _currentPoints(EdgeSide side, Offset a, Offset b) {
+    if (widget.params.hasManualEyelets(side)) {
+      return widget.params.eyeletPositions
+          .where((position) => position.side == side)
+          .toList()
+        ..sort((left, right) => left.fraction.compareTo(right.fraction));
+    }
+    final points = <EyeletPosition>[
+      for (final eyelet in widget.spec.layers.eyelets)
+        if (WindowLayers.edgeSideOf(eyelet.side) == side)
+          EyeletPosition(
+            side: side,
+            fraction: _fractionOf(eyelet.center, a, b),
+          ),
+    ]..sort((left, right) => left.fraction.compareTo(right.fraction));
+    return points;
+  }
+
+  double _fractionOf(Offset point, Offset a, Offset b) {
+    final direction = b - a;
+    final lengthSquared =
+        direction.dx * direction.dx + direction.dy * direction.dy;
+    if (lengthSquared < 1e-9) return 0;
+    final t =
+        ((point.dx - a.dx) * direction.dx +
+            (point.dy - a.dy) * direction.dy) /
+        lengthSquared;
+    return t.clamp(0.0, 1.0);
+  }
+
+  bool _canStart(Offset local) => _findCandidate(local) != null;
+
+  void _onStart(DragStartDetails details) {
+    _closeMenu();
+    final candidate = _findCandidate(details.localPosition);
+    if (candidate == null) return;
+    setState(() {
+      _side = candidate.side;
+      _index = candidate.index;
+      _points = candidate.points;
+      _edgeStart = candidate.start;
+      _edgeEnd = candidate.end;
+    });
+  }
+
+  void _onUpdate(DragUpdateDetails details) {
+    final side = _side;
+    if (side == null || _index < 0 || _index >= _points.length) return;
+    final layout = widget.layout;
+    final local = details.localPosition;
+    final model = Offset(
+      (local.dx - layout.padLeft) / layout.scale + layout.geometry.minX,
+      layout.geometry.minY +
+          (layout.size.height - layout.padBottom - local.dy) / layout.scale,
+    );
+    final fraction = _fractionOf(model, _edgeStart, _edgeEnd);
+    final next = [..._points];
+    next[_index] = next[_index].copyWith(fraction: fraction);
+    setState(() => _points = next);
+    widget.onChanged(widget.params.withManualPoints(side, next));
+  }
+
+  void _onEnd(DragEndDetails details) {
+    final side = _side;
+    final index = _index;
+    if (side == null || index < 0 || index >= _points.length) {
+      _reset();
+      return;
+    }
+    final point = _points[index];
+    final center =
+        _edgeStart + (_edgeEnd - _edgeStart) * point.fraction;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) {
+      _reset();
+      return;
+    }
+    final global = box.localToGlobal(widget.layout.toPxPoint(center));
+    final current = [..._points];
+    _reset();
+    _openMenu(global, side, index, current);
+  }
+
+  void _reset() {
+    if (_side == null && _index < 0) return;
+    setState(() {
+      _side = null;
+      _index = -1;
+      _points = const [];
+    });
+  }
+
+  void _apply(EyeletPosition Function(EyeletPosition point) change) {
+    final side = _side;
+    final index = _index;
+    if (side == null || index < 0 || index >= _points.length) return;
+    final next = [..._points];
+    next[index] = change(next[index]);
+    _closeMenu();
+    widget.onChanged(widget.params.withManualPoints(side, next));
+  }
+
+  void _deletePoint() {
+    final side = _side;
+    final index = _index;
+    if (side == null || index < 0 || index >= _points.length) return;
+    final next = [..._points]..removeAt(index);
+    _closeMenu();
+    widget.onChanged(widget.params.withManualPoints(side, next));
+  }
+
+  void _addPoint() {
+    final side = _side;
+    final index = _index;
+    if (side == null || index < 0 || index >= _points.length) return;
+    final current = _points[index];
+    final nextFraction = index + 1 < _points.length
+        ? (_points[index + 1].fraction + current.fraction) / 2
+        : (current.fraction + 1) / 2;
+    final next = [..._points, current.copyWith(fraction: nextFraction)]
+      ..sort((left, right) => left.fraction.compareTo(right.fraction));
+    _closeMenu();
+    widget.onChanged(widget.params.withManualPoints(side, next));
+  }
+
+  void _openMenu(
+    Offset global,
+    EdgeSide side,
+    int index,
+    List<EyeletPosition> points,
+  ) {
+    _closeMenu();
+    setState(() {
+      _side = side;
+      _index = index;
+      _points = points;
+    });
+    final size = MediaQuery.sizeOf(context);
+    final left = global.dx
+        .clamp(8.0, math.max(8.0, size.width - _menuWidth - 8))
+        .toDouble();
+    final top =
+        global.dy.clamp(8.0, math.max(8.0, size.height - 250)).toDouble();
+    _menuEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        left: left,
+        top: top,
+        child: Material(
+          elevation: 8,
+          borderRadius: BorderRadius.circular(10),
+          color: Colors.white,
+          child: SizedBox(
+            width: _menuWidth,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 4, 4),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Люверс',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        key: const Key('eyelet-menu-close'),
+                        tooltip: 'Закрыть',
+                        iconSize: 16,
+                        visualDensity: VisualDensity.compact,
+                        onPressed: _closeMenu,
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+                _menuItem(
+                  key: 'eyelet-menu-round',
+                  icon: Icons.circle_outlined,
+                  label: 'Круглый люверс',
+                  onTap: () => _apply(
+                    (point) => point.copyWith(kind: MarkerKind.roundEyelet),
+                  ),
+                ),
+                _menuItem(
+                  key: 'eyelet-menu-lock',
+                  icon: Icons.lock_outline,
+                  label: 'Французский замок',
+                  onTap: () => _apply(
+                    (point) => point.copyWith(kind: MarkerKind.frenchLock),
+                  ),
+                ),
+                _menuItem(
+                  key: 'eyelet-menu-buckle',
+                  icon: Icons.settings_input_component_outlined,
+                  label: 'Поворотная скоба',
+                  onTap: () => _apply(
+                    (point) => point.copyWith(kind: MarkerKind.turnBuckle),
+                  ),
+                ),
+                _menuItem(
+                  key: 'eyelet-menu-add',
+                  icon: Icons.add_circle_outline,
+                  label: 'Добавить точку рядом',
+                  onTap: _addPoint,
+                ),
+                const Divider(height: 1),
+                _menuItem(
+                  key: 'eyelet-menu-delete',
+                  icon: Icons.delete_outline,
+                  label: 'Удалить люверс',
+                  color: const Color(0xFFB03A3A),
+                  onTap: _deletePoint,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    Overlay.of(context, rootOverlay: true).insert(_menuEntry!);
+  }
+
+  Widget _menuItem({
+    required String key,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    return InkWell(
+      key: Key(key),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        child: Row(
+          children: [
+            Icon(icon, size: 17, color: color ?? const Color(0xFF41506A)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 12, color: color),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _closeMenu() {
+    _menuEntry?.remove();
+    _menuEntry = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RawGestureDetector(
+      behavior: HitTestBehavior.opaque,
+      gestures: {
+        _EyeletPanRecognizer:
+            GestureRecognizerFactoryWithHandlers<_EyeletPanRecognizer>(
+          () => _EyeletPanRecognizer(canStart: _canStart),
+          (recognizer) {
+            recognizer
+              ..onStart = _onStart
+              ..onUpdate = _onUpdate
+              ..onEnd = _onEnd
+              ..onCancel = _reset;
+          },
+        ),
+      },
+      child: widget.child,
+    );
+  }
+}
+
+class _EyeletCandidate {
+  const _EyeletCandidate({
+    required this.side,
+    required this.index,
+    required this.points,
+    required this.start,
+    required this.end,
+  });
+
+  final EdgeSide side;
+  final int index;
+  final List<EyeletPosition> points;
+  final Offset start;
+  final Offset end;
+}
+
+/// Pan-распознаватель, который включается только при нажатии на люверс.
+class _EyeletPanRecognizer extends PanGestureRecognizer {
+  _EyeletPanRecognizer({required this.canStart});
+
+  final bool Function(Offset local) canStart;
+
+  @override
+  bool isPointerAllowed(PointerEvent event) =>
+      canStart(event.localPosition) && super.isPointerAllowed(event);
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    // Нажали на люверс — сразу забираем жест у InteractiveViewer, иначе
+    // лист начнёт панорамироваться вместо перетаскивания точки.
+    if (canStart(event.localPosition)) {
+      resolve(GestureDisposition.accepted);
+    }
+  }
 }

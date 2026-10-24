@@ -6,6 +6,8 @@ import '../models/order_project.dart';
 import '../models/price_list.dart';
 import '../models/window_geometry.dart';
 import '../models/window_params.dart';
+import '../services/company_branding.dart';
+import 'company_dialog.dart';
 
 /// Краткая карточка заказа для верхнего списка.
 class OrderOverview {
@@ -132,6 +134,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// Поля молний: положение от левого края и ширина спайки (ключ — номер молнии).
   final Map<int, TextEditingController> _zipperOffsetControllers = {};
   final Map<int, TextEditingController> _zipperBandControllers = {};
+  final Map<int, TextEditingController> _strapControllers = {};
   final Map<int, String?> _zipperOffsetErrors = {};
   final Map<int, String?> _zipperBandErrors = {};
 
@@ -198,6 +201,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     }
     _syncField(ParamField.rollGap, project.rollGap, force: windowChanged);
     _syncZipperFields(project.selected, force: windowChanged);
+    _syncStrapFields(project.selected, force: windowChanged);
     _syncCutoutFields(project.selected, force: windowChanged);
     _syncEdgeFields(project.selected, force: windowChanged);
     _syncAllowanceFields(project.selected, force: windowChanged);
@@ -277,6 +281,21 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _pruneControllers(_zipperBandControllers, params.zippers.length);
     _pruneErrors(_zipperOffsetErrors, params.zippers.length);
     _pruneErrors(_zipperBandErrors, params.zippers.length);
+  }
+
+  void _syncStrapFields(WindowParams params, {bool force = false}) {
+    final offsets = params.liftStrapOffsets;
+    for (var index = 0; index < offsets.length; index++) {
+      _syncController(
+        _strapControllers.putIfAbsent(
+          index,
+          () => TextEditingController(text: _textFor(offsets[index])),
+        ),
+        offsets[index],
+        force: force,
+      );
+    }
+    _pruneControllers(_strapControllers, offsets.length);
   }
 
   void _syncCutoutFields(WindowParams params, {bool force = false}) {
@@ -401,6 +420,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
       controller.dispose();
     }
     for (final controller in _zipperBandControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _strapControllers.values) {
       controller.dispose();
     }
     for (final controller in _cutoutControllers.values) {
@@ -1120,22 +1142,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
-  /// Подпись чипа спайки: сторона окна в винительном падеже.
-  String _weldedChipLabel(EdgeSide side) => switch (side) {
-    EdgeSide.bottom => 'Спаяно снизу',
-    EdgeSide.right => 'Спаяно справа',
-    EdgeSide.top => 'Спаяно сверху',
-    EdgeSide.left => 'Спаяно слева',
-  };
-
-  /// Подпись кнопки «добавить окно к спайке»: сторона окна в родительном.
-  String _addWeldedLabel(EdgeSide side) => switch (side) {
-    EdgeSide.bottom => '+ окно снизу',
-    EdgeSide.right => '+ окно справа',
-    EdgeSide.top => '+ окно сверху',
-    EdgeSide.left => '+ окно слева',
-  };
-
   /// Верхний список заказов: «Заказ 1, Заказ 2…», переключение, переименование
   /// и удаление. Кнопка «Создать заказ» открывает диалог имени в main.
   Widget _ordersTopSection(OrderProject project) {
@@ -1297,6 +1303,35 @@ class _ParamsPanelState extends State<ParamsPanel> {
               : 'Люверсы ставятся от углов: при 0 мм первый люверс стоит в углу.',
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
+        if (params.eyeletPositions.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _panelCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Люверсы расставлены вручную',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Тяните люверс мышкой вдоль линии окантовки. После '
+                  'перетаскивания рядом появляется меню: удалить, поставить '
+                  'круглый люверс, французский замок или поворотную скобу.',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                ),
+                const SizedBox(height: 6),
+                OutlinedButton.icon(
+                  key: const Key('reset-eyelet-positions'),
+                  onPressed: () =>
+                      _updateWindow(params.clearEyeletPositions()),
+                  icon: const Icon(Icons.restart_alt, size: 18),
+                  label: const Text('Вернуть автоматическую расстановку'),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         _roundEyeletsSection(spec),
         const SizedBox(height: 14),
@@ -1487,8 +1522,16 @@ class _ParamsPanelState extends State<ParamsPanel> {
           values: WindowType.values,
           selected: params.windowType,
           labelOf: (value) => value.label,
-          onSelected: (value) =>
-              _updateWindow(params.copyWith(windowType: value)),
+          onSelected: (value) => _updateWindow(
+            params.copyWith(
+              windowType: value,
+              // Составное окно — всегда ПВХ-полотно: если выбран скрин,
+              // переводим основной материал на обычный ПВХ.
+              material: value == WindowType.composite && params.isScreen
+                  ? FilmMaterial.clearPvc
+                  : null,
+            ),
+          ),
         ),
         const SizedBox(height: 8),
         Text(
@@ -1497,7 +1540,188 @@ class _ParamsPanelState extends State<ParamsPanel> {
         ),
         const SizedBox(height: 10),
         _tShapeSection(params),
+        if (params.windowType == WindowType.composite) ...[
+          const SizedBox(height: 10),
+          _compositeSection(params),
+        ] else ...[
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              key: const Key('make-composite'),
+              onPressed: () => _updateWindow(
+                params.copyWith(
+                  windowType: WindowType.composite,
+                  material: params.isScreen
+                      ? FilmMaterial.clearPvc
+                      : params.material,
+                ),
+              ),
+              icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
+              label: const Text('Сделать составным'),
+            ),
+          ),
+        ],
       ],
+    );
+  }
+
+  /// Раздел «Составное окно»: второй материал с любой стороны, прямой или
+  /// диагональный шов. Основное полотно — всегда ПВХ.
+  Widget _compositeSection(WindowParams params) {
+    final composite = params.composite;
+    final spec = WindowSpec.of(params);
+    final layout = spec.compositeLayout;
+    WindowParams withComposite(CompositeSpec value) =>
+        params.copyWith(composite: value);
+
+    return _panelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Составное окно',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+              TextButton(
+                key: const Key('make-plain-composite'),
+                onPressed: () => _updateWindow(
+                  params.copyWith(windowType: WindowType.fixed),
+                ),
+                child: const Text('Вернуть обычное'),
+              ),
+            ],
+          ),
+          const Text(
+            'Основное полотно — ПВХ. Второй материал (скрин или ПВХ) '
+            'пристраивается с любой стороны и спаивается по общему шву; '
+            'окантовка идёт только по свободным кромкам.',
+            style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Сторона второго материала',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          _chips<EdgeSide>(
+            values: EdgeSide.values,
+            selected: composite.side,
+            labelOf: (side) => side.label,
+            keyOf: (side) => 'composite-side-${side.name}',
+            onSelected: (side) => _updateWindow(
+              withComposite(composite.copyWith(side: side)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Материал второго сегмента',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          _chips<FilmMaterial>(
+            values: const [
+              FilmMaterial.screen,
+              FilmMaterial.clearPvc,
+              FilmMaterial.tintedPvc,
+              FilmMaterial.mosquitoNet,
+            ],
+            selected: composite.material,
+            labelOf: (material) => material.label,
+            keyOf: (material) => 'composite-material-${material.name}',
+            onSelected: (material) => _updateWindow(
+              withComposite(composite.copyWith(material: material)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Ширина второго сегмента — вся выбранная сторона: размер окна
+          // остаётся ровно тем, что ввели. Меняется только вынос шва внутрь.
+          SizedBox(
+            width: 200,
+            child: _numberField(ParamField.compositeDepth),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Второй сегмент режется ВНУТРИ введённых габаритов: ширина — вся '
+            'сторона, вынос — глубина второго материала. Общий размер окна '
+            'не меняется.',
+            style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+          if (composite.isDiagonal) ...[
+            const SizedBox(height: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Смещение шва, доля стороны',
+                  style: TextStyle(fontSize: 10.5, color: Color(0xFF66748A)),
+                ),
+                Slider(
+                  key: const Key('composite-seam-offset'),
+                  value: composite.seamOffset.clamp(0.05, 0.95),
+                  min: 0.05,
+                  max: 0.95,
+                  onChanged: (value) => _updateWindow(
+                    withComposite(composite.copyWith(seamOffset: value)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 4),
+          const Text(
+            'Шов',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          _chips<CompositeSeam>(
+            values: CompositeSeam.values,
+            selected: composite.seam,
+            labelOf: (seam) => seam.label,
+            keyOf: (seam) => 'composite-seam-${seam.name}',
+            onSelected: (seam) => _updateWindow(
+              withComposite(composite.copyWith(seam: seam)),
+            ),
+          ),
+          if (composite.isDiagonal) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: 180,
+              child: _numberField(ParamField.compositeAngle),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Диагональный шов режет угол основного полотна: второй сегмент '
+              'встаёт к наклонной кромке встык.',
+              style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            layout == null
+                ? 'Второй сегмент не построен'
+                : '${composite.material.label} · '
+                      'шов ${formatMm(layout.seamLength)} ${unitSuffix()} · '
+                      'вынос ${formatMm(layout.depth)} ${unitSuffix()} · '
+                      'ПВХ ${formatMeters(layout.mainAreaMm2 / 1000000)} м² + '
+                      'второй ${formatMeters(layout.secondAreaMm2 / 1000000)} м² '
+                      '= ${formatMeters(spec.productAreaM2)} м²',
+            key: const Key('composite-summary'),
+            style: const TextStyle(fontSize: 11, color: Color(0xFF41506A)),
+          ),
+          if (layout != null && layout.clamped) ...[
+            const SizedBox(height: 6),
+            const Text(
+              'Второй сегмент не помещается на стороне: размеры подрезаны.',
+              style: TextStyle(fontSize: 11, color: Color(0xFF8A5200)),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1592,100 +1816,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
         ),
         const SizedBox(height: 12),
         _weldOverlapField(params),
-      ],
-    );
-  }
-
-  /// «Спайка с соседним окном» — сворачиваемый блок в самом низу панели.
-  Widget _weldingSection(WindowParams params) {
-    final sides = params.weldedSides;
-    return _expansion(
-      title: 'Спайка с соседним окном',
-      subtitle: sides.isEmpty
-          ? 'не включена'
-          : 'спаяно: ${sides.map((side) => side.label).join(', ')}',
-      initiallyExpanded: false,
-      children: [
-        const Text(
-          'Спайка с соседним окном',
-          style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
-        ),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final side in EdgeSide.values)
-              FilterChip(
-                label: Text(
-                  _weldedChipLabel(side),
-                  style: const TextStyle(fontSize: 12),
-                ),
-                selected: params.isWelded(side),
-                visualDensity: VisualDensity.compact,
-                onSelected: (_) => _updateWindow(params.toggleWelded(side)),
-              ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'На спаянной стороне окантовка не ставится, полотна свариваются; '
-          'расход окантовки уменьшается, добавляется спайка 25 мм.',
-          style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-        ),
-        const SizedBox(height: 14),
-        const Text(
-          'Добавить окно к спайке',
-          style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
-        ),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final side in EdgeSide.values)
-              OutlinedButton(
-                key: Key('add-welded-${side.name}'),
-                style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                ),
-                onPressed: () =>
-                    _updateProject(widget.project.addWeldedWindow(side)),
-                child: Text(
-                  _addWeldedLabel(side),
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Добавит копию этого окна с теми же размерами и сразу сваривает '
-          'их выбранной стороной.',
-          style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-        ),
-        if (params.weldedSides.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          _panelCard(
-            child: SwitchListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              value: params.removeEyeletsOnWelded,
-              title: const Text(
-                'Убирать люверсы (крепёж) на спаянной стороне',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-              ),
-              subtitle: const Text(
-                'Выключите, если по спайке всё равно нужны люверсы — '
-                'тогда крепёж останется и на сварной стороне.',
-                style: TextStyle(fontSize: 11),
-              ),
-              onChanged: (value) =>
-                  _updateWindow(params.copyWith(removeEyeletsOnWelded: value)),
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -1796,10 +1926,51 @@ class _ParamsPanelState extends State<ParamsPanel> {
             children: [_noEyeletsSection(params)],
           ),
           const SizedBox(height: 12),
+          if (params.isLifting && !params.isScreen) ...[
+            const SizedBox(height: 12),
+            _liftStrapsSection(params, spec),
+          ],
           _expansion(
             title: 'Молния и фартук',
             subtitle: _specElementsSummary(params),
             children: [
+              if (params.zippers.isNotEmpty) ...[
+                SwitchListTile(
+                  key: const Key('zipper-segments-toggle'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: params.zipperSegments,
+                  title: const Text(
+                    'Доп. настройка молнии — делить на сегменты',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    params.zipperSegments
+                        ? 'Ширина молнии 11 см (5+1+5). Между сегментами — '
+                              'зазор, впритык к канту — вычет из кроя; и там '
+                              'и там это ширина молнии минус две напайки '
+                              'тента (11 − 2 − 2 = 7 см).'
+                        : 'Выключено: ширина молнии просто вычитается из '
+                              'ширины заготовки, без сегментов.',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  onChanged: (value) =>
+                      _updateWindow(params.withZipperSegments(value)),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: 230,
+                  child: _numberField(ParamField.zipperTentOverlap),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Напайка тента на полотно с каждой стороны. '
+                  '11 см при напайке 2 см → 7 см: столько и вычитается '
+                  'из кроя или уходит в зазор между сегментами.',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                ),
+                const SizedBox(height: 6),
+              ],
               if (params.zippers.isEmpty)
                 OutlinedButton.icon(
                   onPressed: () => _updateWindow(params.addZipper()),
@@ -1809,11 +1980,14 @@ class _ParamsPanelState extends State<ParamsPanel> {
               else ...[
                 for (var index = 0; index < params.zippers.length; index++)
                   _zipperCard(params, spec, index),
-                if (params.zippers.length == 1 && maxZippers > 1)
+                if (params.zippers.length < maxZippers)
                   OutlinedButton.icon(
+                    key: const Key('add-zipper'),
                     onPressed: () => _updateWindow(params.addZipper()),
                     icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Добавить вторую молнию'),
+                    label: Text(
+                      'Добавить молнию (${params.zippers.length}/$maxZippers)',
+                    ),
                   ),
                 const SizedBox(height: 6),
                 Text(
@@ -2048,6 +2222,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          _companySection(),
           if (warnings.isNotEmpty) ...[
             const SizedBox(height: 20),
             const _SectionTitle('Проверьте параметры'),
@@ -2182,7 +2358,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
             widget.pricesSection!,
           ],
           const SizedBox(height: 12),
-          _weldingSection(params),
         ],
       ),
     );
@@ -2493,6 +2668,74 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   /// Карточка внутри раздела: подложка с рамкой. Прозрачный Material нужен,
   /// чтобы переключатели рисовали чернильные волны поверх заливки.
+  /// «Компания на листах»: тумблер показа и настройка реквизитов с логотипом.
+  Widget _companySection() {
+    return ValueListenableBuilder<CompanyBrandingState>(
+      valueListenable: CompanyBranding.current,
+      builder: (context, branding, _) {
+        final name = branding.details.name.trim();
+        return _panelCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Компания на листах',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    branding.showOnSheets
+                        ? (name.isEmpty ? 'включено' : name)
+                        : 'выключено',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF66748A),
+                    ),
+                  ),
+                ],
+              ),
+              SwitchListTile(
+                key: const Key('company-on-sheets-toggle'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: branding.showOnSheets,
+                title: const Text(
+                  'Показывать данные компании и логотип',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Смета — логотип и строка реквизитов в синей шапке; чертёж — '
+                  'логотип с названием в штампе. Выключено — листы как сейчас.',
+                  style: TextStyle(fontSize: 11),
+                ),
+                onChanged: (value) => CompanyBranding.setShowOnSheets(value),
+              ),
+              OutlinedButton.icon(
+                key: const Key('company-settings'),
+                onPressed: () => showCompanyDialog(context),
+                icon: const Icon(Icons.business_outlined, size: 18),
+                label: const Text('Настроить компанию и логотип'),
+              ),
+              if (branding.showOnSheets && !branding.hasDetails) ...[
+                const SizedBox(height: 6),
+                const Text(
+                  'Заполните хотя бы название — иначе блок на листах не покажется.',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF8A5200)),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _panelCard({required Widget child}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -2609,6 +2852,117 @@ class _ParamsPanelState extends State<ParamsPanel> {
   }
 
   /// Карточка одной молнии: центр или сдвиг, ширина спайки, удаление.
+  /// «Подъёмные ремни»: ручное добавление и привязка к линии тента.
+  ///
+  /// Пустой список — прежняя автоматическая расстановка (2 шт до 2 м, далее
+  /// +1 на метр). Добавили вручную — ровно эти ремни, каждый начинается на
+  /// линии тента; на косом окне линия наклонена, и ремень идёт от неё.
+  Widget _liftStrapsSection(WindowParams params, WindowSpec spec) {
+    final offsets = params.liftStrapOffsets;
+    final width = spec.filmVisibleWidth;
+    final maxOffset = width.isFinite && width > 0 ? width : 1.0;
+    double nextOffset() {
+      if (offsets.isEmpty) return maxOffset / 2;
+      final step = maxOffset / (offsets.length + 2);
+      return (offsets.last + step).clamp(0.0, maxOffset);
+    }
+
+    return _expansion(
+      title: 'Подъёмные ремни',
+      subtitle: offsets.isEmpty
+          ? 'авто: ${params.liftStrapCount} шт'
+          : 'вручную: ${offsets.length} шт',
+      children: [
+        Text(
+          offsets.isEmpty
+              ? 'Ремни расставлены автоматически (2 шт до 2 м, далее +1 на '
+                    'метр). Нажмите «+ ремешок», чтобы поставить их вручную — '
+                    'каждый привяжется к линии тента, в том числе на косой '
+                    'кромке.'
+              : 'Ремни стоят вручную и начинаются на линии тента: на косом '
+                    'окне кромка наклонена, ремень идёт от неё, а не висит за '
+                    'окантовкой.',
+          style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+        ),
+        const SizedBox(height: 6),
+        for (var index = 0; index < offsets.length; index++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: Key('lift-strap-$index'),
+                    controller: _strapControllers.putIfAbsent(
+                      index,
+                      () => TextEditingController(text: _textFor(offsets[index])),
+                    ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'Ремень ${index + 1}: центр от левого края',
+                      suffixText: 'мм',
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onChanged: (raw) {
+                      final parsed = parseMm(raw);
+                      if (parsed == null || !parsed.isFinite) return;
+                      _updateWindow(
+                        params.updateLiftStrap(
+                          index,
+                          parsed.clamp(0.0, maxOffset),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Удалить ремень',
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  onPressed: () =>
+                      _updateWindow(params.removeLiftStrap(index)),
+                ),
+              ],
+            ),
+          ),
+        Wrap(
+          spacing: 8,
+          children: [
+            OutlinedButton.icon(
+              key: const Key('add-lift-strap'),
+              onPressed: () =>
+                  _updateWindow(params.addLiftStrap(nextOffset())),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('+ ремешок'),
+            ),
+            if (offsets.isNotEmpty)
+              TextButton(
+                key: const Key('reset-lift-straps'),
+                onPressed: () =>
+                    _updateWindow(params.copyWith(liftStrapOffsets: const [])),
+                child: const Text('Сбросить к авто'),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Пояснение к молнии в режиме сегментов: делит или впритык к канту.
+  String _zipperSegmentNote(WindowSpec spec, int index) {
+    final layout = spec.layers.zipperSegmentLayout;
+    if (index >= layout.length) return '';
+    final line = layout[index];
+    if (line.edge) {
+      return 'Молния впритык к канту: сегменты не делятся, ширина '
+          '${formatMm(line.bandWidth)} ${unitSuffix()} вычитается из заготовки.';
+    }
+    return 'Молния между сегментами: зазор '
+        '${formatMm(line.gapEnd - line.gapStart)} ${unitSuffix()} '
+        '(11 − 2 − 2), полотно режется на отдельные сегменты.';
+  }
+
   Widget _zipperCard(WindowParams params, WindowSpec spec, int index) {
     final zipper = params.zippers[index];
     final filmWidth = spec.filmVisibleWidth;
@@ -2672,6 +3026,13 @@ class _ParamsPanelState extends State<ParamsPanel> {
             const SizedBox(height: 8),
           ],
           _zipperBandField(index, zipper.bandWidth, isScreen: params.isScreen),
+          if (params.zipperSegments) ...[
+            const SizedBox(height: 4),
+            Text(
+              _zipperSegmentNote(spec, index),
+              style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+            ),
+          ],
           const SizedBox(height: 6),
           Text(
             params.isScreen

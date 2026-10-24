@@ -80,6 +80,36 @@ Future<(int, int, int)> _centerRgb(Uint8List png) async {
   return rgb;
 }
 
+/// Доля строк полосы [top]–[bottom] (доли высоты), в которых есть
+/// непустые пиксели. Так проверяем, что контент листа не «съехал» вверх
+/// и не оставил низ A4 пустым.
+Future<double> _inkRowFractionInBand(
+  Uint8List png,
+  double top,
+  double bottom,
+) async {
+  final image = await decodeImageFromList(png);
+  final data = await image.toByteData();
+  final width = image.width;
+  final firstRow = (image.height * top).round();
+  final lastRow = (image.height * bottom).round();
+  var rowsWithInk = 0;
+  for (var y = firstRow; y < lastRow; y++) {
+    for (var x = 0; x < width; x++) {
+      final offset = (y * width + x) * 4;
+      final r = data!.getUint8(offset);
+      final g = data.getUint8(offset + 1);
+      final b = data.getUint8(offset + 2);
+      if (r < 250 || g < 250 || b < 250) {
+        rowsWithInk += 1;
+        break;
+      }
+    }
+  }
+  image.dispose();
+  return rowsWithInk / (lastRow - firstRow);
+}
+
 void main() {
   setUpAll(loadRealFonts);
 
@@ -500,6 +530,58 @@ void main() {
     );
     expect(bytes, isNotNull);
     expect(_mediaBoxes(bytes!).length, 1);
+  });
+
+  testWidgets('смета на 3 окна: одна страница A4, контент доходит до штампа', (
+    tester,
+  ) async {
+    // Обычный заказ (3 окна): лист должен быть ровно один A4, а таблица с
+    // итогами — занимать лист до штампа, без полупустого низа.
+    final project = OrderProject(
+      windows: [for (var i = 0; i < 3; i++) _params],
+    );
+    final sheetSize = EstimateSheet.sheetSize(
+      project,
+      const Size(1720, 1080),
+      prices: const PriceList.defaults(),
+    );
+    tester.view.physicalSize = sheetSize;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final captureKey = GlobalKey();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EstimateSheet(
+            project: project,
+            prices: const PriceList.defaults(),
+            captureKey: captureKey,
+            labelFontFamily: testFontFamily,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final pages = await tester.runAsync(
+      () => renderSheetPages(
+        captureKey: captureKey,
+        pixelRatio: 1,
+        pageFormat: SheetPageFormat.a4Portrait,
+      ),
+    );
+    expect(pages, isNotNull);
+    expect(pages!.length, 1);
+    expect(tester.takeException(), isNull);
+
+    // Полоса 70–84 % высоты листа: это место таблицы/итогов над штампом.
+    // Если контент сжат в верхнюю часть листа, полоса остаётся белой.
+    final ink = await tester.runAsync(
+      () => _inkRowFractionInBand(pages.first, 0.70, 0.84),
+    );
+    expect(ink, greaterThan(0.8));
   });
 
   testWidgets('табличный лист остаётся на широкой странице A3', (tester) async {

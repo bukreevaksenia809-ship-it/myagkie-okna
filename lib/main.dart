@@ -6,11 +6,16 @@ import 'models/window_geometry.dart';
 import 'models/price_list.dart';
 import 'models/window_params.dart';
 import 'services/order_storage.dart';
+import 'services/client_report_pdf.dart';
+import 'services/company_branding.dart';
 import 'services/label_settings.dart';
 import 'services/tech_checks.dart';
 import 'services/pdf_export.dart';
 import 'services/roll_plan.dart';
+import 'widgets/calculator.dart';
+import 'widgets/company_dialog.dart';
 import 'widgets/costs_sheet.dart';
+import 'widgets/docs/docs_tab.dart';
 import 'widgets/cut_sheet.dart';
 import 'widgets/estimate_sheet.dart';
 import 'widgets/drawing_sheet.dart';
@@ -22,7 +27,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '1.1.0';
+const String kAppVersion = '1.2.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,7 +65,7 @@ class SoftWindowApp extends StatelessWidget {
 }
 
 /// Что показано на листе.
-enum SheetTab { drawing, cut, roll, costs, estimate, techCard }
+enum SheetTab { drawing, cut, roll, costs, docs, estimate, techCard }
 
 /// «1 лист», «2 листа», «5 листов» — для имени задания печати.
 String _sheetsWord(int count) {
@@ -116,6 +121,8 @@ class _BuilderScreenState extends State<BuilderScreen> {
   void initState() {
     super.initState();
     _tab = _tabFromUrl();
+    CompanyBranding.load();
+    CompanyBranding.current.addListener(_onBrandingChanged);
     _zoom.addListener(_onZoomChanged);
     DisplayUnits.current.addListener(_onUnitsChanged);
     LabelSettings.current.addListener(_onLabelSettingsChanged);
@@ -134,12 +141,18 @@ class _BuilderScreenState extends State<BuilderScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Реквизиты компании/логотип перерисовывают листы (смета, чертёж).
+  void _onBrandingChanged() {
+    if (mounted) setState(() {});
+  }
+
   /// Вкладку можно открыть ссылкой: ?tab=costs или ?tab=roll.
   SheetTab _tabFromUrl() {
     final requested = Uri.base.queryParameters['tab']?.toLowerCase();
     return switch (requested) {
       'roll' || 'raskladka' => SheetTab.roll,
       'costs' || 'rashody' => SheetTab.costs,
+      'docs' || 'dokumenty' || 'documentation' => SheetTab.docs,
       'cut' || 'raskroy' => SheetTab.cut,
       'estimate' || 'smeta' => SheetTab.estimate,
       'tech' || 'tehkarta' || 'techcard' => SheetTab.techCard,
@@ -149,6 +162,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
 
   @override
   void dispose() {
+    CompanyBranding.current.removeListener(_onBrandingChanged);
     _zoom.removeListener(_onZoomChanged);
     DisplayUnits.current.removeListener(_onUnitsChanged);
     LabelSettings.current.removeListener(_onLabelSettingsChanged);
@@ -377,6 +391,8 @@ class _BuilderScreenState extends State<BuilderScreen> {
     SheetTab.roll => null,
     SheetTab.cut => CutSheet.sheetSize(_project, viewport),
     SheetTab.costs => CostsSheet.sheetSize(_project, viewport),
+    // Документация — не лист: у неё своя A4-страница в редакторе.
+    SheetTab.docs => null,
     SheetTab.estimate => EstimateSheet.sheetSize(
       _project,
       viewport,
@@ -417,9 +433,34 @@ class _BuilderScreenState extends State<BuilderScreen> {
     SheetTab.roll => 'Раскладка',
     SheetTab.cut => 'Раскрой',
     SheetTab.costs => 'Расходы',
+    SheetTab.docs => 'Документация',
     SheetTab.estimate => 'Смета',
     SheetTab.techCard => 'Техкарта',
   };
+
+  /// «Сохранить отчёт для клиента»: альбомный PDF с обложкой и страницами
+  /// окон (чертёж + раскрой), в отличие от производственных листов.
+  Future<void> _exportClientReport() async {
+    if (_exporting) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _exporting = true);
+    try {
+      final saved = await saveClientReport(
+        project: _project,
+        prices: _prices,
+        company: CompanyBranding.current.value,
+      );
+      messenger.showSnackBar(
+        SnackBar(content: Text('Отчёт для клиента: ${saved.destination}')),
+      );
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Не удалось сохранить отчёт: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
 
   Future<void> _exportPdf() async {
     // Пока идёт другой экспорт, второй раз не запускаем.
@@ -726,7 +767,19 @@ class _BuilderScreenState extends State<BuilderScreen> {
       appBar: AppBar(
         title: const Text('Мягкие окна — чертежи, раскрой, раскладка'),
         actions: [
-          if (_exporting)
+          // Компания на листах — всегда под рукой: настройка глобальная, и
+          // искать её внизу длинной панели неудобно.
+          IconButton(
+            key: const Key('company-appbar'),
+            tooltip: 'Компания на листах: реквизиты и логотип',
+            onPressed: () => showCompanyDialog(context),
+            icon: const Icon(Icons.business_outlined),
+          ),
+          if (_tab == SheetTab.docs)
+            // У документации свои кнопки PDF/печати и своего набора листов:
+            // снимать её как лист чертежа нельзя.
+            const SizedBox.shrink()
+          else if (_exporting)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 20),
               child: Center(
@@ -738,6 +791,12 @@ class _BuilderScreenState extends State<BuilderScreen> {
               ),
             )
           else if (narrow) ...[
+            IconButton(
+              key: const Key('client-report-narrow'),
+              tooltip: 'Отчёт для клиента',
+              onPressed: _exportClientReport,
+              icon: const Icon(Icons.badge_outlined),
+            ),
             IconButton(
               tooltip: 'Сохранить PDF',
               onPressed: _exportPdf,
@@ -754,10 +813,21 @@ class _BuilderScreenState extends State<BuilderScreen> {
               icon: const Icon(Icons.restart_alt),
             ),
           ] else ...[
+            OutlinedButton.icon(
+              key: const Key('client-report'),
+              onPressed: _exportClientReport,
+              icon: const Icon(Icons.badge_outlined, size: 18),
+              label: const Text('Отчёт клиенту'),
+            ),
+            const SizedBox(width: 8),
             FilledButton.icon(
               onPressed: _exportPdf,
               icon: const Icon(Icons.picture_as_pdf, size: 18),
-              label: Text('Сохранить ${_sheetPrefix.toLowerCase()}'),
+              label: Text(
+                _tab == SheetTab.drawing
+                    ? 'Чертёж для производства'
+                    : 'Сохранить ${_sheetPrefix.toLowerCase()}',
+              ),
             ),
             const SizedBox(width: 8),
             OutlinedButton.icon(
@@ -850,6 +920,17 @@ class _BuilderScreenState extends State<BuilderScreen> {
             PrintProgressOverlay(progress: _printProgress!),
         ],
       ),
+      // Калькулятор — только на вкладке «Чертёж». Кнопка живёт поверх
+      // области листа, но вне captureKey: в снимок, PDF и печать не попадает
+      // и не перехватывает жесты панорамирования.
+      floatingActionButton: _tab == SheetTab.drawing
+          ? FloatingActionButton(
+              key: const Key('calculator-fab'),
+              tooltip: 'Калькулятор',
+              onPressed: () => showCalculator(context),
+              child: const Icon(Icons.calculate_outlined),
+            )
+          : null,
       bottomNavigationBar: _StatusBar(
         project: _project,
         selectedSpec: selectedSpec,
@@ -859,6 +940,11 @@ class _BuilderScreenState extends State<BuilderScreen> {
   }
 
   Widget _sheetViewport() {
+    // Документация — редактор документов, а не лист чертежа: масштабирование
+    // и панорамирование ей не нужны, поэтому InteractiveViewer не оборачивает.
+    if (_tab == SheetTab.docs) {
+      return DocsTab(project: _project, prices: _prices);
+    }
     return Container(
       key: _viewportKey,
       color: const Color(0xFFDDE3EC),
@@ -868,6 +954,10 @@ class _BuilderScreenState extends State<BuilderScreen> {
             SheetTab.drawing => DrawingSheet(
               project: _project,
               captureKey: _sheetKey,
+              company: CompanyBranding.current.value,
+              // Люверсы можно перетаскивать мышкой прямо по чертежу.
+              onParamsChanged: (params) =>
+                  _updateProject(_project.updateSelected(params)),
             ),
             SheetTab.roll => RollSheet(
               project: _project,
@@ -878,10 +968,12 @@ class _BuilderScreenState extends State<BuilderScreen> {
               project: _project,
               captureKey: _sheetKey,
             ),
+            SheetTab.docs => DocsTab(project: _project, prices: _prices),
             SheetTab.estimate => EstimateSheet(
               project: _project,
               prices: _prices,
               captureKey: _sheetKey,
+              company: CompanyBranding.current.value,
             ),
             SheetTab.techCard => TechCardSheet(
               project: _project,
@@ -938,6 +1030,11 @@ class _BuilderScreenState extends State<BuilderScreen> {
                   value: SheetTab.costs,
                   icon: Icon(Icons.receipt_long_outlined, size: 18),
                   label: Text('Расходы'),
+                ),
+                ButtonSegment(
+                  value: SheetTab.docs,
+                  icon: Icon(Icons.description_outlined, size: 18),
+                  label: Text('Документация'),
                 ),
                 ButtonSegment(
                   value: SheetTab.estimate,
@@ -1020,7 +1117,8 @@ class _BuilderScreenState extends State<BuilderScreen> {
             const Tooltip(
               message:
                   'Колесо мыши или трекпад — масштаб, '
-                  'перетаскивание — сдвиг листа',
+                  'перетаскивание — сдвиг листа. Люверс можно перетащить '
+                  'мышкой вдоль линии окантовки',
               child: Icon(
                 Icons.help_outline,
                 size: 18,

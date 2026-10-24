@@ -91,7 +91,6 @@ const _rich = WindowParams(
     ),
     Cutout(width: 400, height: 300, centerXMm: 400, centerYMm: 700),
   ],
-  weldedSides: [EdgeSide.right],
   drainHoles: true,
 );
 
@@ -203,16 +202,63 @@ const _allowance = WindowParams(
   allowanceHeightMm: 80,
 );
 
-/// Окно, спаянное с соседом сверху и снизу (вертикальная спайка).
-const _weldedVertically = WindowParams(
+/// Составное окно: ПВХ-полотно и второй материал справа.
+const _composite = WindowParams(
   projectName: 'Мягкое окно веранды',
   customer: 'Иванов И. И.',
-  drawingNumber: 'МО-021',
-  bottomWidth: 1800,
-  topWidth: 1800,
+  drawingNumber: 'МО-030',
+  windowType: WindowType.composite,
+  bottomWidth: 2000,
+  topWidth: 2000,
   leftHeight: 2200,
   rightHeight: 2200,
-  weldedSides: [EdgeSide.top],
+  composite: CompositeSpec(
+    side: EdgeSide.right,
+    material: FilmMaterial.screen,
+    width: 900,
+    depth: 500,
+  ),
+);
+
+/// Составное окно с диагональным швом.
+const _compositeDiagonal = WindowParams(
+  projectName: 'Мягкое окно террасы',
+  customer: 'Петров П. П.',
+  drawingNumber: 'МО-031',
+  windowType: WindowType.composite,
+  bottomWidth: 2200,
+  topWidth: 2200,
+  leftHeight: 2000,
+  rightHeight: 2000,
+  composite: CompositeSpec(
+    side: EdgeSide.bottom,
+    material: FilmMaterial.clearPvc,
+    width: 1000,
+    depth: 500,
+    seam: CompositeSeam.diagonal,
+    seamOffset: 0.55,
+    seamAngleDeg: 30,
+  ),
+);
+
+/// Окно с пятью молниями и доп. настройкой: сегменты кроя.
+const _fiveZippers = WindowParams(
+  projectName: 'Мягкое окно веранды',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-040',
+  windowType: WindowType.lifting,
+  bottomWidth: 3000,
+  topWidth: 3000,
+  leftHeight: 2200,
+  rightHeight: 2200,
+  zipperSegments: true,
+  zippers: [
+    ZipperSpec(centered: false, offsetMm: 500, bandWidth: zipperSegmentBandWidth),
+    ZipperSpec(centered: false, offsetMm: 1000, bandWidth: zipperSegmentBandWidth),
+    ZipperSpec(centered: false, offsetMm: 1500, bandWidth: zipperSegmentBandWidth),
+    ZipperSpec(centered: false, offsetMm: 2000, bandWidth: zipperSegmentBandWidth),
+    ZipperSpec(centered: false, offsetMm: 2500, bandWidth: zipperSegmentBandWidth),
+  ],
 );
 
 const _order = OrderProject(
@@ -269,6 +315,31 @@ void main() {
             windows: [_fixed, _lifting],
             sheetMode: SheetMode.grid,
             gridColumns: 2,
+          ),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      // Автоматическая раскладка 2–3 окон: перебор вариантов и поворотов.
+      'avto-2-okna': (
+        viewport: a4Viewport,
+        build: (key) => DrawingSheet(
+          project: const OrderProject(
+            windows: [_fixed, _lifting],
+            sheetMode: SheetMode.grid,
+            gridColumns: 0,
+          ),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      'avto-3-okna': (
+        viewport: a4Viewport,
+        build: (key) => DrawingSheet(
+          project: const OrderProject(
+            windows: [_fixed, _lifting, _mesh],
+            sheetMode: SheetMode.grid,
+            gridColumns: 0,
           ),
           captureKey: key,
           labelFontFamily: testFontFamily,
@@ -385,12 +456,26 @@ void main() {
           labelFontFamily: testFontFamily,
         ),
       ),
-      'spayka-vertikalnaya': (
+      'composite': (
         viewport: a4Viewport,
         build: (key) => DrawingSheet(
-          project: const OrderProject(
-            windows: [_weldedVertically, _weldedVertically],
-          ),
+          project: const OrderProject(windows: [_composite]),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      'composite-diagonal': (
+        viewport: a4Viewport,
+        build: (key) => DrawingSheet(
+          project: const OrderProject(windows: [_compositeDiagonal]),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      'molnii-5': (
+        viewport: a4Viewport,
+        build: (key) => DrawingSheet(
+          project: const OrderProject(windows: [_fiveZippers]),
           captureKey: key,
           labelFontFamily: testFontFamily,
         ),

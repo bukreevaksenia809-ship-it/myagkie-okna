@@ -4,7 +4,7 @@
 // Заказчик: «сделать цифрами расстояние люверсов друг от друга, писать НЕ на
 // люверсе, а немного сбоку от канта... на втором люверсе пишем расстояние от
 // первого; на третьем — сумму... то есть накопленное расстояние от угла».
-// Высоты — сверху вниз, ширины — слева направо.
+// Высоты — снизу вверх, ширины — слева направо.
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -86,13 +86,13 @@ void main() {
       }
     });
 
-    test('право и лево: 0 сверху, дальше вниз (высоты сверху вниз)', () {
+    test('право и лево: 0 снизу, дальше вверх (высоты снизу вверх)', () {
       for (final side in [right, left]) {
         expect(side.first.cumulativeMm, closeTo(0, 1e-9));
         expect(side[1].cumulativeMm, closeTo(1450 / 5, 1e-9));
         expect(side.last.cumulativeMm, closeTo(1450, 1e-9));
-        // Первая точка — у ВЕРХНЕГО угла, последняя — у нижнего.
-        expect(side.first.pointMm.dy, greaterThan(side.last.pointMm.dy));
+        // Первая точка — у НИЖНЕГО угла, последняя — у верхнего.
+        expect(side.first.pointMm.dy, lessThan(side.last.pointMm.dy));
       }
     });
 
@@ -126,7 +126,7 @@ void main() {
       expect(bottom.last.cumulativeMm, closeTo(1900, 1e-9));
     });
 
-    test('лево и право: 50 от верхнего угла, затем накопление вниз', () {
+    test('лево и право: 50 от нижнего угла, затем накопление вверх', () {
       for (final side in [
         _side(labels, WindowSide.left),
         _side(labels, WindowSide.right),
@@ -134,7 +134,7 @@ void main() {
         final step = (1450 - 100) / 5;
         expect(side.first.cumulativeMm, closeTo(50, 1e-9));
         expect(side[1].cumulativeMm, closeTo(50 + step, 1e-9));
-        expect(side.first.pointMm.dy, greaterThan(side.last.pointMm.dy));
+        expect(side.first.pointMm.dy, lessThan(side.last.pointMm.dy));
       }
     });
   });

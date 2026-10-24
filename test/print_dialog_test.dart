@@ -153,7 +153,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('«Отметить все» отмечает все шесть листов', (tester) async {
+  testWidgets('«Отметить все» отмечает все печатные листы', (tester) async {
     final host = await openDialog(tester, current: SheetTab.drawing);
     await tester.tap(find.text('Отметить все'));
     await tester.pumpAndSettle();
@@ -161,7 +161,8 @@ void main() {
     await tester.tap(find.text('Печать'));
     await tester.pumpAndSettle();
 
-    expect(host.result, SheetTab.values);
+    // Документация печатается своим редактором и в снимок листа не входит.
+    expect(host.result, printableSheetTabs);
   });
 
   testWidgets('на узком экране окно не переполняется', (tester) async {

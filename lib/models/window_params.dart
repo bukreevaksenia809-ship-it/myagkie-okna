@@ -13,12 +13,20 @@ enum WindowType {
 
   /// Т-образное (или Г-образное) окно: основное полотно плюс приставка,
   /// сваренные по общей стороне. См. [WindowParams.tSide] и соседние поля.
-  tShape;
+  tShape,
+
+  /// Составное окно: основное полотно из ПВХ и второй сегмент из другого
+  /// материала (скрин или ПВХ), спаянные по общей линии шва.
+  ///
+  /// В отличие от Т-образного, второй материал может пристраиваться с любой
+  /// стороны и по диагональному шву; см. [CompositeSpec].
+  composite;
 
   String get label => switch (this) {
     WindowType.fixed => 'Глухое',
     WindowType.lifting => 'Подъёмное',
     WindowType.tShape => 'Т-образное',
+    WindowType.composite => 'Составное',
   };
 
   String get hint => switch (this) {
@@ -30,6 +38,10 @@ enum WindowType {
     WindowType.tShape =>
       'Два полотна — основное и приставка — свариваются по общей стороне. '
           'Окантовка идёт только по внешнему периметру, общая сторона — шов',
+    WindowType.composite =>
+      'Основное полотно из ПВХ и второй материал (скрин или ПВХ) спаяны по '
+          'общему шву. Второй сегмент можно пристроить с любой стороны, в том '
+          'числе по диагональному шву',
   };
 }
 
@@ -113,6 +125,116 @@ class TShapeAnnex {
   EdgeSide get sharedEdge => side.sharedEdge;
 }
 
+/// Форма шва составного окна.
+enum CompositeSeam {
+  /// Шов параллелен выбранной стороне основного полотна: второй сегмент —
+  /// прямоугольник, пристроенный снаружи стороны.
+  straight('Прямой'),
+
+  /// Шов пересекает сторону под углом: основной сегмент подрезается линией
+  /// шва, второй встаёт к ней встык. Геометрия — честный многоугольник.
+  diagonal('Диагональный');
+
+  const CompositeSeam(this.label);
+
+  final String label;
+}
+
+/// Второй сегмент составного окна.
+///
+/// Основное полотно — ПВХ с четырьмя габаритами ([WindowParams.bottomWidth] и
+/// соседние): окантовка идёт по трём свободным сторонам, четвёртая — шов.
+/// Второй сегмент пристраивается к любой стороне [side] и тоже имеет
+/// окантовку/подворот по свободным сторонам, а сторона шва остаётся без
+/// окантовки и без подворота.
+///
+/// [width] — размер второго сегмента вдоль шва, [depth] — вынос от шва
+/// наружу, [offset] — смещение вдоль стороны основного полотна (от низа для
+/// правой/левой, от левого края для верхней/нижней).
+///
+/// Для [CompositeSeam.diagonal] линия шва проходит через точку на стороне
+/// ([seamOffset], доля 0…1 вдоль стороны) под углом [seamAngleDeg] к стороне;
+/// второй конец линии шва лежит на контуре основного полотна. Второй сегмент
+/// — четырёхугольник между линией шва и её выносом наружу на [depth].
+class CompositeSpec {
+  const CompositeSpec({
+    this.side = EdgeSide.right,
+    this.material = FilmMaterial.screen,
+    this.width = 700,
+    this.depth = 500,
+    this.offset = 0,
+    this.seam = CompositeSeam.straight,
+    this.seamOffset = 0.5,
+    this.seamAngleDeg = 25,
+  });
+
+  final EdgeSide side;
+  final FilmMaterial material;
+  final double width;
+  final double depth;
+  final double offset;
+  final CompositeSeam seam;
+
+  /// Доля 0…1 вдоль стороны, где линия диагонального шва пересекает сторону.
+  final double seamOffset;
+
+  /// Угол диагонального шва к стороне, градусы (0…80).
+  final double seamAngleDeg;
+
+  bool get isDiagonal => seam == CompositeSeam.diagonal;
+
+  /// Угол шва в радианах.
+  double get seamAngleRad => seamAngleDeg * math.pi / 180;
+
+  /// Материал второго сегмента — скрин или ПВХ.
+  bool get isScreen => material == FilmMaterial.screen;
+
+  CompositeSpec copyWith({
+    EdgeSide? side,
+    FilmMaterial? material,
+    double? width,
+    double? depth,
+    double? offset,
+    CompositeSeam? seam,
+    double? seamOffset,
+    double? seamAngleDeg,
+  }) =>
+      CompositeSpec(
+        side: side ?? this.side,
+        material: material ?? this.material,
+        width: width ?? this.width,
+        depth: depth ?? this.depth,
+        offset: offset ?? this.offset,
+        seam: seam ?? this.seam,
+        seamOffset: seamOffset ?? this.seamOffset,
+        seamAngleDeg: seamAngleDeg ?? this.seamAngleDeg,
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is CompositeSpec &&
+      other.side == side &&
+      other.material == material &&
+      other.width == width &&
+      other.depth == depth &&
+      other.offset == offset &&
+      other.seam == seam &&
+      other.seamOffset == seamOffset &&
+      other.seamAngleDeg == seamAngleDeg;
+
+  @override
+  int get hashCode => Object.hash(
+        side,
+        material,
+        width,
+        depth,
+        offset,
+        seam,
+        seamOffset,
+        seamAngleDeg,
+      );
+}
+
 /// Технология изделия. Отдельного поля у окна нет: технология выводится из
 /// материала полотна, чтобы не было двух противоречащих источников истины
 /// (см. [WindowParams.tech] и [WindowParams.isScreen]). Пользователь выбирает
@@ -136,12 +258,20 @@ enum WindowTech {
 /// без коричневого тента-окантовки, а крепится только люверсами по подвороту
 /// (см. [WindowParams.isScreen], [WindowParams.hemWidths], [screenSeamMm]).
 enum FilmMaterial {
-  clearPvc('Обычный ПВХ', 'ПВХ 700 мкм', [1400, 1800, 2000, 2400, 2600]),
+  clearPvc('Обычный ПВХ', 'ПВХ 700 мкм', [
+    1400,
+    1800,
+    2000,
+    2400,
+    2600,
+    3000,
+  ]),
   tintedPvc('Тонированный ПВХ', 'ПВХ 700 мкм, тонировка', [
     1400,
     1800,
     2000,
     2400,
+    3000,
   ]),
   mosquitoNet('Москитная сетка', 'сетка ПВХ', [
     1400,
@@ -158,6 +288,7 @@ enum FilmMaterial {
     2400,
     2500,
     2600,
+    3000,
     5000,
   ]);
 
@@ -391,6 +522,11 @@ enum ParamField {
   t2Width,
   t2Height,
   t2Offset,
+  compositeWidth,
+  compositeDepth,
+  compositeOffset,
+  compositeAngle,
+  zipperTentOverlap,
   eyeletStep,
   eyeletCornerOffset,
   drainCount,
@@ -417,6 +553,11 @@ enum ParamField {
     ParamField.t2Width => 'Ширина пристройки 2',
     ParamField.t2Height => 'Высота пристройки 2',
     ParamField.t2Offset => 'Смещение пристройки 2',
+    ParamField.compositeWidth => 'Ширина второго сегмента',
+    ParamField.compositeDepth => 'Вынос второго сегмента',
+    ParamField.compositeOffset => 'Смещение второго сегмента',
+    ParamField.compositeAngle => 'Угол шва',
+    ParamField.zipperTentOverlap => 'Напайка тента молнии',
     ParamField.eyeletStep => 'Интервал люверсов',
     ParamField.eyeletCornerOffset => 'Отступ люверса от угла',
     ParamField.drainCount => 'Дренажных отверстий',
@@ -434,6 +575,7 @@ enum ParamField {
 
   String get unit => switch (this) {
     ParamField.shrinkagePercent => '%',
+    ParamField.compositeAngle => '°',
     ParamField.drainCount => 'шт',
     _ => 'мм',
   };
@@ -514,7 +656,7 @@ const double defaultShrinkagePercent = 1.5;
 const double maxShrinkageFieldPercent = 5;
 
 /// Сколько молний и вырезов можно поставить на одно окно.
-const int maxZippers = 2;
+const int maxZippers = 5;
 const int maxCutouts = 4;
 
 /// Полоса спайки, которой сваривают два соседних окна между собой, мм.
@@ -624,9 +766,95 @@ const double liftStrapLength = 500;
 /// Ширина спайки, в которую впаивается молния, мм (5 см).
 const double defaultZipperBandWidth = 50;
 
+/// Ширина молнии в режиме «доп. настройки»: 5 см тент + 1 см молния + 5 см
+/// тент. 2 см тента с каждой стороны напаивается на полотно, поэтому зазор
+/// между сегментами — 7 см.
+const double zipperSegmentBandWidth = 110;
+
+/// Напайка тента молнии на полотно с каждой стороны по умолчанию, мм.
+const double defaultZipperTentOverlapMm = 20;
+const double minZipperTentOverlapMm = 5;
+const double maxZipperTentOverlapMm = 50;
+
 /// Фартук (бывший карман): рулон тента 200 мм складывается пополам → 100 мм.
 const double pocketRollWidth = 200;
 const double pocketFinishedWidth = 100;
+
+/// Что именно стоит в ручной точке на чертеже.
+enum MarkerKind {
+  /// Обычный люверс: тип берётся из настроек окна (в углах — правило угла).
+  eyelet('Люверс'),
+
+  /// Круглый люверс — явно выбран при добавлении из меню.
+  roundEyelet('Круглый люверс'),
+
+  /// Французский замок в этой точке.
+  frenchLock('Французский замок'),
+
+  /// Поворотная скоба в этой точке.
+  turnBuckle('Поворотная скоба');
+
+  const MarkerKind(this.label);
+
+  final String label;
+}
+
+/// Ручное положение люверса на стороне окна.
+///
+/// Задаётся долей вдоль ребра контура (0 — начало ребра, 1 — конец), поэтому
+/// при изменении размеров люверсы остаются на своих местах. Сторона без
+/// записей расставляется автоматически по интервалу.
+class EyeletPosition {
+  const EyeletPosition({
+    required this.side,
+    required this.fraction,
+    this.kind = MarkerKind.eyelet,
+  });
+
+  final EdgeSide side;
+
+  /// Доля 0…1 вдоль ребра наружного контура.
+  final double fraction;
+
+  /// Что стоит в точке: люверс, круглый, замок или скоба.
+  final MarkerKind kind;
+
+  EyeletPosition copyWith({
+    EdgeSide? side,
+    double? fraction,
+    MarkerKind? kind,
+  }) =>
+      EyeletPosition(
+        side: side ?? this.side,
+        fraction: fraction ?? this.fraction,
+        kind: kind ?? this.kind,
+      );
+
+  Map<String, dynamic> toJson() => {
+    'side': side.name,
+    'fraction': fraction,
+    'kind': kind.name,
+  };
+
+  factory EyeletPosition.fromJson(Map<String, dynamic> json) {
+    final sideName = json['side'];
+    final rawFraction = json['fraction'];
+    final kindName = json['kind'];
+    return EyeletPosition(
+      side: EdgeSide.values.firstWhere(
+        (side) => side.name == sideName,
+        orElse: () => EdgeSide.bottom,
+      ),
+      fraction: rawFraction is num && rawFraction.isFinite
+          ? rawFraction.toDouble().clamp(0.0, 1.0)
+          : 0.5,
+      kind: MarkerKind.values.firstWhere(
+        (kind) => kind.name == kindName,
+        orElse: () => MarkerKind.eyelet,
+      ),
+    );
+  }
+}
 
 /// На сколько поднимается нижний люверс, чтобы фартук открывался, мм.
 const double pocketCornerOffset = 50;
@@ -677,9 +905,13 @@ class WindowParams {
     this.roundEyeletsEnabled = true,
     this.fastenerType = FastenerType.turnBuckles,
     this.zippers = const [],
+    this.zipperSegments = false,
+    this.zipperTentOverlap = defaultZipperTentOverlapMm,
+    this.liftStrapOffsets = const [],
     this.cutouts = const [],
-    this.weldedSides = const [],
-    this.removeEyeletsOnWelded = true,
+    this.eyeletPositions = const [],
+    this.manualEyeletSides = const [],
+    this.composite = const CompositeSpec(),
     this.noEyeletsTop = false,
     this.noEyeletsBottom = false,
     this.pocket = false,
@@ -918,17 +1150,52 @@ class WindowParams {
   /// Молнии: каждая ставится отдельной кнопкой, все вертикальные.
   final List<ZipperSpec> zippers;
 
+  /// Положения подъёмных ремней вручную: центр от левого края полотна, мм.
+  ///
+  /// Пустой список — прежняя автоматическая расстановка по числу
+  /// [liftStrapCount]. Непустой — ровно эти ремни; каждый привязан к линии
+  /// тента на своей высоте (на косом окне линии тоже косая).
+  final List<double> liftStrapOffsets;
+
+  /// «Доп. настройка молнии»: делить полотно на сегменты по молниям.
+  ///
+  /// Выключено — прежнее поведение: ширина молнии просто вычитается из
+  /// ширины заготовки. Включено — ширина полосы 11 см (5 тент + 1 молния +
+  /// 5 тент), молния между сегментами даёт зазор 7 см (по 2 см тента
+  /// напаивается на каждый сегмент), впритык к канту — без деления.
+  final bool zipperSegments;
+
+  /// Напайка тента молнии на полотно с каждой стороны, мм (по умолчанию 20).
+  ///
+  /// В режиме сегментов из ширины вычитается `ширина молнии − 2 × напайка`:
+  /// 11 см при напайке 2 см дают 7 см — и для молнии между сегментами
+  /// (зазор), и для молнии впритык к канту (вычет из кроя).
+  final double zipperTentOverlap;
+
   /// Вырезы (отверстия) в полотне.
   final List<Cutout> cutouts;
 
-  /// Стороны, которыми окно спаяно с соседним (окантовка там не ставится).
-  final List<EdgeSide> weldedSides;
-
-  /// Убирать люверсы (крепёж) на спаянных сторонах.
+  /// Ручные положения люверсов (перетащены мышкой на чертеже).
   ///
-  /// По умолчанию убираем: спайка держит полотно сама, а люверс в шве
-  /// только рвёт тент. Кнопка в панели позволяет оставить крепёж.
-  final bool removeEyeletsOnWelded;
+  /// Пусто — автоматическая расстановка по интервалу. Если для стороны есть
+  /// записи, на ней ставятся ровно они; остальные стороны остаются авто.
+  final List<EyeletPosition> eyeletPositions;
+
+  /// Стороны, у которых люверсы заданы вручную (в том числе пустым списком).
+  ///
+  /// Именно этот список отличает «сторону без люверсов» от «стороны с
+  /// автоматической расстановкой»: если сторона в нём есть, берутся только
+  /// [eyeletPositions], даже когда их ноль.
+  final List<EdgeSide> manualEyeletSides;
+
+  /// Второй сегмент составного окна ([WindowType.composite]).
+  ///
+  /// У остальных типов окна поле не используется и пишется в JSON только для
+  /// составного окна, чтобы старые заказы не менялись.
+  final CompositeSpec composite;
+
+  /// Спайка с соседним окном удалена: старые заказы с полем `weldedSides`
+  /// открываются без шва (поле в JSON игнорируется). Взамен — составное окно.
 
   /// Не ставить люверсы сверху.
   ///
@@ -985,9 +1252,6 @@ class WindowParams {
   double get zipperOffsetMm => zipper?.offsetMm ?? 0;
 
   double get zipperBandWidth => zipper?.bandWidth ?? defaultZipperBandWidth;
-
-  /// Сколько миллиметров окантовки экономят спайки с соседними окнами.
-  bool isWelded(EdgeSide side) => weldedSides.contains(side);
 
   /// Есть ли припуск на раскрой хотя бы по одной оси — с учётом авто-припуска
   /// ПВХ по высоте ([effectiveAllowanceHeightMm]).
@@ -1124,6 +1388,12 @@ class WindowParams {
 
   /// Т-образное окно: основное полотно плюс приставка.
   bool get isTShape => windowType == WindowType.tShape;
+
+  /// Составное окно: ПВХ-полотно плюс второй материал по общему шву.
+  bool get isComposite => windowType == WindowType.composite;
+
+  /// Составное окно с диагональным швом.
+  bool get hasDiagonalSeam => isComposite && composite.isDiagonal;
 
   /// Глухое окно: обычное глухое или Т-образное (обе части стоят на месте).
   bool get isFixedShape => !isLifting;
@@ -1278,9 +1548,13 @@ class WindowParams {
     bool? roundEyeletsEnabled,
     FastenerType? fastenerType,
     List<ZipperSpec>? zippers,
+    bool? zipperSegments,
+    double? zipperTentOverlap,
+    List<double>? liftStrapOffsets,
     List<Cutout>? cutouts,
-    List<EdgeSide>? weldedSides,
-    bool? removeEyeletsOnWelded,
+    List<EyeletPosition>? eyeletPositions,
+    List<EdgeSide>? manualEyeletSides,
+    CompositeSpec? composite,
     bool? noEyeletsTop,
     bool? noEyeletsBottom,
     bool? pocket,
@@ -1336,10 +1610,13 @@ class WindowParams {
       roundEyeletsEnabled: roundEyeletsEnabled ?? this.roundEyeletsEnabled,
       fastenerType: fastenerType ?? this.fastenerType,
       zippers: zippers ?? this.zippers,
+      zipperSegments: zipperSegments ?? this.zipperSegments,
+      zipperTentOverlap: zipperTentOverlap ?? this.zipperTentOverlap,
+      liftStrapOffsets: liftStrapOffsets ?? this.liftStrapOffsets,
       cutouts: cutouts ?? this.cutouts,
-      weldedSides: weldedSides ?? this.weldedSides,
-      removeEyeletsOnWelded:
-          removeEyeletsOnWelded ?? this.removeEyeletsOnWelded,
+      eyeletPositions: eyeletPositions ?? this.eyeletPositions,
+      manualEyeletSides: manualEyeletSides ?? this.manualEyeletSides,
+      composite: composite ?? this.composite,
       noEyeletsTop: noEyeletsTop ?? this.noEyeletsTop,
       noEyeletsBottom: noEyeletsBottom ?? this.noEyeletsBottom,
       pocket: pocket ?? this.pocket,
@@ -1354,6 +1631,79 @@ class WindowParams {
     );
   }
 
+  /// Поставить ручные точки одной стороны, сохранив остальные стороны.
+  WindowParams withManualPoints(
+    EdgeSide side,
+    List<EyeletPosition> points,
+  ) => copyWith(
+    eyeletPositions: [
+      for (final position in eyeletPositions)
+        if (position.side != side) position,
+      for (final point in points)
+        EyeletPosition(
+          side: side,
+          fraction: point.fraction.clamp(0.0, 1.0),
+          kind: point.kind,
+        ),
+    ],
+    manualEyeletSides: [
+      for (final manual in manualEyeletSides)
+        if (manual != side) manual,
+      side,
+    ],
+  );
+
+  /// Короткая запись: поставить доли одной стороны (тип — обычный люверс).
+  WindowParams withEyeletPositions(
+    EdgeSide side,
+    List<double> fractions,
+  ) => withManualPoints(
+    side,
+    [for (final fraction in fractions) EyeletPosition(
+      side: side,
+      fraction: fraction,
+    )],
+  );
+
+  /// Вернуть автоматическую расстановку люверсов на всех сторонах.
+  WindowParams clearEyeletPositions() =>
+      copyWith(eyeletPositions: const [], manualEyeletSides: const []);
+
+  /// Сторона расставлена вручную (в том числе пустым списком).
+  bool hasManualEyelets(EdgeSide side) => manualEyeletSides.contains(side);
+
+  /// Добавить подъёмный ремешок с центром [offsetMm] от левого края.
+  WindowParams addLiftStrap(double offsetMm) => copyWith(
+    liftStrapOffsets: [...liftStrapOffsets, offsetMm],
+  );
+
+  WindowParams removeLiftStrap(int index) {
+    if (index < 0 || index >= liftStrapOffsets.length) return this;
+    final next = [...liftStrapOffsets]..removeAt(index);
+    return copyWith(liftStrapOffsets: next);
+  }
+
+  WindowParams updateLiftStrap(int index, double offsetMm) {
+    if (index < 0 || index >= liftStrapOffsets.length) return this;
+    final next = [...liftStrapOffsets];
+    next[index] = offsetMm;
+    return copyWith(liftStrapOffsets: next);
+  }
+
+  /// Включить/выключить «доп. настройку молнии».
+  ///
+  /// При включении ширина всех молний становится 11 см (полоса 5+1+5),
+  /// при выключении возвращается прежняя типовая 5 см.
+  WindowParams withZipperSegments(bool enabled) => copyWith(
+    zipperSegments: enabled,
+    zippers: [
+      for (final zipper in zippers)
+        zipper.copyWith(
+          bandWidth: enabled ? zipperSegmentBandWidth : defaultZipperBandWidth,
+        ),
+    ],
+  );
+
   /// Добавить молнию.
   ///
   /// Первая — по центру полотна. Вторая — разносим обе по трети ширины,
@@ -1361,14 +1711,44 @@ class WindowParams {
   WindowParams addZipper() {
     if (zippers.length >= maxZippers) return this;
     if (zippers.isEmpty) {
-      return copyWith(zippers: const [ZipperSpec(centered: true)]);
+      return copyWith(
+        zippers: [
+          ZipperSpec(
+            centered: true,
+            bandWidth: zipperSegments
+                ? zipperSegmentBandWidth
+                : defaultZipperBandWidth,
+          ),
+        ],
+      );
     }
-    final third = math.max(bottomWidth / 3, 120.0);
-    final bandWidth = zippers.first.bandWidth;
+    // До 5 молний: каждая следующая встаёт в самый широкий свободный
+    // промежуток, существующие положения не сдвигаются.
+    final width = math.max(bottomWidth, 200.0);
+    final positions = [
+      for (final zipper in zippers)
+        zipper.centered ? width / 2 : zipper.offsetMm,
+    ]..sort();
+    final edges = <double>[0, ...positions, width];
+    var bestStart = 0.0;
+    var bestEnd = width;
+    var bestGap = -1.0;
+    for (var i = 0; i < edges.length - 1; i++) {
+      final gap = edges[i + 1] - edges[i];
+      if (gap > bestGap) {
+        bestGap = gap;
+        bestStart = edges[i];
+        bestEnd = edges[i + 1];
+      }
+    }
     return copyWith(
       zippers: [
-        ZipperSpec(centered: false, offsetMm: third, bandWidth: bandWidth),
-        ZipperSpec(centered: false, offsetMm: third * 2, bandWidth: bandWidth),
+        ...zippers,
+        ZipperSpec(
+          centered: false,
+          offsetMm: ((bestStart + bestEnd) / 2).clamp(0.0, width),
+          bandWidth: zippers.first.bandWidth,
+        ),
       ],
     );
   }
@@ -1414,12 +1794,6 @@ class WindowParams {
     return copyWith(cutouts: next);
   }
 
-  WindowParams toggleWelded(EdgeSide side) {
-    final next = [...weldedSides];
-    if (!next.remove(side)) next.add(side);
-    return copyWith(weldedSides: next);
-  }
-
   WindowParams withField(ParamField field, double value) => switch (field) {
     ParamField.bottomWidth => copyWith(bottomWidth: value),
     ParamField.topWidth => copyWith(topWidth: value),
@@ -1432,6 +1806,15 @@ class WindowParams {
     ParamField.t2Width => copyWith(t2Width: value),
     ParamField.t2Height => copyWith(t2Height: value),
     ParamField.t2Offset => copyWith(t2Offset: value),
+    ParamField.compositeWidth =>
+      copyWith(composite: composite.copyWith(width: value)),
+    ParamField.compositeDepth =>
+      copyWith(composite: composite.copyWith(depth: value)),
+    ParamField.compositeOffset =>
+      copyWith(composite: composite.copyWith(offset: value)),
+    ParamField.compositeAngle =>
+      copyWith(composite: composite.copyWith(seamAngleDeg: value)),
+    ParamField.zipperTentOverlap => copyWith(zipperTentOverlap: value),
     ParamField.eyeletStep => copyWith(eyeletStep: value),
     ParamField.eyeletCornerOffset => copyWith(eyeletCornerOffset: value),
     ParamField.drainCount => copyWith(drainCount: value),
@@ -1461,6 +1844,11 @@ class WindowParams {
     ParamField.t2Width => t2Width,
     ParamField.t2Height => t2Height,
     ParamField.t2Offset => t2Offset,
+    ParamField.compositeWidth => composite.width,
+    ParamField.compositeDepth => composite.depth,
+    ParamField.compositeOffset => composite.offset,
+    ParamField.compositeAngle => composite.seamAngleDeg,
+    ParamField.zipperTentOverlap => zipperTentOverlap,
     ParamField.eyeletStep => eyeletStep,
     ParamField.eyeletCornerOffset => eyeletCornerOffset,
     ParamField.drainCount => drainCount,
@@ -1530,11 +1918,15 @@ class WindowParams {
     fastenerType.name,
     for (final zipper in zippers)
       '${zipper.centered}:${zipper.offsetMm}:${zipper.bandWidth}',
+    zipperSegments,
+    zipperTentOverlap,
+    for (final offset in liftStrapOffsets) offset,
     for (final cutout in cutouts)
       '${cutout.shape.name}:${cutout.width}:${cutout.height}:'
           '${cutout.centerXMm}:${cutout.centerYMm}',
-    for (final side in weldedSides) side.name,
-    removeEyeletsOnWelded,
+    for (final side in manualEyeletSides) side.name,
+    for (final eyelet in eyeletPositions)
+      '${eyelet.side.name}:${eyelet.fraction.toStringAsFixed(5)}:${eyelet.kind.name}',
     noEyeletsTop,
     noEyeletsBottom,
     zipperEnabled,

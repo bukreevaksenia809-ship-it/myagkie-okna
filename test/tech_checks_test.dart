@@ -143,38 +143,6 @@ void main() {
     });
   });
 
-  group('Спайка окон', () {
-    test('спайка стороны с крепежом на ней — предупреждение', () {
-      final withFastener = _correct.copyWith(
-        weldedSides: const [EdgeSide.left],
-        removeEyeletsOnWelded: false,
-      );
-      final checks = techChecksFor(withFastener);
-      final check = _check(checks, 'welded-side-fastener');
-
-      expect(check, isNotNull);
-      expect(check!.severity, TechSeverity.warning);
-
-      // Без крепежа на спаянной стороне предупреждения быть не должно.
-      final withoutFastener =
-          _correct.copyWith(weldedSides: const [EdgeSide.left]);
-      expect(
-        _check(techChecksFor(withoutFastener), 'welded-side-fastener'),
-        isNull,
-      );
-    });
-
-    test('спайка обеих боковых сторон — предупреждение о зажатом окне', () {
-      final params = _correct.copyWith(
-        weldedSides: const [EdgeSide.left, EdgeSide.right],
-      );
-      final check = _check(techChecksFor(params), 'welded-both-sides');
-
-      expect(check, isNotNull);
-      expect(check!.severity, TechSeverity.warning);
-    });
-  });
-
   group('Вырезы', () {
     test('круглый вырез 80 мм — справка или предупреждение', () {
       final params = _correct.copyWith(cutouts: const [
@@ -358,10 +326,6 @@ void main() {
       expect(check!.severity, TechSeverity.warning);
       expect(check.title, 'Верх нечем крепить');
       expect(check.explanation, contains('не спаяна'));
-
-      // Если сторона спаяна с соседним окном — крепёж там не нужен.
-      final welded = params.copyWith(weldedSides: const [EdgeSide.top]);
-      expect(_check(techChecksFor(welded), 'eyelet-top-unfastened'), isNull);
     });
 
     test('низ без люверсов и не спаян — предупреждение', () {
@@ -372,8 +336,6 @@ void main() {
       expect(check!.severity, TechSeverity.warning);
       expect(check.title, 'Низ нечем крепить');
 
-      final welded = params.copyWith(weldedSides: const [EdgeSide.bottom]);
-      expect(_check(techChecksFor(welded), 'eyelet-bottom-unfastened'), isNull);
     });
 
     test('без выключенных сторон предупреждений о крепеже нет', () {

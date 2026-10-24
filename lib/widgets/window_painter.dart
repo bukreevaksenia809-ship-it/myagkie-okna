@@ -450,6 +450,12 @@ class WindowDrawingPainter extends CustomPainter {
       if (showScaleBar) _paintScaleBar(canvas, size);
       return;
     }
+    // Составное окно: две зоны материалов и линия шва.
+    if (params.isComposite) {
+      _paintComposite(canvas, size);
+      if (showScaleBar) _paintScaleBar(canvas, size);
+      return;
+    }
     _paintFilm(canvas);
     _paintEdgeBand(canvas);
     if (params.isScreen) _paintScreenHem(canvas);
@@ -462,6 +468,7 @@ class WindowDrawingPainter extends CustomPainter {
     _paintLiftStraps(canvas);
     _paintEyelets(canvas);
     _paintFasteners(canvas);
+    _paintManualFasteners(canvas);
     _paintFastenerSpans(canvas);
     _paintDrains(canvas);
     if (options.showDimensions) _paintDimensions(canvas);
@@ -552,10 +559,6 @@ class WindowDrawingPainter extends CustomPainter {
       // Ровно один четырёхугольник на сторону: на наклонной стороне
       // Т-окна полоса не распадается на сегменты.
       for (final quad in edgeBandQuads(spec, widths: widths)) {
-        final side = layers.sideOfEdge(layers.outer, quad.edgeIndex);
-        if (params.isWelded(WindowLayers.edgeSideOf(side))) {
-          continue;
-        }
         _paintTentQuad(canvas, quad);
       }
       canvas.drawPath(
@@ -586,6 +589,7 @@ class WindowDrawingPainter extends CustomPainter {
     _paintPocket(canvas);
     _paintEyelets(canvas);
     _paintFasteners(canvas);
+    _paintManualFasteners(canvas);
     _paintFastenerSpans(canvas);
     _paintDrains(canvas);
 
@@ -678,6 +682,202 @@ class WindowDrawingPainter extends CustomPainter {
     if (length < 0.01) return const Offset(0, 1);
     final unit = direction / length;
     return Offset(unit.dy, -unit.dx);
+  }
+
+  // ------------------------------------------------------ Составное окно
+
+  /// Отрисовка составного окна: основная зона из ПВХ и второй материал,
+  /// единый контур, линия шва и размеры обеих частей.
+  void _paintComposite(Canvas canvas, Size size) {
+    final composite = layers.compositeLayout;
+    if (composite == null) return;
+    final main = composite.mainPolygon;
+    final second = composite.secondPolygon;
+
+    // 1. Полотно: основная зона и второй материал.
+    final mainPath = Path()..fillType = PathFillType.evenOdd;
+    _addPolygon(mainPath, main);
+    final mainBounds = mainPath.getBounds();
+    if (!mainBounds.isEmpty) {
+      canvas.drawPath(
+        mainPath,
+        Paint()
+          ..shader = _filmGradient(mainBounds)
+          ..isAntiAlias = true,
+      );
+    }
+    final secondPath = Path()..fillType = PathFillType.evenOdd;
+    _addPolygon(secondPath, second);
+    final secondBounds = secondPath.getBounds();
+    if (!secondBounds.isEmpty) {
+      canvas.drawPath(
+        secondPath,
+        Paint()
+          ..isAntiAlias = true
+          ..color = composite.isScreen
+              ? const Color(0xFF8E99A6).withValues(alpha: 0.55)
+              : const Color(0xFF9FB4C9).withValues(alpha: 0.35),
+      );
+    }
+
+    // 2. Окантовка/подворот по свободным кромкам каждой части. На шве
+    //    окантовки нет — там сварка.
+    _paintCompositeBand(canvas, main, screen: false, composite: composite);
+    _paintCompositeBand(
+      canvas,
+      second,
+      screen: composite.isScreen,
+      composite: composite,
+    );
+
+    // 3. Единый внешний контур и линия шва.
+    canvas.drawPath(
+      _polygonPath(composite.outline),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.4
+        ..strokeJoin = StrokeJoin.miter
+        ..color = _ink,
+    );
+    final seamA = layout.toPxPoint(composite.seamStart);
+    final seamB = layout.toPxPoint(composite.seamEnd);
+    _dashedLine(
+      canvas,
+      seamA,
+      seamB,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.6
+        ..color = _special.withValues(alpha: 0.9),
+      dash: 10,
+      gap: 5,
+    );
+    if (options.showCallouts) {
+      final mid = Offset.lerp(seamA, seamB, 0.5)!;
+      _label(
+        canvas,
+        'шов ${formatMm(composite.seamLength)} ${unitSuffix()}',
+        mid + _uprightNormal(seamA, seamB) * 16,
+        angle: _uprightAngle(seamB - seamA),
+        small: true,
+        color: _special,
+      );
+    }
+
+    // 4. Видимая кромка, вырезы, молния, фартук, люверсы, крепёж.
+    _paintCutouts(canvas);
+    _paintVisibleFilmEdge(canvas);
+    _paintZipper(canvas);
+    _paintZipperDimensions(canvas);
+    _paintPocket(canvas);
+    _paintEyelets(canvas);
+    _paintFasteners(canvas);
+    _paintManualFasteners(canvas);
+    _paintFastenerSpans(canvas);
+    _paintDrains(canvas);
+
+    // 5. Размеры основной части и второго сегмента.
+    if (options.showDimensions) {
+      _paintDimensions(canvas);
+      _paintCompositeSecondDimensions(canvas, composite);
+    }
+    if (options.showCallouts) _paintCompositeCallouts(canvas, composite);
+  }
+
+  /// Примечания составного окна: материалы и площадь (общие подписи окантовки
+  /// рассчитаны на четырёхугольник и здесь не подходят).
+  void _paintCompositeCallouts(
+    Canvas canvas,
+    CompositeLayout composite,
+  ) {
+    final bounds = boundsOf(composite.outline);
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    final anchor = layout.toPxPoint(
+      Offset(bounds.left, bounds.top - 36),
+    );
+    _label(
+      canvas,
+      'основное полотно — ПВХ; второй сегмент — '
+      '${composite.material.label}; площадь окна '
+      '${formatMeters(layout.geometry.areaM2)} м²',
+      anchor,
+      small: true,
+      color: const Color(0xFF41506A),
+    );
+  }
+
+  /// Полоса окантовки (ПВХ) или подворота (скрин) по свободным кромкам
+  /// одной части составного окна.
+  void _paintCompositeBand(
+    Canvas canvas,
+    List<Offset> part, {
+    required bool screen,
+    required CompositeLayout composite,
+  }) {
+    if (part.length < 3) return;
+    final amounts = <double>[];
+    for (var i = 0; i < part.length; i++) {
+      final a = part[i];
+      final b = part[(i + 1) % part.length];
+      final seam = ((a - composite.seamStart).distance < 1e-6 &&
+              (b - composite.seamEnd).distance < 1e-6) ||
+          ((a - composite.seamEnd).distance < 1e-6 &&
+              (b - composite.seamStart).distance < 1e-6);
+      if (seam) {
+        amounts.add(0);
+        continue;
+      }
+      final side = layers.sideOfEdge(part, i);
+      amounts.add(
+        screen ? -layers.hemOutsetFor(side) : layers.finishedWidthFor(side),
+      );
+    }
+    final inner = insetPolygonPerSide(part, amounts);
+    final band = Path()..fillType = PathFillType.evenOdd;
+    _addPolygon(band, part);
+    _addPolygon(band, inner);
+    canvas.drawPath(
+      band,
+      Paint()
+        ..isAntiAlias = true
+        ..color = screen
+            ? const Color(0xFF8C9298).withValues(alpha: 0.16)
+            : Color.lerp(_edgeColor, const Color(0xFFF3F6FA), 0.25)!
+                .withValues(alpha: 0.9),
+    );
+    canvas.drawPath(
+      _polygonPath(inner),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..color = _filmStrokeColor,
+    );
+  }
+
+  /// Подпись второго сегмента: материал и вынос, вдоль полосы.
+  ///
+  /// Текст идёт вдоль шва (у боковой полосы — вертикально): так он помещается
+  /// в узкий сегмент и не залезает на основное полотно и на линию шва.
+  void _paintCompositeSecondDimensions(
+    Canvas canvas,
+    CompositeLayout composite,
+  ) {
+    final polygon = composite.secondPolygon;
+    if (polygon.length < 3) return;
+    final bounds = boundsOf(polygon);
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    final center = layout.toPxPoint(bounds.center);
+    final seamA = layout.toPxPoint(composite.seamStart);
+    final seamB = layout.toPxPoint(composite.seamEnd);
+    final angle = _uprightAngle(seamB - seamA);
+    _label(
+      canvas,
+      '${composite.material.label} · ${formatMm(composite.depth)}',
+      center,
+      angle: angle,
+      small: true,
+      color: _ink,
+    );
   }
 
   /// Размеры Т-окна: обе части (основное полотно и каждая пристройка),
@@ -2473,12 +2673,33 @@ class WindowDrawingPainter extends CustomPainter {
   }
 
   /// Нормаль, направленная наружу фигуры, в экранных координатах.
-  Offset _outwardNormal(EyeletPlacement eyelet) {
-    final center = layout.toPxPoint(eyelet.center);
+  Offset _outwardNormal(EyeletPlacement eyelet) =>
+      _outwardNormalAt(eyelet.center);
+
+  Offset _outwardNormalAt(Offset pointMm) {
+    final center = layout.toPxPoint(pointMm);
     final shapeCenter = layout.toPxPoint(boundsOf(layers.outer).center);
     final away = center - shapeCenter;
     final length = away.distance;
     return length < 0.01 ? const Offset(0, 1) : away / length;
+  }
+
+  /// Крепёж, добавленный вручную на чертеже (замки и скобы).
+  void _paintManualFasteners(Canvas canvas) {
+    for (final fastener in layers.manualFasteners) {
+      final bandWidth = _fastenerBandWidth(fastener.side);
+      final normal = _outwardNormalAt(fastener.center);
+      final center = layout.toPxPoint(fastener.center);
+      switch (fastener.type) {
+        case FastenerType.turnBuckles:
+          _drawTurnBuckle(canvas, center, normal, bandWidth);
+        case FastenerType.frenchLocks:
+          _drawFrenchLock(canvas, center, normal, bandWidth);
+        case FastenerType.straps:
+        case FastenerType.eyeletsOnly:
+          break;
+      }
+    }
   }
 
   /// Поворотная скоба: пластина на окантовке и проволочная петля,

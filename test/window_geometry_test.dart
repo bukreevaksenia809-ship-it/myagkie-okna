@@ -34,7 +34,6 @@ void main() {
   _freeEyeletStepRules();
   _roundEyeletToggleRules();
   _costsSummaryRules();
-  _weldedWindowRules();
   _allowanceRules();
   _obliqueAreaRules();
   _shrinkageAndPvcAllowanceRules();
@@ -88,8 +87,16 @@ void main() {
 
   group('Материал полотна', () {
     test('доступные ширины рулонов по материалам', () {
-      expect(FilmMaterial.clearPvc.rollWidths, [1400, 1800, 2000, 2400, 2600]);
-      expect(FilmMaterial.tintedPvc.maxRollWidth, 2400);
+      // Во всех материалах появилась ширина рулона 3000 мм.
+      expect(FilmMaterial.clearPvc.rollWidths, [
+        1400,
+        1800,
+        2000,
+        2400,
+        2600,
+        3000,
+      ]);
+      expect(FilmMaterial.tintedPvc.maxRollWidth, 3000);
       expect(FilmMaterial.mosquitoNet.maxRollWidth, 3000);
       expect(FilmMaterial.clearPvc.defaultRollWidth, 2000);
     });
@@ -102,7 +109,7 @@ void main() {
 
       expect(withTinted.rollWidthFor(FilmMaterial.tintedPvc), 2400);
       // Ширина, которой нет в списке материала, заменяется на стандартную.
-      final wrong = withTinted.setRollWidth(FilmMaterial.tintedPvc, 3000);
+      final wrong = withTinted.setRollWidth(FilmMaterial.tintedPvc, 5000);
       expect(wrong.rollWidthFor(FilmMaterial.tintedPvc), 2000);
     });
 
@@ -452,18 +459,27 @@ void main() {
       expect(layers.zipperGapsAll.length, 2);
     });
 
-    test('addZipper() дважды не даёт больше maxZippers', () {
-      final once = _rect.addZipper();
-      expect(once.zippers.length, 1);
-      expect(once.zippers.first.centered, isTrue);
+    test('addZipper(): по одной до пяти, дальше не добавляет', () {
+      var params = _rect;
+      expect(params.zippers, isEmpty);
+      params = params.addZipper();
+      expect(params.zippers.length, 1);
+      expect(params.zippers.first.centered, isTrue);
 
-      final twice = once.addZipper();
-      expect(twice.zippers.length, 2);
-      expect(twice.hasZipper, isTrue);
-
-      // Третья молния не добавляется: упор в maxZippers.
-      expect(maxZippers, 2);
-      expect(twice.addZipper().zippers.length, maxZippers);
+      for (var count = 2; count <= maxZippers; count++) {
+        params = params.addZipper();
+        expect(params.zippers.length, count);
+      }
+      expect(maxZippers, 5);
+      expect(params.hasZipper, isTrue);
+      // Шестая не добавляется.
+      expect(params.addZipper().zippers.length, maxZippers);
+      // Позиции не совпадают: каждая следующая встаёт в свободный промежуток.
+      final offsets = params.zippers
+          .where((zipper) => !zipper.centered)
+          .map((zipper) => zipper.offsetMm)
+          .toList();
+      expect(offsets.toSet().length, offsets.length);
     });
 
     test('removeZipper() убирает нужную молнию', () {
@@ -583,54 +599,6 @@ void main() {
         issues.any((issue) => issue.message.contains('за пределы полотна')),
         isTrue,
       );
-    });
-  });
-
-  group('Спайка окон', () {
-    test('спайка справа убирает окантовку правой стороны', () {
-      const welded = WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 1500,
-        rightHeight: 1500,
-        weldedSides: [EdgeSide.right],
-      );
-      final plain = WindowSpec.of(_rect);
-      final withWeld = WindowSpec.of(welded);
-      final rightLength = withWeld.geometry.rightEdgeLength;
-
-      expect(rightLength, closeTo(1500, 1e-9));
-      expect(withWeld.layers.isSideWelded(1), isTrue);
-      expect(withWeld.layers.weldLengthMm, closeTo(rightLength, 1e-6));
-
-      // Разница с окном без спайки — ровно длина правой стороны.
-      final before = plain.edgeConsumption[100.0]!;
-      final after = withWeld.edgeConsumption[100.0]!;
-      expect(before - after, closeTo(rightLength, 1e-6));
-    });
-
-    test('спайка слева и справа убирает обе длины', () {
-      const welded = WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 1500,
-        rightHeight: 1500,
-        weldedSides: [EdgeSide.left, EdgeSide.right],
-      );
-      final plain = WindowSpec.of(_rect);
-      final withWeld = WindowSpec.of(welded);
-      final expected =
-          withWeld.geometry.rightEdgeLength + withWeld.geometry.leftEdgeLength;
-
-      expect(withWeld.layers.isSideWelded(1), isTrue);
-      expect(withWeld.layers.isSideWelded(3), isTrue);
-      expect(withWeld.layers.weldLengthMm, closeTo(expected, 1e-6));
-
-      final before = plain.edgeConsumption[100.0]!;
-      final after = withWeld.edgeConsumption[100.0]!;
-      expect(before - after, closeTo(expected, 1e-6));
-      // Остались только верх и низ.
-      expect(after, closeTo(4000, 1e-6));
     });
   });
 
@@ -922,39 +890,6 @@ void _eyeletRules() {
       }
     });
 
-    test('на спаянной стороне люверсы убираются', () {
-      const params = WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 2000,
-        rightHeight: 2000,
-        weldedSides: [EdgeSide.right],
-      );
-      final layers = WindowLayers(params, WindowGeometry.of(params));
-
-      expect(
-        layers.eyelets.any((e) => e.side == WindowSide.right),
-        isFalse,
-        reason: 'по сварному шву крепёж не ставится',
-      );
-      // Люверсы на остальных сторонах остаются.
-      expect(layers.eyelets.any((e) => e.side == WindowSide.left), isTrue);
-      expect(layers.eyelets.any((e) => e.side == WindowSide.top), isTrue);
-    });
-
-    test('крепёж на спайке можно оставить кнопкой', () {
-      const params = WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 2000,
-        rightHeight: 2000,
-        weldedSides: [EdgeSide.right],
-        removeEyeletsOnWelded: false,
-      );
-      final layers = WindowLayers(params, WindowGeometry.of(params));
-
-      expect(layers.eyelets.any((e) => e.side == WindowSide.right), isTrue);
-    });
   });
 }
 
@@ -1205,155 +1140,6 @@ void _costsSummaryRules() {
         const OrderProject(windows: [window, window]),
       );
       expect(summary.drainTotal, 6);
-    });
-  });
-}
-
-// --- Спайка окон: четыре стороны -------------------------------------------
-
-void _weldedWindowRules() {
-  group('Спайка окон: копия к спайке', () {
-    test('спайка справа: копия встаёт после окна и варится слева', () {
-      const source = WindowParams(
-        drawingNumber: 'МО-014',
-        bottomWidth: 2000,
-        topWidth: 1980,
-        leftHeight: 1500,
-        rightHeight: 1520,
-        material: FilmMaterial.tintedPvc,
-        rollBottom: 150,
-        zippers: [ZipperSpec(centered: false, offsetMm: 500)],
-        cutouts: [
-          Cutout(width: 300, height: 200, centerXMm: 700, centerYMm: 600),
-        ],
-        pocket: true,
-      );
-      final welded = const OrderProject(
-        windows: [source],
-      ).addWeldedWindow(EdgeSide.right);
-
-      expect(welded.windowCount, 2);
-      expect(welded.selectedIndex, 1);
-      expect(welded.windows[0].weldedSides, [EdgeSide.right]);
-      expect(welded.windows[1].weldedSides, [EdgeSide.left]);
-
-      // Шаблон скопирован целиком: размеры, материал, окантовка, молнии,
-      // вырезы и фартук.
-      final copy = welded.windows[1];
-      expect(copy.bottomWidth, source.bottomWidth);
-      expect(copy.topWidth, source.topWidth);
-      expect(copy.leftHeight, source.leftHeight);
-      expect(copy.rightHeight, source.rightHeight);
-      expect(copy.material, source.material);
-      expect(copy.rollBottom, source.rollBottom);
-      expect(copy.zippers.length, source.zippers.length);
-      expect(copy.cutouts.length, source.cutouts.length);
-      expect(copy.pocket, source.pocket);
-
-      // Номера окон разные, у копии маркировка очищена.
-      expect(welded.labelFor(0), 'Окно №1');
-      expect(welded.labelFor(1), 'Окно №2');
-      expect(welded.windows[0].drawingNumber, 'МО-014');
-      expect(copy.drawingNumber, isEmpty);
-    });
-
-    test('спайка сверху: копия варится снизу; спайка снизу — копия сверху', () {
-      final top = const OrderProject(
-        windows: [_rect],
-      ).addWeldedWindow(EdgeSide.top);
-      expect(top.windowCount, 2);
-      expect(top.windows[0].weldedSides, [EdgeSide.top]);
-      expect(top.windows[1].weldedSides, [EdgeSide.bottom]);
-
-      final bottom = const OrderProject(
-        windows: [_rect],
-      ).addWeldedWindow(EdgeSide.bottom);
-      expect(bottom.windows[0].weldedSides, [EdgeSide.bottom]);
-      expect(bottom.windows[1].weldedSides, [EdgeSide.top]);
-    });
-
-    test('повторная спайка по той же стороне не дублируется', () {
-      const source = WindowParams(
-        bottomWidth: 2000,
-        topWidth: 2000,
-        leftHeight: 1500,
-        rightHeight: 1500,
-        weldedSides: [EdgeSide.right],
-      );
-      final welded = const OrderProject(
-        windows: [source],
-      ).addWeldedWindow(EdgeSide.right);
-
-      // У текущего окна сторона уже была — второй раз её не добавляем.
-      expect(welded.windows[0].weldedSides, [EdgeSide.right]);
-      // Копия встаёт слева и варится с ним; унаследованная сторона тоже
-      // остаётся в единственном экземпляре.
-      expect(welded.windows[1].weldedSides, [EdgeSide.right, EdgeSide.left]);
-      expect(
-        welded.windows[1].weldedSides.where((side) => side == EdgeSide.left),
-        hasLength(1),
-      );
-      expect(
-        welded.windows[1].weldedSides.where((side) => side == EdgeSide.right),
-        hasLength(1),
-      );
-    });
-
-    test('расход окантовки уменьшается ровно на длину общей стороны', () {
-      final project = const OrderProject(
-        windows: [_rect],
-      ).addWeldedWindow(EdgeSide.bottom);
-      final plain = WindowSpec.of(_rect);
-      final bottomLength = plain.geometry.sideLengths[0];
-
-      for (final window in project.windows) {
-        final spec = WindowSpec.of(window);
-        expect(
-          plain.edgeConsumption[100.0]! - spec.edgeConsumption[100.0]!,
-          closeTo(bottomLength, 1e-6),
-          reason: 'нижняя спайка убирает ровно длину нижней кромки',
-        );
-        expect(
-          spec.edgeConsumption.values.every((length) => length >= 0),
-          isTrue,
-        );
-        expect(spec.layers.weldLengthMm, closeTo(bottomLength, 1e-6));
-      }
-    });
-
-    test('все четыре стороны спаяны: расход не уходит в минус', () {
-      final params = _rect.copyWith(weldedSides: EdgeSide.values);
-      final spec = WindowSpec.of(params);
-      final total = spec.edgeConsumption.values.fold(
-        0.0,
-        (sum, value) => sum + value,
-      );
-
-      expect(total, 0);
-      expect(spec.layers.weldLengthMm, closeTo(spec.geometry.perimeter, 1e-6));
-    });
-
-    test('JSON round-trip заказа с вертикальной спайкой', () {
-      final project = const OrderProject(
-        windows: [_rect],
-      ).addWeldedWindow(EdgeSide.top);
-      final restored = orderFromJson(orderToJson(project));
-
-      expect(restored.windowCount, 2);
-      expect(restored.windows[0].weldedSides, [EdgeSide.top]);
-      expect(restored.windows[1].weldedSides, [EdgeSide.bottom]);
-      // Спаянная сторона по-прежнему без окантовки и с тем же швом.
-      final before = WindowSpec.of(project.windows[0]);
-      final after = WindowSpec.of(restored.windows[0]);
-      expect(after.layers.isSideWelded(2), isTrue);
-      expect(
-        after.edgeConsumption[100.0],
-        closeTo(before.edgeConsumption[100.0]!, 1e-6),
-      );
-      expect(
-        after.layers.weldLengthMm,
-        closeTo(before.layers.weldLengthMm, 1e-6),
-      );
     });
   });
 }
@@ -2900,6 +2686,7 @@ void _rollWidthRules() {
         2400,
         2500,
         2600,
+        3000,
         5000,
       ]);
       // Прежние ширины сохранены, добавились две новые.
@@ -3227,7 +3014,12 @@ void _screenZipperRules() {
     });
 
     test('две молнии: расход и подписи удваиваются', () {
-      final params = screen().addZipper().addZipper();
+      final params = screen().copyWith(
+        zippers: const [
+          ZipperSpec(centered: true),
+          ZipperSpec(centered: false, offsetMm: 700),
+        ],
+      );
       expect(params.zippers, hasLength(2));
       final spec = WindowSpec.of(params);
       final summary = CostsSummary(OrderProject(windows: [params]));
@@ -3285,7 +3077,12 @@ void _screenZipperRules() {
     });
 
     test('JSON: молния скрина сохраняется и читается', () {
-      final params = screen().addZipper().addZipper();
+      final params = screen().copyWith(
+        zippers: const [
+          ZipperSpec(centered: true),
+          ZipperSpec(centered: false, offsetMm: 700),
+        ],
+      );
       final restored = windowFromJson(windowToJson(params));
 
       expect(restored.material, FilmMaterial.screen);

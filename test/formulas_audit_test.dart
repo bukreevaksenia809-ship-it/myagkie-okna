@@ -325,36 +325,7 @@ void _edgeConsumptionAudit() {
       );
     });
 
-    test('спайка правой стороны убирает 2500: 9000 − 2500 = 6500', () {
-      final params = _rect2000x2500.copyWith(
-        weldedSides: const [EdgeSide.right],
-      );
-      final spec = WindowSpec.of(params);
 
-      // Вручную: правая сторона = 2500, окантовка на ней не ставится:
-      // 9000 − 2500 = 6500. (В задании указано 7500 = 9000 − 1500; для
-      // прямоугольника 2000 × 2500 ни одна сторона не равна 1500, поэтому
-      // 7500 не соответствует ни одному варианту спайки.)
-      expectClose(
-        spec.edgeConsumption[100.0]!,
-        6500,
-        'низ 2000 + верх 2000 + лево 2500 = 6500',
-      );
-      expectClose(spec.layers.weldLengthMm, 2500, 'длина спайки 2500');
-    });
-
-    test('спайка низа убирает 2000: 9000 − 2000 = 7000', () {
-      final params = _rect2000x2500.copyWith(
-        weldedSides: const [EdgeSide.bottom],
-      );
-      final spec = WindowSpec.of(params);
-
-      expectClose(
-        spec.edgeConsumption[100.0]!,
-        7000,
-        'право 2500 + верх 2000 + лево 2500 = 7000',
-      );
-    });
 
     test('вырез 300 × 300 добавляет контур 1200: 9000 + 1200 = 10200', () {
       final params = _rect2000x2500.copyWith(
@@ -393,21 +364,6 @@ void _edgeConsumptionAudit() {
       );
     });
 
-    test('вырез на спаянном низу всё равно идёт в рулон низа', () {
-      final params = _rect2000x2500.copyWith(
-        weldedSides: const [EdgeSide.bottom],
-        cutouts: const [Cutout(width: 300, height: 300, centerXMm: 1000)],
-      );
-      final spec = WindowSpec.of(params);
-
-      // Вручную: стороны без низа = 2500 + 2000 + 2500 = 7000; контур выреза
-      // относится к нижнему рулону (rolls[0]) = 100 → 7000 + 1200 = 8200.
-      expectClose(
-        spec.edgeConsumption[100.0]!,
-        8200,
-        'низ спаян, но контур выреза по-прежнему в рулоне низа',
-      );
-    });
   });
 }
 
@@ -732,7 +688,16 @@ void _areaAudit() {
       expectClose(film.amount, 1322.40, '1,392 × 950');
       expectClose(cutting.quantity, 1.392, 'раскрой в смете', tol: 1e-9);
       expectClose(cutting.amount, 348.00, '1,392 × 250');
-      expectClose(estimate.total, 6196.14, 'итого с НДС 6196.14 ₽', tol: 0.01);
+      // Отход косой заготовки — отдельная строка: прямоугольник по габариту
+      // 1950 × 960 = 1,872 м² минус контур 1,392 м² = 0,48 м².
+      final waste = estimate.lines.firstWhere(
+        (line) => line.title == 'Отход ПВХ косых окон',
+      );
+      expectClose(waste.quantity, 0.48, 'отход 1,872 − 1,392 = 0,48 м²');
+      expectClose(waste.unitPrice, 950, 'цена отхода = цена ПВХ 950 ₽/м²');
+      expectClose(waste.amount, 456.00, '0,48 × 950 = 456,00 ₽');
+      // Итого: прежние 6196,14 плюс отход 456,00 и НДС 20 % → 6743,34 ₽.
+      expectClose(estimate.total, 6743.34, 'итого с НДС 6743,34 ₽', tol: 0.01);
     });
   });
 }

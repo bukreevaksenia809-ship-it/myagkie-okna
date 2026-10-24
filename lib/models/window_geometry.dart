@@ -63,6 +63,7 @@ class EyeletPlacement {
     required this.angle,
     required this.isCorner,
     required this.positionInEdge,
+    this.forcedType,
   });
 
   /// Центр люверса, мм.
@@ -79,6 +80,27 @@ class EyeletPlacement {
 
   /// Доля длины стороны от её начала, 0…1.
   final double positionInEdge;
+
+  /// Жёстко заданный тип (круглый, добавленный из меню на чертеже).
+  final EyeletType? forcedType;
+
+  /// Точка добавлена вручную на чертеже.
+  bool get isManual => forcedType != null;
+}
+
+/// Крепёж, добавленный вручную на чертеже (замок или скоба).
+class ManualFastener {
+  const ManualFastener({
+    required this.center,
+    required this.side,
+    required this.angle,
+    required this.type,
+  });
+
+  final Offset center;
+  final WindowSide side;
+  final double angle;
+  final FastenerType type;
 }
 
 /// Нижняя левая вершина прямоугольника в координатах модели (ось Y вверх):
@@ -584,6 +606,7 @@ class WindowGeometry {
     this.pocketTopRise = 0,
     this.levelEdge = LevelEdge.bottom,
     this.tLayout,
+    this.compositeSpec,
     double? bottomLeftY,
     double? bottomRightY,
     double? topLeftY,
@@ -651,6 +674,7 @@ class WindowGeometry {
       // приставки (см. [TShapeLayout]). Остальные размеры остаются в полях,
       // чтобы чертёж и подписи могли показать обе части.
       tLayout: params.isTShape ? TShapeLayout.build(params) : null,
+      compositeSpec: params.isComposite ? params.composite : null,
     );
   }
 
@@ -682,8 +706,22 @@ class WindowGeometry {
   /// Геометрия Т-образного окна (null у обычного окна).
   final TShapeLayout? tLayout;
 
+  /// Второй сегмент составного окна (null у остальных типов).
+  final CompositeSpec? compositeSpec;
+
   /// Т-образное окно — контур не четырёхугольный.
   bool get isTShape => tLayout != null;
+
+  /// Составное окно: ПВХ-полотно плюс второй материал по общему шву.
+  bool get isComposite => compositeSpec != null;
+
+  /// Построенная геометрия составного окна (null у остальных типов).
+  late final CompositeLayout? compositeLayout = compositeSpec == null
+      ? null
+      : CompositeLayout.build(compositeSpec!, _mainQuad);
+
+  /// Четырёхугольник основного полотна по габаритам окна.
+  List<Offset> get _mainQuad => [bottomLeft, bottomRight, topRight, topLeft];
 
   static double _positive(double value) =>
       (!value.isFinite || value <= 0) ? 100 : value;
@@ -699,7 +737,9 @@ class WindowGeometry {
   /// У Т-образного окна вершин 6–8: это фактический контур объединения
   /// основного полотна и приставки.
   List<Offset> get corners =>
-      tLayout?.outline ?? [bottomLeft, bottomRight, topRight, topLeft];
+      compositeLayout?.outline ??
+      tLayout?.outline ??
+      [bottomLeft, bottomRight, topRight, topLeft];
 
   /// Габарит фактического контура изделия (без фартука).
   Rect get productBounds => boundsOf(corners);
@@ -715,13 +755,13 @@ class WindowGeometry {
 
   /// Длина левой кромки. У Т-окна это сумма всех левых отрезков контура.
   double get leftEdgeLength {
-    if (!isTShape) return sideLengths[3];
+    if (!isTShape && !isComposite) return sideLengths[3];
     return _edgeLengthOnSide(WindowSide.left);
   }
 
   /// Длина правой кромки. У Т-окна — сумма правых отрезков контура.
   double get rightEdgeLength {
-    if (!isTShape) return sideLengths[1];
+    if (!isTShape && !isComposite) return sideLengths[1];
     return _edgeLengthOnSide(WindowSide.right);
   }
 
@@ -765,10 +805,318 @@ class WindowGeometry {
   double get overallHeight => productBounds.height;
 
   /// Насколько верхняя кромка выходит за нижнюю справа (мм).
-  double get rightOverhang => isTShape ? 0 : topOffset + topWidth - bottomWidth;
+  double get rightOverhang =>
+      (isTShape || isComposite) ? 0 : topOffset + topWidth - bottomWidth;
 
   /// Насколько верхняя кромка выходит за нижнюю слева (мм).
-  double get leftOverhang => isTShape ? 0 : -topOffset;
+  double get leftOverhang => (isTShape || isComposite) ? 0 : -topOffset;
+}
+
+/// Геометрия составного окна: основное полотно ПВХ и второй сегмент,
+/// спаянные по общей линии шва.
+///
+/// Основное полотно — четырёхугольник по габаритам окна (может быть
+/// трапецией). Второй сегмент пристраивается с любой стороны [CompositeSpec.side]:
+///
+/// * прямой шов — прямоугольник снаружи стороны, шов совпадает с участком
+///   кромки; окантовка/подворот идут по трём свободным сторонам;
+/// * диагональный шов — линия шва проходит через точку на стороне под углом
+///   к ней; основное полотно подрезается этой линией (честный многоугольник),
+///   второй сегмент встаёт к шву встык.
+///
+/// [outline] — единый внешний контур (обе зоны вместе, без внутренней линии
+/// шва); [seamStart]/[seamEnd] — линия шва внутри контура. Площади частей
+/// считаются по формуле Гаусса, чтобы смета и раскрой не двоили материал.
+class CompositeLayout {
+  const CompositeLayout._({
+    required this.side,
+    required this.material,
+    required this.diagonal,
+    required this.mainPolygon,
+    required this.secondPolygon,
+    required this.outline,
+    required this.seamStart,
+    required this.seamEnd,
+    required this.depth,
+    required this.clamped,
+  });
+
+  factory CompositeLayout.build(CompositeSpec spec, List<Offset> mainQuad) {
+    if (mainQuad.length < 3) {
+      return CompositeLayout._(
+        side: spec.side,
+        material: spec.material,
+        diagonal: false,
+        mainPolygon: const [],
+        secondPolygon: const [],
+        outline: const [],
+        seamStart: Offset.zero,
+        seamEnd: Offset.zero,
+        depth: 0,
+        clamped: true,
+      );
+    }
+
+    final (a, b) = _edgeOf(mainQuad, spec.side);
+    final length = (b - a).distance;
+    final u = length > 1e-9 ? (b - a) / length : const Offset(1, 0);
+    final centroid = _centroid(mainQuad);
+    var normal = Offset(u.dy, -u.dx);
+    final middle = (a + b) / 2;
+    if ((middle - centroid).dx * normal.dx +
+            (middle - centroid).dy * normal.dy <
+        0) {
+      normal = -normal;
+    }
+    final inward = -normal;
+
+    if (!spec.isDiagonal) {
+      // Шов параллелен стороне и смещён внутрь на вынос: второй сегмент —
+      // полоса ВНУТРИ введённых габаритов, поэтому размер окна не меняется.
+      final room = math.max((centroid - middle).dx * inward.dx +
+          (centroid - middle).dy * inward.dy, 1.0);
+      final rawDepth = spec.depth.isFinite ? spec.depth : 0.0;
+      final depth = rawDepth.clamp(1.0, room * 1.8);
+      final clamped = (rawDepth - depth).abs() > 1e-6;
+      final origin = a + inward * depth;
+      final dir = u;
+      final keepLeft = _cross(dir, centroid - origin) >= 0;
+      final inner = _clipHalfPlane(mainQuad, origin, dir, keepLeft);
+      final outer = _clipHalfPlane(mainQuad, origin, dir, !keepLeft);
+      final seam = _seamEdge(inner, origin, dir);
+      if (inner.length < 3 || outer.length < 3 || seam == null) {
+        return CompositeLayout._(
+          side: spec.side,
+          material: spec.material,
+          diagonal: false,
+          mainPolygon: List<Offset>.of(mainQuad),
+          secondPolygon: const [],
+          outline: List<Offset>.of(mainQuad),
+          seamStart: a,
+          seamEnd: b,
+          depth: 0,
+          clamped: true,
+        );
+      }
+      return CompositeLayout._(
+        side: spec.side,
+        material: spec.material,
+        diagonal: false,
+        mainPolygon: inner,
+        secondPolygon: outer,
+        outline: List<Offset>.of(mainQuad),
+        seamStart: seam.$1,
+        seamEnd: seam.$2,
+        depth: depth,
+        clamped: clamped,
+      );
+    }
+
+    // Диагональный шов: хорда от точки на стороне внутрь полотна; второй
+    // сегмент — отрезанный угол ВНУТРИ общего контура.
+    final fraction = spec.seamOffset.isFinite
+        ? spec.seamOffset.clamp(0.05, 0.95)
+        : 0.5;
+    final pivot = a + u * (length * fraction);
+    final angle = (spec.seamAngleDeg.isFinite ? spec.seamAngleDeg.abs() : 25.0)
+        .clamp(5.0, 80.0) *
+        math.pi /
+        180;
+    final dir = u * math.cos(angle) + inward * math.sin(angle);
+    final hits = _lineHits(mainQuad, pivot, dir);
+    final forward = hits.where((t) => t > 1e-6).toList();
+    if (forward.isEmpty) {
+      return CompositeLayout.build(
+        spec.copyWith(seam: CompositeSeam.straight),
+        mainQuad,
+      );
+    }
+    final s1 = pivot + dir * forward.reduce(math.min);
+    if ((s1 - pivot).distance < 1.0) {
+      return CompositeLayout.build(
+        spec.copyWith(seam: CompositeSeam.straight),
+        mainQuad,
+      );
+    }
+    final keepLeft = _cross(dir, centroid - pivot) >= 0;
+    final inner = _clipHalfPlane(mainQuad, pivot, dir, keepLeft);
+    final outer = _clipHalfPlane(mainQuad, pivot, dir, !keepLeft);
+    if (inner.length < 3 || outer.length < 3) {
+      return CompositeLayout.build(
+        spec.copyWith(seam: CompositeSeam.straight),
+        mainQuad,
+      );
+    }
+
+    // «Вынос» диагонального сегмента — наибольшее удаление его вершин от шва.
+    final depth = outer.fold<double>(
+      0,
+      (value, point) => math.max(value, _cross(dir, point - pivot).abs()),
+    );
+    return CompositeLayout._(
+      side: spec.side,
+      material: spec.material,
+      diagonal: true,
+      mainPolygon: inner,
+      secondPolygon: outer,
+      outline: List<Offset>.of(mainQuad),
+      seamStart: pivot,
+      seamEnd: s1,
+      depth: depth,
+      clamped: false,
+    );
+  }
+
+  /// Ребро контура, лежащее на прямой [origin] + [dir] * t.
+  static (Offset, Offset)? _seamEdge(
+    List<Offset> polygon,
+    Offset origin,
+    Offset dir,
+  ) {
+    final onLine = <Offset>[
+      for (final point in polygon)
+        if (_cross(dir, point - origin).abs() < 1e-3) point,
+    ];
+    if (onLine.length < 2) return null;
+    var best = (onLine[0], onLine[1]);
+    var bestLength = (best.$2 - best.$1).distance;
+    for (var i = 0; i < onLine.length; i++) {
+      for (var j = i + 1; j < onLine.length; j++) {
+        final distance = (onLine[j] - onLine[i]).distance;
+        if (distance > bestLength) {
+          bestLength = distance;
+          best = (onLine[i], onLine[j]);
+        }
+      }
+    }
+    return bestLength > 1e-6 ? best : null;
+  }
+
+  final EdgeSide side;
+  final FilmMaterial material;
+  final bool diagonal;
+
+  /// Основное полотно (у диагонального шва — подрезанный многоугольник).
+  final List<Offset> mainPolygon;
+
+  /// Второй сегмент (спайка встык по линии шва).
+  final List<Offset> secondPolygon;
+
+  /// Единый внешний контур окна без внутреннего шва.
+  final List<Offset> outline;
+
+  /// Начало и конец линии шва.
+  final Offset seamStart;
+  final Offset seamEnd;
+
+  /// Вынос второго сегмента от шва наружу, мм.
+  final double depth;
+
+  /// Размеры второго сегмента пришлось подрезать под сторону.
+  final bool clamped;
+
+  bool get isScreen => material == FilmMaterial.screen;
+
+  /// Линия шва: две точки для чертежа и сметы.
+  List<Offset> get seam => [seamStart, seamEnd];
+
+  /// Длина шва, мм.
+  double get seamLength => (seamEnd - seamStart).distance;
+
+  /// Площадь основного полотна, мм².
+  double get mainAreaMm2 => polygonArea(mainPolygon).abs();
+
+  /// Площадь второго сегмента, мм².
+  double get secondAreaMm2 => polygonArea(secondPolygon).abs();
+
+  /// Площадь всего окна, мм².
+  double get totalAreaMm2 => mainAreaMm2 + secondAreaMm2;
+
+  /// Контуры частей: основное полотно и второй сегмент.
+  List<List<Offset>> get partPolygons => [mainPolygon, secondPolygon];
+
+  /// Подпись второго сегмента для документов.
+  String get secondLabel =>
+      '${material.label}, ${side.label.toLowerCase()}, '
+      '${diagonal ? 'диагональный шов' : 'прямой шов'}';
+
+  /// Середина шва — для подписи на чертеже.
+  Offset get seamMid => (seamStart + seamEnd) / 2;
+
+  static (Offset, Offset) _edgeOf(List<Offset> quad, EdgeSide side) {
+    // Порядок углов окна: низ, право, верх, лево (обход против часовой).
+    return switch (side) {
+      EdgeSide.bottom => (quad[0], quad[1 % quad.length]),
+      EdgeSide.right => (quad[1 % quad.length], quad[2 % quad.length]),
+      EdgeSide.top => (quad[2 % quad.length], quad[3 % quad.length]),
+      EdgeSide.left => (quad[3 % quad.length], quad[0]),
+    };
+  }
+
+  static Offset _centroid(List<Offset> polygon) {
+    var x = 0.0;
+    var y = 0.0;
+    for (final point in polygon) {
+      x += point.dx;
+      y += point.dy;
+    }
+    return Offset(x / polygon.length, y / polygon.length);
+  }
+
+  static double _cross(Offset a, Offset b) => a.dx * b.dy - a.dy * b.dx;
+
+
+  /// Параметры t пересечения прямой `origin + dir * t` с рёбрами контура.
+  static List<double> _lineHits(
+    List<Offset> polygon,
+    Offset origin,
+    Offset dir,
+  ) {
+    final hits = <double>[];
+    for (var i = 0; i < polygon.length; i++) {
+      final p = polygon[i];
+      final q = polygon[(i + 1) % polygon.length];
+      final segment = q - p;
+      final denominator = _cross(dir, segment);
+      if (denominator.abs() < 1e-9) continue;
+      final diff = p - origin;
+      final t = _cross(diff, segment) / denominator;
+      final u = _cross(diff, dir) / denominator;
+      if (u >= -1e-9 && u <= 1 + 1e-9 && t.isFinite) hits.add(t);
+    }
+    hits.sort();
+    return hits;
+  }
+
+  /// Оставляет часть многоугольника по одну сторону прямой (Сазерленд—Ходжман).
+  static List<Offset> _clipHalfPlane(
+    List<Offset> polygon,
+    Offset origin,
+    Offset dir,
+    bool keepLeft,
+  ) {
+    double sideOf(Offset point) {
+      final value = _cross(dir, point - origin);
+      return keepLeft ? value : -value;
+    }
+
+    final result = <Offset>[];
+    for (var i = 0; i < polygon.length; i++) {
+      final current = polygon[i];
+      final next = polygon[(i + 1) % polygon.length];
+      final sideCurrent = sideOf(current);
+      final sideNext = sideOf(next);
+      if (sideCurrent >= -1e-9) result.add(current);
+      final crosses =
+          (sideCurrent > 1e-9 && sideNext < -1e-9) ||
+          (sideCurrent < -1e-9 && sideNext > 1e-9);
+      if (crosses) {
+        final t = sideCurrent / (sideCurrent - sideNext);
+        result.add(current + (next - current) * t);
+      }
+    }
+    return result;
+  }
 }
 
 /// Слои окна: окантовка по сторонам, шов (напайка), плёнка и люверсы.
@@ -827,6 +1175,12 @@ class WindowLayers {
   /// Т-образное окно: контур из нескольких вершин.
   bool get isTShape => geometry.isTShape;
 
+  /// Составное окно: две зоны материалов с общим швом.
+  bool get isComposite => geometry.isComposite;
+
+  /// Геометрия составного окна (null у остальных типов).
+  CompositeLayout? get compositeLayout => geometry.compositeLayout;
+
   /// Геометрия Т-образного окна (null у обычного окна).
   TShapeLayout? get tLayout => geometry.tLayout;
 
@@ -842,6 +1196,8 @@ class WindowLayers {
   /// Части Т-окна: основное полотно и каждая пристройка. У обычного окна —
   /// один контур. Нужно для раскроя, чертежа и «отдельных окон».
   List<List<Offset>> get partPolygons {
+    final composite = compositeLayout;
+    if (composite != null) return composite.partPolygons;
     final t = tLayout;
     if (t == null) return [outer];
     return [t.mainPolygon, ...t.annexPolygons];
@@ -850,7 +1206,12 @@ class WindowLayers {
   /// Контуры для окантовки и люверсов: у Т-окна сваренные пристройки
   /// объединены с основным полотном, отдельные (без спайки) идут сами по
   /// себе. У обычного окна — внешний контур.
-  List<List<Offset>> get groupPolygons => tLayout?.groups ?? [outer];
+  List<List<Offset>> get groupPolygons {
+    // У составного окна обе зоны спаяны: окантовка, люверсы и подворот идут
+    // по единому внешнему контуру, шов внутри окантовки не имеет.
+    if (isComposite) return [outer];
+    return tLayout?.groups ?? [outer];
+  }
 
   /// Пристройки Т-окна (пусто у обычного окна).
   List<TShapeAnnexLayout> get tAnnexes =>
@@ -900,6 +1261,39 @@ class WindowLayers {
     WindowSide.left => params.hemLeftHalfMm,
     WindowSide.right => params.hemRightHalfMm,
   };
+
+  /// Ребро контура лежит на линии шва составного окна.
+  ///
+  /// Проверяем по прямой, а не по концам: контуры частей могут быть
+  /// подрезаны под окантовку, и концы ребра уже не совпадают с концами шва.
+  bool isCompositeSeamEdge(Offset a, Offset b) {
+    final composite = compositeLayout;
+    if (composite == null) return false;
+    final direction = composite.seamEnd - composite.seamStart;
+    final length = direction.distance;
+    if (length < 1e-6) return false;
+    final unit = direction / length;
+    bool onLine(Offset point) =>
+        (unit.dx * (point.dy - composite.seamStart.dy) -
+                unit.dy * (point.dx - composite.seamStart.dx))
+            .abs() <
+        1e-3;
+    return onLine(a) && onLine(b);
+  }
+
+  /// Точка лежит на линии шва составного окна.
+  bool isOnCompositeSeam(Offset point) {
+    final composite = compositeLayout;
+    if (composite == null) return false;
+    final direction = composite.seamEnd - composite.seamStart;
+    final length = direction.distance;
+    if (length < 1e-6) return false;
+    final unit = direction / length;
+    return (unit.dx * (point.dy - composite.seamStart.dy) -
+                unit.dy * (point.dx - composite.seamStart.dx))
+            .abs() <
+        0.5;
+  }
 
   /// Ширины по рёбрам многоугольника — по стороне каждого ребра.
   List<double> perEdge(
@@ -951,7 +1345,9 @@ class WindowLayers {
   WindowGeometry _buildBlankGeometry() {
     // У Т-окна заготовка строится по прямоугольникам частей
     // ([partBlankRects]); отдельная косоугольная геометрия там не нужна.
-    if (isTShape) return geometry;
+    // У составного окна каждая часть кроится своим контуром
+    // ([filmPolygons]), поэтому общая «одна» геометрия тоже не нужна.
+    if (isTShape || isComposite) return geometry;
     final widthDeduction =
         blankSideDeduction(WindowSide.left) +
         blankSideDeduction(WindowSide.right);
@@ -1014,6 +1410,12 @@ class WindowLayers {
   late final List<Offset> blankCorners = _buildBlankCorners();
 
   List<Offset> _buildBlankCorners() {
+    if (isComposite) {
+      // У составного окна заготовок две; «первый контур» — основное полотно
+      // (см. [filmPolygons]).
+      final polygons = _buildCompositeFilmPolygons();
+      return polygons.isEmpty ? const [] : polygons.first;
+    }
     final corners = blankGeometry.corners;
     if (corners.isEmpty) return const [];
     final bounds = boundsOf(corners);
@@ -1032,7 +1434,12 @@ class WindowLayers {
   }
 
   /// Площадь заготовки по формуле Гаусса (по контуру косой формы), мм².
-  double get blankAreaMm2 => polygonArea(blankCorners).abs();
+  double get blankAreaMm2 => isComposite
+      ? filmPolygons.fold<double>(
+          0,
+          (sum, polygon) => sum + polygonArea(polygon).abs(),
+        )
+      : polygonArea(blankCorners).abs();
 
   /// Прямоугольник заготовки с подрезкой по сторонам.
   ///
@@ -1055,6 +1462,7 @@ class WindowLayers {
   /// высотами сторон — габарит косой заготовки ([blankGeometry]), а площадь
   /// считается по её контуру, а не по этому прямоугольнику.
   Rect get blankRect {
+    if (isComposite) return boundsOfAll(filmPolygons);
     if (!isTShape) return boundsOf(blankCorners);
     final bounds = geometry.productBounds;
     return _blankRect(bounds, const <EdgeSide>{});
@@ -1065,6 +1473,9 @@ class WindowLayers {
   late final List<Rect> partBlankRects = _buildPartBlankRects();
 
   List<Rect> _buildPartBlankRects() {
+    if (isComposite) {
+      return [for (final polygon in filmPolygons) boundsOf(polygon)];
+    }
     final t = tLayout;
     if (t == null) return [blankRect];
     final mainShared = <EdgeSide>{
@@ -1092,6 +1503,7 @@ class WindowLayers {
   late final List<List<Offset>> filmPolygons = _buildFilmPolygons();
 
   List<List<Offset>> _buildFilmPolygons() {
+    if (isComposite) return _buildCompositeFilmPolygons();
     final t = tLayout;
     if (t == null) return [List<Offset>.of(blankCorners)];
     final welded = t.weldedAnnexes;
@@ -1112,6 +1524,50 @@ class WindowLayers {
     return polygons;
   }
 
+  /// Заготовки частей составного окна: у каждой свой контур, шов — общая
+  /// кромка без окантовки/подворота.
+  List<List<Offset>> _buildCompositeFilmPolygons() {
+    final composite = compositeLayout;
+    if (composite == null) return const [];
+    return [
+      _compositeBlankOf(composite, composite.mainPolygon),
+      _compositeBlankOf(composite, composite.secondPolygon),
+    ];
+  }
+
+  /// Вычет кромки для конкретного материала части: у второго сегмента
+  /// материал может отличаться от основного полотна.
+  double _blankAmountForMaterial(WindowSide side, FilmMaterial material) {
+    if (material == FilmMaterial.screen) return -hemOutsetFor(side);
+    return _blankAmount(side);
+  }
+
+  List<Offset> _compositeBlankOf(
+    CompositeLayout composite,
+    List<Offset> polygon,
+  ) {
+    if (polygon.length < 3) return const [];
+    final amounts = <double>[];
+    for (var i = 0; i < polygon.length; i++) {
+      final a = polygon[i];
+      final b = polygon[(i + 1) % polygon.length];
+      // Сторона шва: припуск/подворот там не нужен — это стык двух деталей.
+      final seam = ((a - composite.seamStart).distance < 1e-6 &&
+              (b - composite.seamEnd).distance < 1e-6) ||
+          ((a - composite.seamEnd).distance < 1e-6 &&
+              (b - composite.seamStart).distance < 1e-6);
+      amounts.add(
+        seam
+            ? 0.0
+            : _blankAmountForMaterial(
+                sideOfPolygonEdge(polygon, i),
+                composite.material,
+              ),
+      );
+    }
+    return insetPolygonPerSide(polygon, amounts);
+  }
+
   /// Габариты заготовок по частям: основное полотно и каждая пристройка
   /// (у обычного окна — один габарит). По ним в техкарте печатаются размеры
   /// каждой части, а не только общий габарит.
@@ -1125,11 +1581,26 @@ class WindowLayers {
   late final List<List<Offset>> edgeInnerPolygons = _buildEdgeInnerPolygons();
 
   List<List<Offset>> _buildEdgeInnerPolygons() {
+    final composite = compositeLayout;
+    if (composite != null) {
+      return [
+        _edgeInnerForPart(composite.mainPolygon, params.material),
+        _edgeInnerForPart(composite.secondPolygon, composite.material),
+      ];
+    }
     if (isScreen) return groupPolygons;
     return [
       for (final polygon in groupPolygons)
         insetPolygonPerSide(polygon, perEdge(polygon, finishedWidthFor)),
     ];
+  }
+
+  List<Offset> _edgeInnerForPart(
+    List<Offset> polygon,
+    FilmMaterial material,
+  ) {
+    if (material == FilmMaterial.screen) return polygon;
+    return insetPolygonPerSide(polygon, _partEdgeAmounts(polygon, material, 1));
   }
 
   /// Внутренняя граница окантовки (первый контур — для подписей и старых
@@ -1148,6 +1619,13 @@ class WindowLayers {
   late final List<List<Offset>> eyeletPolygons = _buildEyeletPolygons();
 
   List<List<Offset>> _buildEyeletPolygons() {
+    final composite = compositeLayout;
+    if (composite != null) {
+      return [
+        _eyeletPolygonForPart(composite.mainPolygon, params.material),
+        _eyeletPolygonForPart(composite.secondPolygon, composite.material),
+      ];
+    }
     if (isScreen) return groupPolygons;
     return [
       for (final polygon in groupPolygons)
@@ -1158,12 +1636,39 @@ class WindowLayers {
     ];
   }
 
+  /// Линия люверсов одной части составного окна: у ПВХ — середина окантовки,
+  /// у скрина — сам контур (люверсы по подвороту).
+  List<Offset> _eyeletPolygonForPart(
+    List<Offset> polygon,
+    FilmMaterial material,
+  ) {
+    if (material == FilmMaterial.screen) return polygon;
+    return insetPolygonPerSide(polygon, _partEdgeAmounts(polygon, material, 0.5));
+  }
+
+  /// Отступы по рёбрам части составного окна: на шве — 0, на свободных
+  /// кромках — окантовка/подворот в долях [factor] от готовой ширины.
+  List<double> _partEdgeAmounts(
+    List<Offset> polygon,
+    FilmMaterial material,
+    double factor,
+  ) => [
+    for (var i = 0; i < polygon.length; i++)
+      isCompositeSeamEdge(polygon[i], polygon[(i + 1) % polygon.length])
+          ? 0.0
+          : (material == FilmMaterial.screen
+                ? 0.0
+                : finishedWidthFor(sideOfPolygonEdge(polygon, i)) * factor),
+  ];
+
   /// Линия подворота (сгиба) скрина: готовый контур изделия.
   ///
   /// У ПВХ подворота нет — список пуст. У Т-окна — по группам частей.
   late final List<List<Offset>> screenHemPolygons = isScreen
       ? groupPolygons
-      : const [];
+      : (isComposite && compositeLayout!.material == FilmMaterial.screen
+            ? [compositeLayout!.secondPolygon]
+            : const []);
 
   /// Линия шва [screenSeamMm] внутри подворота скрина.
   late final List<List<Offset>> screenSeamPolygons = [
@@ -1214,12 +1719,68 @@ class WindowLayers {
   /// без «минимальных 20 мм», которые нужны только для читаемости чертежа:
   /// вычитаться должно ровно то число, которое человек ввёл.
   double get zipperBandTotalMm {
+    // В режиме сегментов из ширины вычитаются только молнии впритык к канту:
+    // остальные образуют зазор 7 см и режутся отдельными заготовками.
+    final segments = params.zipperSegments && !isComposite;
+    final visible = filmVisibleBounds;
     var total = 0.0;
     for (final zipper in params.zippers) {
       final width = zipper.bandWidth;
-      if (width.isFinite && width > 0) total += width;
+      if (!width.isFinite || width <= 0) continue;
+      if (segments) {
+        final x = zipper.centered
+            ? visible.center.dx
+            : (visible.left + zipper.offsetMm).clamp(
+                visible.left + width / 2,
+                visible.right - width / 2,
+              );
+        final edge = x - width / 2 <= visible.left + 0.5 ||
+            x + width / 2 >= visible.right - 0.5;
+        if (!edge) continue;
+        // У края тент молнии на 2 см (напайка из меню) заходит и на боковой
+        // тент, поэтому из кроя вычитается 11 − 2 − 2 = 7 см.
+        total += math.max(width - 2 * params.zipperTentOverlap, 0.0);
+      } else {
+        total += width;
+      }
     }
     return total;
+  }
+
+  /// Раскладка молний для режима сегментов: центр, полоса, впритык ли к
+  /// канту и границы зазора 7 см (по 2 см тента напаивается на сегменты).
+  List<
+    ({
+      double center,
+      double bandWidth,
+      bool edge,
+      double gapStart,
+      double gapEnd,
+    })
+  >
+  get zipperSegmentLayout {
+    if (!params.zipperSegments) return const [];
+    final visible = filmVisibleBounds;
+    return [
+      for (final line in zippers)
+        () {
+          final half = line.bandWidth / 2;
+          final x = line.start.dx;
+          final edge = x - half <= visible.left + 0.5 ||
+              x + half >= visible.right - 0.5;
+          final gap = math.max(
+            line.bandWidth - 2 * params.zipperTentOverlap,
+            0.0,
+          );
+          return (
+            center: x,
+            bandWidth: line.bandWidth,
+            edge: edge,
+            gapStart: x - gap / 2,
+            gapEnd: x + gap / 2,
+          );
+        }(),
+    ];
   }
 
   /// Ширина заготовки без припуска на раскрой, уже с вычетом полос молний, мм.
@@ -1313,30 +1874,75 @@ class WindowLayers {
   /// Если тумблер «Круглые люверсы в углах» выключен, угловых точек в
   /// [eyelets] нет, и круглый тип не подставляется нигде.
   EyeletType typeFor(EyeletPlacement eyelet) =>
-      eyelet.isCorner && params.roundEyeletsEnabled
-      ? EyeletType.round10
-      : params.effectiveEyeletType;
+      eyelet.forcedType ??
+      (eyelet.isCorner && params.roundEyeletsEnabled
+          ? EyeletType.round10
+          : params.effectiveEyeletType);
+
+  /// Крепёж, добавленный вручную на чертеже.
+  List<ManualFastener> get manualFasteners => _eyeletResult.manualFasteners;
 
   /// Тип люверса, который ставится по сторонам окна.
   EyeletType get eyeletType => params.effectiveEyeletType;
 
   /// Подъёмные ремни: висят сверху вниз, ширина [liftStrapWidth] мм.
+  ///
+  /// Каждый ремень привязан к ЛИНИИ ТЕНТА на своей высоте: на косом окне
+  /// верхняя кромка наклонена, и ремень начинается ровно на ней, а не висит
+  /// за окантовкой. Если положения заданы вручную ([WindowParams
+  /// .liftStrapOffsets]) — берём их, иначе прежняя автоматическая расстановка.
   List<Rect> get liftStraps {
-    final count = params.liftStrapCount;
-    if (count <= 0) return const [];
+    if (!params.isLifting || params.isScreen) return const [];
+    final autoCount = params.liftStrapCount;
+    final manual = params.liftStrapOffsets;
+    if (manual.isEmpty && autoCount <= 0) return const [];
     final bounds = filmVisibleBounds;
     final length = math.min(liftStrapLength, bounds.height * 0.8);
-    // У прямоугольников из boundsOf верхняя по экрану кромка — это bounds.bottom
-    // (координата Y в модели растёт вверх).
+    final minCenter = bounds.left + liftStrapWidth / 2;
+    final maxCenter = math.max(bounds.right - liftStrapWidth / 2, minCenter);
+    final centers = manual.isNotEmpty
+        ? [
+            for (final offset in manual)
+              (bounds.left + offset).clamp(minCenter, maxCenter).toDouble(),
+          ]
+        : [
+            for (var i = 1; i <= autoCount; i++)
+              bounds.left + bounds.width * i / (autoCount + 1),
+          ];
     return [
-      for (var i = 1; i <= count; i++)
+      for (final center in centers)
         Rect.fromLTWH(
-          bounds.left + bounds.width * i / (count + 1) - liftStrapWidth / 2,
-          bounds.bottom - length,
+          center - liftStrapWidth / 2,
+          _tentLineYAt(center) - length,
           liftStrapWidth,
           length,
         ),
     ];
+  }
+
+  /// Высота линии тента (внутренней кромки окантовки) при данном x.
+  ///
+  /// У косого окна линия наклонена: берём верхнее ребро контура окантовки и
+  /// интерполируем по нему. Если ребра нет (вырожденный контур) — верх
+  /// видимой плёнки.
+  double _tentLineYAt(double x) {
+    final bounds = filmVisibleBounds;
+    final polygons = edgeInnerPolygons;
+    if (polygons.isEmpty) return bounds.bottom;
+    final polygon = polygons.first;
+    double? best;
+    for (var i = 0; i < polygon.length; i++) {
+      final a = polygon[i];
+      final b = polygon[(i + 1) % polygon.length];
+      final minX = math.min(a.dx, b.dx);
+      final maxX = math.max(a.dx, b.dx);
+      if (x < minX - 1e-6 || x > maxX + 1e-6) continue;
+      final dx = b.dx - a.dx;
+      final t = dx.abs() < 1e-9 ? 0.0 : (x - a.dx) / dx;
+      final y = a.dy + (b.dy - a.dy) * t;
+      if (best == null || y > best) best = y;
+    }
+    return best ?? bounds.bottom;
   }
 
   /// Полосы тента под все молнии.
@@ -1365,12 +1971,35 @@ class WindowLayers {
     // Скрин не окантовывается: расход тента нулевой.
     if (isScreen) return result;
 
+    // Составное окно: у каждой части свой материал и свои свободные кромки,
+    // шов не окантовывается. У скрин-части — подворот, тента нет.
+    final composite = compositeLayout;
+    if (composite != null) {
+      void addPart(List<Offset> polygon, FilmMaterial material) {
+        if (material == FilmMaterial.screen) return;
+        for (var i = 0; i < polygon.length; i++) {
+          final a = polygon[i];
+          final b = polygon[(i + 1) % polygon.length];
+          if (isCompositeSeamEdge(a, b)) continue;
+          final edgeSide = edgeSideOf(sideOfPolygonEdge(polygon, i));
+          final roll = params.rollForSide(edgeSide);
+          result[roll] = (result[roll] ?? 0) + (b - a).distance;
+        }
+      }
+
+      addPart(composite.mainPolygon, params.material);
+      addPart(composite.secondPolygon, composite.material);
+      for (final cutout in cutouts) {
+        final roll = rolls[0];
+        result[roll] = (result[roll] ?? 0) + cutout.perimeterMm;
+      }
+      return result;
+    }
+
     void addPolygon(List<Offset> polygon) {
       for (var i = 0; i < polygon.length; i++) {
         final side = sideOfPolygonEdge(polygon, i);
         final edgeSide = edgeSideOf(side);
-        // Спайка с соседним окном: окантовки на этой стороне нет.
-        if (params.isWelded(edgeSide)) continue;
         final length =
             (polygon[(i + 1) % polygon.length] - polygon[i]).distance;
         final roll = params.rollForSide(edgeSide);
@@ -1424,39 +2053,16 @@ class WindowLayers {
 
   /// Спаяна ли кромка внешнего контура с индексом обхода.
   ///
-  /// У обычного окна порядок прежний (низ, право, верх, лево). У Т-окна
-  /// сторона ребра выводится из его направления.
-  bool isSideWelded(int index) {
-    if (!isTShape) {
-      return params.isWelded(switch (index % 4) {
-        0 => EdgeSide.bottom,
-        1 => EdgeSide.right,
-        2 => EdgeSide.top,
-        _ => EdgeSide.left,
-      });
-    }
-    return params.isWelded(edgeSideOf(sideOfEdge(outer, index)));
-  }
+  /// Спайка с соседним окном удалена — всегда false. Метод оставлен ради
+  /// старых вызовов в документах и тестах.
+  bool isSideWelded(int index) => false;
 
-  /// Длина спаек, мм.
+  /// Длина швов, мм: только общие стороны пристроек Т-окна.
   ///
-  /// У Т-окна со спайкой сюда входит общая сторона (шов двух полотен) и
-  /// отмеченные пользователем спайки с соседними окнами. Без спайки общей
-  /// стороны нет — это два отдельных окна.
-  double get weldLengthMm {
-    var total = 0.0;
-    // Швы по общей стороне каждой СПАЯННОЙ пристройки — отдельно.
-    if (isTShape) total += tLayout!.weldedSeamLength;
-    for (final polygon in groupPolygons) {
-      for (var i = 0; i < polygon.length; i++) {
-        if (!params.isWelded(edgeSideOf(sideOfPolygonEdge(polygon, i)))) {
-          continue;
-        }
-        total += (polygon[(i + 1) % polygon.length] - polygon[i]).distance;
-      }
-    }
-    return total;
-  }
+  /// Спайка с соседним окном удалена; шов составного окна считается отдельно
+  /// ([WindowSpec.compositeSeamLength]).
+  double get weldLengthMm =>
+      isTShape ? tLayout!.weldedSeamLength : 0;
 
   /// Готовые подписи расхода окантовки: «Тент 100 мм — 654 см».
   List<String> get edgeConsumptionLabels {
@@ -1697,27 +2303,91 @@ class WindowLayers {
   Rect get pocketTopRect =>
       params.pocketTop ? boundsOf(pocketBand(WindowSide.top)) : Rect.zero;
 
+  /// Угол касается стороны, которая расставлена вручную.
+  bool _cornerTouchesManualSide(Offset vertex) {
+    if (params.manualEyeletSides.isEmpty) return false;
+    final polygons = eyeletPolygons;
+    if (polygons.isEmpty) return false;
+    final polygon = polygons.first;
+    for (var i = 0; i < polygon.length; i++) {
+      final edgeSide = edgeSideOf(sideOfPolygonEdge(polygon, i));
+      if (!params.manualEyeletSides.contains(edgeSide)) continue;
+      final a = polygon[i];
+      final b = polygon[(i + 1) % polygon.length];
+      if ((vertex - a).distance < 1e-6 || (vertex - b).distance < 1e-6) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   _EyeletResult _computeEyelets() {
     final placements = <EyeletPlacement>[];
     final steps = <double>[];
+    final manualFasteners = <ManualFastener>[];
 
     // Люверсы ставятся по каждому контуру: у обычного окна он один, у Т-окна
     // со спайкой — общий внешний, без спайки — по периметру каждой части.
     for (final polygon in eyeletPolygons) {
       for (var i = 0; i < polygon.length; i++) {
-        final side = sideOfPolygonEdge(polygon, i);
-        // Спаянная сторона: там сварка полотен, крепить нечего.
-        if (params.removeEyeletsOnWelded && params.isWelded(edgeSideOf(side))) {
-          continue;
-        }
-
         final a = polygon[i];
         final b = polygon[(i + 1) % polygon.length];
+        // Шов составного окна — не кромка: крепёж по нему не ставится,
+        // иначе люверсы/замки задваивались бы с обеих сторон стыка.
+        if (isCompositeSeamEdge(a, b)) continue;
+        final side = sideOfPolygonEdge(polygon, i);
+
         final direction = b - a;
         final length = direction.distance;
         if (length < 1) continue;
         final unit = direction / length;
         final angle = math.atan2(unit.dy, unit.dx);
+
+        // Ручные точки: если сторону правили на чертеже, ставим ровно их
+        // (включая пустой список — «на этой стороне люверсов нет»).
+        final manualSide = params.hasManualEyelets(edgeSideOf(side));
+        if (manualSide && !isTShape && !isComposite) {
+          final points = params.eyeletPositions
+              .where((position) => position.side == edgeSideOf(side))
+              .toList()
+            ..sort((left, right) => left.fraction.compareTo(right.fraction));
+          for (final point in points) {
+            final fraction = point.fraction.clamp(0.0, 1.0);
+            final center = a + unit * (length * fraction);
+            if (isOnCompositeSeam(center)) continue;
+            final isCornerPoint = fraction < 0.005 || fraction > 0.995;
+            // Замок/скоба ЗАМЕНЯЮТ люверс в этой точке, а не добавляются к
+            // нему: иначе в смете остаётся строка круглых люверсов, которых
+            // на изделии нет.
+            if (point.kind == MarkerKind.frenchLock ||
+                point.kind == MarkerKind.turnBuckle) {
+              manualFasteners.add(
+                ManualFastener(
+                  center: center,
+                  side: side,
+                  angle: angle,
+                  type: point.kind == MarkerKind.frenchLock
+                      ? FastenerType.frenchLocks
+                      : FastenerType.turnBuckles,
+                ),
+              );
+              continue;
+            }
+            placements.add(
+              EyeletPlacement(
+                center: center,
+                side: side,
+                angle: angle,
+                isCorner: isCornerPoint,
+                positionInEdge: fraction,
+                forcedType: point.kind == MarkerKind.roundEyelet
+                    ? EyeletType.round10
+                    : null,
+              ),
+            );
+          }
+          continue;
+        }
 
         final offset = params.eyeletCornerOffset.clamp(
           0.0,
@@ -1756,6 +2426,14 @@ class WindowLayers {
           // не являются: иначе при отступе 50 мм на чертеже появлялись бы
           // «лишние» круглые люверсы у каждого угла (по два на угол).
           final isCornerIndex = offset < 0.5 && (k == 0 || k == intervals);
+          // Соседняя сторона правится вручную — не ставим自動 угловую точку
+          // на общем углу, иначе после перетаскивания в углу будет два люверса.
+          if (isCornerIndex &&
+              _cornerTouchesManualSide(
+                k == 0 ? polygon[i] : polygon[(i + 1) % polygon.length],
+              )) {
+            continue;
+          }
 
           // Тумблер «Круглые люверсы в углах» выключен: угловая точка не
           // ставится вовсе — ни на чертеже, ни в расходе, ни в смете.
@@ -1795,9 +2473,13 @@ class WindowLayers {
             continue;
           }
 
+          final center = a + unit * distance;
+          // Точка ровно на шве составного окна — это стык, а не кромка:
+          // люверс там не ставится (иначе он задваивался бы).
+          if (isOnCompositeSeam(center)) continue;
           placements.add(
             EyeletPlacement(
-              center: a + unit * distance,
+              center: center,
               side: side,
               angle: angle,
               isCorner: isCornerIndex,
@@ -1829,15 +2511,16 @@ class WindowLayers {
         if (sideHasEyelets(eyelet.side)) eyelet,
     ];
 
-    return _EyeletResult(visible, steps);
+    return _EyeletResult(visible, steps, manualFasteners);
   }
 }
 
 class _EyeletResult {
-  const _EyeletResult(this.placements, this.steps);
+  const _EyeletResult(this.placements, this.steps, this.manualFasteners);
 
   final List<EyeletPlacement> placements;
   final List<double> steps;
+  final List<ManualFastener> manualFasteners;
 }
 
 /// Итоговые расчёты для штампа, раскроя и раскладки.
@@ -1864,6 +2547,67 @@ class WindowSpec {
 
   /// Т-образное окно.
   bool get isTShape => params.isTShape;
+
+  /// Составное окно: ПВХ-полотно плюс второй материал по общему шву.
+  bool get isComposite => params.isComposite;
+
+  /// Геометрия составного окна (null у остальных типов).
+  CompositeLayout? get compositeLayout => geometry.compositeLayout;
+
+  /// Линия шва составного окна (две точки).
+  List<Offset> get compositeSeam => compositeLayout?.seam ?? const [];
+
+  /// Длина шва составного окна, мм.
+  double get compositeSeamLength => compositeLayout?.seamLength ?? 0;
+
+  /// Площадь второго сегмента, м².
+  double get compositeSecondAreaM2 =>
+      (compositeLayout?.secondAreaMm2 ?? 0) / 1000000;
+
+  /// Периметр свободных кромок второго сегмента, мм (без шва).
+  double get compositeSecondFreePerimeterMm {
+    final composite = compositeLayout;
+    if (composite == null) return 0;
+    final polygon = composite.secondPolygon;
+    var total = 0.0;
+    for (var i = 0; i < polygon.length; i++) {
+      final a = polygon[i];
+      final b = polygon[(i + 1) % polygon.length];
+      if (layers.isCompositeSeamEdge(a, b)) continue;
+      total += (b - a).distance;
+    }
+    return total;
+  }
+
+  /// Периметр свободных кромок основного полотна, мм (без шва).
+  double get compositeMainFreePerimeterMm {
+    final composite = compositeLayout;
+    if (composite == null) return 0;
+    final polygon = composite.mainPolygon;
+    var total = 0.0;
+    for (var i = 0; i < polygon.length; i++) {
+      final a = polygon[i];
+      final b = polygon[(i + 1) % polygon.length];
+      if (layers.isCompositeSeamEdge(a, b)) continue;
+      total += (b - a).distance;
+    }
+    return total;
+  }
+
+  /// Площади заготовок к раскрою с усадкой по частям: [основное, второе].
+  ///
+  /// Порядок совпадает с [WindowLayers.filmPolygons]; вырезы вычитаются из
+  /// основного полотна.
+  List<double> get compositeFilmPartAreasM2 {
+    final polygons = filmCutPolygonsWithShrinkage;
+    if (polygons.length < 2) return const [];
+    final cutouts = layers.cutoutAreaMm2 / 1000000;
+    final main = polygonArea(polygons[0]).abs() / 1000000 - cutouts;
+    return [
+      main < 0 ? 0 : main,
+      polygonArea(polygons[1]).abs() / 1000000,
+    ];
+  }
 
   /// Геометрия Т-окна (null у обычного).
   TShapeLayout? get tLayout => geometry.tLayout;
@@ -1988,6 +2732,7 @@ class WindowSpec {
   /// отличаются. Прямоугольное окно по-прежнему кроится прямоугольником.
   bool get isObliqueBlank =>
       !isTShape &&
+      !isComposite &&
       ((params.bottomWidth - params.topWidth).abs() > 0.5 ||
           (params.leftHeight - params.rightHeight).abs() > 0.5);
 
@@ -2182,7 +2927,7 @@ class WindowSpec {
     final center = bounds.center;
     // Контуры растягиваются вокруг ОБЩЕГО центра габарита: так у Т-окна без
     // спайки обе части сохраняют взаимное положение, а не «разъезжаются».
-    return [
+    final scaled = [
       for (final polygon in polygons)
         [
           for (final point in polygon)
@@ -2192,6 +2937,75 @@ class WindowSpec {
             ),
         ],
     ];
+
+    // «Доп. настройка молнии»: полотно режется на сегменты по зазорам 7 см.
+    if (!params.zipperSegments || isComposite || params.zippers.isEmpty) {
+      return scaled;
+    }
+    final gaps = layers.zipperSegmentLayout
+        .where((gap) => !gap.edge)
+        .toList()
+      ..sort((a, b) => a.center.compareTo(b.center));
+    if (gaps.isEmpty) return scaled;
+
+    final visible = layers.filmVisibleBounds;
+    double mapX(double x) {
+      final fraction = visible.width > 1e-9
+          ? (x - visible.left) / visible.width
+          : 0.5;
+      final blankX = bounds.left + fraction * bounds.width;
+      return center.dx + (blankX - center.dx) * fx;
+    }
+
+    final result = <List<Offset>>[];
+    for (final polygon in scaled) {
+      var remaining = <List<Offset>>[polygon];
+      for (final gap in gaps) {
+        final leftEdge = mapX(gap.gapStart);
+        final rightEdge = mapX(gap.gapEnd);
+        final next = <List<Offset>>[];
+        for (final piece in remaining) {
+          final left = _clipVertical(piece, leftEdge, keepLeft: true);
+          final right = _clipVertical(piece, rightEdge, keepLeft: false);
+          if (left.length >= 3 && polygonArea(left).abs() > 1) {
+            result.add(left);
+          }
+          if (right.length >= 3) next.add(right);
+        }
+        remaining = next;
+      }
+      for (final piece in remaining) {
+        if (piece.length >= 3 && polygonArea(piece).abs() > 1) {
+          result.add(piece);
+        }
+      }
+    }
+    return result;
+  }
+
+  /// Отрезает часть контура по вертикальной прямой x = [x].
+  List<Offset> _clipVertical(
+    List<Offset> polygon,
+    double x, {
+    required bool keepLeft,
+  }) {
+    double side(Offset point) => keepLeft ? (x - point.dx) : (point.dx - x);
+    final result = <Offset>[];
+    for (var i = 0; i < polygon.length; i++) {
+      final current = polygon[i];
+      final next = polygon[(i + 1) % polygon.length];
+      final sideCurrent = side(current);
+      final sideNext = side(next);
+      if (sideCurrent >= -1e-9) result.add(current);
+      final crosses =
+          (sideCurrent > 1e-9 && sideNext < -1e-9) ||
+          (sideCurrent < -1e-9 && sideNext > 1e-9);
+      if (crosses) {
+        final t = sideCurrent / (sideCurrent - sideNext);
+        result.add(current + (next - current) * t);
+      }
+    }
+    return result;
   }
 
   /// Контур заготовки к раскрою (первый; у Т-окна без спайки их два —
@@ -2221,6 +3035,19 @@ class WindowSpec {
   /// Контур заготовки к раскрою с компенсацией усадки (первый).
   List<Offset> get filmCutPolygonWithShrinkage =>
       filmCutPolygonsWithShrinkage.first;
+
+  /// Ширины сегментов кроя при включённой «доп. настройке молнии», мм.
+  List<double> get zipperSegmentWidths => [
+    for (final polygon in filmCutPolygons) boundsOf(polygon).width,
+  ];
+
+  /// Подпись сегментов для раскроя и техкарты: «сегментов 3: 700 + 700 + 700».
+  String get zipperSegmentsLabel {
+    final widths = zipperSegmentWidths;
+    if (!params.zipperSegments || widths.length < 2) return '';
+    return 'сегментов ${widths.length}: '
+        '${widths.map(formatMm).join(' + ')} ${unitSuffix()}';
+  }
 
   /// Площадь ЗАГОТОВКИ к раскрою: припуск, без усадки, минус вырезы, м².
   ///
@@ -2320,7 +3147,10 @@ class WindowSpec {
           'по подвороту (скрин)';
     }
     return switch (params.windowType) {
-      WindowType.fixed || WindowType.tShape => 'Саморезы по окантовке (глухое)',
+      // Составное окно — тоже глухое: крепёж по окантовке обеих частей.
+      WindowType.fixed ||
+      WindowType.tShape ||
+      WindowType.composite => 'Саморезы по окантовке (глухое)',
       WindowType.lifting =>
         'Сверху саморезы, низ и бока — $movableFastenerLabel',
     };
@@ -2330,7 +3160,9 @@ class WindowSpec {
   EyeletType get eyeletType => params.effectiveEyeletType;
 
   /// Количество подъёмных ремней.
-  int get strapCount => params.liftStrapCount;
+  int get strapCount => params.liftStrapOffsets.isNotEmpty
+      ? params.liftStrapOffsets.length
+      : params.liftStrapCount;
 
   /// Заготовка полосы под молнию: (ширина, длина), мм.
   ///
@@ -2417,22 +3249,6 @@ class WindowSpec {
     }
     if (params.isTShape && tAnnexes.isNotEmpty && !tLayout!.anyWelded) {
       parts.add('пристройки не спаяны — отдельные окна');
-    }
-    if (params.weldedSides.isNotEmpty) {
-      final sides = params.weldedSides
-          .map(
-            (side) => switch (side) {
-              EdgeSide.left => 'левая',
-              EdgeSide.right => 'правая',
-              EdgeSide.bottom => 'нижняя',
-              EdgeSide.top => 'верхняя',
-            },
-          )
-          .join(', ');
-      parts.add(
-        '$sides сторона — спайка с соседним окном внахлёст '
-        '${formatMm(windowWeldWidth)} ${unitSuffix()}, окантовка не ставится',
-      );
     }
     if (parts.isEmpty) return '—';
     return '${parts.join('; ')} (всего ${formatMm(layers.weldLengthMm)} ${unitSuffix()})';
@@ -2587,7 +3403,10 @@ class WindowSpec {
                   '${formatMm(filmCutWidth)} ${unitSuffix()} до припуска; полоса тента '
                   'идёт в расход окантовки',
       if (params.cutouts.isNotEmpty) 'Вырезы: $cutoutsSummary',
-      if (params.weldedSides.isNotEmpty) 'Спайка окон: $weldSummary',
+      if (params.isComposite)
+        'Составное окно: ${params.composite.material.label}, '
+            '${params.composite.isDiagonal ? 'диагональный' : 'прямой'} шов '
+            '${formatMm(layers.compositeLayout?.seamLength ?? 0)} ${unitSuffix()}',
       if (params.drainHoles && !params.isScreen)
         'Дренаж: ${params.drainCount.round()} отв. Ø6 мм в нижней окантовке',
       if (params.pocket || params.pocketTop) _pocketNote(),
@@ -2882,6 +3701,15 @@ List<ParamIssue> validateParams(WindowParams params) {
   // версии). Выход за рекомендуемые 250–450 мм — подсказка, парусность
   // (свыше 800 мм) и перерасход (ниже 150 мм) — предупреждения.
   _checkEyeletStep(params, issues);
+  if (params.zipperSegments) {
+    checkRange(
+      ParamField.zipperTentOverlap,
+      params.zipperTentOverlap,
+      minZipperTentOverlapMm,
+      maxZipperTentOverlapMm,
+      '5…50 мм',
+    );
+  }
   checkRange(
     ParamField.eyeletCornerOffset,
     params.eyeletCornerOffset,
@@ -2958,6 +3786,53 @@ List<ParamIssue> validateParams(WindowParams params) {
         isError: false,
       ),
     );
+  }
+
+  if (params.isComposite) {
+    final composite = params.composite;
+    if (params.isScreen) {
+      issues.add(
+        const ParamIssue(
+          ParamField.bottomWidth,
+          'Основное полотно составного окна — ПВХ: второй материал выбирается '
+          'отдельно (скрин или ПВХ)',
+          isError: true,
+        ),
+      );
+    }
+    checkRange(
+      ParamField.compositeWidth,
+      composite.width,
+      100,
+      6000,
+      '100…6000 мм',
+    );
+    checkRange(
+      ParamField.compositeDepth,
+      composite.depth,
+      100,
+      3000,
+      '100…3000 мм',
+    );
+    if (composite.isDiagonal) {
+      checkRange(
+        ParamField.compositeAngle,
+        composite.seamAngleDeg,
+        5,
+        80,
+        '5…80°',
+      );
+    }
+    final layout = WindowGeometry.of(params).compositeLayout;
+    if (layout != null && layout.clamped) {
+      issues.add(
+        const ParamIssue(
+          ParamField.compositeOffset,
+          'Второй сегмент не помещается на стороне окна: размеры подрезаны',
+          isError: false,
+        ),
+      );
+    }
   }
 
   final geometry = WindowGeometry.of(params);
@@ -3320,7 +4195,11 @@ List<Offset> insetPolygonPerSide(List<Offset> polygon, List<double> distances) {
     final unit = direction / length;
     final inward = Offset(-unit.dy, unit.dx);
     final raw = i < distances.length ? distances[i] : distances.last;
-    final distance = (!raw.isFinite || raw <= 0) ? 0.0 : math.min(raw, limit);
+    // Отрицательное расстояние — расширение контура наружу (заготовка скрина
+    // с подворотом). Ограничиваем и его, чтобы контур не вывернулся.
+    final distance = !raw.isFinite
+        ? 0.0
+        : raw.clamp(-limit * 0.9, limit);
     shifted.add((a + inward * distance, b + inward * distance));
   }
 
@@ -3340,7 +4219,10 @@ List<Offset> insetPolygonPerSide(List<Offset> polygon, List<double> distances) {
   // Защита от вырождения: если контур схлопнулся или вывернулся — уменьшаем
   // отступ вдвое и пробуем снова.
   final area = polygonArea(result);
-  if (!area.isFinite || area <= 0 || area >= polygonArea(polygon).abs()) {
+  final grows = distances.any((value) => value.isFinite && value < 0);
+  if (!area.isFinite ||
+      area <= 0 ||
+      (!grows && area >= polygonArea(polygon).abs())) {
     final maxDistance = distances.isEmpty
         ? 0.0
         : distances.reduce((a, b) => a > b ? a : b);

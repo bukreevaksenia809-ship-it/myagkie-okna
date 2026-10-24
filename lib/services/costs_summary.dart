@@ -10,6 +10,12 @@ class CostsSummary {
   CostsSummary(this.project)
     : specs = [for (final window in project.windows) WindowSpec.of(window)],
       rollPlans = buildRollPlans(project) {
+    // Французские замки считаются не по точкам люверсов, а по вертикали:
+    // складываем высоты обеих вертикальных кромок всех окон заказа, делим
+    // на шаг между креплениями, округляем вверх до чётного и прибавляем 2.
+    // Расчёт общий на заказ, поэтому копится здесь, а не в цикле по окнам.
+    var frenchLockRaw = 0.0;
+    var frenchLockWindows = 0;
     for (final spec in specs) {
       productAreaM2 += spec.productAreaM2;
       // Плёнка закупается и кроится по заготовке. Заготовка бывает двух
@@ -26,16 +32,57 @@ class CostsSummary {
       filmAreaM2 += spec.filmCutAreaM2;
       filmAreaWithShrinkageM2 += spec.filmCutAreaWithShrinkageM2;
       filmNetAreaM2 += spec.filmAreaM2;
-      filmAreaByMaterial.update(
-        spec.params.material,
-        (value) => value + spec.filmCutAreaM2,
-        ifAbsent: () => spec.filmCutAreaM2,
-      );
-      filmAreaByMaterialWithShrinkage.update(
-        spec.params.material,
-        (value) => value + spec.filmCutAreaWithShrinkageM2,
-        ifAbsent: () => spec.filmCutAreaWithShrinkageM2,
-      );
+      if (spec.isComposite) {
+        // Составное окно: основной сегмент — материал окна, второй — свой.
+        final parts = spec.compositeFilmPartAreasM2;
+        if (parts.length == 2) {
+          final main = parts[0];
+          final second = parts[1];
+          filmAreaByMaterial.update(
+            spec.params.material,
+            (value) => value + main,
+            ifAbsent: () => main,
+          );
+          filmAreaByMaterialWithShrinkage.update(
+            spec.params.material,
+            (value) => value + main,
+            ifAbsent: () => main,
+          );
+          final secondMaterial = spec.params.composite.material;
+          filmAreaByMaterial.update(
+            secondMaterial,
+            (value) => value + second,
+            ifAbsent: () => second,
+          );
+          filmAreaByMaterialWithShrinkage.update(
+            secondMaterial,
+            (value) => value + second,
+            ifAbsent: () => second,
+          );
+        } else {
+          filmAreaByMaterial.update(
+            spec.params.material,
+            (value) => value + spec.filmCutAreaM2,
+            ifAbsent: () => spec.filmCutAreaM2,
+          );
+          filmAreaByMaterialWithShrinkage.update(
+            spec.params.material,
+            (value) => value + spec.filmCutAreaWithShrinkageM2,
+            ifAbsent: () => spec.filmCutAreaWithShrinkageM2,
+          );
+        }
+      } else {
+        filmAreaByMaterial.update(
+          spec.params.material,
+          (value) => value + spec.filmCutAreaM2,
+          ifAbsent: () => spec.filmCutAreaM2,
+        );
+        filmAreaByMaterialWithShrinkage.update(
+          spec.params.material,
+          (value) => value + spec.filmCutAreaWithShrinkageM2,
+          ifAbsent: () => spec.filmCutAreaWithShrinkageM2,
+        );
+      }
       spec.edgeConsumption.forEach((roll, length) {
         edgeByRoll.update(
           roll,
@@ -58,8 +105,26 @@ class CostsSummary {
       // «Только люверсы» отдельного крепежа не имеет: 0, люверс уже в расходе
       // выше. Скрин считается по тому же правилу — его крепёж давно разрешён
       // и ставится по подвороту.
+      // Крепёж, добавленный вручную на чертеже: +1 к своему типу (замок или
+      // скоба). Люверс под него уже посчитан в [eyeletsByType].
+      for (final manual in spec.layers.manualFasteners) {
+        fastenerCount.update(
+          manual.type,
+          (value) => value + 1,
+          ifAbsent: () => 1,
+        );
+      }
       final fastenerType = spec.params.fastenerType;
-      if (fastenerType != FastenerType.eyeletsOnly) {
+      if (fastenerType == FastenerType.frenchLocks) {
+        // Замок стоит на вертикальных кромках: в метраж идут левая и правая
+        // высоты. Шаг — тот же, что задан для крепежа в окне (обычно 350 мм).
+        final step = spec.params.eyeletStep;
+        final vertical = spec.params.leftHeight + spec.params.rightHeight;
+        if (step > 0 && vertical > 0) {
+          frenchLockRaw += vertical / step;
+          frenchLockWindows++;
+        }
+      } else if (fastenerType != FastenerType.eyeletsOnly) {
         final count = spec.layers.movableSideEyelets.length;
         if (count > 0) {
           fastenerCount.update(
@@ -121,6 +186,11 @@ class CostsSummary {
       // Скрин подворачивается по всему периметру: длина подворота — периметр.
       if (spec.params.isScreen) {
         screenHemLengthMm += spec.geometry.perimeter;
+      } else if (spec.isComposite &&
+          spec.compositeLayout?.material == FilmMaterial.screen) {
+        // У составного окна скрин — только второй сегмент: подворот идёт по
+        // его свободным кромкам, шов не подворачивается.
+        screenHemLengthMm += spec.compositeSecondFreePerimeterMm;
       }
       strapCount += spec.strapCount;
       pocketWidthMm = spec.params.pocketWidth;
@@ -136,6 +206,14 @@ class CostsSummary {
       if (spec.params.isTShape) {
         tShapeSeamMm += spec.tWeldedSeamLength;
       }
+    }
+
+    // Французские замки: округляем вверх до чётного и прибавляем 2.
+    // +2 — один раз на заказ, а не на каждое окно.
+    if (frenchLockWindows > 0 && frenchLockRaw > 0) {
+      var count = frenchLockRaw.ceil();
+      if (count.isOdd) count += 1;
+      fastenerCount[FastenerType.frenchLocks] = count + 2;
     }
   }
 

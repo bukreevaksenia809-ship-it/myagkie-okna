@@ -43,18 +43,28 @@ const _lifting = WindowParams(
   rightHeight: 2520,
 );
 
+
+/// Французские замки: сумма левой и правой высот ÷ шаг, вверх до чётного,
+/// +2 на заказ (см. CostsSummary).
+int _frenchLocks(WindowParams params) {
+  final raw = (params.leftHeight + params.rightHeight) / params.eyeletStep;
+  var count = raw.ceil();
+  if (count.isOdd) count += 1;
+  return count + 2;
+}
+
 void main() {
-  test('французский замок: count по подвижным точкам и строка в смете', () {
+  test('французский замок: счёт по вертикали и строка в смете', () {
     const project = OrderProject(windows: [_lockScreen]);
     final summary = CostsSummary(project);
     final spec = summary.specs.first;
     final prices = PriceList.defaults();
     final estimate = Estimate.of(project, prices);
 
-    // Точек низа и боков без углов — ровно столько, сколько люверсов под
-    // крепёж: в углах скоба/замок не ставится.
-    final expected = spec.layers.movableSideEyelets.length;
+    // Замок считается по вертикали: обе высоты ÷ шаг, вверх до чётного, +2.
+    final expected = _frenchLocks(_lockScreen);
     expect(expected, greaterThan(0));
+    expect(spec.layers.movableSideEyelets, isNotEmpty);
     expect(summary.fastenerCount[FastenerType.frenchLocks], expected);
     expect(summary.fastenerTotal, expected);
 
@@ -68,8 +78,7 @@ void main() {
     expect(line.amount, closeTo(expected * 400.0, 0.011));
     expect(line.group, EstimateGroup.hardware);
     expect(line.itemKey, PriceItemKeys.frenchLock);
-    expect(line.note, contains('$expected шт × 400 ₽/шт'));
-    expect(line.note, contains('люверс'));
+    expect(line.note, contains('по вертикали'));
 
     // Люверс под замок остаётся отдельной строкой — это другая позиция.
     expect(
@@ -267,12 +276,14 @@ void main() {
       (operation) => operation.kind == TechOperationKind.eyelets,
     );
     final fastener = eyelets.materials.firstWhere(
-      (material) => material.name.contains('Крепёж низа и боков'),
+      (material) => material.name.contains('французский замок'),
     );
 
-    final expected = summary.fastenerCount[FastenerType.frenchLocks]!;
-    expect(fastener.quantity, closeTo(expected.toDouble(), 1e-9));
-    expect(fastener.size, '$expected шт');
+    // В техкарте окна — счёт на окно; +2 шт идёт на заказ.
+    final orderCount = summary.fastenerCount[FastenerType.frenchLocks]!;
+    final perWindow = orderCount - 2;
+    expect(fastener.quantity, closeTo(perWindow.toDouble(), 1e-9));
+    expect(fastener.size, '$perWindow шт');
     expect(fastener.name, contains('французский замок'));
     // Верхний ряд — саморезы, их тоже столько же, сколько в расходе.
     expect(
@@ -344,14 +355,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final count = WindowSpec.of(_lockScreen).layers.movableSideEyelets.length;
     expect(find.text('Французский замок'), findsOneWidget);
-    expect(
-      find.textContaining(
-        '$count шт × ${prices.frenchLockPrice.toStringAsFixed(0)} ₽/шт',
-      ),
-      findsOneWidget,
-    );
+    expect(find.textContaining('по вертикали'), findsOneWidget);
     expect(find.textContaining('Саморезы верхнего ряда'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -377,8 +382,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // В спецэлементах окна — тип крепежа и число точек.
-    expect(find.textContaining('французский замок $count'), findsOneWidget);
+    // В спецэлементах окна — тип крепежа.
+    expect(find.textContaining('французский замок'), findsWidgets);
     // В итогах — отдельный блок с крепежом по типам.
     expect(
       find.textContaining('Французский замок — $count шт'),

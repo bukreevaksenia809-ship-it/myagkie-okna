@@ -59,7 +59,7 @@ OrderProject orderFromJson(Map<String, dynamic> json) {
     rollGap: _double(json['rollGap'], 20),
     options: options,
     sheetMode: _enumByName(SheetMode.values, json['sheetMode'], SheetMode.single),
-    gridColumns: _int(json['gridColumns'], 2).clamp(0, 4),
+    gridColumns: _int(json['gridColumns'], 0).clamp(0, 4),
   );
 }
 
@@ -121,8 +121,22 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'roundEyeletsEnabled': p.roundEyeletsEnabled,
       'fastenerType': p.fastenerType.name,
       'zippers': [for (final zipper in p.zippers) zipper.toJson()],
+      // «Доп. настройка молнии»: деление полотна на сегменты.
+      'zipperSegments': p.zipperSegments,
+      'zipperTentOverlap': p.zipperTentOverlap,
+      // Ручные положения подъёмных ремней, мм от левого края.
+      'liftStrapOffsets': p.liftStrapOffsets,
       'cutouts': [for (final cutout in p.cutouts) cutout.toJson()],
-      'weldedSides': [for (final side in p.weldedSides) side.name],
+      // Ручные положения люверсов (перетащены на чертеже).
+      'eyeletPositions': [
+        for (final position in p.eyeletPositions) position.toJson(),
+      ],
+      'manualEyeletSides': [
+        for (final side in p.manualEyeletSides) side.name,
+      ],
+      // Второй сегмент составного окна. Пишем только для составного окна:
+      // у остальных типов поле отсутствует, и старые заказы не меняются.
+      if (p.isComposite) 'composite': _compositeToJson(p.composite),
       // Кнопки «не ставить люверсы сверху/снизу».
       'noEyeletsTop': p.noEyeletsTop,
       'noEyeletsBottom': p.noEyeletsBottom,
@@ -214,8 +228,18 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     fastenerType: _enumByName(
         FastenerType.values, json['fastenerType'], fallback.fastenerType),
     zippers: _zippersFromJson(json),
+    zipperSegments: _bool(json['zipperSegments'], false),
+    zipperTentOverlap: _double(
+      json['zipperTentOverlap'],
+      defaultZipperTentOverlapMm,
+    ),
+    liftStrapOffsets: _doubleList(json['liftStrapOffsets']),
     cutouts: _cutoutsFromJson(json['cutouts']),
-    weldedSides: _weldedFromJson(json['weldedSides']),
+    eyeletPositions: _eyeletPositionsFromJson(json['eyeletPositions']),
+    manualEyeletSides: _sidesFromJson(json['manualEyeletSides']),
+    composite: _compositeFromJson(json['composite']),
+    // Старое поле `weldedSides` намеренно игнорируется: спайка с соседним
+    // окном удалена, заказ открывается без падений и без шва.
     noEyeletsTop: _bool(json['noEyeletsTop'], fallback.noEyeletsTop),
     noEyeletsBottom: _bool(json['noEyeletsBottom'], fallback.noEyeletsBottom),
     pocket: _bool(json['pocket'], fallback.pocket),
@@ -349,7 +373,7 @@ List<Cutout> _cutoutsFromJson(Object? raw) {
   ];
 }
 
-List<EdgeSide> _weldedFromJson(Object? raw) {
+List<EdgeSide> _sidesFromJson(Object? raw) {
   if (raw is! List) return const [];
   return [
     for (final item in raw)
@@ -357,4 +381,48 @@ List<EdgeSide> _weldedFromJson(Object? raw) {
         for (final side in EdgeSide.values)
           if (side.name == item) side,
   ];
+}
+
+List<EyeletPosition> _eyeletPositionsFromJson(Object? raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final item in raw)
+      if (item is Map) EyeletPosition.fromJson(item.cast<String, dynamic>()),
+  ];
+}
+
+List<double> _doubleList(Object? raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final item in raw)
+      if (item is num && item.isFinite) item.toDouble(),
+  ];
+}
+
+Map<String, dynamic> _compositeToJson(CompositeSpec spec) => {
+      'side': spec.side.name,
+      'material': spec.material.name,
+      'width': spec.width,
+      'depth': spec.depth,
+      'offset': spec.offset,
+      'seam': spec.seam.name,
+      'seamOffset': spec.seamOffset,
+      'seamAngleDeg': spec.seamAngleDeg,
+    };
+
+CompositeSpec _compositeFromJson(Object? raw) {
+  const fallback = CompositeSpec();
+  if (raw is! Map) return fallback;
+  final json = raw.cast<String, dynamic>();
+  return CompositeSpec(
+    side: _enumByName(EdgeSide.values, json['side'], fallback.side),
+    material:
+        _enumByName(FilmMaterial.values, json['material'], fallback.material),
+    width: _double(json['width'], fallback.width),
+    depth: _double(json['depth'], fallback.depth),
+    offset: _double(json['offset'], fallback.offset),
+    seam: _enumByName(CompositeSeam.values, json['seam'], fallback.seam),
+    seamOffset: _double(json['seamOffset'], fallback.seamOffset),
+    seamAngleDeg: _double(json['seamAngleDeg'], fallback.seamAngleDeg),
+  );
 }

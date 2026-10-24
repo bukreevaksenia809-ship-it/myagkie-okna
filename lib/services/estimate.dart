@@ -9,6 +9,7 @@ import 'dart:math' as math;
 
 import '../models/order_project.dart';
 import '../models/price_list.dart';
+import '../models/window_geometry.dart';
 import '../models/window_params.dart';
 import 'costs_summary.dart';
 
@@ -161,6 +162,41 @@ class Estimate {
       );
     }
 
+    // --- Материалы: отход косых заготовок --------------------------------
+    // Косое окно (трапеция или разные высоты/ширины) кроится из
+    // прямоугольной заготовки, поэтому пустые углы — реальный отход плёнки.
+    // В строке «Полотно» уже стоит ФАКТИЧЕСКАЯ площадь контура, поэтому здесь
+    // добавляется только разница: габарит заготовки минус её контур.
+    // Прямоугольные окна и Т-окно (у него контур из прямоугольников) отхода
+    // не дают — строки не будет.
+    final wasteByMaterial = _obliqueWasteByMaterial(summary.specs);
+    final wasteEntries = wasteByMaterial.entries.toList()
+      ..sort((a, b) => b.value.wasteM2.compareTo(a.value.wasteM2));
+    for (final entry in wasteEntries) {
+      final waste = entry.value;
+      if (!(waste.wasteM2 > 0)) continue;
+      // Правило 10: выключенный материал не попадает в смету вовсе — так же,
+      // как у строки «Полотно».
+      final itemKey = PriceList.filmItemKey(entry.key);
+      if (!prices.isEnabled(itemKey)) continue;
+      lines.add(
+        EstimateLine(
+          title: _obliqueWasteTitle(entry.key),
+          note:
+              'косой контур: габарит заготовки '
+              '${formatMeters(waste.rectangleM2)} м² − контур '
+              '${formatMeters(waste.contourM2)} м² = отход '
+              '${formatMeters(waste.wasteM2)} м²; припуск и усадка учтены, '
+              'вырезы не вычтены',
+          quantity: waste.wasteM2,
+          unit: 'м²',
+          unitPrice: prices.filmPerM2(entry.key),
+          group: EstimateGroup.materials,
+          itemKey: itemKey,
+        ),
+      );
+    }
+
     // --- Материалы: окантовка по ширинам рулонов -------------------------
     final edgeEntries = summary.edgeByRoll.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
@@ -229,9 +265,12 @@ class Estimate {
       lines.add(
         EstimateLine(
           title: entry.key.itemTitle,
-          note:
-              '${entry.value} шт × ${_unitPriceLabel(unitPrice)} ₽/шт — '
-              'низ и бока, в точках люверсов (люверс — отдельной строкой)',
+          note: entry.key == FastenerType.frenchLocks
+              // Замок считается по вертикали, а не по точкам люверсов.
+              ? 'по вертикали: сумма левой и правой высот окон ÷ шаг крепления, '
+                    'вверх до чётного, +2 на заказ'
+              : '${entry.value} шт × ${_unitPriceLabel(unitPrice)} ₽/шт — '
+                    'низ и бока, в точках люверсов (люверс — отдельной строкой)',
           quantity: entry.value.toDouble(),
           unit: 'шт',
           unitPrice: unitPrice,
@@ -388,6 +427,25 @@ class Estimate {
             ifAbsent: () => annex.sharedLength,
           );
         }
+      }
+      // Составное окно: шов между ПВХ-полотном и вторым материалом.
+      final compositeSeamMm = summary.specs.fold<double>(
+        0,
+        (sum, spec) => sum + spec.compositeSeamLength,
+      );
+      if (compositeSeamMm > 0) {
+        lines.add(
+          EstimateLine(
+            title: 'Спайка составного окна',
+            note: 'ПВХ-полотно и второй материал свариваются по общему шву; '
+                'окантовки на шве нет',
+            quantity: compositeSeamMm / 1000,
+            unit: 'м',
+            unitPrice: prices.weldPerM,
+            group: EstimateGroup.work,
+            itemKey: PriceItemKeys.weld,
+          ),
+        );
       }
       final seamNumbers = seamByAnnex.keys.toList()..sort();
       for (final number in seamNumbers) {
@@ -580,6 +638,74 @@ class Estimate {
   /// Пустая ли смета (нет позиций).
   bool get isEmpty => lines.isEmpty;
 }
+
+/// Накопленный отход косых заготовок по одному материалу, м².
+///
+/// [rectangleM2] — сумма габаритных прямоугольников заготовок, [contourM2] —
+/// сумма фактических площадей их контуров, [wasteM2] — сумма отходов
+/// `max(0, прямоугольник − контур)` по окнам. Три числа храним для подписи:
+/// в смете видно, из чего сложился отход.
+class _ObliqueWaste {
+  const _ObliqueWaste(this.rectangleM2, this.contourM2, this.wasteM2);
+
+  final double rectangleM2;
+  final double contourM2;
+  final double wasteM2;
+}
+
+/// Отход косых заготовок по материалам, м².
+///
+/// Для каждого окна с косым контуром ([WindowSpec.isObliqueBlank] — трапеция
+/// или разные высоты/ширины, но не прямоугольник) считается:
+/// `прямоугольник = ширина заготовки к раскрою × высота заготовки к раскрою`
+/// (С припуском и усадкой — те же числа, что в строке «Полотно»);
+/// `контур = Σ polygonArea(filmCutPolygonsWithShrinkage)` — БЕЗ вычета
+/// вырезов, иначе отход считался бы по площади с дырами;
+/// `отход = max(0, прямоугольник − контур)`.
+///
+/// Прямоугольные окна и Т-окно (его контур собран из прямоугольников) в
+/// сумму не попадают: у них отхода нет.
+Map<FilmMaterial, _ObliqueWaste> _obliqueWasteByMaterial(
+  Iterable<WindowSpec> specs,
+) {
+  final result = <FilmMaterial, _ObliqueWaste>{};
+  for (final spec in specs) {
+    if (!spec.isObliqueBlank) continue;
+    final rectangleM2 =
+        spec.filmCutWidthWithShrinkage *
+        spec.filmCutHeightWithShrinkage /
+        1000000;
+    var contourMm2 = 0.0;
+    // Контуры заготовки уже растянуты на припуск и усадку; вырезы здесь
+    // намеренно не вычитаются — это площадь раскроенного полотна без дыр.
+    for (final polygon in spec.filmCutPolygonsWithShrinkage) {
+      contourMm2 += polygonArea(polygon).abs();
+    }
+    final contourM2 = contourMm2 / 1000000;
+    final wasteM2 = math.max(0.0, rectangleM2 - contourM2);
+    final current = result[spec.params.material];
+    result[spec.params.material] = current == null
+        ? _ObliqueWaste(rectangleM2, contourM2, wasteM2)
+        : _ObliqueWaste(
+            current.rectangleM2 + rectangleM2,
+            current.contourM2 + contourM2,
+            current.wasteM2 + wasteM2,
+          );
+  }
+  return result;
+}
+
+/// Название строки отхода косых окон для материала.
+///
+/// Заказчику нужны две понятные строки — ПВХ и скрин. Обычный ПВХ и скрин
+/// получают ровно эти названия; тонированный ПВХ и сетка — уточнение в
+/// скобках, чтобы строки с разными ценами не сливались в одну.
+String _obliqueWasteTitle(FilmMaterial material) => switch (material) {
+  FilmMaterial.clearPvc => 'Отход ПВХ косых окон',
+  FilmMaterial.tintedPvc => 'Отход ПВХ косых окон (тонированный)',
+  FilmMaterial.mosquitoNet => 'Отход ПВХ косых окон (москитная сетка)',
+  FilmMaterial.screen => 'Отход скрина косых окон',
+};
 
 /// Ключ позиции прайса для типа крепежа: скоба, замок, ремень.
 ///

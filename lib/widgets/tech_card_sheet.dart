@@ -504,17 +504,21 @@ class _TechTitleBlock extends StatelessWidget {
               fontFamily: font,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            value.isEmpty ? '—' : value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              color: const Color(0xFF1B1F27),
-              fontWeight: FontWeight.w600,
-              height: 1.15,
-              fontFamily: font,
+          const SizedBox(height: 3),
+          // Длинные значения (составное окно, скрин) ужимаются, но не
+          // вылезают за штамп: высота полосы фиксированная.
+          Flexible(
+            child: Text(
+              value.isEmpty ? '—' : value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                color: const Color(0xFF1B1F27),
+                fontWeight: FontWeight.w600,
+                height: 1.12,
+                fontFamily: font,
+              ),
             ),
           ),
         ],

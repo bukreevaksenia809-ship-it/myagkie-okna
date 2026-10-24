@@ -78,39 +78,6 @@ void main() {
     expect(hostKey.currentState!.project.selected.cutouts, hasLength(1));
     expect(tester.takeException(), isNull);
 
-    // 2. Спайка — сворачиваемый блок в самом низу панели.
-    final panelScroll = find
-        .descendant(
-          of: find.byType(ParamsPanel),
-          matching: find.byType(Scrollable),
-        )
-        .first;
-    await tester.drag(panelScroll, const Offset(0, -9000));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Спайка с соседним окном'));
-    await tester.pumpAndSettle();
-    expect(find.text('Спаяно снизу'), findsOneWidget);
-    expect(find.text('Спаяно справа'), findsOneWidget);
-    expect(find.text('Спаяно сверху'), findsOneWidget);
-    expect(find.text('Спаяно слева'), findsOneWidget);
-
-    await tester.ensureVisible(find.byKey(const Key('add-welded-bottom')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('add-welded-bottom')));
-    await tester.pumpAndSettle();
-
-    final welded = hostKey.currentState!.project;
-    expect(welded.windowCount, 2);
-    expect(welded.selectedIndex, 1, reason: 'выбрано новое окно спайки');
-    expect(welded.windows[0].isWelded(EdgeSide.bottom), isTrue);
-    expect(welded.windows[1].isWelded(EdgeSide.top), isTrue);
-    // Копия повторяет шаблон: те же размеры, молния и вырез.
-    expect(welded.windows[1].bottomWidth, welded.windows[0].bottomWidth);
-    expect(welded.windows[1].leftHeight, welded.windows[0].leftHeight);
-    expect(welded.windows[1].zippers, hasLength(1));
-    expect(welded.windows[1].cutouts, hasLength(1));
-    expect(tester.takeException(), isNull);
-
     // 3. Припуски на раскрой: кнопка раскрывает поля, значения — в модель.
     expect(find.text('Припуски на раскрой'), findsOneWidget);
     await tester.ensureVisible(find.text('Припуски на раскрой'));

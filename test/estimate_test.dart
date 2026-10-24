@@ -9,9 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:soft_window_drawer/models/document.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
 import 'package:soft_window_drawer/models/price_list.dart' as model;
 import 'package:soft_window_drawer/models/window_params.dart';
+import 'package:soft_window_drawer/services/company_branding.dart';
 import 'package:soft_window_drawer/services/costs_summary.dart';
 import 'package:soft_window_drawer/services/estimate.dart';
 import 'package:soft_window_drawer/widgets/estimate_sheet.dart';
@@ -27,6 +29,31 @@ const _window = WindowParams(
 );
 
 const _project = OrderProject(windows: [_window]);
+
+/// Трапеция ПВХ для тестов отхода: низ 2000, верх 1000, высоты 1000,
+/// запайка 25 мм. Заготовка к раскрою: низ 1950, верх 950, высота 960
+/// (авто-припуск +10 мм к высоте), площадь контура 1,392 м².
+const _trapezoidPvc = WindowParams(
+  bottomWidth: 2000,
+  topWidth: 1000,
+  leftHeight: 1000,
+  rightHeight: 1000,
+  weldOverlapMm: 25,
+);
+
+/// Трапеция скрина: те же 2000/1000 × 1000, подворот 40 мм со всех сторон.
+/// Заготовка: низ 2040, верх 1040, высота 1060, площадь контура 1,6324 м².
+const _trapezoidScreen = WindowParams(
+  material: FilmMaterial.screen,
+  bottomWidth: 2000,
+  topWidth: 1000,
+  leftHeight: 1000,
+  rightHeight: 1000,
+  hemBottomMm: 40,
+  hemRightMm: 40,
+  hemTopMm: 40,
+  hemLeftMm: 40,
+);
 
 /// Семейство шрифта для превью.
 ///
@@ -392,6 +419,240 @@ void main() {
     expect(b.productAreaM2, closeTo(a.productAreaM2, 1e-9));
   });
 
+  test('отход трапеции ПВХ: прямоугольник минус фактическая площадь', () {
+    final prices = PriceList.defaults();
+    final estimate = Estimate.ofWindow(_trapezoidPvc, prices);
+    final waste = estimate.lines.firstWhere(
+      (line) => line.title == 'Отход ПВХ косых окон',
+    );
+
+    // Заготовка трапеции: низ 2000−50+50 = 1950, верх 1000−50+50 = 950,
+    // высота 1000−50−50+50+10(авто) = 960.
+    // Прямоугольник: 1950 × 960 = 1 872 000 мм² = 1,872 м².
+    // Контур: (1950 + 950) / 2 × 960 = 1 392 000 мм² = 1,392 м².
+    // Отход: 1,872 − 1,392 = 0,48 м²; 0,48 × 950 = 456,00 ₽.
+    expect(waste.quantity, closeTo(0.48, 1e-9));
+    expect(waste.unit, 'м²');
+    expect(waste.unitPrice, prices.filmClearPerM2);
+    expect(waste.amount, closeTo(456.00, 1e-9));
+    expect(waste.group, EstimateGroup.materials);
+    expect(waste.itemKey, PriceItemKeys.filmClear);
+    expect(waste.note, contains('1,87'));
+    expect(waste.note, contains('1,39'));
+    expect(waste.note, contains('0,48'));
+    expect(waste.note, contains('припуск'));
+
+    // Полотно посчитано по контуру: отход — добавка, а не замена площади.
+    final film = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Полотно'),
+    );
+    expect(film.quantity, closeTo(1.392, 1e-9));
+    expect(estimate.filmAreaM2, closeTo(1.392, 1e-9));
+    // Без двойного счёта: контур + отход = габаритный прямоугольник.
+    expect(film.quantity + waste.quantity, closeTo(1.872, 1e-9));
+    // Раскрой считается по контуру, отход в него не попадает.
+    final cutting = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Раскрой'),
+    );
+    expect(cutting.quantity, closeTo(1.392, 1e-9));
+  });
+
+  test('отход трапеции скрина: прямоугольник минус контур', () {
+    final prices = PriceList.defaults();
+    final estimate = Estimate.ofWindow(_trapezoidScreen, prices);
+    final waste = estimate.lines.firstWhere(
+      (line) => line.title == 'Отход скрина косых окон',
+    );
+
+    // Заготовка скрина: низ 2000+20+20 = 2040, верх 1000+20+20 = 1040,
+    // высота 1000+20+20+20 = 1060.
+    // Прямоугольник: 2040 × 1060 = 2 162 400 мм² = 2,1624 м².
+    // Контур: (2040 + 1040) / 2 × 1060 = 1 632 400 мм² = 1,6324 м².
+    // Отход: 2,1624 − 1,6324 = 0,53 м²; 0,53 × 520 = 275,60 ₽.
+    expect(waste.quantity, closeTo(0.53, 1e-9));
+    expect(waste.unitPrice, prices.filmScreenPerM2);
+    expect(waste.amount, closeTo(275.60, 1e-9));
+    expect(waste.itemKey, PriceItemKeys.filmScreen);
+    expect(
+      estimate.lines.any((line) => line.title.startsWith('Отход ПВХ')),
+      isFalse,
+      reason: 'у скрина отдельная строка, ПВХ-строки быть не должно',
+    );
+
+    final film = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Полотно'),
+    );
+    expect(film.quantity, closeTo(1.6324, 1e-9));
+    expect(film.quantity + waste.quantity, closeTo(2.1624, 1e-9));
+  });
+
+  test('отход трапеции с усадкой: габарит и контур в одном масштабе', () {
+    // Усадка 10 % растягивает обе стороны заготовки: 1950 × 960 →
+    // 2145 × 1056 мм. Прямоугольник 2,26512 м², контур 1,392 × 1,1² =
+    // 1,68432 м², отход 0,5808 м² (а не 0,87312 м², если габарит взять с
+    // усадкой, а контур — без неё).
+    final shrunk = _trapezoidPvc.copyWith(
+      shrinkageEnabled: true,
+      shrinkagePercent: 10,
+    );
+    final prices = PriceList.defaults();
+    final estimate = Estimate.ofWindow(shrunk, prices);
+    final waste = estimate.lines.firstWhere(
+      (line) => line.title == 'Отход ПВХ косых окон',
+    );
+
+    expect(waste.quantity, closeTo(0.5808, 1e-9));
+    expect(waste.amount, closeTo(551.76, 1e-9));
+    expect(waste.quantity, isNot(closeTo(0.87312, 1e-6)));
+    final film = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Полотно'),
+    );
+    expect(film.quantity, closeTo(1.68432, 1e-9));
+    expect(film.quantity + waste.quantity, closeTo(2.26512, 1e-9));
+  });
+
+  test('отход суммируется по материалам, прямоугольник строки не даёт', () {
+    final project = OrderProject(
+      windows: [
+        _trapezoidPvc,
+        _trapezoidPvc,
+        _trapezoidScreen,
+        // Прямоугольное окно того же ПВХ: отхода у него нет.
+        _window,
+      ],
+    );
+    final prices = PriceList.defaults();
+    final estimate = Estimate.of(project, prices);
+
+    final wasteLines = estimate.lines
+        .where((line) => line.title.startsWith('Отход'))
+        .toList();
+    expect(wasteLines, hasLength(2));
+    // Сортировка по величине отхода: ПВХ 2 × 0,48 = 0,96 м², скрин 0,53 м².
+    expect(wasteLines.first.title, 'Отход ПВХ косых окон');
+    expect(wasteLines.first.quantity, closeTo(0.96, 1e-9));
+    expect(wasteLines.first.amount, closeTo(912.00, 1e-9));
+    expect(wasteLines.last.title, 'Отход скрина косых окон');
+    expect(wasteLines.last.quantity, closeTo(0.53, 1e-9));
+    expect(wasteLines.last.amount, closeTo(275.60, 1e-9));
+
+    // Площадь полотна в смете — только фактические контуры окон, без отхода:
+    // 2 × 1,392 (трапеции ПВХ) + 1,6324 (скрин) + 3,4404 (прямоугольник
+    // 1500 × 2520: 1410 × 2440 с авто-припуском) = 7,8568 м².
+    expect(estimate.filmAreaM2, closeTo(7.8568, 1e-9));
+  });
+
+  test('прямоугольное окно: строки отхода косых окон нет', () {
+    final estimate = Estimate.of(_project, PriceList.defaults());
+    expect(
+      estimate.lines.any((line) => line.title.contains('Отход')),
+      isFalse,
+      reason: 'прямоугольник кроится без отхода',
+    );
+  });
+
+  test('тонированный ПВХ: своя строка отхода по цене прайса', () {
+    // Один и тот же косой контур, но материал тонированный: строка не
+    // сливается с обычным ПВХ, иначе цена 1150 ₽/м² потерялась бы.
+    final tinted = _trapezoidPvc.copyWith(material: FilmMaterial.tintedPvc);
+    final prices = PriceList.defaults();
+    final estimate = Estimate.ofWindow(tinted, prices);
+    final waste = estimate.lines.firstWhere(
+      (line) => line.title == 'Отход ПВХ косых окон (тонированный)',
+    );
+
+    expect(waste.quantity, closeTo(0.48, 1e-9));
+    expect(waste.itemKey, PriceItemKeys.filmTinted);
+    expect(waste.unitPrice, prices.filmTintedPerM2);
+    expect(waste.amount, closeTo(0.48 * prices.filmTintedPerM2, 1e-9));
+    expect(
+      estimate.lines.any((line) => line.title == 'Отход ПВХ косых окон'),
+      isFalse,
+    );
+  });
+
+  test('отход: цена из прайса, выключенная позиция убирает строку', () {
+    final prices = PriceList.defaults().copyWith(
+      filmClearPerM2: 1000,
+      filmScreenPerM2: 600,
+    );
+    final project = OrderProject(windows: [_trapezoidPvc, _trapezoidScreen]);
+
+    final estimate = Estimate.of(project, prices);
+    final pvcWaste = estimate.lines.firstWhere(
+      (line) => line.title == 'Отход ПВХ косых окон',
+    );
+    final screenWaste = estimate.lines.firstWhere(
+      (line) => line.title == 'Отход скрина косых окон',
+    );
+    expect(pvcWaste.unitPrice, 1000);
+    expect(pvcWaste.amount, closeTo(480.00, 1e-9));
+    expect(screenWaste.unitPrice, 600);
+    expect(screenWaste.amount, closeTo(318.00, 1e-9));
+
+    // Правило 10: выключенный материал не попадает в смету — ни «Полотно»,
+    // ни «Отход». Второй материал остаётся.
+    final withoutPvc = Estimate.of(
+      project,
+      prices.withItem(PriceItemKeys.filmClear, enabled: false),
+    );
+    expect(
+      withoutPvc.lines.any((line) => line.title == 'Отход ПВХ косых окон'),
+      isFalse,
+    );
+    expect(
+      withoutPvc.lines.any((line) => line.title == 'Отход скрина косых окон'),
+      isTrue,
+    );
+    expect(
+      withoutPvc.lines.any(
+        (line) => line.title == 'Полотно: ${FilmMaterial.clearPvc.label}',
+      ),
+      isFalse,
+    );
+
+    final withoutScreen = Estimate.of(
+      project,
+      prices.withItem(PriceItemKeys.filmScreen, enabled: false),
+    );
+    expect(
+      withoutScreen.lines.any(
+        (line) => line.title == 'Отход скрина косых окон',
+      ),
+      isFalse,
+    );
+    expect(
+      withoutScreen.lines.any((line) => line.title == 'Отход ПВХ косых окон'),
+      isTrue,
+    );
+  });
+
+  test('отход не меняет площадь полотна и раскроя', () {
+    final prices = PriceList.defaults();
+    final estimate = Estimate.ofWindow(_trapezoidPvc, prices);
+    final summary = CostsSummary(const OrderProject(windows: [_trapezoidPvc]));
+
+    // Отход — отдельная ДОБАВКА: площадь в смете и в сводке остаётся
+    // площадью контура, а не габаритного прямоугольника.
+    expect(estimate.filmAreaM2, closeTo(summary.filmAreaWithShrinkageM2, 1e-9));
+    expect(estimate.filmAreaM2, closeTo(1.392, 1e-9));
+    expect(summary.filmAreaWithShrinkageM2, isNot(closeTo(1.872, 1e-6)));
+    final film = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Полотно'),
+    );
+    final waste = estimate.lines.firstWhere(
+      (line) => line.title == 'Отход ПВХ косых окон',
+    );
+    expect(film.quantity, closeTo(estimate.filmAreaM2, 1e-9));
+    expect(
+      film.amount + waste.amount,
+      closeTo(
+        1.392 * prices.filmClearPerM2 + 0.48 * prices.filmClearPerM2,
+        0.01,
+      ),
+    );
+  });
+
   test('смета: сторона без люверсов уменьшает строку люверсов', () {
     const withoutTop = WindowParams(
       bottomWidth: 2000,
@@ -715,6 +976,215 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+  });
+
+  test('константы сметы: кегль ×2, лист по-прежнему один A4', () {
+    expect(EstimateSheet.a4Width, 1240);
+    expect(EstimateSheet.a4Height, 1754);
+    // Было 34 и 118 — стало ×2.
+    expect(EstimateSheet.rowHeight, 68);
+    expect(EstimateSheet.titleBlockHeight, 236);
+  });
+
+  Future<void> pumpSheetOnA4(
+    WidgetTester tester,
+    OrderProject project,
+  ) async {
+    tester.view.physicalSize = const Size(
+      EstimateSheet.a4Width + 40,
+      EstimateSheet.a4Height + 40,
+    );
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EstimateSheet(
+            project: project,
+            prices: model.PriceList.defaults(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('смета: шапка таблицы 8.5 → 17, строки 10.5 → 21, ИТОГО 17 → 34', (
+    tester,
+  ) async {
+    await pumpSheetOnA4(tester, const OrderProject(windows: [_previewWindow]));
+
+    // Заголовок листа: было 15, стало 30.
+    final caption = tester.getRect(find.text('Смета на заказ'));
+    expect(caption.height, closeTo(30 * 1.25, 0.8));
+
+    // Шапка таблицы: было 8.5, стало 17 (line-height 1.25).
+    final header = tester.getRect(find.text('НАИМЕНОВАНИЕ'));
+    expect(header.height, closeTo(17 * 1.25, 0.8));
+
+    // Обычная строка/итоги: было 10.5, стало 21.
+    final totalRowLabel = tester.getRect(find.text('Итого по позициям'));
+    expect(totalRowLabel.height, closeTo(21 * 1.25, 0.8));
+
+    // ИТОГО К ОПЛАТЕ: значение было 17, стало 34. Для обычного заказа
+    // FittedBox не ужимает текст — эффективный кегль остаётся 34.
+    final estimate = Estimate.of(
+      const OrderProject(windows: [_previewWindow]),
+      model.PriceList.defaults(),
+    );
+    final totalValue = tester.getRect(
+      find.text(formatRubles(estimate.total)).first,
+    );
+    expect(totalValue.height, closeTo(34 * 1.25, 0.8));
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('смета заполняет A4: таблица тянется, итоги вплотную к штампу', (
+    tester,
+  ) async {
+    await pumpSheetOnA4(
+      tester,
+      OrderProject(windows: List.filled(6, _window)),
+    );
+
+    final table = tester.getRect(find.byKey(EstimateSheet.tableKey));
+    final stamp = tester.getRect(find.byKey(EstimateSheet.stampKey));
+    final heading = tester.getRect(find.text('ИТОГИ ПО СМЕТЕ'));
+    final note = tester.getRect(find.textContaining('Цены — из прайса цеха'));
+
+    // Лист целиком: 1240 × 1754 внутри поля 20.
+    expect(stamp.bottom - 20, closeTo(EstimateSheet.a4Height, 1));
+    expect(stamp.height, EstimateSheet.titleBlockHeight);
+
+    // Таблица растянута на всю свободную высоту, а не сжата в верхнюю часть.
+    expect(table.height, greaterThan(600));
+
+    // Между таблицей и итогами — только заданный зазор (20).
+    expect(heading.top - table.bottom, closeTo(20, 2));
+
+    // Последний блок контента (сноска) упирается в штамп: внизу не пусто.
+    expect(stamp.top - note.bottom, closeTo(16, 2));
+    expect(note.bottom, greaterThan(stamp.top - 40));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('смета на 6 окон: строки не наезжают друг на друга и на итоги', (
+    tester,
+  ) async {
+    await pumpSheetOnA4(
+      tester,
+      OrderProject(windows: List.filled(6, _window)),
+    );
+
+    // Все строки таблицы идут строго по порядку без пересечений.
+    final rows = [
+      tester.getRect(find.text('НАИМЕНОВАНИЕ')),
+      tester.getRect(find.text('МАТЕРИАЛЫ')),
+      tester.getRect(find.text('ФУРНИТУРА И СПЕЦЭЛЕМЕНТЫ')),
+      tester.getRect(find.text('РАБОТЫ')),
+    ];
+    for (var i = 1; i < rows.length; i++) {
+      expect(rows[i].top, greaterThan(rows[i - 1].bottom));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('пишет PNG-превью сметы с компанией и логотипом', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1720, 1080);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // Простой логотип: синий круг с «МО» — проверяем место, а не картинку.
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.drawCircle(
+      const Offset(60, 60),
+      58,
+      Paint()..color = const Color(0xFFFFFFFF),
+    );
+    canvas.drawCircle(
+      const Offset(60, 60),
+      46,
+      Paint()
+        ..color = const Color(0xFF0B62C4)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4,
+    );
+    (TextPainter(
+      text: const TextSpan(
+        text: 'МО',
+        style: TextStyle(
+          color: Color(0xFF0B62C4),
+          fontSize: 44,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout()).paint(canvas, const Offset(24, 32));
+    final logoImage = await tester.runAsync(() async {
+      final image = await recorder.endRecording().toImage(120, 120);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      return data!.buffer.asUint8List();
+    });
+
+    expect(logoImage, isNotNull, reason: 'логотип должен собраться');
+    final captureKey = GlobalKey();
+    final fontFamily = await loadRublesFont();
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          body: EstimateSheet(
+            project: const OrderProject(windows: [_previewWindow]),
+            prices: PriceList.defaults(),
+            captureKey: captureKey,
+            labelFontFamily: fontFamily,
+            company: CompanyBrandingState(
+              details: const CompanyDetails(
+                name: 'ООО «Мягкие окна»',
+                inn: '7701234567',
+                phone: '+7 999 123-45-67',
+                address: 'Москва, ул. Примерная, 1',
+              ),
+              logo: logoImage,
+              showOnSheets: true,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // В тестовой среде картинка декодируется асинхронно — прогреваем её,
+    // иначе на превью логотип останется пустым местом.
+    await tester.runAsync(() async {
+      await precacheImage(
+        MemoryImage(logoImage!),
+        tester.element(find.byType(EstimateSheet)),
+      );
+    });
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    final bytes = await tester.runAsync(() async {
+      final boundary =
+          captureKey.currentContext!.findRenderObject()!
+              as RenderRepaintBoundary;
+      final image = await boundary.toImage(pixelRatio: 2.2);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      return data!.buffer.asUint8List();
+    });
+
+    final file = File('build/preview/smeta-company.png')
+      ..parent.createSync(recursive: true)
+      ..writeAsBytesSync(bytes!);
+    expect(file.lengthSync(), greaterThan(5000));
+    // ignore: avoid_print
+    print('Превью записано: ${file.path} (${file.lengthSync()} байт)');
   });
 
   testWidgets('пишет PNG-превью листа «Смета»', (tester) async {

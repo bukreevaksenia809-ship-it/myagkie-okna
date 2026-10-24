@@ -169,7 +169,6 @@ List<TechCheck> techChecksFor(WindowParams params) {
   _checkZippers(params, spec, checks);
   _checkPocket(params, spec, checks);
   _checkCutouts(spec, checks);
-  _checkWeldedSides(params, spec, checks);
   _checkFastener(params, checks);
   _checkEyeletlessSides(params, spec, checks);
   _checkShrinkage(params, checks);
@@ -516,7 +515,7 @@ void _checkLifting(
       ruleId: 'lifting-strap-load',
       severity: TechSeverity.warning,
       title: 'Подъёмное окно шириной ${formatMm(width)} ${unitSuffix()} — '
-          '${params.liftStrapCount} ремня(ей)',
+          '${params.liftStrapOffsets.isEmpty ? params.liftStrapCount : params.liftStrapOffsets.length} ремня(ей)',
       explanation: 'Ремни считаются автоматически (2 шт до 2 м, далее +1 на метр), '
           'но с ростом ширины растёт нагрузка на каждый ремень и на верхнюю '
           'окантовку, к которой они крепятся.',
@@ -733,56 +732,6 @@ void _checkCutouts(WindowSpec spec, List<TechCheck> checks) {
 
 /// Спайка стороны с соседним окном.
 ///
-/// На спаянной стороне окантовки нет — там сварены два полотна. Люверс в этом
-/// шве рвёт тент: он пробивает сварку и работает на отрыв по шву. Поэтому
-/// крепёж на спаянной стороне — предупреждение. Если спаяны обе боковые
-/// стороны, окно жёстко зажато между соседями: при монтаже не остаётся
-/// допуска на неточность замеров и температурное расширение.
-void _checkWeldedSides(
-  WindowParams params,
-  WindowSpec spec,
-  List<TechCheck> checks,
-) {
-  if (params.weldedSides.isEmpty) return;
-
-  if (!params.removeEyeletsOnWelded) {
-    final withFastener = <EdgeSide>[];
-    for (final side in params.weldedSides) {
-      final windowSide = _windowSide(side);
-      if (spec.layers.eyelets.any((eyelet) => eyelet.side == windowSide)) {
-        withFastener.add(side);
-      }
-    }
-    if (withFastener.isNotEmpty) {
-      checks.add(TechCheck(
-        ruleId: 'welded-side-fastener',
-        severity: TechSeverity.warning,
-        title: 'На спаянной стороне остался крепёж '
-            '(${_sidesLabel(withFastener)})',
-        explanation: 'Люверс пробивает шов сварки двух полотен и рвёт тент именно '
-            'по шву: спайка держит полотно сама, точечный крепёж там лишний.',
-        recommendation: 'Включите удаление крепежа на спаянных сторонах или '
-            'снимите люверсы с ${_sidesLabel(withFastener)} вручную.',
-      ));
-    }
-  }
-
-  final weldedLeft = params.isWelded(EdgeSide.left);
-  final weldedRight = params.isWelded(EdgeSide.right);
-  if (weldedLeft && weldedRight) {
-    checks.add(const TechCheck(
-      ruleId: 'welded-both-sides',
-      severity: TechSeverity.warning,
-      title: 'Спаяны обе боковые стороны — окно зажато между соседями',
-      explanation: 'Окно жёстко зафиксировано с двух сторон: нет допуска на '
-          'неточность замера и на температурное расширение, монтаж придётся '
-          'делать строго по месту.',
-      recommendation: 'Проверьте замеры соседних окон и порядок монтажа: '
-          'такое окно ставят после соседей, с контролем диагоналей.',
-    ));
-  }
-}
-
 // ——————————————————————— Правила по крепежу ———————————————————————
 
 /// Крепёж окна.
@@ -824,7 +773,6 @@ void _checkEyeletlessSides(
 
   void checkSide(EdgeSide side, {required bool disabled}) {
     if (!disabled) return;
-    if (params.isWelded(side)) return;
     final isTop = side == EdgeSide.top;
     final name = _sideLabel(side);
     checks.add(TechCheck(
@@ -995,14 +943,6 @@ String _sideLabel(EdgeSide side) => switch (side) {
       EdgeSide.right => 'право',
       EdgeSide.top => 'верх',
       EdgeSide.left => 'лево',
-    };
-
-/// Сторона окна в терминах геометрии.
-WindowSide _windowSide(EdgeSide side) => switch (side) {
-      EdgeSide.bottom => WindowSide.bottom,
-      EdgeSide.right => WindowSide.right,
-      EdgeSide.top => WindowSide.top,
-      EdgeSide.left => WindowSide.left,
     };
 
 /// Сортировка по важности: ошибки, замечания, справки.

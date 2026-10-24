@@ -1,0 +1,1298 @@
+import 'dart:typed_data';
+import 'dart:ui' show Offset, Rect;
+
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+
+import '../models/document.dart';
+import '../models/fastener_spans.dart';
+import '../models/order_project.dart';
+import '../models/window_geometry.dart';
+import '../models/window_params.dart';
+import '../services/company_branding.dart';
+import '../services/costs_summary.dart';
+import '../services/estimate.dart';
+import 'file_saver.dart';
+
+/// Отчёт для клиента: обложка с заказом и комплектацией + по странице на
+/// каждое окно (чертёж и раскрой материалов).
+///
+/// Структура повторяет привычный клиентский PDF: альбомный A4, слева —
+/// реквизиты заказа и чертёж, справа — комплектация/раскрой/фурнитура.
+/// Печатные (производственные) листы остаются отдельными вкладками.
+class ClientReportBuilder {
+  ClientReportBuilder({
+    required this.project,
+    required this.prices,
+    required this.company,
+    this.info = const ClientReportInfo(),
+    this.fontRegular,
+    this.fontBold,
+  });
+
+  final OrderProject project;
+  final PriceList prices;
+  final CompanyBrandingState company;
+
+  /// Данные заказчика (ФИО, телефон, адрес, комментарий, исполнители).
+  final ClientReportInfo info;
+
+  final pw.Font? fontRegular;
+  final pw.Font? fontBold;
+
+  late final pw.Font _font;
+  late final pw.Font _bold;
+  late final pw.Font _serif;
+  late final pw.Font _serifBold;
+
+  static const PdfColor ink = PdfColor.fromInt(0xFF1B1F27);
+  static const PdfColor dim = PdfColor.fromInt(0xFF5B6B80);
+  static const PdfColor accent = PdfColor.fromInt(0xFF0B7BC4);
+  static const PdfColor bandBrown = PdfColor.fromInt(0xFF6B4A3A);
+  static const PdfColor filmBlue = PdfColor.fromInt(0xFFDCEBFA);
+  static const PdfColor hardware = PdfColor.fromInt(0xFF4C5666);
+  static const PdfColor metal = PdfColor.fromInt(0xFF5A6675);
+  static const PdfColor bandBrownDark = PdfColor.fromInt(0xFF4A3227);
+  static const PdfColor filmGrey = PdfColor.fromInt(0xFFE6E9ED);
+  static const PdfColor cardBg = PdfColor.fromInt(0xFFF5F8FC);
+  static const PdfColor cardBorder = PdfColor.fromInt(0xFFD7E0EC);
+  static const PdfColor accentLight = PdfColor.fromInt(0xFFE8F1FC);
+
+  // Премиальная палитра обложки: тёплый фон, графит и золото.
+  static const PdfColor ivory = PdfColor.fromInt(0xFFFAF7F1);
+  static const PdfColor charcoal = PdfColor.fromInt(0xFF121A24);
+  static const PdfColor gold = PdfColor.fromInt(0xFFB9975B);
+  static const PdfColor warmDim = PdfColor.fromInt(0xFF8B8378);
+  static const PdfColor warmLine = PdfColor.fromInt(0xFFE3D9C9);
+
+  /// Собирает PDF отчёта.
+  Future<Uint8List> build() async {
+    final regular =
+        fontRegular ?? pw.Font.ttf(await rootBundle.load('assets/fonts/PTSans-Regular.ttf'));
+    final bold =
+        fontBold ?? pw.Font.ttf(await rootBundle.load('assets/fonts/PTSans-Bold.ttf'));
+    pw.Font serif = regular;
+    pw.Font serifBold = bold;
+    try {
+      serif = pw.Font.ttf(await rootBundle.load('assets/fonts/PTSerif-Regular.ttf'));
+      serifBold =
+          pw.Font.ttf(await rootBundle.load('assets/fonts/PTSerif-Bold.ttf'));
+    } catch (_) {
+      // Если серифного шрифта нет — заголовки останутся PT Sans.
+    }
+    _font = regular;
+    _bold = bold;
+    _serif = serif;
+    _serifBold = serifBold;
+    final theme = pw.ThemeData.withFont(base: regular, bold: bold);
+    final document = pw.Document(
+      title: 'Отчёт клиенту $_orderNumber',
+      author: company.details.displayName,
+    );
+
+    final format = PdfPageFormat.a4.landscape;
+    document.addPage(
+      pw.Page(
+        pageFormat: format,
+        theme: theme,
+        build: (context) => _coverPage(),
+      ),
+    );
+
+    final windows = project.windows;
+    for (var index = 0; index < windows.length; index++) {
+      final spec = WindowSpec.of(windows[index]);
+      document.addPage(
+        pw.Page(
+          pageFormat: format,
+          theme: theme,
+          build: (context) => _windowPage(spec, index, windows.length, context),
+        ),
+      );
+    }
+    return document.save();
+  }
+
+  String get _orderNumber {
+    final number = project.selected.drawingNumber.trim();
+    return number.isEmpty ? 'б/н' : number;
+  }
+
+  String get _clientName {
+    if (info.name.trim().isNotEmpty) return info.name.trim();
+    final customer = project.selected.customer.trim();
+    if (customer.isEmpty) return '—';
+    // Телефон в строке заказчика убираем из ФИО.
+    return customer
+        .replaceAll(RegExp(r'[+\d][\d\s()\-]{6,}'), '')
+        .trim()
+        .replaceAll(RegExp(r'[,;]+$'), '');
+  }
+
+  String get _clientPhone {
+    if (info.phone.trim().isNotEmpty) return info.phone.trim();
+    final customer = project.selected.customer;
+    final match = RegExp(r'[+\d][\d\s()\-]{6,}').firstMatch(customer);
+    return match?.group(0)?.trim() ?? '—';
+  }
+
+  String get _clientComment => info.comment.trim().isNotEmpty
+      ? info.comment.trim()
+      : project.selected.projectName;
+
+  String _windowsWord(int count) {
+    final mod10 = count % 10;
+    final mod100 = count % 100;
+    if (mod10 == 1 && mod100 != 11) return 'окно';
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+      return 'окна';
+    }
+    return 'окон';
+  }
+
+  String get _date {
+    final now = DateTime.now();
+    return '${now.day.toString().padLeft(2, '0')}.'
+        '${now.month.toString().padLeft(2, '0')}.${now.year}';
+  }
+
+  // ------------------------------------------------------------- обложка
+
+  pw.Widget _coverPage() {
+    final summary = CostsSummary(project);
+    final estimate = Estimate.of(project, prices);
+    final details = company.details;
+
+    return pw.Stack(
+      children: [
+        pw.Positioned.fill(
+          child: pw.Container(color: ivory),
+        ),
+        // Тёмная «книжная» панель справа.
+        pw.Positioned(
+          top: 0,
+          bottom: 0,
+          right: 0,
+          child: pw.SizedBox(
+            width: 300,
+            child: pw.Container(color: charcoal),
+          ),
+        ),
+        pw.Positioned.fill(
+          child: pw.Padding(
+            padding: const pw.EdgeInsets.fromLTRB(46, 30, 350, 22),
+            child: _premiumLeftColumn(summary, details),
+          ),
+        ),
+        pw.Positioned(
+          top: 0,
+          bottom: 0,
+          right: 0,
+          child: pw.SizedBox(
+            width: 300,
+            child: pw.Padding(
+              padding: const pw.EdgeInsets.fromLTRB(24, 34, 24, 22),
+              child: _premiumPackage(summary, estimate),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _premiumLeftColumn(CostsSummary summary, CompanyDetails details) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        _premiumHeader(details),
+        pw.SizedBox(height: 18),
+        pw.Container(height: 0.9, color: gold),
+        pw.SizedBox(height: 26),
+        // Заголовок заказа.
+        pw.Text(
+          'КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ',
+          style: pw.TextStyle(
+            font: _font,
+            fontSize: 8.5,
+            letterSpacing: 3.2,
+            color: gold,
+          ),
+        ),
+        pw.SizedBox(height: 10),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Text(
+              'Заказ ',
+              style: pw.TextStyle(
+                font: _serif,
+                fontSize: 30,
+                color: ink,
+              ),
+            ),
+            pw.Text(
+              '№ $_orderNumber',
+              style: pw.TextStyle(
+                font: _serifBold,
+                fontSize: 30,
+                color: ink,
+              ),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 6),
+        pw.Row(
+          children: [
+            pw.Text('от $_date', style: _s(9.5, color: warmDim)),
+            pw.SizedBox(width: 14),
+            pw.Container(width: 22, height: 0.8, color: warmLine),
+            pw.SizedBox(width: 14),
+            pw.Text(
+              '${project.windowCount} ${_windowsWord(project.windowCount)}',
+              style: _s(9.5, color: warmDim),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 24),
+        _softDivider(),
+        pw.SizedBox(height: 16),
+        _label('ЗАКАЗЧИК'),
+        pw.SizedBox(height: 8),
+        pw.Text(
+          _clientName.isEmpty ? '—' : _clientName,
+          style: pw.TextStyle(font: _serifBold, fontSize: 19, color: ink),
+        ),
+        pw.SizedBox(height: 6),
+        _contactLine(_clientPhone),
+        _contactLine(
+          info.address.trim().isEmpty
+              ? 'Адрес доставки не указан'
+              : info.address.trim(),
+        ),
+        if (_clientComment.isNotEmpty)
+          _contactLine(_clientComment),
+        pw.SizedBox(height: 14),
+        _softDivider(),
+        pw.SizedBox(height: 12),
+        pw.Row(
+          children: [
+            _executor('МЕНЕДЖЕР', info.manager.trim().isEmpty
+                ? (details.signer.trim().isEmpty ? '—' : details.signer)
+                : info.manager),
+            _executor('ЗАМЕРЩИК', info.surveyor),
+            _executor('МОНТАЖНИК', info.installer),
+          ],
+        ),
+        pw.Spacer(),
+        pw.Container(height: 0.7, color: warmLine),
+        pw.SizedBox(height: 8),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  details.displayName,
+                  style: _s(9.5, bold: true, color: ink),
+                ),
+                if (details.inn.trim().isNotEmpty)
+                  pw.Text(
+                    'ИНН ${details.inn.trim()}'
+                    '${details.ogrn.trim().isEmpty ? '' : ' · ОГРН ${details.ogrn.trim()}'}',
+                    style: _s(8.5, color: warmDim),
+                  ),
+                if (details.address.trim().isNotEmpty)
+                  pw.Text(
+                    details.address.trim(),
+                    style: _s(8.5, color: warmDim),
+                  ),
+              ],
+            ),
+            pw.Spacer(),
+            pw.Text(
+              'Площадь изделий  ${_m2(summary.productAreaM2)} м²',
+              style: _s(9, color: warmDim),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _premiumHeader(CompanyDetails details) {
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        if (company.logo != null) ...[
+          pw.Container(
+            height: 54,
+            constraints: const pw.BoxConstraints(maxWidth: 140),
+            child: pw.Image(pw.MemoryImage(company.logo!), fit: pw.BoxFit.contain),
+          ),
+          pw.SizedBox(width: 16),
+        ],
+        pw.Expanded(
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                details.displayName,
+                maxLines: 2,
+                style: pw.TextStyle(font: _serifBold, fontSize: 19, color: ink),
+              ),
+              pw.SizedBox(height: 3),
+              pw.Text(
+                'мягкие окна · производство и монтаж',
+                style: pw.TextStyle(
+                  font: _font,
+                  fontSize: 7.5,
+                  letterSpacing: 1.4,
+                  color: warmDim,
+                ),
+              ),
+            ],
+          ),
+        ),
+        pw.SizedBox(width: 14),
+        pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Text(
+              details.phone.trim().isEmpty ? '—' : details.phone.trim(),
+              style: pw.TextStyle(font: _serifBold, fontSize: 15, color: ink),
+            ),
+            pw.SizedBox(height: 3),
+            pw.Text(
+              'звонок по России бесплатный',
+              style: _s(7.5, color: warmDim),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _premiumPackage(CostsSummary summary, Estimate estimate) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Text(
+          'КОМПЛЕКТАЦИЯ',
+          style: pw.TextStyle(
+            font: _font,
+            fontSize: 8.5,
+            letterSpacing: 3,
+            color: gold,
+          ),
+        ),
+        pw.SizedBox(height: 10),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Text(
+              _m2(summary.productAreaM2),
+              style: pw.TextStyle(
+                font: _serifBold,
+                fontSize: 34,
+                color: PdfColors.white,
+              ),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 6, left: 6),
+              child: pw.Text(
+                'м²',
+                style: pw.TextStyle(font: _font, fontSize: 11, color: gold),
+              ),
+            ),
+            pw.Spacer(),
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 8),
+              child: pw.Text(
+                'общая площадь',
+                style: pw.TextStyle(
+                  font: _font,
+                  fontSize: 7.5,
+                  letterSpacing: 1,
+                  color: PdfColor.fromInt(0xFF8E9AAA),
+                ),
+              ),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 12),
+        _darkDivider(),
+        pw.SizedBox(height: 12),
+        _darkLabel('МАТЕРИАЛЫ'),
+        for (final entry in summary.filmAreaByMaterialWithShrinkage.entries)
+          if (entry.value > 0)
+            _darkRow(entry.key.label, '${_m2(entry.value)} м²'),
+        pw.SizedBox(height: 10),
+        _darkLabel('ФУРНИТУРА'),
+        for (final entry in summary.eyeletsByType.entries)
+          if (entry.value > 0)
+            _darkRow(entry.key.displayLabel, '${entry.value} шт.'),
+        for (final entry in summary.fastenerCount.entries)
+          if (entry.value > 0)
+            _darkRow(entry.key.itemTitle, '${entry.value} шт.'),
+        if (summary.zipperBandLengthMm > 0)
+          _darkRow('Молния', '${_meters(summary.zipperBandLengthMm)} пог.м'),
+        if (summary.screenHemLengthMm > 0)
+          _darkRow(
+            'Подворот скрина',
+            '${_meters(summary.screenHemLengthMm)} пог.м',
+          ),
+        pw.Spacer(),
+        _darkDivider(),
+        pw.SizedBox(height: 12),
+        pw.Text(
+          'ИТОГО ПО ЗАКАЗУ',
+          style: pw.TextStyle(
+            font: _font,
+            fontSize: 8,
+            letterSpacing: 2.4,
+            color: gold,
+          ),
+        ),
+        pw.SizedBox(height: 4),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Text(
+              _rub(estimate.total).replaceAll('₽', '').trim(),
+              style: pw.TextStyle(
+                font: _serifBold,
+                fontSize: 27,
+                color: PdfColors.white,
+              ),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 4, left: 5),
+              child: pw.Text(
+                '₽',
+                style: pw.TextStyle(font: _font, fontSize: 14, color: gold),
+              ),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 8),
+        pw.Text(
+          'Стоимость актуальна в течение 3-х календарных дней '
+          'с даты расчёта.',
+          style: pw.TextStyle(
+            font: _font,
+            fontSize: 7.5,
+            height: 1.35,
+            color: const PdfColor.fromInt(0xFF8E9AAA),
+          ),
+        ),
+      ],
+    );
+  }
+
+  pw.TextStyle _s(
+    double size, {
+    bool bold = false,
+    PdfColor? color,
+  }) =>
+      pw.TextStyle(
+        font: bold ? _bold : _font,
+        fontSize: size,
+        color: color,
+      );
+
+  pw.Widget _section(String text) => pw.Padding(
+    padding: const pw.EdgeInsets.only(bottom: 5),
+    child: pw.Text(
+      text,
+      style: pw.TextStyle(
+        font: _bold,
+        fontSize: 11,
+        color: ink,
+      ),
+    ),
+  );
+
+  pw.Widget _bullet(String text) => pw.Padding(
+    padding: const pw.EdgeInsets.only(left: 10, bottom: 4),
+    child: pw.Text(text, style: _s(9, color: dim)),
+  );
+
+  pw.Widget _darkLabel(String text) => pw.Padding(
+    padding: const pw.EdgeInsets.only(bottom: 6),
+    child: pw.Text(
+      text,
+      style: pw.TextStyle(
+        font: _font,
+        fontSize: 7.5,
+        letterSpacing: 2,
+        color: gold,
+      ),
+    ),
+  );
+
+  pw.Widget _darkRow(String label, String value) => pw.Padding(
+    padding: const pw.EdgeInsets.only(bottom: 5),
+    child: pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Expanded(
+          child: pw.Text(
+            label,
+            style: pw.TextStyle(
+              font: _font,
+              fontSize: 9,
+              color: const PdfColor.fromInt(0xFFD5DBE3),
+            ),
+          ),
+        ),
+        pw.SizedBox(width: 8),
+        pw.Text(
+          value,
+          style: pw.TextStyle(
+            font: _font,
+            fontSize: 9,
+            color: PdfColors.white,
+          ),
+        ),
+      ],
+    ),
+  );
+
+  pw.Widget _darkDivider() => pw.Container(
+    height: 0.5,
+    color: const PdfColor.fromInt(0x33FFFFFF),
+  );
+
+  pw.Widget _softDivider() => pw.Container(height: 0.6, color: warmLine);
+
+  pw.Widget _label(String text) => pw.Text(
+    text,
+    style: pw.TextStyle(
+      font: _font,
+      fontSize: 7.5,
+      letterSpacing: 2.6,
+      color: gold,
+    ),
+  );
+
+  pw.Widget _executor(String label, String value) {
+    return pw.Expanded(
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              font: _font,
+              fontSize: 6.8,
+              letterSpacing: 1.8,
+              color: warmDim,
+            ),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            value.trim().isEmpty ? '—' : value.trim(),
+            style: pw.TextStyle(font: _font, fontSize: 9.5, color: ink),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Строка контакта с маленьким золотым маркером (без иконок: только
+  /// типографский акцент — так выглядит дороже).
+  pw.Widget _contactLine(String text) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 4),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Container(
+            width: 14,
+            height: 0.7,
+            margin: const pw.EdgeInsets.only(top: 6),
+            color: gold,
+          ),
+          pw.SizedBox(width: 8),
+          pw.Expanded(
+            child: pw.Text(
+              text,
+              style: pw.TextStyle(
+                font: _font,
+                fontSize: 9.5,
+                height: 1.3,
+                color: const PdfColor.fromInt(0xFF4B5360),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --------------------------------------------------------- лист окна
+
+  pw.Widget _windowPage(
+    WindowSpec spec,
+    int index,
+    int total,
+    pw.Context context,
+  ) {
+    final pdfFont = _font.getFont(context);
+    final drawing = pw.CustomPaint(
+      size: const PdfPoint(600, 448),
+      painter: (canvas, size) => _paintWindow(canvas, size, spec, pdfFont),
+    );
+    return pw.Padding(
+      padding: const pw.EdgeInsets.fromLTRB(34, 22, 34, 14),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('Окно №${index + 1} из $total', style: _s(17, bold: true)),
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    'Заказ $_orderNumber'
+                    '${_clientName.isEmpty ? '' : ' · $_clientName'}',
+                    style: _s(10, color: dim),
+                  ),
+                ],
+              ),
+              pw.Spacer(),
+              pw.Text('Раскрой материалов', style: _s(14, bold: true)),
+            ],
+          ),
+          pw.SizedBox(height: 8),
+          pw.Container(height: 1.2, color: cardBorder),
+          pw.SizedBox(height: 10),
+          pw.Expanded(
+            child: pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+              children: [
+                pw.Expanded(
+                  child: pw.Container(
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: cardBorder, width: 0.8),
+                      borderRadius: pw.BorderRadius.circular(6),
+                    ),
+                    child: pw.Stack(
+                      children: [
+                        pw.Center(child: drawing),
+                        pw.Positioned(
+                          left: 10,
+                          bottom: 8,
+                          child: pw.Text(
+                            '${spec.params.projectName} · '
+                            '${spec.params.material.label} · '
+                            '${_m2(spec.productAreaM2)} м²',
+                            style: _s(8.5, color: dim),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                pw.SizedBox(width: 14),
+                pw.SizedBox(width: 286, child: _cutColumn(spec)),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          _pageFooter(index + 2, total + 1),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _pageFooter(int page, int pages) => pw.Row(
+    children: [
+      pw.Text(
+        'Отчёт создан в программе «Мягкие окна» · '
+        '${company.details.displayName}',
+        style: _s(8, color: dim),
+      ),
+      pw.Spacer(),
+      pw.Text('$page / $pages', style: _s(8, color: dim)),
+    ],
+  );
+
+  // ------------------------------------------------------------- чертёж
+
+  void _paintWindow(
+    PdfGraphics canvas,
+    PdfPoint size,
+    WindowSpec spec,
+    PdfFont font,
+  ) {
+    final geometry = spec.geometry;
+    final bounds = _boundsOf(geometry.corners);
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+
+    const padX = 58.0;
+    const padY = 56.0;
+    final k = _min(
+      (size.x - padX * 2) / bounds.width,
+      (size.y - padY * 2) / bounds.height,
+    );
+    PdfPoint map(Offset point) => PdfPoint(
+      padX + (point.dx - bounds.left) * k,
+      padY + (point.dy - bounds.top) * k,
+    );
+
+    final parts = spec.layers.partPolygons;
+    final inners = spec.layers.edgeInnerPolygons;
+    final secondMaterial = spec.isComposite
+        ? spec.params.composite.material
+        : spec.params.material;
+    for (var index = 0; index < parts.length; index++) {
+      final part = parts[index];
+      final material = index == 1 ? secondMaterial : spec.params.material;
+      final isScreen = material == FilmMaterial.screen;
+      if (isScreen) {
+        _fillPolygon(canvas, part.map(map).toList(), filmGrey);
+        canvas
+          ..setStrokeColor(metal)
+          ..setLineWidth(0.8);
+        _strokePolygon(canvas, part.map(map).toList());
+        continue;
+      }
+      _fillPolygon(canvas, part.map(map).toList(), bandBrown);
+      final inner = index < inners.length ? inners[index] : part;
+      _fillPolygon(canvas, inner.map(map).toList(), filmBlue);
+      canvas
+        ..setStrokeColor(bandBrownDark)
+        ..setLineWidth(0.7);
+      _strokePolygon(canvas, part.map(map).toList());
+      canvas
+        ..setStrokeColor(const PdfColor.fromInt(0xFF9FB4CA))
+        ..setLineWidth(0.4);
+      _strokePolygon(canvas, inner.map(map).toList());
+      canvas
+        ..setStrokeColor(const PdfColor.fromInt(0xFFE8D9CF))
+        ..setLineWidth(0.4)
+        ..setLineDashPattern([2, 2], 0);
+      _strokePolygon(
+        canvas,
+        inner.map((point) => map(point + const Offset(0, 12))).toList(),
+      );
+      canvas.setLineDashPattern([], 0);
+    }
+
+    for (final cutout in spec.layers.cutouts) {
+      final rect = _mapRect(cutout.bounds, map);
+      canvas
+        ..setFillColor(PdfColors.white)
+        ..setStrokeColor(metal)
+        ..setLineWidth(0.8);
+      if (cutout.isCircle) {
+        canvas
+          ..drawEllipse(
+            rect.left + rect.width / 2,
+            rect.top + rect.height / 2,
+            rect.width / 2,
+            rect.height / 2,
+          )
+          ..fillPath()
+          ..strokePath();
+      } else {
+        canvas
+          ..drawRect(rect.left, rect.top, rect.width, rect.height)
+          ..fillPath()
+          ..strokePath();
+      }
+    }
+
+    for (final band in spec.layers.zipperBands) {
+      final rect = _mapRect(band, map);
+      canvas
+        ..setFillColor(bandBrown)
+        ..setStrokeColor(bandBrownDark)
+        ..setLineWidth(0.5)
+        ..drawRect(rect.left, rect.top, rect.width, rect.height)
+        ..fillPath()
+        ..strokePath();
+      final cx = rect.left + rect.width / 2;
+      canvas
+        ..setStrokeColor(const PdfColor.fromInt(0xFF2C2119))
+        ..setLineWidth(1)
+        ..setLineDashPattern([2, 1.6], 0)
+        ..moveTo(cx, rect.top)
+        ..lineTo(cx, rect.top + rect.height)
+        ..strokePath()
+        ..setLineDashPattern([], 0)
+        ..setFillColor(const PdfColor.fromInt(0xFFE4B23C))
+        ..drawRect(cx - 1.6, rect.top + rect.height * 0.45, 3.2, 6)
+        ..fillPath();
+    }
+
+    for (final strap in spec.layers.liftStraps) {
+      final rect = _mapRect(strap, map);
+      canvas
+        ..setFillColor(const PdfColor.fromInt(0xFFD9E0E8))
+        ..setStrokeColor(metal)
+        ..setLineWidth(0.6)
+        ..drawRect(rect.left, rect.top, rect.width, rect.height)
+        ..fillPath()
+        ..strokePath();
+      canvas
+        ..setStrokeColor(const PdfColor.fromInt(0xFF8B97A6))
+        ..setLineWidth(0.5)
+        ..moveTo(rect.left + 1, rect.top + rect.height - 4)
+        ..lineTo(rect.left + rect.width - 1, rect.top + rect.height - 4)
+        ..strokePath();
+    }
+
+    for (final side in [WindowSide.bottom, WindowSide.top]) {
+      final band = spec.layers.pocketBand(side);
+      if (band.length < 3) continue;
+      _fillPolygon(
+        canvas,
+        band.map(map).toList(),
+        const PdfColor.fromInt(0xFFC9D3DF),
+      );
+      canvas
+        ..setStrokeColor(const PdfColor.fromInt(0xFF7C8798))
+        ..setLineWidth(0.7);
+      _strokePolygon(canvas, band.map(map).toList());
+    }
+
+    for (final eyelet in spec.layers.eyelets) {
+      final center = map(eyelet.center);
+      final round = spec.layers.typeFor(eyelet).isRound;
+      canvas
+        ..setFillColor(PdfColors.white)
+        ..setStrokeColor(const PdfColor.fromInt(0xFF6F7C8C))
+        ..setLineWidth(0.8);
+      if (round) {
+        canvas.drawEllipse(center.x, center.y, 2.6, 2.6);
+      } else {
+        canvas.drawEllipse(center.x, center.y, 3.1, 2.0);
+      }
+      canvas
+        ..fillPath()
+        ..strokePath();
+    }
+
+    final autoType = spec.params.fastenerType;
+    if (autoType != FastenerType.eyeletsOnly) {
+      for (final eyelet in spec.layers.movableSideEyelets) {
+        _drawFastener(canvas, map(eyelet.center), autoType);
+      }
+    }
+    for (final fastener in spec.layers.manualFasteners) {
+      _drawFastener(canvas, map(fastener.center), fastener.type);
+    }
+
+    _dimension(
+      canvas,
+      map(Offset(bounds.left, bounds.bottom)),
+      map(Offset(bounds.right, bounds.bottom)),
+      const PdfPoint(0, 30),
+      _cm(geometry.spanX),
+      font,
+    );
+    _dimension(
+      canvas,
+      map(Offset(bounds.left, bounds.top)),
+      map(Offset(bounds.right, bounds.top)),
+      const PdfPoint(0, -30),
+      _cm(geometry.spanX),
+      font,
+    );
+    _dimension(
+      canvas,
+      map(Offset(bounds.left, bounds.top)),
+      map(Offset(bounds.left, bounds.bottom)),
+      const PdfPoint(-30, 0),
+      _cm(geometry.overallHeight),
+      font,
+    );
+    _dimension(
+      canvas,
+      map(Offset(bounds.right, bounds.top)),
+      map(Offset(bounds.right, bounds.bottom)),
+      const PdfPoint(30, 0),
+      _cm(geometry.overallHeight),
+      font,
+    );
+
+    for (final label in fastenerChainLabels(spec)) {
+      if (label.side == null) continue;
+      final point = map(label.pointMm);
+      if (label.text == '0') continue;
+      // Числа шага ставим снаружи, между кромкой и габаритным размером.
+      final offset = switch (label.side!) {
+        WindowSide.bottom => const PdfPoint(0, -12),
+        WindowSide.top => const PdfPoint(0, 12),
+        WindowSide.left => const PdfPoint(-16, 0),
+        WindowSide.right => const PdfPoint(16, 0),
+      };
+      final textWidth = label.text.length * 3.9;
+      canvas.setFillColor(dim);
+      canvas.drawString(
+        font,
+        6.8,
+        label.text,
+        point.x + offset.x + (offset.x < 0 ? -textWidth : 0),
+        point.y + offset.y - 2,
+      );
+    }
+
+  }
+
+  void _drawFastener(
+    PdfGraphics canvas,
+    PdfPoint center,
+    FastenerType type,
+  ) {
+    switch (type) {
+      case FastenerType.frenchLocks:
+        canvas
+          ..setFillColor(const PdfColor.fromInt(0xFFEDEFF2))
+          ..setStrokeColor(metal)
+          ..setLineWidth(0.6)
+          ..drawEllipse(center.x, center.y, 5, 4)
+          ..fillPath()
+          ..strokePath()
+          ..setFillColor(metal)
+          ..drawEllipse(center.x, center.y, 1.6, 1.6)
+          ..fillPath();
+      case FastenerType.turnBuckles:
+        canvas
+          ..setFillColor(const PdfColor.fromInt(0xFFEDEFF2))
+          ..setStrokeColor(metal)
+          ..setLineWidth(0.6)
+          ..drawRect(center.x - 4, center.y - 3, 8, 6)
+          ..fillPath()
+          ..strokePath()
+          ..setStrokeColor(metal)
+          ..drawEllipse(center.x + 4, center.y, 2, 2)
+          ..strokePath();
+      case FastenerType.straps:
+        canvas
+          ..setFillColor(const PdfColor.fromInt(0xFFCFD7E2))
+          ..setStrokeColor(metal)
+          ..setLineWidth(0.5)
+          ..drawRect(center.x - 2, center.y - 7, 4, 14)
+          ..fillPath()
+          ..strokePath();
+      case FastenerType.eyeletsOnly:
+        break;
+    }
+  }
+
+  void _dimension(
+    PdfGraphics canvas,
+    PdfPoint a,
+    PdfPoint b,
+    PdfPoint offset,
+    String text,
+    PdfFont font,
+  ) {
+    final start = PdfPoint(a.x + offset.x, a.y + offset.y);
+    final end = PdfPoint(b.x + offset.x, b.y + offset.y);
+    canvas
+      ..setStrokeColor(const PdfColor.fromInt(0xFF7C8798))
+      ..setLineWidth(0.7)
+      ..moveTo(start.x, start.y)
+      ..lineTo(end.x, end.y)
+      ..strokePath();
+    _arrow(canvas, start, end);
+    _arrow(canvas, end, start);
+
+    final middle = PdfPoint((start.x + end.x) / 2, (start.y + end.y) / 2);
+    final textWidth = text.length * 5.2;
+    final vertical = offset.x.abs() > offset.y.abs();
+    canvas.setFillColor(ink);
+    canvas.drawString(
+      font,
+      11,
+      text,
+      vertical
+          ? (offset.x > 0
+                ? middle.x + 6
+                : middle.x - textWidth - 6)
+          : middle.x - textWidth / 2,
+      vertical
+          ? middle.y - 3
+          : middle.y + (offset.y > 0 ? -14 : 5),
+    );
+  }
+
+  void _arrow(PdfGraphics canvas, PdfPoint from, PdfPoint to) {
+    canvas.setFillColor(const PdfColor.fromInt(0xFF7C8798));
+    final dx = to.x - from.x;
+    final dy = to.y - from.y;
+    final length = _sqrt(dx * dx + dy * dy);
+    if (length < 0.01) return;
+    final ux = dx / length;
+    final uy = dy / length;
+    final tip = from;
+    final bx = tip.x + ux * 5;
+    final by = tip.y + uy * 5;
+    canvas
+      ..moveTo(tip.x, tip.y)
+      ..lineTo(bx - uy * 2, by + ux * 2)
+      ..lineTo(bx + uy * 2, by - ux * 2)
+      ..closePath()
+      ..fillPath();
+  }
+
+  // ------------------------------------------------------- раскрой/фурнитура
+
+  pw.Widget _cutColumn(WindowSpec spec) {
+    final pieces = spec.filmCutPolygonsWithShrinkage;
+    final materials = spec.isComposite
+        ? [spec.params.material, spec.params.composite.material]
+        : [spec.params.material];
+    final rows = <pw.Widget>[];
+
+    for (var index = 0; index < pieces.length; index++) {
+      final polygon = pieces[index];
+      final bounds = _boundsOf(polygon);
+      final material = index < materials.length
+          ? materials[index]
+          : spec.params.material;
+      final widthCm = _cm(bounds.width);
+      final heightCm = _cm(bounds.height);
+      rows.add(
+        pw.Padding(
+          padding: const pw.EdgeInsets.only(bottom: 10),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                '${material.label} (${material.thickness})',
+                style: pw.TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 3),
+              pw.Center(
+                child: pw.Container(
+                  width: 62,
+                  height: 40,
+                  decoration: pw.BoxDecoration(
+                    color: filmBlue,
+                    border: pw.Border.all(color: accent, width: 0.6),
+                  ),
+                  alignment: pw.Alignment.center,
+                  child: pw.Text(
+                    '$widthCm × $heightCm',
+                    style: const pw.TextStyle(fontSize: 8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Окантовка по рулонам: полосы с длиной.
+    final edges = spec.edgeConsumption.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    if (edges.isNotEmpty) {
+      rows.add(_section('Окантовка:'));
+      for (final entry in edges) {
+        rows.add(
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(left: 4, bottom: 4),
+            child: pw.Row(
+              children: [
+                pw.Container(
+                  width: 64,
+                  height: 8,
+                  color: bandBrown,
+                ),
+                pw.SizedBox(width: 8),
+                pw.Text(
+                  '${_trim(entry.key / 10)} см × ${_meters(entry.value)} м',
+                  style: const pw.TextStyle(fontSize: 8.5),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+
+    // Фурнитура окна.
+    final eyelets = <String, int>{};
+    for (final eyelet in spec.layers.eyelets) {
+      final type = spec.layers.typeFor(eyelet);
+      eyelets[type.displayLabel] = (eyelets[type.displayLabel] ?? 0) + 1;
+    }
+    rows.add(_section('Фурнитура:'));
+    for (final entry in eyelets.entries) {
+      rows.add(_bullet('${entry.key} = ${entry.value} шт.'));
+    }
+    final manual = <String, int>{};
+    for (final fastener in spec.layers.manualFasteners) {
+      manual[fastener.type.itemTitle] = (manual[fastener.type.itemTitle] ?? 0) + 1;
+    }
+    if (spec.params.fastenerType != FastenerType.eyeletsOnly) {
+      final movable = spec.layers.movableSideEyelets.length;
+      if (movable > 0) {
+        final title = spec.params.fastenerType.itemTitle;
+        manual[title] = (manual[title] ?? 0) + movable;
+      }
+    }
+    for (final entry in manual.entries) {
+      rows.add(_bullet('${entry.key} = ${entry.value} шт.'));
+    }
+    if (spec.layers.zipperBands.isNotEmpty) {
+      rows.add(
+        _bullet(
+          'Молния = ${_meters(spec.layers.zipperBands.length * spec.layers.filmVisibleBounds.height)} пог.м',
+        ),
+      );
+    }
+    if (spec.layers.liftStraps.isNotEmpty) {
+      rows.add(
+        _bullet('Подъёмный ремень = ${spec.layers.liftStraps.length} шт.'),
+      );
+    }
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: rows,
+    );
+  }
+
+  // ------------------------------------------------------------ служебное
+
+  static double _min(double a, double b) => a < b ? a : b;
+
+  static double _sqrt(double value) {
+    // Небольшая собственная реализация, чтобы не тянуть dart:math в PDF-слой.
+    var x = value;
+    if (x <= 0) return 0;
+    for (var i = 0; i < 24; i++) {
+      x = (x + value / x) / 2;
+    }
+    return x;
+  }
+
+  static Rect _boundsOf(List<Offset> points) {
+    var left = double.infinity;
+    var right = double.negativeInfinity;
+    var top = double.infinity;
+    var bottom = double.negativeInfinity;
+    for (final point in points) {
+      if (point.dx < left) left = point.dx;
+      if (point.dx > right) right = point.dx;
+      if (point.dy < top) top = point.dy;
+      if (point.dy > bottom) bottom = point.dy;
+    }
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
+  static PdfRect _mapRect(Rect rect, PdfPoint Function(Offset) map) {
+    final a = map(Offset(rect.left, rect.top));
+    final b = map(Offset(rect.right, rect.bottom));
+    return PdfRect(
+      a.x < b.x ? a.x : b.x,
+      a.y < b.y ? a.y : b.y,
+      (b.x - a.x).abs(),
+      (b.y - a.y).abs(),
+    );
+  }
+
+  static void _fillPolygon(PdfGraphics canvas, List<PdfPoint> points, PdfColor color) {
+    if (points.length < 3) return;
+    canvas
+      ..setFillColor(color)
+      ..moveTo(points.first.x, points.first.y);
+    for (final point in points.skip(1)) {
+      canvas.lineTo(point.x, point.y);
+    }
+    canvas
+      ..closePath()
+      ..fillPath();
+  }
+
+  static void _strokePolygon(PdfGraphics canvas, List<PdfPoint> points) {
+    if (points.length < 2) return;
+    canvas.moveTo(points.first.x, points.first.y);
+    for (final point in points.skip(1)) {
+      canvas.lineTo(point.x, point.y);
+    }
+    canvas
+      ..closePath()
+      ..strokePath();
+  }
+
+  String _cm(double mm) => _trim(mm / 10);
+
+  String _trim(double value) {
+    final rounded = (value * 10).round() / 10;
+    final text = rounded.toStringAsFixed(1);
+    return text.endsWith('.0') ? text.substring(0, text.length - 2) : text;
+  }
+
+  String _m2(double value) => value.toStringAsFixed(2).replaceAll('.', ',');
+
+  String _meters(double mm) => (mm / 1000).toStringAsFixed(2).replaceAll('.', ',');
+
+  String _rub(double value) => formatRubles(value);
+}
+
+/// Простой прямоугольник в координатах листа.
+class PdfRect {
+  const PdfRect(this.left, this.top, this.width, this.height);
+
+  final double left;
+  final double top;
+  final double width;
+  final double height;
+}
+
+/// Собирает отчёт и сохраняет его файлом (десктоп — папка, браузер — скачивание).
+Future<SavedFile> saveClientReport({
+  required OrderProject project,
+  required PriceList prices,
+  required CompanyBrandingState company,
+  ClientReportInfo info = const ClientReportInfo(),
+}) async {
+  final bytes = await ClientReportBuilder(
+    project: project,
+    prices: prices,
+    company: company,
+    info: info,
+  ).build();
+  final number = project.selected.drawingNumber.trim();
+  final name = 'Отчёт клиенту${number.isEmpty ? '' : ' $number'}.pdf';
+  return saveBytes(bytes, name);
+}
+
+
+/// Данные заказчика для клиентского отчёта: заполняются в диалоге перед
+/// сохранением и подставляются на обложку.
+class ClientReportInfo {
+  const ClientReportInfo({
+    this.name = '',
+    this.phone = '',
+    this.address = '',
+    this.comment = '',
+    this.manager = '',
+    this.surveyor = 'Замер клиента',
+    this.installer = 'Без установки',
+  });
+
+  final String name;
+  final String phone;
+  final String address;
+  final String comment;
+  final String manager;
+  final String surveyor;
+  final String installer;
+}
