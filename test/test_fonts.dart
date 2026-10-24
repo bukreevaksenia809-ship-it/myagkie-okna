@@ -9,6 +9,10 @@ const _fontCandidates = [
   '/System/Library/Fonts/Supplemental/Arial.ttf',
   '/Library/Fonts/Arial Unicode.ttf',
   '/System/Library/Fonts/Supplemental/Verdana.ttf',
+  // Linux/CI: Liberation Sans метрически совместим с Arial — иначе
+  // подписи в таблицах ужимаются и тесты типографики «плывут».
+  '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+  '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
 ];
 
 /// Семейство, под которым регистрируется системный шрифт в тестах.
