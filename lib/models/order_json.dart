@@ -68,6 +68,7 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'projectName': p.projectName,
       'customer': p.customer,
       'drawingNumber': p.drawingNumber,
+      'screenColor': p.screenColor,
       'windowType': p.windowType.name,
       'material': p.material.name,
       'bottomWidth': p.bottomWidth,
@@ -168,6 +169,7 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     projectName: _string(json['projectName'], fallback.projectName),
     customer: _string(json['customer'], fallback.customer),
     drawingNumber: _string(json['drawingNumber'], fallback.drawingNumber),
+    screenColor: _string(json['screenColor'], fallback.screenColor),
     windowType:
         _enumByName(WindowType.values, json['windowType'], fallback.windowType),
     material:

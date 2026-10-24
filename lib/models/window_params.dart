@@ -900,6 +900,7 @@ class WindowParams {
     this.hemRightMm = defaultScreenHemMm,
     this.hemTopMm = defaultScreenHemMm,
     this.hemLeftMm = defaultScreenHemMm,
+    this.screenColor = '',
     this.eyeletStep = 300,
     this.eyeletCornerOffset = 0,
     this.roundEyeletsEnabled = true,
@@ -930,6 +931,9 @@ class WindowParams {
 
   /// Дополнительная маркировка окна (номер заказа, примечание).
   final String drawingNumber;
+
+  /// Цвет скрина для клиентского отчёта (например «серый», «белый»).
+  final String screenColor;
 
   /// Тип окна по способу открывания.
   final WindowType windowType;
@@ -1508,6 +1512,7 @@ class WindowParams {
     String? projectName,
     String? customer,
     String? drawingNumber,
+    String? screenColor,
     WindowType? windowType,
     double? bottomWidth,
     double? topWidth,
@@ -1570,6 +1575,7 @@ class WindowParams {
       projectName: projectName ?? this.projectName,
       customer: customer ?? this.customer,
       drawingNumber: drawingNumber ?? this.drawingNumber,
+    screenColor: screenColor ?? this.screenColor,
       windowType: windowType ?? this.windowType,
       bottomWidth: bottomWidth ?? this.bottomWidth,
       topWidth: topWidth ?? this.topWidth,

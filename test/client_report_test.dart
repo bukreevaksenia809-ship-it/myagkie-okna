@@ -8,6 +8,8 @@ import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/client_report_pdf.dart';
 import 'package:soft_window_drawer/services/company_branding.dart';
 
+import 'test_fonts.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -23,6 +25,7 @@ void main() {
   );
 
   test('отчёт клиенту: обложка + страница на каждое окно', () async {
+    await loadRealFonts();
     const project = OrderProject(windows: [window, window]);
     final branding = CompanyBrandingState(
       details: const CompanyDetails(

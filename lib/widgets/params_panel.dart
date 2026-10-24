@@ -1495,6 +1495,20 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
         ] else ...[
           const SizedBox(height: 10),
+          TextFormField(
+            key: const Key('screen-color'),
+            initialValue: params.screenColor,
+            decoration: const InputDecoration(
+              labelText: 'Цвет скрина',
+              hintText: 'например, серый',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            textInputAction: TextInputAction.done,
+            onChanged: (value) =>
+                _updateWindow(params.copyWith(screenColor: value)),
+          ),
+          const SizedBox(height: 8),
           const Text(
             'Скрин — сетчатая ткань для проветривания. Подвороты, шов 3 мм '
             'и крепёж по подвороту задаются ниже.',

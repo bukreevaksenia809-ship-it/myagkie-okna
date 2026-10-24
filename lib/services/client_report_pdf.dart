@@ -1,7 +1,8 @@
 import 'dart:typed_data';
-import 'dart:ui' show Offset, Rect;
+import 'dart:ui' as ui;
+import 'dart:ui' show Offset, Rect, Size;
 
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show FontLoader, rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -13,6 +14,7 @@ import '../models/window_params.dart';
 import '../services/company_branding.dart';
 import '../services/costs_summary.dart';
 import '../services/estimate.dart';
+import '../widgets/window_painter.dart';
 import 'file_saver.dart';
 
 /// Отчёт для клиента: обложка с заказом и комплектацией + по странице на
@@ -46,6 +48,8 @@ class ClientReportBuilder {
   late final pw.Font _serif;
   late final pw.Font _serifBold;
 
+  static bool _drawingFontLoaded = false;
+
   static const PdfColor ink = PdfColor.fromInt(0xFF1B1F27);
   static const PdfColor dim = PdfColor.fromInt(0xFF5B6B80);
   static const PdfColor accent = PdfColor.fromInt(0xFF0B7BC4);
@@ -67,7 +71,18 @@ class ClientReportBuilder {
   static const PdfColor warmLine = PdfColor.fromInt(0xFFE3D9C9);
 
   /// Собирает PDF отчёта.
+  /// Шрифт для производственного чертежа: регистрируем PT Sans, чтобы
+  /// подписи были одинаковыми в приложении и в тестах (не «квадратики»).
+  Future<void> _ensureDrawingFont() async {
+    if (_drawingFontLoaded) return;
+    final loader = FontLoader('ClientReportDrawing')
+      ..addFont(rootBundle.load('assets/fonts/PTSans-Regular.ttf'));
+    await loader.load();
+    _drawingFontLoaded = true;
+  }
+
   Future<Uint8List> build() async {
+    await _ensureDrawingFont();
     final regular =
         fontRegular ?? pw.Font.ttf(await rootBundle.load('assets/fonts/PTSans-Regular.ttf'));
     final bold =
@@ -100,18 +115,39 @@ class ClientReportBuilder {
       ),
     );
 
-    final windows = project.windows;
+    final windows = _reportProject.windows;
+    // Чертёж на клиентском листе — тот же самый, что программа строит для
+    // производства: рендерим производственный painter в картинку и вставляем.
+    final drawings = <Uint8List?>[];
+    for (final window in windows) {
+      drawings.add(await _renderProductionDrawing(WindowSpec.of(window)));
+    }
     for (var index = 0; index < windows.length; index++) {
       final spec = WindowSpec.of(windows[index]);
       document.addPage(
         pw.Page(
-          pageFormat: format,
+          pageFormat: PdfPageFormat.a4,
           theme: theme,
-          build: (context) => _windowPage(spec, index, windows.length, context),
+          build: (context) => _windowPage(
+            spec,
+            index,
+            windows.length,
+            context,
+            drawings[index],
+          ),
         ),
       );
     }
     return document.save();
+  }
+
+  /// Окна отчёта — ровно те, что на главном листе чертежа: в режиме
+  /// «Все окна» весь заказ, в режиме одного окна — выбранное окно.
+  OrderProject get _reportProject {
+    if (project.sheetMode == SheetMode.grid && project.isMultiWindow) {
+      return project;
+    }
+    return project.copyWith(windows: [project.selected], selectedIndex: 0);
   }
 
   String get _orderNumber {
@@ -137,6 +173,22 @@ class ClientReportBuilder {
     return match?.group(0)?.trim() ?? '—';
   }
 
+  String get _screenColor {
+    for (final window in project.windows) {
+      if (window.isScreen && window.screenColor.trim().isNotEmpty) {
+        return window.screenColor.trim();
+      }
+    }
+    return '';
+  }
+
+  String _materialLabel(FilmMaterial material) {
+    if (material == FilmMaterial.screen && _screenColor.isNotEmpty) {
+      return 'Скрин, цвет: $_screenColor';
+    }
+    return material.label;
+  }
+
   String get _clientComment => info.comment.trim().isNotEmpty
       ? info.comment.trim()
       : project.selected.projectName;
@@ -160,8 +212,9 @@ class ClientReportBuilder {
   // ------------------------------------------------------------- обложка
 
   pw.Widget _coverPage() {
-    final summary = CostsSummary(project);
-    final estimate = Estimate.of(project, prices);
+    final report = _reportProject;
+    final summary = CostsSummary(report);
+    final estimate = Estimate.of(report, prices);
     final details = company.details;
 
     return pw.Stack(
@@ -249,7 +302,8 @@ class ClientReportBuilder {
             pw.Container(width: 22, height: 0.8, color: warmLine),
             pw.SizedBox(width: 14),
             pw.Text(
-              '${project.windowCount} ${_windowsWord(project.windowCount)}',
+              '${_reportProject.windowCount} '
+              '${_windowsWord(_reportProject.windowCount)} в отчёте',
               style: _s(9.5, color: warmDim),
             ),
           ],
@@ -427,7 +481,9 @@ class ClientReportBuilder {
         _darkLabel('МАТЕРИАЛЫ'),
         for (final entry in summary.filmAreaByMaterialWithShrinkage.entries)
           if (entry.value > 0)
-            _darkRow(entry.key.label, '${_m2(entry.value)} м²'),
+            _darkRow(_materialLabel(entry.key), '${_m2(entry.value)} м²'),
+        if (_screenColor.isNotEmpty)
+          _darkRow('Цвет скрина', _screenColor),
         pw.SizedBox(height: 10),
         _darkLabel('ФУРНИТУРА'),
         for (final entry in summary.eyeletsByType.entries)
@@ -617,21 +673,65 @@ class ClientReportBuilder {
 
   // --------------------------------------------------------- лист окна
 
+  /// Рисует производственный чертёж тем же painter'ом, что и вкладка
+  /// «Чертёж», и отдаёт PNG для вставки в отчёт.
+  Future<Uint8List?> _renderProductionDrawing(WindowSpec spec) async {
+    try {
+      const size = Size(1240, 1754);
+      final layout = DrawingLayout(
+        size: size,
+        geometry: spec.geometry,
+        fitExactly: true,
+      );
+      final recorder = ui.PictureRecorder();
+      final canvas = ui.Canvas(recorder);
+      final painter = WindowDrawingPainter(
+        params: spec.params,
+        layout: layout,
+        layers: spec.layers,
+        options: const DrawingOptions(),
+        labelFontFamily: 'ClientReportDrawing',
+        showScaleBar: false,
+      );
+      painter.paint(canvas, size);
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(
+        size.width.toInt(),
+        size.height.toInt(),
+      );
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      picture.dispose();
+      return data?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Страница окна: производственный чертёж крупно + расход материалов,
+  /// параметры и фурнитура на этом же листе.
   pw.Widget _windowPage(
     WindowSpec spec,
     int index,
     int total,
     pw.Context context,
+    Uint8List? productionDrawing,
   ) {
     final pdfFont = _font.getFont(context);
-    final drawing = pw.CustomPaint(
-      size: const PdfPoint(470, 420),
-      painter: (canvas, size) => _paintWindow(canvas, size, spec, pdfFont),
-    );
+    final drawing = productionDrawing != null
+        ? pw.FittedBox(
+            fit: pw.BoxFit.contain,
+            child: pw.Image(pw.MemoryImage(productionDrawing)),
+          )
+        : pw.CustomPaint(
+            size: const PdfPoint(500, 600),
+            painter: (canvas, size) => _paintWindow(canvas, size, spec, pdfFont),
+          );
+    final page = index + 2;
     return pw.Container(
       color: ivory,
       child: pw.Padding(
-        padding: const pw.EdgeInsets.fromLTRB(34, 20, 34, 14),
+        padding: const pw.EdgeInsets.fromLTRB(26, 18, 26, 12),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
@@ -645,117 +745,78 @@ class ClientReportBuilder {
                       'ЧЕРТЁЖ ДЛЯ КЛИЕНТА',
                       style: pw.TextStyle(
                         font: _font,
-                        fontSize: 7.2,
+                        fontSize: 7,
                         letterSpacing: 2.8,
                         color: gold,
                       ),
                     ),
-                    pw.SizedBox(height: 5),
+                    pw.SizedBox(height: 4),
                     pw.Text(
                       'Окно №${index + 1} из $total',
                       style: pw.TextStyle(
                         font: _serifBold,
-                        fontSize: 23,
+                        fontSize: 21,
                         color: ink,
                       ),
                     ),
-                    pw.SizedBox(height: 2),
+                    pw.SizedBox(height: 1),
                     pw.Text(
                       'Заказ $_orderNumber'
                       '${_clientName.isEmpty ? '' : ' · $_clientName'}',
                       style: pw.TextStyle(
                         font: _font,
-                        fontSize: 9.5,
+                        fontSize: 9,
                         color: warmDim,
                       ),
                     ),
                   ],
                 ),
                 pw.Spacer(),
-                pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.end,
-                  children: [
-                    pw.Text(
-                      'Раскрой',
-                      style: pw.TextStyle(
-                        font: _serif,
-                        fontSize: 17,
-                        color: ink,
-                      ),
-                    ),
-                    pw.SizedBox(height: 2),
-                    pw.Text(
-                      'материалы · фурнитура',
-                      style: pw.TextStyle(
-                        font: _font,
-                        fontSize: 7.5,
-                        letterSpacing: 1.2,
-                        color: warmDim,
-                      ),
-                    ),
-                  ],
+                pw.Text(
+                  '${_cm(spec.geometry.spanX)} × '
+                  '${_cm(spec.geometry.overallHeight)} см',
+                  style: pw.TextStyle(
+                    font: _serif,
+                    fontSize: 14,
+                    color: ink,
+                  ),
                 ),
               ],
             ),
-            pw.SizedBox(height: 9),
+            pw.SizedBox(height: 7),
             pw.Container(height: 0.9, color: gold),
-            pw.SizedBox(height: 11),
+            pw.SizedBox(height: 6),
             pw.Expanded(
+              child: pw.Container(
+                padding: const pw.EdgeInsets.all(5),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.white,
+                  border: pw.Border.all(color: warmLine, width: 0.8),
+                  borderRadius: pw.BorderRadius.circular(4),
+                ),
+                child: pw.Center(child: drawing),
+              ),
+            ),
+            pw.SizedBox(height: 7),
+            pw.SizedBox(
+              height: 174,
               child: pw.Row(
                 crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                 children: [
-                  pw.Expanded(
-                    child: pw.Container(
-                      decoration: pw.BoxDecoration(
-                        color: PdfColors.white,
-                        border: pw.Border.all(color: warmLine, width: 0.8),
-                        borderRadius: pw.BorderRadius.circular(6),
-                      ),
-                      child: pw.Stack(
-                        children: [
-                          pw.Center(child: drawing),
-                          pw.Positioned(
-                            left: 11,
-                            bottom: 8,
-                            child: pw.Text(
-                              'Размеры в сантиметрах · '
-                              '${spec.params.material.label}',
-                              style: pw.TextStyle(
-                                font: _font,
-                                fontSize: 7.2,
-                                color: warmDim,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  pw.SizedBox(width: 13),
-                  pw.SizedBox(
-                    width: 286,
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                      children: [
-                        _paramsCard(spec),
-                        pw.SizedBox(height: 7),
-                        _cutCard(spec),
-                        pw.SizedBox(height: 7),
-                        _hardwareCard(spec),
-                      ],
-                    ),
-                  ),
+                  pw.Expanded(flex: 3, child: _paramsCard(spec)),
+                  pw.SizedBox(width: 7),
+                  pw.Expanded(flex: 4, child: _cutCard(spec)),
+                  pw.SizedBox(width: 7),
+                  pw.Expanded(flex: 3, child: _hardwareCard(spec)),
                 ],
               ),
             ),
-            pw.SizedBox(height: 8),
-            pw.Container(height: 0.6, color: warmLine),
             pw.SizedBox(height: 5),
             pw.Row(
               children: [
                 pw.Text(
-                  'Отчёт создан в программе «Мягкие окна» · '
-                  '${company.details.displayName}',
+                  'Чертёж с производства · '
+                  '${_materialLabel(spec.params.material)}',
                   style: pw.TextStyle(
                     font: _font,
                     fontSize: 7,
@@ -764,7 +825,7 @@ class ClientReportBuilder {
                 ),
                 pw.Spacer(),
                 pw.Text(
-                  '${index + 2} / ${total + 1}',
+                  '$page / ${total + 1}',
                   style: pw.TextStyle(
                     font: _font,
                     fontSize: 7,
@@ -807,9 +868,14 @@ class ClientReportBuilder {
             ),
           ),
           pw.SizedBox(height: 6),
-          _darkSpec('Размер', '${_cm(geometry.spanX)} × ${_cm(geometry.overallHeight)} см'),
+          _darkSpec(
+            'Размер',
+            '${_cm(geometry.spanX)} × ${_cm(geometry.overallHeight)}',
+          ),
           _darkSpec('Площадь', '${_m2(spec.productAreaM2)} м²'),
-          _darkSpec('Материал', spec.params.material.label),
+          _darkSpec('Материал', _materialLabel(spec.params.material)),
+          if (spec.params.isScreen && spec.params.screenColor.trim().isNotEmpty)
+            _darkSpec('Цвет', spec.params.screenColor.trim()),
           _darkSpec('Окантовка', edgeText),
           _darkSpec('Крепёж', spec.params.fastenerType == FastenerType.eyeletsOnly
               ? 'люверсы'
@@ -830,12 +896,12 @@ class ClientReportBuilder {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.SizedBox(
-          width: 74,
+          width: 56,
           child: pw.Text(
             label,
             style: pw.TextStyle(
               font: _font,
-              fontSize: 8,
+              fontSize: 7.6,
               color: const PdfColor.fromInt(0xFF93A0B1),
             ),
           ),
@@ -845,7 +911,7 @@ class ClientReportBuilder {
             value,
             style: pw.TextStyle(
               font: _font,
-              fontSize: 8.5,
+              fontSize: 8,
               color: PdfColors.white,
             ),
           ),
@@ -950,7 +1016,7 @@ class ClientReportBuilder {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
-                  material.label,
+                  _materialLabel(material),
                   style: pw.TextStyle(
                     font: _bold,
                     fontSize: 7.8,
@@ -1029,7 +1095,7 @@ class ClientReportBuilder {
               'Молния',
               '${_meters(spec.layers.zipperBands.length * spec.layers.filmVisibleBounds.height)} пог.м',
             ),
-          _lightSpec('Площадь', '${_m2(spec.productAreaM2)} м²'),
+          // Площадь уже показана в параметрах — не дублируем.
         ],
       ),
     );
@@ -1202,19 +1268,34 @@ class ClientReportBuilder {
 
     for (final eyelet in spec.layers.eyelets) {
       final center = map(eyelet.center);
-      final round = spec.layers.typeFor(eyelet).isRound;
+      final type = spec.layers.typeFor(eyelet);
+      // Как на производственном чертеже: кольцо не мельче 7 pt, иначе
+      // вместо люверса получается точка.
+      final outerW = _max(type.outerWidth * k, 4.6);
+      final outerH = _max(type.outerHeight * k, 4.6);
+      final rx = outerW / 2;
+      final ry = outerH / 2;
+      // Тень.
       canvas
-        ..setFillColor(PdfColors.white)
-        ..setStrokeColor(const PdfColor.fromInt(0xFF6F7C8C))
-        ..setLineWidth(0.8);
-      if (round) {
-        canvas.drawEllipse(center.x, center.y, 2.6, 2.6);
-      } else {
-        canvas.drawEllipse(center.x, center.y, 3.1, 2.0);
-      }
+        ..setFillColor(const PdfColor.fromInt(0x22000000))
+        ..drawEllipse(center.x + 0.7, center.y - 0.7, rx, ry)
+        ..fillPath();
+      // Металлическое кольцо.
       canvas
+        ..setFillColor(const PdfColor.fromInt(0xFFD8DDE4))
+        ..setStrokeColor(const PdfColor.fromInt(0xFF5E6B7B))
+        ..setLineWidth(0.7)
+        ..drawEllipse(center.x, center.y, rx, ry)
         ..fillPath()
         ..strokePath();
+      // Фаска и блеск.
+      canvas
+        ..setFillColor(const PdfColor.fromInt(0xFFF1F4F8))
+        ..drawEllipse(center.x, center.y, rx * 0.68, ry * 0.68)
+        ..fillPath()
+        ..setFillColor(const PdfColor.fromInt(0xFFFFFFFF))
+        ..drawEllipse(center.x, center.y, rx * 0.36, ry * 0.36)
+        ..fillPath();
     }
 
     final autoType = spec.params.fastenerType;
@@ -1390,6 +1471,8 @@ class ClientReportBuilder {
   // ------------------------------------------------------------ служебное
 
   static double _min(double a, double b) => a < b ? a : b;
+
+  static double _max(double a, double b) => a > b ? a : b;
 
   static double _sqrt(double value) {
     // Небольшая собственная реализация, чтобы не тянуть dart:math в PDF-слой.
