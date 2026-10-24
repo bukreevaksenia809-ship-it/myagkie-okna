@@ -502,23 +502,6 @@ class ClientReportBuilder {
         color: color,
       );
 
-  pw.Widget _section(String text) => pw.Padding(
-    padding: const pw.EdgeInsets.only(bottom: 5),
-    child: pw.Text(
-      text,
-      style: pw.TextStyle(
-        font: _bold,
-        fontSize: 11,
-        color: ink,
-      ),
-    ),
-  );
-
-  pw.Widget _bullet(String text) => pw.Padding(
-    padding: const pw.EdgeInsets.only(left: 10, bottom: 4),
-    child: pw.Text(text, style: _s(9, color: dim)),
-  );
-
   pw.Widget _darkLabel(String text) => pw.Padding(
     padding: const pw.EdgeInsets.only(bottom: 6),
     child: pw.Text(
@@ -642,85 +625,436 @@ class ClientReportBuilder {
   ) {
     final pdfFont = _font.getFont(context);
     final drawing = pw.CustomPaint(
-      size: const PdfPoint(600, 448),
+      size: const PdfPoint(470, 420),
       painter: (canvas, size) => _paintWindow(canvas, size, spec, pdfFont),
     );
-    return pw.Padding(
-      padding: const pw.EdgeInsets.fromLTRB(34, 22, 34, 14),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text('Окно №${index + 1} из $total', style: _s(17, bold: true)),
-                  pw.SizedBox(height: 2),
-                  pw.Text(
-                    'Заказ $_orderNumber'
-                    '${_clientName.isEmpty ? '' : ' · $_clientName'}',
-                    style: _s(10, color: dim),
-                  ),
-                ],
-              ),
-              pw.Spacer(),
-              pw.Text('Раскрой материалов', style: _s(14, bold: true)),
-            ],
-          ),
-          pw.SizedBox(height: 8),
-          pw.Container(height: 1.2, color: cardBorder),
-          pw.SizedBox(height: 10),
-          pw.Expanded(
-            child: pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+    return pw.Container(
+      color: ivory,
+      child: pw.Padding(
+        padding: const pw.EdgeInsets.fromLTRB(34, 20, 34, 14),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          children: [
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
               children: [
-                pw.Expanded(
-                  child: pw.Container(
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(color: cardBorder, width: 0.8),
-                      borderRadius: pw.BorderRadius.circular(6),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'ЧЕРТЁЖ ДЛЯ КЛИЕНТА',
+                      style: pw.TextStyle(
+                        font: _font,
+                        fontSize: 7.2,
+                        letterSpacing: 2.8,
+                        color: gold,
+                      ),
                     ),
-                    child: pw.Stack(
-                      children: [
-                        pw.Center(child: drawing),
-                        pw.Positioned(
-                          left: 10,
-                          bottom: 8,
-                          child: pw.Text(
-                            '${spec.params.projectName} · '
-                            '${spec.params.material.label} · '
-                            '${_m2(spec.productAreaM2)} м²',
-                            style: _s(8.5, color: dim),
+                    pw.SizedBox(height: 5),
+                    pw.Text(
+                      'Окно №${index + 1} из $total',
+                      style: pw.TextStyle(
+                        font: _serifBold,
+                        fontSize: 23,
+                        color: ink,
+                      ),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      'Заказ $_orderNumber'
+                      '${_clientName.isEmpty ? '' : ' · $_clientName'}',
+                      style: pw.TextStyle(
+                        font: _font,
+                        fontSize: 9.5,
+                        color: warmDim,
+                      ),
+                    ),
+                  ],
+                ),
+                pw.Spacer(),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text(
+                      'Раскрой',
+                      style: pw.TextStyle(
+                        font: _serif,
+                        fontSize: 17,
+                        color: ink,
+                      ),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      'материалы · фурнитура',
+                      style: pw.TextStyle(
+                        font: _font,
+                        fontSize: 7.5,
+                        letterSpacing: 1.2,
+                        color: warmDim,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 9),
+            pw.Container(height: 0.9, color: gold),
+            pw.SizedBox(height: 11),
+            pw.Expanded(
+              child: pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: [
+                  pw.Expanded(
+                    child: pw.Container(
+                      decoration: pw.BoxDecoration(
+                        color: PdfColors.white,
+                        border: pw.Border.all(color: warmLine, width: 0.8),
+                        borderRadius: pw.BorderRadius.circular(6),
+                      ),
+                      child: pw.Stack(
+                        children: [
+                          pw.Center(child: drawing),
+                          pw.Positioned(
+                            left: 11,
+                            bottom: 8,
+                            child: pw.Text(
+                              'Размеры в сантиметрах · '
+                              '${spec.params.material.label}',
+                              style: pw.TextStyle(
+                                font: _font,
+                                fontSize: 7.2,
+                                color: warmDim,
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  pw.SizedBox(width: 13),
+                  pw.SizedBox(
+                    width: 286,
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                      children: [
+                        _paramsCard(spec),
+                        pw.SizedBox(height: 7),
+                        _cutCard(spec),
+                        pw.SizedBox(height: 7),
+                        _hardwareCard(spec),
                       ],
                     ),
                   ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 8),
+            pw.Container(height: 0.6, color: warmLine),
+            pw.SizedBox(height: 5),
+            pw.Row(
+              children: [
+                pw.Text(
+                  'Отчёт создан в программе «Мягкие окна» · '
+                  '${company.details.displayName}',
+                  style: pw.TextStyle(
+                    font: _font,
+                    fontSize: 7,
+                    color: warmDim,
+                  ),
                 ),
-                pw.SizedBox(width: 14),
-                pw.SizedBox(width: 286, child: _cutColumn(spec)),
+                pw.Spacer(),
+                pw.Text(
+                  '${index + 2} / ${total + 1}',
+                  style: pw.TextStyle(
+                    font: _font,
+                    fontSize: 7,
+                    color: warmDim,
+                  ),
+                ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  pw.Widget _paramsCard(WindowSpec spec) {
+    final geometry = spec.geometry;
+    final edge = spec.layers.finishedWidths
+        .where((width) => width > 0)
+        .toList();
+    final edgeText = edge.isEmpty
+        ? 'подворот'
+        : '${_trim(edge.reduce((a, b) => a > b ? a : b) / 10)} см';
+    final step = spec.params.eyeletStep;
+    return pw.Container(
+      padding: const pw.EdgeInsets.fromLTRB(12, 10, 12, 9),
+      decoration: pw.BoxDecoration(
+        color: charcoal,
+        borderRadius: pw.BorderRadius.circular(6),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Text(
+            'ПАРАМЕТРЫ',
+            style: pw.TextStyle(
+              font: _font,
+              fontSize: 7,
+              letterSpacing: 2.2,
+              color: gold,
+            ),
           ),
-          pw.SizedBox(height: 8),
-          _pageFooter(index + 2, total + 1),
+          pw.SizedBox(height: 6),
+          _darkSpec('Размер', '${_cm(geometry.spanX)} × ${_cm(geometry.overallHeight)} см'),
+          _darkSpec('Площадь', '${_m2(spec.productAreaM2)} м²'),
+          _darkSpec('Материал', spec.params.material.label),
+          _darkSpec('Окантовка', edgeText),
+          _darkSpec('Крепёж', spec.params.fastenerType == FastenerType.eyeletsOnly
+              ? 'люверсы'
+              : spec.params.fastenerType.itemTitle),
+          _darkSpec('Шаг', '${_trim(step / 10)} см'),
+          if (spec.layers.zipperBands.isNotEmpty)
+            _darkSpec('Молнии', '${spec.layers.zipperBands.length} шт.'),
+          if (spec.layers.liftStraps.isNotEmpty)
+            _darkSpec('Ремни', '${spec.layers.liftStraps.length} шт.'),
         ],
       ),
     );
   }
 
-  pw.Widget _pageFooter(int page, int pages) => pw.Row(
-    children: [
-      pw.Text(
-        'Отчёт создан в программе «Мягкие окна» · '
-        '${company.details.displayName}',
-        style: _s(8, color: dim),
+  pw.Widget _darkSpec(String label, String value) => pw.Padding(
+    padding: const pw.EdgeInsets.only(top: 3),
+    child: pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.SizedBox(
+          width: 74,
+          child: pw.Text(
+            label,
+            style: pw.TextStyle(
+              font: _font,
+              fontSize: 8,
+              color: const PdfColor.fromInt(0xFF93A0B1),
+            ),
+          ),
+        ),
+        pw.Expanded(
+          child: pw.Text(
+            value,
+            style: pw.TextStyle(
+              font: _font,
+              fontSize: 8.5,
+              color: PdfColors.white,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  pw.Widget _cutCard(WindowSpec spec) {
+    final pieces = spec.filmCutPolygonsWithShrinkage;
+    final materials = spec.isComposite
+        ? [spec.params.material, spec.params.composite.material]
+        : [spec.params.material];
+    return pw.Container(
+      padding: const pw.EdgeInsets.fromLTRB(12, 9, 12, 8),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.white,
+        border: pw.Border.all(color: warmLine, width: 0.8),
+        borderRadius: pw.BorderRadius.circular(6),
       ),
-      pw.Spacer(),
-      pw.Text('$page / $pages', style: _s(8, color: dim)),
-    ],
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Text(
+            'РАСКРОЙ',
+            style: pw.TextStyle(
+              font: _font,
+              fontSize: 7,
+              letterSpacing: 2.2,
+              color: gold,
+            ),
+          ),
+          pw.SizedBox(height: 5),
+          for (var index = 0; index < pieces.length; index++)
+            _pieceRow(
+              pieces[index],
+              index < materials.length ? materials[index] : spec.params.material,
+              index == 1 && spec.isComposite,
+            ),
+          if (spec.edgeConsumption.isNotEmpty) ...[
+            pw.SizedBox(height: 3),
+            for (final entry in (spec.edgeConsumption.entries.toList()
+              ..sort((a, b) => a.key.compareTo(b.key))))
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 2),
+                child: pw.Row(
+                  children: [
+                    pw.Container(width: 40, height: 4, color: bandBrown),
+                    pw.SizedBox(width: 6),
+                    pw.Text(
+                      'окантовка ${_trim(entry.key / 10)} см · '
+                      '${_meters(entry.value)} м',
+                      style: pw.TextStyle(
+                        font: _font,
+                        fontSize: 7.5,
+                        color: warmDim,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _pieceRow(
+    List<Offset> polygon,
+    FilmMaterial material,
+    bool second,
+  ) {
+    final bounds = _boundsOf(polygon);
+    final width = _min(96.0, 40 + bounds.width / 26);
+    final height = _min(54.0, 18 + bounds.height / 44);
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 5),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Container(
+            width: width,
+            height: height,
+            decoration: pw.BoxDecoration(
+              color: material == FilmMaterial.screen ? filmGrey : filmBlue,
+              border: pw.Border.all(
+                color: material == FilmMaterial.screen
+                    ? metal
+                    : const PdfColor.fromInt(0xFF4C9BE8),
+                width: 0.7,
+              ),
+            ),
+            alignment: pw.Alignment.center,
+            child: pw.Text(
+              '${_cm(bounds.width)} × ${_cm(bounds.height)}',
+              style: pw.TextStyle(font: _font, fontSize: 7, color: dim),
+            ),
+          ),
+          pw.SizedBox(width: 7),
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  material.label,
+                  style: pw.TextStyle(
+                    font: _bold,
+                    fontSize: 7.8,
+                    color: ink,
+                  ),
+                ),
+                pw.Text(
+                  '${_m2(bounds.width * bounds.height / 1000000)} м²',
+                  style: pw.TextStyle(
+                    font: _font,
+                    fontSize: 7.2,
+                    color: warmDim,
+                  ),
+                ),
+                if (second)
+                  pw.Text(
+                    'второй сегмент',
+                    style: pw.TextStyle(
+                      font: _font,
+                      fontSize: 6.8,
+                      color: gold,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _hardwareCard(WindowSpec spec) {
+    final eyelets = <String, int>{};
+    for (final eyelet in spec.layers.eyelets) {
+      final type = spec.layers.typeFor(eyelet);
+      eyelets[type.displayLabel] = (eyelets[type.displayLabel] ?? 0) + 1;
+    }
+    final fasteners = <String, int>{};
+    for (final fastener in spec.layers.manualFasteners) {
+      final title = fastener.type.itemTitle;
+      fasteners[title] = (fasteners[title] ?? 0) + 1;
+    }
+    if (spec.params.fastenerType != FastenerType.eyeletsOnly) {
+      final movable = spec.layers.movableSideEyelets.length;
+      if (movable > 0) {
+        final title = spec.params.fastenerType.itemTitle;
+        fasteners[title] = (fasteners[title] ?? 0) + movable;
+      }
+    }
+    return pw.Container(
+      padding: const pw.EdgeInsets.fromLTRB(12, 9, 12, 8),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.white,
+        border: pw.Border.all(color: warmLine, width: 0.8),
+        borderRadius: pw.BorderRadius.circular(6),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Text(
+            'ФУРНИТУРА',
+            style: pw.TextStyle(
+              font: _font,
+              fontSize: 7,
+              letterSpacing: 2.2,
+              color: gold,
+            ),
+          ),
+          pw.SizedBox(height: 4),
+          for (final entry in eyelets.entries)
+            _lightSpec(entry.key, '${entry.value} шт.'),
+          for (final entry in fasteners.entries)
+            _lightSpec(entry.key, '${entry.value} шт.'),
+          if (spec.layers.zipperBands.isNotEmpty)
+            _lightSpec(
+              'Молния',
+              '${_meters(spec.layers.zipperBands.length * spec.layers.filmVisibleBounds.height)} пог.м',
+            ),
+          _lightSpec('Площадь', '${_m2(spec.productAreaM2)} м²'),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _lightSpec(String label, String value) => pw.Padding(
+    padding: const pw.EdgeInsets.only(top: 2),
+    child: pw.Row(
+      children: [
+        pw.Expanded(
+          child: pw.Text(
+            label,
+            style: pw.TextStyle(
+              font: _font,
+              fontSize: 7.8,
+              color: warmDim,
+            ),
+          ),
+        ),
+        pw.Text(
+          value,
+          style: pw.TextStyle(font: _bold, fontSize: 7.8, color: ink),
+        ),
+      ],
+    ),
   );
 
   // ------------------------------------------------------------- чертёж
@@ -735,15 +1069,18 @@ class ClientReportBuilder {
     final bounds = _boundsOf(geometry.corners);
     if (bounds.width <= 0 || bounds.height <= 0) return;
 
-    const padX = 58.0;
-    const padY = 56.0;
+    // Поля под размеры и разметку; сам чертёж центрируем в листе.
+    const marginX = 62.0;
+    const marginY = 54.0;
     final k = _min(
-      (size.x - padX * 2) / bounds.width,
-      (size.y - padY * 2) / bounds.height,
+      (size.x - marginX * 2) / bounds.width,
+      (size.y - marginY * 2) / bounds.height,
     );
+    final offsetX = (size.x - bounds.width * k) / 2;
+    final offsetY = (size.y - bounds.height * k) / 2;
     PdfPoint map(Offset point) => PdfPoint(
-      padX + (point.dx - bounds.left) * k,
-      padY + (point.dy - bounds.top) * k,
+      offsetX + (point.dx - bounds.left) * k,
+      offsetY + (point.dy - bounds.top) * k,
     );
 
     final parts = spec.layers.partPolygons;
@@ -927,6 +1264,11 @@ class ClientReportBuilder {
       if (label.side == null) continue;
       final point = map(label.pointMm);
       if (label.text == '0') continue;
+      // Боковые стороны уже подписаны габаритом и отступами у углов —
+      // вертикальные числа шага только засоряют чертёж.
+      if (label.side == WindowSide.left || label.side == WindowSide.right) {
+        continue;
+      }
       // Числа шага ставим снаружи, между кромкой и габаритным размером.
       final offset = switch (label.side!) {
         WindowSide.bottom => const PdfPoint(0, -12),
@@ -938,7 +1280,7 @@ class ClientReportBuilder {
       canvas.setFillColor(dim);
       canvas.drawString(
         font,
-        6.8,
+        6.3,
         label.text,
         point.x + offset.x + (offset.x < 0 ? -textWidth : 0),
         point.y + offset.y - 2,
@@ -1043,129 +1385,6 @@ class ClientReportBuilder {
       ..lineTo(bx + uy * 2, by - ux * 2)
       ..closePath()
       ..fillPath();
-  }
-
-  // ------------------------------------------------------- раскрой/фурнитура
-
-  pw.Widget _cutColumn(WindowSpec spec) {
-    final pieces = spec.filmCutPolygonsWithShrinkage;
-    final materials = spec.isComposite
-        ? [spec.params.material, spec.params.composite.material]
-        : [spec.params.material];
-    final rows = <pw.Widget>[];
-
-    for (var index = 0; index < pieces.length; index++) {
-      final polygon = pieces[index];
-      final bounds = _boundsOf(polygon);
-      final material = index < materials.length
-          ? materials[index]
-          : spec.params.material;
-      final widthCm = _cm(bounds.width);
-      final heightCm = _cm(bounds.height);
-      rows.add(
-        pw.Padding(
-          padding: const pw.EdgeInsets.only(bottom: 10),
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(
-                '${material.label} (${material.thickness})',
-                style: pw.TextStyle(
-                  fontSize: 9.5,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.SizedBox(height: 3),
-              pw.Center(
-                child: pw.Container(
-                  width: 62,
-                  height: 40,
-                  decoration: pw.BoxDecoration(
-                    color: filmBlue,
-                    border: pw.Border.all(color: accent, width: 0.6),
-                  ),
-                  alignment: pw.Alignment.center,
-                  child: pw.Text(
-                    '$widthCm × $heightCm',
-                    style: const pw.TextStyle(fontSize: 8),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // Окантовка по рулонам: полосы с длиной.
-    final edges = spec.edgeConsumption.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-    if (edges.isNotEmpty) {
-      rows.add(_section('Окантовка:'));
-      for (final entry in edges) {
-        rows.add(
-          pw.Padding(
-            padding: const pw.EdgeInsets.only(left: 4, bottom: 4),
-            child: pw.Row(
-              children: [
-                pw.Container(
-                  width: 64,
-                  height: 8,
-                  color: bandBrown,
-                ),
-                pw.SizedBox(width: 8),
-                pw.Text(
-                  '${_trim(entry.key / 10)} см × ${_meters(entry.value)} м',
-                  style: const pw.TextStyle(fontSize: 8.5),
-                ),
-              ],
-            ),
-          ),
-        );
-      }
-    }
-
-    // Фурнитура окна.
-    final eyelets = <String, int>{};
-    for (final eyelet in spec.layers.eyelets) {
-      final type = spec.layers.typeFor(eyelet);
-      eyelets[type.displayLabel] = (eyelets[type.displayLabel] ?? 0) + 1;
-    }
-    rows.add(_section('Фурнитура:'));
-    for (final entry in eyelets.entries) {
-      rows.add(_bullet('${entry.key} = ${entry.value} шт.'));
-    }
-    final manual = <String, int>{};
-    for (final fastener in spec.layers.manualFasteners) {
-      manual[fastener.type.itemTitle] = (manual[fastener.type.itemTitle] ?? 0) + 1;
-    }
-    if (spec.params.fastenerType != FastenerType.eyeletsOnly) {
-      final movable = spec.layers.movableSideEyelets.length;
-      if (movable > 0) {
-        final title = spec.params.fastenerType.itemTitle;
-        manual[title] = (manual[title] ?? 0) + movable;
-      }
-    }
-    for (final entry in manual.entries) {
-      rows.add(_bullet('${entry.key} = ${entry.value} шт.'));
-    }
-    if (spec.layers.zipperBands.isNotEmpty) {
-      rows.add(
-        _bullet(
-          'Молния = ${_meters(spec.layers.zipperBands.length * spec.layers.filmVisibleBounds.height)} пог.м',
-        ),
-      );
-    }
-    if (spec.layers.liftStraps.isNotEmpty) {
-      rows.add(
-        _bullet('Подъёмный ремень = ${spec.layers.liftStraps.length} шт.'),
-      );
-    }
-
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: rows,
-    );
   }
 
   // ------------------------------------------------------------ служебное
