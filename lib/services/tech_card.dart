@@ -728,13 +728,15 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
   // Французские замки стоят по вертикали: на окно — сумма левой и правой
   // высот ÷ шаг, вверх до чётного. Плюс 2 шт — запас на весь заказ, поэтому
   // в техкарте окна он показан отдельной пометкой, а не в количестве.
-  final frenchLockCount = _frenchLockCountForWindow(params);
+  final frenchLockCount = isFrenchLock
+      ? layers.movableSideEyelets.length
+      : 0;
   final movableFastenerCount =
       isFrenchLock ? frenchLockCount : layers.movableSideEyelets.length;
   final topScrewCount = layers.topEyelets.length;
   final String fastenerNote;
   if (isFrenchLock) {
-    fastenerNote = 'Крепёж: французский замок — по вертикали: '
+    fastenerNote = 'Крепёж: французский замок — по чертежу: '
         '(${formatMm(params.leftHeight)} + ${formatMm(params.rightHeight)}) '
         '${unitSuffix()} ÷ шаг ${formatMm(params.eyeletStep)} ${unitSuffix()} '
         '= $frenchLockCount шт на окно (вверх до чётного); '
@@ -1093,14 +1095,3 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
 }
 
 
-/// Французские замки на одно окно: сумма левой и правой высот делится на шаг
-/// крепления и округляется вверх до чётного. Запас +2 шт считается на заказ
-/// (см. CostsSummary), в техкарте окна он только упоминается.
-int _frenchLockCountForWindow(WindowParams params) {
-  final step = params.eyeletStep;
-  final vertical = params.leftHeight + params.rightHeight;
-  if (!(step > 0) || !(vertical > 0)) return 0;
-  var count = (vertical / step).ceil();
-  if (count.isOdd) count += 1;
-  return count;
-}

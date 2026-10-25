@@ -288,9 +288,9 @@ void _screenAndWeldRules() {
     expect(params.tech, WindowTech.screen);
     // Окантовка у скрина скрыта, а крепёж доступен любой: чипы на месте.
     expect(find.text('Окантовка'), findsNothing);
-    expect(find.text('Поворотные скобы'), findsOneWidget);
+    expect(find.text('Поворотная скоба'), findsOneWidget);
     expect(find.text('Французский замок'), findsOneWidget);
-    expect(find.text('Силиконовые ремни'), findsOneWidget);
+    expect(find.text('Подвязочный ремень'), findsOneWidget);
     // Подворот задаётся на каждую сторону: четыре поля и подпись заготовки.
     expect(find.byKey(const Key('hem-bottom-field')), findsOneWidget);
     expect(find.byKey(const Key('hem-right-field')), findsOneWidget);

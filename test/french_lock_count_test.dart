@@ -1,66 +1,70 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
+import 'package:soft_window_drawer/models/window_geometry.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/costs_summary.dart';
 import 'package:soft_window_drawer/services/estimate.dart';
 
-/// Французские замки считаются по вертикали:
-/// `ceilEven(Σ(левая + правая высота) / шаг) + 2` — один раз на заказ.
+/// Крепёж считается по чертежу: сколько символов нарисовано, столько и в
+/// смете. Люверс под замком отдельной строкой не идёт — замок его заменяет.
 void main() {
   WindowParams lockWindow({
     double height = 2520,
     double step = 350,
     FilmMaterial material = FilmMaterial.clearPvc,
     FastenerType fastener = FastenerType.frenchLocks,
-  }) =>
-      WindowParams(
-        bottomWidth: 1500,
-        topWidth: 1500,
-        leftHeight: height,
-        rightHeight: height,
-        eyeletStep: step,
-        material: material,
-        fastenerType: fastener,
-      );
+  }) => WindowParams(
+    bottomWidth: 1500,
+    topWidth: 1500,
+    leftHeight: height,
+    rightHeight: height,
+    eyeletStep: step,
+    material: material,
+    windowType: WindowType.lifting,
+    fastenerType: fastener,
+  );
 
   int count(OrderProject project) =>
       CostsSummary(project).fastenerCount[FastenerType.frenchLocks] ?? 0;
 
-  test('одно окно 2520: сумма высот 5040 / 350 → 15 → чётное 16 + 2 = 18', () {
+  int drawn(OrderProject project) =>
+      WindowSpec.of(project.windows.first).layers.movableSideEyelets.length;
+
+  test('замки: сколько точек на чертеже — столько и в смете', () {
     final project = OrderProject(windows: [lockWindow()]);
-    expect(count(project), 18);
+    expect(drawn(project), greaterThan(0));
+    expect(count(project), drawn(project));
   });
 
-  test('ровно чётное не увеличивается: 3500 / 350 = 10 + 2 = 12', () {
-    final project = OrderProject(windows: [lockWindow(height: 1750)]);
-    expect(count(project), 12);
-  });
-
-  test('нечётное округляется вверх до чётного: 4000 / 350 = 11,43 → 12 + 2', () {
-    final project = OrderProject(windows: [lockWindow(height: 2000)]);
-    // 4000 / 350 = 11.43 → ceil 12 → чётное 12 → +2.
-    expect(count(project), 14);
-  });
-
-  test('несколько окон: высоты складываются, +2 один раз на заказ', () {
-    final project = OrderProject(
-      windows: [lockWindow(height: 2520), lockWindow(height: 2000)],
+  test('люверсы считаются отдельно от замков', () {
+    final project = OrderProject(windows: [lockWindow()]);
+    final summary = CostsSummary(project);
+    final spec = summary.specs.first;
+    final eyelets = summary.eyeletsByType.values.fold<int>(
+      0,
+      (sum, value) => sum + value,
     );
-    // 2 × (2520 + 2000) = 9040; 9040 / 350 = 25.83 → 26 → +2 = 28.
-    expect(count(project), 28);
+    expect(eyelets, spec.layers.standaloneEyelets.length);
+    expect(eyelets, lessThan(spec.layers.eyelets.length));
   });
 
-  test('шаг крепления берётся из окна (300 мм)', () {
-    final project = OrderProject(windows: [lockWindow(step: 300)]);
-    // 5040 / 300 = 16.8 → 17 → 18 + 2 = 20.
-    expect(count(project), 20);
+  test('несколько окон: количество складывается по чертежам', () {
+    final project = OrderProject(
+      windows: [lockWindow(), lockWindow(height: 2000)],
+    );
+    final expected = [
+      for (final window in project.windows)
+        WindowSpec.of(window).layers.movableSideEyelets.length,
+    ].fold<int>(0, (sum, value) => sum + value);
+    expect(count(project), expected);
   });
 
-  test('скрин считается по той же формуле', () {
+  test('скрин считается по чертежу', () {
     final project = OrderProject(
       windows: [lockWindow(material: FilmMaterial.screen, height: 2000)],
     );
-    expect(count(project), 14);
+    expect(drawn(project), greaterThan(0));
+    expect(count(project), drawn(project));
   });
 
   test('без французских замков строки и счётчика нет', () {
@@ -78,16 +82,16 @@ void main() {
     );
   });
 
-  test('в смете: количество по формуле и цена из прайса', () {
+  test('в смете: количество по чертежу и цена из прайса', () {
     final project = OrderProject(windows: [lockWindow()]);
     const prices = PriceList.defaults();
     final line = Estimate.of(project, prices).lines.firstWhere(
       (line) => line.title == 'Французский замок',
     );
-    expect(line.quantity, 18);
+    expect(line.quantity, count(project));
     expect(line.unitPrice, prices.frenchLockPrice);
-    expect(line.note, contains('по вертикали'));
-    expect(line.note, isNot(contains('в точках люверсов')));
+    expect(line.note, contains('по чертежу'));
+    expect(line.note, isNot(contains('по вертикали')));
   });
 
   test('выключенная позиция прайса убирает строку', () {

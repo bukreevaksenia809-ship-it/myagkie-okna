@@ -2881,7 +2881,13 @@ class WindowDrawingPainter extends CustomPainter {
       );
       canvas.save();
       canvas.translate(center.dx, center.dy);
-      canvas.rotate(angle);
+      // Ориентация фото: нормаль нижней и верхней стороны смотрит в разные
+      // стороны, из-за чего замок на одной из них был перевёрнут. Приводим
+      // угол к диапазону (-90°, 90°] — все замки «смотрят» одинаково.
+      var imageAngle = angle;
+      if (imageAngle > math.pi / 2) imageAngle -= math.pi;
+      if (imageAngle <= -math.pi / 2) imageAngle += math.pi;
+      canvas.rotate(imageAngle);
       // У фото белые углы — обрезаем их по овалу пластины, чтобы на полосе
       // окантовки не появлялся белый прямоугольник.
       canvas.clipPath(Path()..addOval(destination.inflate(0.4)));

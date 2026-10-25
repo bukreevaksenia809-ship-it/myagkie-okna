@@ -54,6 +54,20 @@ List<FastenerChainLabel> _side(
 void main() {
   setUpAll(loadRealFonts);
 
+  test('ручной замок остаётся в размерной цепочке своей стороны', () {
+    final params = _window2000x1500.withManualPoints(EdgeSide.left, const [
+      EyeletPosition(
+        side: EdgeSide.left,
+        fraction: 0.5,
+        kind: MarkerKind.frenchLock,
+      ),
+    ]);
+    final labels = fastenerChainLabels(WindowSpec.of(params));
+    final left = _side(labels, WindowSide.left);
+    expect(left, isNotEmpty);
+    expect(left.length, 1);
+  });
+
   group('накопительная цепочка: окно 2000 × 1500, шаг 300, отступ 0', () {
     final spec = WindowSpec.of(_window2000x1500);
     final labels = fastenerChainLabels(spec);

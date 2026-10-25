@@ -1245,15 +1245,137 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// Блок со всеми крепежами и ценами из прайса.
   Widget _fastenerSection(WindowSpec spec, PriceList prices) {
     final params = spec.params;
+    final fastening = params.fastenerType;
+    final roundEyelet =
+        fastening == FastenerType.eyeletsOnly &&
+        params.eyeletType == EyeletType.round10;
     return _expansion(
       title: 'Крепёж',
       subtitle:
-          '${spec.eyeletType.displayLabel} · интервал '
-          '${formatMm(params.eyeletStep)} ${unitSuffix()} (факт. '
-          '${spec.eyeletStepLabel}) · ${spec.eyeletCount} шт на окно',
+          '${_fastenerChoiceLabel(params)} · отступ '
+          '${formatMm(params.eyeletCornerOffset)} ${unitSuffix()} · интервал '
+          '${formatMm(params.eyeletStep)} ${unitSuffix()}',
       children: [
+        // Сначала — что за крепление, потом его параметры. Так блок читается
+        // сверху вниз: выбрал крепление → отступ → стороны → интервал.
         const Text(
-          'Люверс',
+          'Крепления',
+          style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final (key, label, price, selected, onTap) in [
+              (
+                'fastener-round-eyelet',
+                'Круглый люверс',
+                '${formatRubles(prices.eyeletPerEach(EyeletType.round10))}/шт',
+                roundEyelet,
+                () => _updateWindow(
+                  params.copyWith(
+                    fastenerType: FastenerType.eyeletsOnly,
+                    eyeletType: EyeletType.round10,
+                  ),
+                ),
+              ),
+              (
+                'fastener-french-lock',
+                'Французский замок',
+                '${formatRubles(prices.fastenerPerEach(FastenerType.frenchLocks))}/шт',
+                fastening == FastenerType.frenchLocks,
+                () => _updateWindow(
+                  params.copyWith(fastenerType: FastenerType.frenchLocks),
+                ),
+              ),
+              (
+                'fastener-turn-buckle',
+                'Поворотная скоба',
+                '${formatRubles(prices.fastenerPerEach(FastenerType.turnBuckles))}/шт',
+                fastening == FastenerType.turnBuckles,
+                () => _updateWindow(
+                  params.copyWith(fastenerType: FastenerType.turnBuckles),
+                ),
+              ),
+              (
+                'fastener-straps',
+                'Подвязочный ремень',
+                '${formatRubles(prices.fastenerPerEach(FastenerType.straps))}/шт',
+                fastening == FastenerType.straps,
+                () => _updateWindow(
+                  params.copyWith(fastenerType: FastenerType.straps),
+                ),
+              ),
+            ])
+              ChoiceChip(
+                key: Key(key),
+                label: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: const TextStyle(fontSize: 11.5)),
+                    Text(
+                      price,
+                      style: const TextStyle(
+                        fontSize: 9.5,
+                        color: Color(0xFF66748A),
+                      ),
+                    ),
+                  ],
+                ),
+                selected: selected,
+                visualDensity: VisualDensity.compact,
+                onSelected: (_) => onTap(),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _numberField(ParamField.eyeletCornerOffset),
+        const SizedBox(height: 10),
+        _noEyeletsSection(params),
+        const SizedBox(height: 12),
+        _eyeletStepField(spec),
+        const SizedBox(height: 10),
+        Text(
+          params.isScreen
+              ? 'Люверсы ставятся по линии подворота; по ней же ложится '
+                    'и выбранный крепёж скрина.'
+              : 'Отступ считается от угла: при 0 мм первый люверс стоит в углу.',
+          style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+        ),
+        if (params.eyeletPositions.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _panelCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Расставлено вручную',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Тяните люверс мышкой вдоль линии окантовки. После '
+                  'перетаскивания рядом появляется меню: удалить, поставить '
+                  'круглый люверс, французский замок или поворотную скобу.',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                ),
+                const SizedBox(height: 6),
+                OutlinedButton.icon(
+                  key: const Key('reset-eyelet-positions'),
+                  onPressed: () =>
+                      _updateWindow(params.clearEyeletPositions()),
+                  icon: const Icon(Icons.restart_alt, size: 18),
+                  label: const Text('Вернуть автоматическую расстановку'),
+                ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        const Text(
+          'Тип люверса',
           style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
         ),
         const SizedBox(height: 6),
@@ -1291,101 +1413,19 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     'а овальный люверс развёрнут вдоль одной стороны.' : 'Круглые люверсы в углах отключены: угловых точек нет.'}',
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
-        const SizedBox(height: 12),
-        _eyeletStepField(spec),
-        const SizedBox(height: 12),
-        _numberField(ParamField.eyeletCornerOffset),
-        const SizedBox(height: 6),
-        Text(
-          params.isScreen
-              ? 'Люверсы ставятся по линии подворота; по ней же ложится '
-                    'и выбранный крепёж скрина.'
-              : 'Люверсы ставятся от углов: при 0 мм первый люверс стоит в углу.',
-          style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-        ),
-        if (params.eyeletPositions.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          _panelCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Люверсы расставлены вручную',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 2),
-                const Text(
-                  'Тяните люверс мышкой вдоль линии окантовки. После '
-                  'перетаскивания рядом появляется меню: удалить, поставить '
-                  'круглый люверс, французский замок или поворотную скобу.',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-                ),
-                const SizedBox(height: 6),
-                OutlinedButton.icon(
-                  key: const Key('reset-eyelet-positions'),
-                  onPressed: () =>
-                      _updateWindow(params.clearEyeletPositions()),
-                  icon: const Icon(Icons.restart_alt, size: 18),
-                  label: const Text('Вернуть автоматическую расстановку'),
-                ),
-              ],
-            ),
-          ),
-        ],
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         _roundEyeletsSection(spec),
-        const SizedBox(height: 14),
-        Text(
-          params.isScreen
-              ? 'Крепёж скрина (низ и бока, по подвороту)'
-              : (params.windowType == WindowType.fixed
-                    ? 'Крепление к каркасу'
-                    : 'Крепёж подвижных сторон (низ и бока)'),
-          style: const TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
-        ),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final type in FastenerType.values)
-              ChoiceChip(
-                label: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(type.label, style: const TextStyle(fontSize: 11.5)),
-                    Text(
-                      type == FastenerType.eyeletsOnly
-                          ? 'без доплаты'
-                          : '${formatRubles(prices.fastenerPerEach(type))}/шт',
-                      style: const TextStyle(
-                        fontSize: 9.5,
-                        color: Color(0xFF66748A),
-                      ),
-                    ),
-                  ],
-                ),
-                selected: params.fastenerType == type,
-                visualDensity: VisualDensity.compact,
-                onSelected: (_) =>
-                    _updateWindow(params.copyWith(fastenerType: type)),
-              ),
-          ],
-        ),
-        if (params.isScreen) ...[
-          const SizedBox(height: 6),
-          const Text(
-            'У скрина крепёж доступен любой: скобы, замки и ремни '
-            'ставятся по подвороту — по низу и бокам, сверху саморезы '
-            'или люверсы. Круглые люверсы в углах включаются тумблером '
-            'выше; размер крепежа считается по ширине подворота своей '
-            'стороны.',
-            style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-          ),
-        ],
       ],
     );
+  }
+
+  String _fastenerChoiceLabel(WindowParams params) {
+    if (params.fastenerType == FastenerType.eyeletsOnly) {
+      return params.eyeletType == EyeletType.round10
+          ? 'круглый люверс'
+          : 'люверс ${params.eyeletType.label.toLowerCase()}';
+    }
+    return params.fastenerType.itemTitle.toLowerCase();
   }
 
   /// «Окна в заказе»: компактный список окон выбранного заказа.
@@ -1887,16 +1927,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
-  /// Подпись блока крепления сверху/снизу.
-  String _fasteningSidesSummary(WindowParams params) {
-    if (params.noEyeletsTop && params.noEyeletsBottom) {
-      return 'сверху и снизу крепление снято';
-    }
-    if (params.noEyeletsTop) return 'сверху без люверсов';
-    if (params.noEyeletsBottom) return 'снизу без люверсов';
-    return 'люверсы по всему периметру';
-  }
-
   @override
   Widget build(BuildContext context) {
     final project = widget.project;
@@ -1932,13 +1962,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
           const SizedBox(height: 12),
           // 7. Окантовка ПВХ или подвороты скрина.
           _edgeOrHemSection(spec),
-          const SizedBox(height: 12),
-          // 8. Включение/выключение крепления сверху и снизу.
-          _expansion(
-            title: 'Крепление сверху и снизу',
-            subtitle: _fasteningSidesSummary(params),
-            children: [_noEyeletsSection(params)],
-          ),
           const SizedBox(height: 12),
           if (params.isLifting && !params.isScreen) ...[
             const SizedBox(height: 12),
@@ -2855,7 +2878,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 _updateWindow(params.copyWith(noEyeletsBottom: value)),
           ),
           Text(
-            'Всего люверсов на окне: ${WindowSpec.of(params).eyeletCount} шт'
+            'По чертежу: люверсов '
+            '${WindowSpec.of(params).layers.standaloneEyelets.length} шт'
+            '${WindowSpec.of(params).layers.fastenerPointsCount > 0 ? ', крепежа ${WindowSpec.of(params).layers.fastenerPointsCount} шт' : ''}'
             '${params.hasEyeletlessSides ? ' (без сторон: '
                       '${WindowSpec.of(params).layers.eyeletlessSidesLabel})' : ''}.',
             style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),

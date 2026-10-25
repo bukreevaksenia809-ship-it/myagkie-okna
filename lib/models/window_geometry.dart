@@ -1882,6 +1882,28 @@ class WindowLayers {
   /// Крепёж, добавленный вручную на чертеже.
   List<ManualFastener> get manualFasteners => _eyeletResult.manualFasteners;
 
+  /// Люверсы, которые стоят сами по себе — без замка/скобы/ремня в той же
+  /// точке. Именно они идут строкой «Люверс» в расходе и смете: замок на
+  /// чертеже заменяет люверс, а не добавляется к нему.
+  List<EyeletPlacement> get standaloneEyelets {
+    if (params.fastenerType == FastenerType.eyeletsOnly) return eyelets;
+    final fasteners = movableSideEyelets;
+    return [
+      for (final eyelet in eyelets)
+        if (!fasteners.any(
+          (fastener) => (fastener.center - eyelet.center).distance < 1.0,
+        ))
+          eyelet,
+    ];
+  }
+
+  /// Все точки крепежа: автомат по типу окна + добавленные вручную.
+  int get fastenerPointsCount =>
+      (params.fastenerType == FastenerType.eyeletsOnly
+          ? 0
+          : movableSideEyelets.length) +
+      manualFasteners.length;
+
   /// Тип люверса, который ставится по сторонам окна.
   EyeletType get eyeletType => params.effectiveEyeletType;
 

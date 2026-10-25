@@ -14,8 +14,6 @@ class CostsSummary {
     // складываем высоты обеих вертикальных кромок всех окон заказа, делим
     // на шаг между креплениями, округляем вверх до чётного и прибавляем 2.
     // Расчёт общий на заказ, поэтому копится здесь, а не в цикле по окнам.
-    var frenchLockRaw = 0.0;
-    var frenchLockWindows = 0;
     for (final spec in specs) {
       productAreaM2 += spec.productAreaM2;
       // Плёнка закупается и кроится по заготовке. Заготовка бывает двух
@@ -93,7 +91,7 @@ class CostsSummary {
       // Люверсы считаем по типу, который реально ставится: по сторонам —
       // выбранный пользователем тип, в углах — всегда круглый. Так расход и
       // смета сходятся с чертежом и с техкартой.
-      for (final eyelet in spec.layers.eyelets) {
+      for (final eyelet in spec.layers.standaloneEyelets) {
         final type = spec.layers.typeFor(eyelet);
         eyeletsByType.update(type, (value) => value + 1, ifAbsent: () => 1);
       }
@@ -115,16 +113,9 @@ class CostsSummary {
         );
       }
       final fastenerType = spec.params.fastenerType;
-      if (fastenerType == FastenerType.frenchLocks) {
-        // Замок стоит на вертикальных кромках: в метраж идут левая и правая
-        // высоты. Шаг — тот же, что задан для крепежа в окне (обычно 350 мм).
-        final step = spec.params.eyeletStep;
-        final vertical = spec.params.leftHeight + spec.params.rightHeight;
-        if (step > 0 && vertical > 0) {
-          frenchLockRaw += vertical / step;
-          frenchLockWindows++;
-        }
-      } else if (fastenerType != FastenerType.eyeletsOnly) {
+      // Крепёж считается по чертежу: сколько символов нарисовано, столько и
+      // в смете. «Только люверсы» отдельного крепежа не имеет.
+      if (fastenerType != FastenerType.eyeletsOnly) {
         final count = spec.layers.movableSideEyelets.length;
         if (count > 0) {
           fastenerCount.update(
@@ -208,13 +199,6 @@ class CostsSummary {
       }
     }
 
-    // Французские замки: округляем вверх до чётного и прибавляем 2.
-    // +2 — один раз на заказ, а не на каждое окно.
-    if (frenchLockWindows > 0 && frenchLockRaw > 0) {
-      var count = frenchLockRaw.ceil();
-      if (count.isOdd) count += 1;
-      fastenerCount[FastenerType.frenchLocks] = count + 2;
-    }
   }
 
   final OrderProject project;

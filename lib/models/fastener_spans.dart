@@ -457,14 +457,19 @@ List<FastenerChainLabel> fastenerChainLabels(WindowSpec spec) {
   final outer = spec.layers.outer;
   if (outer.length < 3) return const [];
   final eyelets = spec.layers.eyelets;
-  if (eyelets.isEmpty) return const [];
+  // Ручные замки/скобы — тоже крепления: их точки должны попадать в
+  // размерную цепочку, иначе после перетаскивания подписи на стороне
+  // исчезают.
+  final manual = spec.layers.manualFasteners;
+  if (eyelets.isEmpty && manual.isEmpty) return const [];
 
   final labels = <FastenerChainLabel>[];
   for (var i = 0; i < outer.length; i++) {
     final a = outer[i];
     final b = outer[(i + 1) % outer.length];
     final side = sideOfPolygonEdge(outer, i);
-    if (!spec.layers.sideHasEyelets(side)) continue;
+    final hasManual = manual.any((fastener) => fastener.side == side);
+    if (!spec.layers.sideHasEyelets(side) && !hasManual) continue;
 
     // Направление стороны по правилу заказчика: ширины — слева направо,
     // высоты — сверху вниз.
@@ -495,15 +500,21 @@ List<FastenerChainLabel> fastenerChainLabels(WindowSpec spec) {
 
     // Крепления этой кромки. Ряд — ближайший к наружному контуру.
     final candidates = <_Node>[];
-    for (final eyelet in eyelets) {
+    final points = <({Offset center, WindowSide side, bool corner})>[
+      for (final eyelet in eyelets)
+        (center: eyelet.center, side: eyelet.side, corner: eyelet.isCorner),
+      for (final fastener in manual)
+        (center: fastener.center, side: fastener.side, corner: false),
+    ];
+    for (final point in points) {
       // Только крепления этой стороны; угловые принадлежат сразу двум
       // сторонам, поэтому для них даём «0» на обеих.
-      if (eyelet.side != side && !eyelet.isCorner) continue;
-      final relative = eyelet.center - start;
+      if (point.side != side && !point.corner) continue;
+      final relative = point.center - start;
       final along = relative.dx * unit.dx + relative.dy * unit.dy;
       if (along < -0.75 || along > length + 0.75) continue;
       final perp = (relative - unit * along).distance;
-      candidates.add(_Node(along, perp, eyelet.center));
+      candidates.add(_Node(along, perp, point.center));
     }
     if (candidates.isEmpty) continue;
     // Углы соседних сторон тоже попадают в кандидаты: оставляем только те,
