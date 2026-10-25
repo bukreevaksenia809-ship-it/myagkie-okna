@@ -85,6 +85,29 @@ class LicenseService {
     }
   }
 
+  /// Быстрая проверка для слежения за отключением ключа: только чтение,
+  /// без записи lastSeen. Сетевые ошибки не блокируют работу.
+  static Future<LicenseState> quickCheck() async {
+    if (test_env.isTestEnvironment) {
+      return const LicenseState(true, 'тестовый режим');
+    }
+    try {
+      await loadSaved();
+      if (_key.isEmpty) return const LicenseState(false, 'Введите ключ активации');
+      final license = await _license(_key);
+      if (license == null) return LicenseState(false, 'Ключ не найден', key: _key);
+      final problem = _checkFields(license);
+      if (problem != null) return LicenseState(false, problem, key: _key);
+      final activated = await _activation(_key);
+      if (activated == null) {
+        return LicenseState(false, 'Ключ не активирован на этом ПК', key: _key);
+      }
+      return LicenseState(true, 'Ключ активен: $_key', key: _key);
+    } catch (_) {
+      return LicenseState(true, 'Офлайн: ключ $_key', key: _key);
+    }
+  }
+
   static Future<LicenseState> activate(String raw) async {
     final compact = raw.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
     final key = compact.length == 16

@@ -33,6 +33,9 @@ class Telemetry {
 
   static bool get _enabled => !test_env.isTestEnvironment;
 
+  /// Постоянный id установки (для команд и лицензий).
+  static String? get installId => _installId;
+
   static Future<void> init({
     required OrderProject project,
     required String version,

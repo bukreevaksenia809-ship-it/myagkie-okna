@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -103,4 +104,82 @@ Future<String> downloadUpdate(String url, String? sha256) async {
   final file = File('${dir.path}${Platform.pathSeparator}update.zip');
   file.writeAsBytesSync(response.bodyBytes);
   return file.path;
+}
+
+
+/// Содержимое папки для удалённого просмотра из админки.
+Future<Map<String, Object?>> listDirectory(String path) async {
+  final dir = Directory(path);
+  if (!dir.existsSync()) return {'error': 'Папка не найдена: $path'};
+  final entries = <Map<String, Object?>>[];
+  try {
+    for (final entity in dir.listSync(followLinks: false)) {
+      try {
+        final stat = FileStat.statSync(entity.path);
+        final isDir = entity is Directory;
+        entries.add({
+          'name': entity.path.split(Platform.pathSeparator).last,
+          'path': entity.path,
+          'dir': isDir,
+          'size': isDir ? 0 : stat.size,
+          'modified': stat.modified.toIso8601String(),
+        });
+      } catch (_) {}
+      if (entries.length >= 1000) break;
+    }
+    entries.sort((a, b) {
+      final dirA = a['dir'] == true ? 0 : 1;
+      final dirB = b['dir'] == true ? 0 : 1;
+      if (dirA != dirB) return dirA - dirB;
+      return '${a['name']}'.toLowerCase().compareTo('${b['name']}'.toLowerCase());
+    });
+    return {'path': dir.path, 'parent': dir.parent.path, 'entries': entries};
+  } catch (error) {
+    return {'error': '$error'};
+  }
+}
+
+/// Корни файловой системы (диски Windows или /).
+Future<Map<String, Object?>> listRoots() async {
+  final roots = <String>[];
+  if (Platform.isWindows) {
+    for (var code = 67; code <= 90; code++) {
+      final drive = '${String.fromCharCode(code)}:\\';
+      if (Directory(drive).existsSync()) roots.add(drive);
+    }
+  } else {
+    roots.add('/');
+  }
+  return {'roots': roots};
+}
+
+/// Текстовый (или hex) предпросмотр файла.
+Future<Map<String, Object?>> readFilePreview(String path) async {
+  final file = File(path);
+  if (!file.existsSync()) return {'error': 'Файл не найден: $path'};
+  final stat = file.statSync();
+  const limit = 400 * 1024;
+  final bytes = await file.openRead(0, stat.size > limit ? limit : stat.size).fold<List<int>>(
+    <int>[],
+    (all, chunk) => all..addAll(chunk),
+  );
+  final hasBinary = bytes.any((b) => b == 0) ||
+      bytes.take(2048).any((b) => b < 9 || (b > 13 && b < 32));
+  if (hasBinary) {
+    final hex = bytes.take(2048).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+    return {
+      'path': file.path,
+      'size': stat.size,
+      'binary': true,
+      'content': hex,
+    };
+  }
+  final text = utf8.decode(bytes, allowMalformed: true);
+  return {
+    'path': file.path,
+    'size': stat.size,
+    'binary': false,
+    'truncated': stat.size > limit,
+    'content': text,
+  };
 }

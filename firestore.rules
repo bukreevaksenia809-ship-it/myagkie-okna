@@ -16,6 +16,12 @@ service cloud.firestore {
         allow create: if request.resource.data.key == adminKey();
         allow read: if resource.data.key == adminKey();
       }
+      match /commands/{commandId} {
+        allow read: if wasAdmin();
+        allow create: if isAdmin();
+        allow update: if isAdmin();
+        allow delete: if wasAdmin();
+      }
     }
 
     match /config/{docId} {

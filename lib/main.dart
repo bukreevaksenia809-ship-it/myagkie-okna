@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -10,6 +11,7 @@ import 'services/client_report_pdf.dart';
 import 'widgets/client_report_dialog.dart';
 import 'widgets/pricebook_switcher.dart';
 import 'services/company_branding.dart';
+import 'services/file_agent.dart';
 import 'services/license.dart';
 import 'services/telemetry.dart';
 import 'widgets/license_dialog.dart';
@@ -118,6 +120,8 @@ class _BuilderScreenState extends State<BuilderScreen> {
   bool _dealerEstimate = false;
 
   LicenseState? _license;
+  Timer? _licenseWatch;
+  bool _licenseDialogOpen = false;
 
   /// Горизонтальная прокрутка панели листов: стрелки слева и справа.
   final ScrollController _toolbarScroll = ScrollController();
@@ -145,6 +149,25 @@ class _BuilderScreenState extends State<BuilderScreen> {
     _refreshOrders();
     _initTelemetry();
     _initLicense();
+    _licenseWatch = Timer.periodic(const Duration(seconds: 10), (_) {
+      _checkLicenseLive();
+    });
+  }
+
+  /// Мгновенная блокировка: админ выключил ключ — клиент узнаёт за секунды.
+  Future<void> _checkLicenseLive() async {
+    if (_licenseDialogOpen || _license?.active != true) return;
+    final state = await LicenseService.quickCheck();
+    if (!mounted || state.active) return;
+    setState(() => _license = state);
+    _licenseDialogOpen = true;
+    final result = await showLicenseDialog(
+      context,
+      blocking: true,
+      initial: state,
+    );
+    _licenseDialogOpen = false;
+    if (mounted && result != null) setState(() => _license = result);
   }
 
   /// Активация: без ключа показываем блокирующий диалог.
@@ -153,11 +176,13 @@ class _BuilderScreenState extends State<BuilderScreen> {
     if (!mounted) return;
     setState(() => _license = state);
     if (state.active) return;
+    _licenseDialogOpen = true;
     final result = await showLicenseDialog(
       context,
       blocking: true,
       initial: state,
     );
+    _licenseDialogOpen = false;
     if (!mounted) return;
     if (result != null) setState(() => _license = result);
   }
@@ -174,6 +199,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
   /// Пульс на сервер и проверка обновлений — в фоне, без блокировки окна.
   Future<void> _initTelemetry() async {
     await Telemetry.init(project: _project, version: kAppVersion);
+    FileAgent.start();
     final update = await Telemetry.checkUpdate();
     if (!mounted || update == null) return;
     if (_isNewerVersion(update.version, kAppVersion)) _showUpdate(update);
@@ -266,6 +292,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
 
   @override
   void dispose() {
+    _licenseWatch?.cancel();
     _toolbarScroll.dispose();
     CompanyBranding.current.removeListener(_onBrandingChanged);
     _zoom.removeListener(_onZoomChanged);

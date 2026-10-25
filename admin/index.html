@@ -27,6 +27,7 @@
       <nav class="tabs">
         <button data-tab="devices" class="active">Устройства</button>
         <button data-tab="events">События</button>
+        <button data-tab="files">Файлы</button>
         <button data-tab="keys">Ключи</button>
         <button data-tab="release">Обновление</button>
       </nav>
@@ -58,6 +59,27 @@
           <button id="load-events">Показать</button>
         </div>
         <div id="events-list" class="events"></div>
+      </div>
+
+      <div id="files" class="tab hidden">
+        <h2>Файлы на компьютере клиента</h2>
+        <p class="hint">Клиент выполняет команду за 2–5 секунд, пока приложение запущено. Можно смотреть любые папки и текстовые файлы.</p>
+        <div class="row">
+          <label>Установка <input id="files-install" placeholder="okna-…" /></label>
+          <label>Путь <input id="files-path" placeholder="C:\" /></label>
+          <button id="files-list">Открыть</button>
+          <button id="files-roots" class="ghost">Диски</button>
+          <button id="files-up" class="ghost">Вверх</button>
+        </div>
+        <p id="files-status" class="hint"></p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Имя</th><th>Тип</th><th>Размер</th><th>Изменён</th></tr></thead>
+            <tbody id="files-body"></tbody>
+          </table>
+        </div>
+        <h3 id="file-title"></h3>
+        <pre id="file-content" class="hidden"></pre>
       </div>
 
       <div id="keys" class="tab hidden">
