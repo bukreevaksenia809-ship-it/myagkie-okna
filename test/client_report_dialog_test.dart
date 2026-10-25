@@ -16,29 +16,6 @@ void main() {
     drawingNumber: 'TO1',
   );
 
-  Future<ClientReportInfo?> open(WidgetTester tester) async {
-    ClientReportInfo? result;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) => TextButton(
-            onPressed: () async {
-              result = await showClientReportDialog(
-                context,
-                project: const OrderProject(windows: [window]),
-                company: const CompanyBrandingState(),
-              );
-            },
-            child: const Text('open'),
-          ),
-        ),
-      ),
-    );
-    await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
-    return result;
-  }
-
   testWidgets('диалог подставляет клиента из заказа и возвращает данные', (
     tester,
   ) async {
