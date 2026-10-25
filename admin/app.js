@@ -6,6 +6,7 @@
   const $ = (id) => document.getElementById(id);
   let secret = localStorage.getItem('okna_admin_key') || cfg.secret || '';
   let devices = [];
+  let licenses = [];
 
   function valueOf(v) {
     if (!v) return null;
@@ -30,7 +31,7 @@
     return out;
   }
 
-  async function query(collectionId, parent, key) {
+  async function query(collectionId, parent, key, field = 'key') {
     const root = parent ? `${base}/${parent}` : base;
     const url = `${root}:runQuery?key=${apiKey}`;
     const body = {
@@ -38,7 +39,7 @@
         from: [{ collectionId, ...(parent ? { allDescendants: false } : {}) }],
         where: {
           fieldFilter: {
-            field: { fieldPath: 'key' },
+            field: { fieldPath: field },
             op: 'EQUAL',
             value: { stringValue: key },
           },
@@ -61,9 +62,12 @@
     return dataOf(await res.json());
   }
 
-  async function patchDoc(path, fields) {
+  async function patchDoc(path, fields, mask = null) {
     const body = { fields };
-    const res = await fetch(`${base}/${path}?key=${apiKey}`, {
+    const query = mask
+      ? mask.map((field) => `&updateMask.fieldPaths=${encodeURIComponent(field)}`).join('')
+      : '';
+    const res = await fetch(`${base}/${path}?key=${apiKey}${query}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -197,7 +201,7 @@
     const ids = $('rel-ids').value.split(',').map((x) => x.trim()).filter(Boolean);
     try {
       await patchDoc('config/app', {
-        key: s(secret),
+        adminKey: s(secret),
         latestVersion: s($('rel-version').value.trim()),
         url: s($('rel-url').value.trim()),
         sha256: s($('rel-sha').value.trim()),
@@ -212,6 +216,121 @@
     } catch (error) {
       $('release-status').textContent = `Ошибка: ${error.message}`;
     }
+  }
+
+
+  function generateKey() {
+    const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    const group = () =>
+      Array.from({ length: 4 }, () =>
+        alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+    return [group(), group(), group(), group()].join('-');
+  }
+
+  async function ensureLicenseDoc(key, fields) {
+    const res = await fetch(`${base}/licenses/${key}?key=${apiKey}`);
+    if (res.status === 200) return false;
+    await patchDoc(`licenses/${key}`, fields);
+    return true;
+  }
+
+  async function createKey() {
+    const type = $('key-type').value;
+    const count = Math.max(1, Number($('key-count').value) || 1);
+    const key = generateKey();
+    try {
+      const ok = await ensureLicenseDoc(key, {
+        adminKey: s(secret),
+        licenseKey: s(key),
+        type: s(type),
+        maxActivations: { integerValue: String(type === 'single' ? 1 : count) },
+        activationsCount: { integerValue: '0' },
+        enabled: b(true),
+        note: s($('key-note').value.trim()),
+        createdAt: { timestampValue: new Date().toISOString() },
+      });
+      $('key-status').textContent = ok
+        ? `Ключ создан: ${key}`
+        : 'Такой ключ уже есть, попробуйте ещё раз';
+      loadKeys();
+    } catch (error) {
+      $('key-status').textContent = `Ошибка: ${error.message}`;
+    }
+  }
+
+  async function loadKeys() {
+    if (!secret) return;
+    try {
+      const docs = await query('licenses', null, secret, 'adminKey');
+      licenses = docs.map((doc) => ({ id: doc.name.split('/').pop(), ...dataOf(doc) }));
+      licenses.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+      const body = $('keys-body');
+      body.innerHTML = '';
+      for (const item of licenses) {
+        const tr = document.createElement('tr');
+        const used = item.activationsCount ?? 0;
+        const max = item.maxActivations ?? 1;
+        tr.innerHTML = `
+          <td><b>${escapeHtml(item.id)}</b></td>
+          <td>${item.type === 'single' ? 'одноразовый' : 'многоразовый'}</td>
+          <td>${used} / ${max}</td>
+          <td>${item.enabled === false ? '<span style="color:#ef6b6b">выключен</span>' : '<span style="color:#38c172">активен</span>'}</td>
+          <td>${fmtDate(item.createdAt)}</td>
+          <td></td>`;
+        const actions = tr.lastElementChild;
+        const copy = document.createElement('button');
+        copy.textContent = 'Копировать';
+        copy.className = 'ghost';
+        copy.onclick = (event) => {
+          event.stopPropagation();
+          navigator.clipboard?.writeText(item.id);
+        };
+        const toggle = document.createElement('button');
+        toggle.textContent = item.enabled === false ? 'Включить' : 'Выключить';
+        toggle.onclick = async (event) => {
+          event.stopPropagation();
+          try {
+            await patchDoc(
+              `licenses/${item.id}`,
+              {
+                adminKey: s(secret),
+                enabled: b(item.enabled === false),
+              },
+              ['adminKey', 'enabled'],
+            );
+            loadKeys();
+          } catch (error) {
+            $('key-status').textContent = `Ошибка: ${error.message}`;
+          }
+        };
+        const remove = document.createElement('button');
+        remove.textContent = 'Удалить';
+        remove.onclick = async (event) => {
+          event.stopPropagation();
+          if (!confirm(`Удалить ключ ${item.id}?`)) return;
+          await fetch(`${base}/licenses/${item.id}?key=${apiKey}`, { method: 'DELETE' });
+          loadKeys();
+        };
+        actions.append(copy, toggle, remove);
+        tr.addEventListener('click', () => showKeyActivations(item));
+        body.appendChild(tr);
+      }
+    } catch (error) {
+      $('key-status').textContent = `Ошибка: ${error.message}`;
+    }
+  }
+
+  async function showKeyActivations(item) {
+    $('key-detail').classList.remove('hidden');
+    $('key-detail-title').textContent = `Активации: ${item.id}`;
+    const docs = await query('activations', `licenses/${item.id}`, secret, 'adminKey');
+    const rows = docs.map((doc) => {
+      const data = dataOf(doc);
+      return `<tr><td>${escapeHtml(data.installId)}</td><td>${escapeHtml(data.device?.hostname || '')}</td><td>${fmtDate(data.activatedAt)}</td><td>${fmtDate(data.lastSeen)}</td></tr>`;
+    }).join('');
+    $('key-detail-body').innerHTML = `
+      <p class="hint">Занято ${item.activationsCount ?? 0} из ${item.maxActivations ?? 1}.</p>
+      <div class="table-wrap"><table><thead><tr><th>installId</th><th>ПК</th><th>Активирован</th><th>Последний запуск</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   function enter() {
@@ -237,10 +356,11 @@
     for (const tab of document.querySelectorAll('.tabs button')) {
       tab.classList.toggle('active', tab.dataset.tab === name);
     }
-    for (const id of ['devices', 'events', 'release']) {
+    for (const id of ['devices', 'events', 'keys', 'release']) {
       $(id).classList.toggle('hidden', id !== name);
     }
     if (name === 'release') loadRelease();
+    if (name === 'keys') loadKeys();
   }
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -250,6 +370,8 @@
     $('close-detail').addEventListener('click', () => $('device-detail').classList.add('hidden'));
     $('load-events').addEventListener('click', loadEvents);
     $('save-release').addEventListener('click', saveRelease);
+    $('create-key').addEventListener('click', createKey);
+    $('close-key-detail').addEventListener('click', () => $('key-detail').classList.add('hidden'));
     for (const tab of document.querySelectorAll('.tabs button')) {
       tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     }

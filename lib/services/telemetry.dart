@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/order_json.dart';
 import '../models/order_project.dart';
+import 'license.dart';
 import 'device_scan_io.dart'
     if (dart.library.js_interop) 'device_scan_web.dart' as device;
 import 'test_env_io.dart'
@@ -105,6 +106,7 @@ class Telemetry {
           'firstSeen': _ts(DateTime.parse(_firstSeen!)),
           'lastSeen': _ts(DateTime.now().toUtc()),
           'windowCount': _i(project.windowCount),
+          'licenseKey': _s(LicenseService.savedKey ?? ''),
           'sheetMode': _s(project.sheetMode.name),
           'selectedParams': _s(jsonEncode(selected)),
           'order': _s(jsonEncode(orderToJson(project))),

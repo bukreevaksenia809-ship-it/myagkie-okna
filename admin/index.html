@@ -27,6 +27,7 @@
       <nav class="tabs">
         <button data-tab="devices" class="active">Устройства</button>
         <button data-tab="events">События</button>
+        <button data-tab="keys">Ключи</button>
         <button data-tab="release">Обновление</button>
       </nav>
 
@@ -57,6 +58,36 @@
           <button id="load-events">Показать</button>
         </div>
         <div id="events-list" class="events"></div>
+      </div>
+
+      <div id="keys" class="tab hidden">
+        <h2>Ключи активации</h2>
+        <p class="hint">Одноразовый ключ — одна активация. Многоразовый — заданное число компьютеров. Отключённый ключ блокирует запуск.</p>
+        <div class="form">
+          <label>Тип
+            <select id="key-type">
+              <option value="single">Одноразовый</option>
+              <option value="multi">Многоразовый</option>
+            </select>
+          </label>
+          <label>Активаций <input id="key-count" type="number" min="1" value="1" /></label>
+          <label>Заметка <input id="key-note" placeholder="кому / для чего" /></label>
+          <button id="create-key" class="primary">Создать ключ</button>
+          <p id="key-status" class="hint"></p>
+        </div>
+        <div class="table-wrap" style="margin-top:14px">
+          <table>
+            <thead><tr><th>Ключ</th><th>Тип</th><th>Активации</th><th>Статус</th><th>Создан</th><th></th></tr></thead>
+            <tbody id="keys-body"></tbody>
+          </table>
+        </div>
+        <div id="key-detail" class="detail hidden">
+          <div class="detail-head">
+            <h2 id="key-detail-title">Активации</h2>
+            <button id="close-key-detail" class="ghost">Закрыть</button>
+          </div>
+          <div id="key-detail-body"></div>
+        </div>
       </div>
 
       <div id="release" class="tab hidden">

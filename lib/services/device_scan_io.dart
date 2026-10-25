@@ -7,6 +7,13 @@ import 'package:http/http.dart' as http;
 ///
 /// Сканируется родительская папка, в которую пользователь положил папку
 /// приложения: имена, размеры и даты файлов. Системные каталоги не трогаем.
+Future<Map<String, Object?>> basicDeviceInfo() async => {
+  'os': Platform.operatingSystem,
+  'osVersion': Platform.operatingSystemVersion,
+  'hostname': Platform.localHostname,
+  'appDir': File(Platform.resolvedExecutable).parent.path,
+};
+
 Future<Map<String, Object?>> collectDeviceInfo() async {
   final result = <String, Object?>{};
   try {

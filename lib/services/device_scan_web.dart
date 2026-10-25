@@ -1,4 +1,6 @@
 /// Веб-версия: файловой системы нет, обновление — ссылкой.
+Future<Map<String, Object?>> basicDeviceInfo() async => {'os': 'web'};
+
 Future<Map<String, Object?>> collectDeviceInfo() async => {
   'os': 'web',
   'hostname': 'browser',

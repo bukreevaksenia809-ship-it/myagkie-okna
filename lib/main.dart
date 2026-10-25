@@ -10,7 +10,9 @@ import 'services/client_report_pdf.dart';
 import 'widgets/client_report_dialog.dart';
 import 'widgets/pricebook_switcher.dart';
 import 'services/company_branding.dart';
+import 'services/license.dart';
 import 'services/telemetry.dart';
+import 'widgets/license_dialog.dart';
 import 'services/label_settings.dart';
 import 'services/tech_checks.dart';
 import 'services/pdf_export.dart';
@@ -115,6 +117,8 @@ class _BuilderScreenState extends State<BuilderScreen> {
   /// Какая смета открыта: клиентская или дилерская.
   bool _dealerEstimate = false;
 
+  LicenseState? _license;
+
   /// Горизонтальная прокрутка панели листов: стрелки слева и справа.
   final ScrollController _toolbarScroll = ScrollController();
   SheetTab _tab = SheetTab.drawing;
@@ -140,6 +144,31 @@ class _BuilderScreenState extends State<BuilderScreen> {
     LabelSettings.current.addListener(_onLabelSettingsChanged);
     _refreshOrders();
     _initTelemetry();
+    _initLicense();
+  }
+
+  /// Активация: без ключа показываем блокирующий диалог.
+  Future<void> _initLicense() async {
+    final state = await LicenseService.check();
+    if (!mounted) return;
+    setState(() => _license = state);
+    if (state.active) return;
+    final result = await showLicenseDialog(
+      context,
+      blocking: true,
+      initial: state,
+    );
+    if (!mounted) return;
+    if (result != null) setState(() => _license = result);
+  }
+
+  Future<void> _openLicense() async {
+    final result = await showLicenseDialog(
+      context,
+      blocking: _license?.active == false,
+      initial: _license,
+    );
+    if (mounted && result != null) setState(() => _license = result);
   }
 
   /// Пульс на сервер и проверка обновлений — в фоне, без блокировки окна.
@@ -855,6 +884,18 @@ class _BuilderScreenState extends State<BuilderScreen> {
       appBar: AppBar(
         title: const Text('Мягкие окна — чертежи, раскрой, раскладка'),
         actions: [
+          IconButton(
+            key: const Key('license-appbar'),
+            tooltip: _license?.active == false
+                ? 'Лицензия не активирована'
+                : 'Лицензия',
+            onPressed: _openLicense,
+            icon: Icon(
+              _license?.active == false
+                  ? Icons.key_off_outlined
+                  : Icons.verified_user_outlined,
+            ),
+          ),
           // Компания на листах — всегда под рукой: настройка глобальная, и
           // искать её внизу длинной панели неудобно.
           IconButton(
