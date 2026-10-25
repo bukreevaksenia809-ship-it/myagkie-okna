@@ -276,7 +276,6 @@ void main() {
 
     // В техкарте окна — счёт на окно, как на чертеже.
     final perWindow = summary.fastenerCount[FastenerType.frenchLocks]!;
-    final orderCount = perWindow;
     expect(fastener.quantity, closeTo(perWindow.toDouble(), 1e-9));
     expect(fastener.size, '$perWindow шт');
     expect(fastener.name, contains('французский замок'));
