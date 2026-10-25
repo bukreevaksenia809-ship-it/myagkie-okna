@@ -667,7 +667,11 @@ class ZipperSpec {
   const ZipperSpec({
     this.centered = true,
     this.offsetMm = 0,
-    this.bandWidth = defaultZipperBandWidth,
+    this.zipWidthMm = defaultZipperWidthMm,
+    this.tentWidthMm = defaultZipperTentWidthMm,
+    this.weldMm = defaultZipperWeldMm,
+    this.atEdge = false,
+    this.edgeRight = false,
   });
 
   /// По центру полотна (иначе — по [offsetMm] от левого края).
@@ -676,20 +680,60 @@ class ZipperSpec {
   /// Положение центра молнии от левого внутреннего края плёнки, мм.
   final double offsetMm;
 
-  /// Ширина спайки, в которую впаивается молния (молния по её центру).
-  final double bandWidth;
+  /// Ширина самой молнии, мм.
+  final double zipWidthMm;
 
-  ZipperSpec copyWith({bool? centered, double? offsetMm, double? bandWidth}) =>
-      ZipperSpec(
-        centered: centered ?? this.centered,
-        offsetMm: offsetMm ?? this.offsetMm,
-        bandWidth: bandWidth ?? this.bandWidth,
-      );
+  /// Ширина тента с одной стороны от молнии, мм.
+  final double tentWidthMm;
+
+  /// Напайка тента на полотно (с одной стороны), мм.
+  final double weldMm;
+
+  /// Молния стоит вплотную к окантовке (слева или справа).
+  final bool atEdge;
+
+  /// При [atEdge] — сторона примыкания: справа (иначе слева).
+  final bool edgeRight;
+
+  /// Полоса молнии посередине полотна: молния + два тента − две напайки.
+  double get bandWidth =>
+      math.max(zipWidthMm + 2 * tentWidthMm - 2 * weldMm, 1);
+
+  /// Полоса молнии у края: готовая окантовка + молния + тент − напайка.
+  double edgeBandWidth(double edgeFinishedMm) =>
+      math.max(edgeFinishedMm + zipWidthMm + tentWidthMm - weldMm, 1);
+
+  /// Полоса с учётом положения: у края считаем окантовку, в середине — два
+  /// тента.
+  double bandWidthFor(double edgeFinishedMm) =>
+      atEdge ? edgeBandWidth(edgeFinishedMm) : bandWidth;
+
+  ZipperSpec copyWith({
+    bool? centered,
+    double? offsetMm,
+    double? zipWidthMm,
+    double? tentWidthMm,
+    double? weldMm,
+    bool? atEdge,
+    bool? edgeRight,
+  }) => ZipperSpec(
+    centered: centered ?? this.centered,
+    offsetMm: offsetMm ?? this.offsetMm,
+    zipWidthMm: zipWidthMm ?? this.zipWidthMm,
+    tentWidthMm: tentWidthMm ?? this.tentWidthMm,
+    weldMm: weldMm ?? this.weldMm,
+    atEdge: atEdge ?? this.atEdge,
+    edgeRight: edgeRight ?? this.edgeRight,
+  );
 
   Map<String, dynamic> toJson() => {
     'centered': centered,
     'offsetMm': offsetMm,
-    'bandWidth': bandWidth,
+    'zipWidthMm': zipWidthMm,
+    'tentWidthMm': tentWidthMm,
+    'weldMm': weldMm,
+    'atEdge': atEdge,
+    'edgeRight': edgeRight,
   };
 }
 
@@ -763,7 +807,16 @@ class Cutout {
 const double liftStrapWidth = 50;
 const double liftStrapLength = 500;
 
-/// Ширина спайки, в которую впаивается молния, мм (5 см).
+/// Ширина молнии по умолчанию, мм.
+const double defaultZipperWidthMm = 15;
+
+/// Ширина тента с одной стороны молнии по умолчанию, мм.
+const double defaultZipperTentWidthMm = 50;
+
+/// Напайка тента на полотно по умолчанию, мм.
+const double defaultZipperWeldMm = 20;
+
+/// Старое имя ширины полосы — оставлено для чтения старых заказов.
 const double defaultZipperBandWidth = 50;
 
 /// Ширина молнии в режиме «доп. настройки»: 5 см тент + 1 см молния + 5 см
@@ -1698,17 +1751,10 @@ class WindowParams {
 
   /// Включить/выключить «доп. настройку молнии».
   ///
-  /// При включении ширина всех молний становится 11 см (полоса 5+1+5),
-  /// при выключении возвращается прежняя типовая 5 см.
-  WindowParams withZipperSegments(bool enabled) => copyWith(
-    zipperSegments: enabled,
-    zippers: [
-      for (final zipper in zippers)
-        zipper.copyWith(
-          bandWidth: enabled ? zipperSegmentBandWidth : defaultZipperBandWidth,
-        ),
-    ],
-  );
+  /// Ширина полосы больше не задаётся вручную: она считается из ширины
+  /// молнии, тента и напайки (см. [ZipperSpec]).
+  WindowParams withZipperSegments(bool enabled) =>
+      copyWith(zipperSegments: enabled);
 
   /// Добавить молнию.
   ///
@@ -1719,12 +1765,7 @@ class WindowParams {
     if (zippers.isEmpty) {
       return copyWith(
         zippers: [
-          ZipperSpec(
-            centered: true,
-            bandWidth: zipperSegments
-                ? zipperSegmentBandWidth
-                : defaultZipperBandWidth,
-          ),
+          const ZipperSpec(centered: true),
         ],
       );
     }
@@ -1753,7 +1794,9 @@ class WindowParams {
         ZipperSpec(
           centered: false,
           offsetMm: ((bestStart + bestEnd) / 2).clamp(0.0, width),
-          bandWidth: zippers.first.bandWidth,
+          zipWidthMm: zippers.first.zipWidthMm,
+          tentWidthMm: zippers.first.tentWidthMm,
+          weldMm: zippers.first.weldMm,
         ),
       ],
     );

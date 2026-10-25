@@ -98,7 +98,7 @@ const _previewWindow = WindowParams(
   topWidth: 1500,
   leftHeight: 2520,
   rightHeight: 2520,
-  zippers: [ZipperSpec(centered: false, offsetMm: 500)],
+  zippers: [ZipperSpec(centered: false, offsetMm: 500, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)],
   pocket: true,
   drainHoles: true,
   drainCount: 3,
@@ -317,7 +317,7 @@ void main() {
       hemRightMm: 40,
       hemTopMm: 40,
       hemLeftMm: 40,
-      zippers: [ZipperSpec(centered: true)],
+      zippers: [ZipperSpec(centered: true, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)],
     );
     const project = OrderProject(windows: [screen]);
     final summary = CostsSummary(project);
@@ -330,7 +330,7 @@ void main() {
     expect(titles, contains('Подворот скрина'));
     expect(titles, isNot(contains('Окантовка')));
 
-    // Полоса молнии сузила заготовку: (2040 − 50) × 2060 = 4,0994 м².
+    // Молния делит полотно на сегменты; площадь — по двум сегментам.
     // Площадь самой полосы (0,1 м²) справочная и в расход не добавляется.
     expect(summary.screenZipperBandAreaM2, closeTo(0.1, 1e-9));
     expect(summary.filmAreaWithShrinkageM2, closeTo(4.0994, 1e-9));
@@ -371,7 +371,7 @@ void main() {
       hemRightMm: 40,
       hemTopMm: 40,
       hemLeftMm: 40,
-      zippers: [ZipperSpec(centered: true)],
+      zippers: [ZipperSpec(centered: true, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)],
     );
     final withoutZipper = withZipper.clearZippers();
     final prices = PriceList.defaults();
@@ -379,7 +379,7 @@ void main() {
     final b = Estimate.ofWindow(withZipper, prices);
 
     // Заготовка без молнии 2040 × 2060 = 4,2024 м², с полосой 50 мм —
-    // 1990 × 2060 = 4,0994 м²: ровно на 50 × 2060 = 0,103 м² меньше.
+    // Площадь меньше полной: зазор молнии не входит в полотно.
     final filmA = a.lines.firstWhere(
       (line) => line.title.startsWith('Полотно'),
     );

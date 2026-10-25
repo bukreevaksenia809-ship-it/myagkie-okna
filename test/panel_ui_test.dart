@@ -591,7 +591,7 @@ void _rollWidthsAndEyeletsPanelRules() {
     await tester.tap(addZipper);
     await tester.pumpAndSettle();
     expect(hostKey.currentState!.project.selected.zippers, hasLength(1));
-    expect(find.text('Ширина полосы'), findsOneWidget);
+    expect(find.text('Ширина молнии'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
@@ -784,8 +784,8 @@ void _screenZipperBlankRules() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    // Скрин 2000 × 2000, подворот 40 на все стороны, одна молния с полосой
-    // 50 мм: заготовка 1990 × 2060 мм вместо 2040 × 2060.
+    // Скрин 2000 × 2000, подворот 40, одна молния: заготовка 2040 × 2060,
+    // раскрой делится на два сегмента.
     const order = OrderProject(
       windows: [
         WindowParams(
@@ -798,7 +798,7 @@ void _screenZipperBlankRules() {
           hemRightMm: 40,
           hemTopMm: 40,
           hemLeftMm: 40,
-          zippers: [ZipperSpec(centered: true)],
+          zippers: [ZipperSpec(centered: true, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)],
         ),
       ],
     );
@@ -808,23 +808,14 @@ void _screenZipperBlankRules() {
     expect(tester.takeException(), isNull);
 
     final spec = WindowSpec.of(order.selected);
-    expect(spec.filmCutWidthWithAllowance, closeTo(1990, 1e-9));
+    expect(spec.filmCutWidthWithAllowance, closeTo(2040, 1e-9));
     expect(spec.filmCutHeightWithAllowance, closeTo(2060, 1e-9));
 
     // Подпись подворотного блока: обе ширины и виновник — полоса молнии.
     final blankLabel = tester
         .widget<Text>(find.byKey(const Key('hem-blank-label')))
         .data!;
-    expect(blankLabel, contains(formatMm(1990)));
-    expect(blankLabel, contains('полосу молнии 50'));
-    expect(blankLabel, contains('${formatMm(2040)} → ${formatMm(1990)}'));
-
-    // Формула по ширине показывает вычет отдельным слагаемым.
-    final widthFormula = tester
-        .widget<Text>(find.byKey(const Key('hem-width-formula')))
-        .data!;
-    expect(widthFormula, contains('− полоса молнии 50'));
-    expect(widthFormula, contains('= ${formatMm(1990)} мм'));
+    expect(blankLabel, contains(formatMm(2040)));
     // Высота полосой не меняется: 2000 + 20 + 20 + 20 = 2060.
     final heightFormula = tester
         .widget<Text>(find.byKey(const Key('hem-height-formula')))
@@ -850,7 +841,7 @@ void _screenZipperBlankRules() {
           topWidth: 2000,
           leftHeight: 2000,
           rightHeight: 2000,
-          zippers: [ZipperSpec(centered: true)],
+          zippers: [ZipperSpec(centered: true, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)],
         ),
       ],
     );
@@ -860,26 +851,11 @@ void _screenZipperBlankRules() {
     expect(tester.takeException(), isNull);
 
     final spec = WindowSpec.of(order.selected);
-    expect(spec.filmCutWidth, closeTo(1860, 1e-9));
+    expect(spec.filmCutWidth, closeTo(1910, 1e-9));
     expect(spec.filmCutWidthBeforeZipper, closeTo(1910, 1e-9));
-
-    // Карточка раскроя: отдельная строка про вычет полосы — как у скрина.
-    expect(
-      find.text('Минус полоса молнии на ширину кроя (1 шт)'),
-      findsOneWidget,
-    );
-    final reduction =
-        '−${formatMm(50)} мм: '
-        '${formatMm(1910)} → ${formatMm(1860)} мм до припуска';
-    expect(find.text(reduction), findsOneWidget);
-
-    // Подпись у поля молнии объясняет, что ширина уменьшена так же.
-    expect(
-      find.textContaining(
-        'Ширина заготовки уменьшается на полосу так же, как у скрина',
-      ),
-      findsOneWidget,
-    );
+    // Молния по центру делит раскрой на сегменты, а не сужает заготовку.
+    expect(spec.filmCutPolygons, hasLength(2));
+    expect(find.textContaining('сегмент'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }

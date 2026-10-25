@@ -25,7 +25,7 @@ const _window = WindowParams(
   topWidth: 1500,
   leftHeight: 2520,
   rightHeight: 2520,
-  zippers: [ZipperSpec(centered: false, offsetMm: 500)],
+  zippers: [ZipperSpec(centered: false, offsetMm: 500, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)],
   pocket: true,
 );
 
@@ -43,8 +43,8 @@ const _rich = WindowParams(
   fastenerType: FastenerType.frenchLocks,
   eyeletType: EyeletType.oval42x22,
   zippers: [
-    ZipperSpec(centered: false, offsetMm: 600),
-    ZipperSpec(centered: false, offsetMm: 1500),
+    ZipperSpec(centered: false, offsetMm: 600, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20),
+    ZipperSpec(centered: false, offsetMm: 1500, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20),
   ],
   cutouts: [
     Cutout(
@@ -91,7 +91,7 @@ const _screenZipper = WindowParams(
   hemRightMm: 40,
   hemTopMm: 40,
   hemLeftMm: 40,
-  zippers: [ZipperSpec(centered: true)],
+  zippers: [ZipperSpec(centered: true, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)],
 );
 
 /// Простое глухое окно из москитной сетки.
@@ -270,21 +270,11 @@ void main() {
         ),
         isTrue,
       );
-      // У ПВХ полоса (спайка) тоже вычитается из ширины кроя — это видно
-      // и в операции «Молнии», и в операции «Раскрой плёнки».
-      expect(zipper.text, contains('Ширина заготовки уменьшена на полосу'));
-      expect(
-        zipper.text,
-        contains('${formatMm(spec.filmCutWidthBeforeZipper)} → '
-            '${formatMm(spec.filmCutWidthWithAllowance)} мм'),
-      );
+      // Молния по центру делит раскрой на сегменты; ширина не вычитается.
+      expect(zipper.text, contains('сегмента'));
       final cutting = _op(card, TechOperationKind.cutting);
-      expect(
-        cutting.text,
-        contains('минус полоса молнии '
-            '${formatMm(_window.zipperBandWidth)} мм'),
-      );
-      expect(cutting.materials.first.note, contains('ширина кроя уменьшена'));
+      expect(cutting.text, isNot(contains('минус полоса молнии')));
+      expect(cutting.materials.first.note, isNot(contains('ширина кроя уменьшена')));
     });
 
     test('фартук: тент 200 мм складывается пополам до 100 мм', () {

@@ -22,8 +22,8 @@ void main() {
       leftHeight: 2000,
       rightHeight: 2000,
       zippers: [
-        ZipperSpec(centered: false, offsetMm: 1900, bandWidth: 110),
-        ZipperSpec(centered: false, offsetMm: 300, bandWidth: 110),
+        ZipperSpec(centered: false, offsetMm: 1900),
+        ZipperSpec(centered: false, offsetMm: 300),
       ],
     );
     final spec = WindowSpec.of(params);

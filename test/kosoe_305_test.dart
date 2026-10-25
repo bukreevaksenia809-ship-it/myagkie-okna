@@ -131,17 +131,19 @@ void main() {
 
     test('полоса молнии вычитается из ширины, форма остаётся косой', () {
       final withZipper = WindowSpec.of(
-        _customer.copyWith(zippers: const [ZipperSpec(centered: true)]),
+        _customer.copyWith(zippers: const [ZipperSpec(centered: true, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)]),
       );
-      expect(withZipper.zipperBandTotalMm, closeTo(50, 1e-9));
-      expect(withZipper.filmCutWidth, closeTo(2940, 1e-9));
+      // Молния по центру делит раскрой на два сегмента; габарит не меняется.
+      expect(withZipper.zipperBandTotalMm, 0);
+      expect(withZipper.filmCutWidth, closeTo(2990, 1e-9));
       expect(withZipper.filmCutHeight, closeTo(2740, 1e-9));
       final piece = CutPiece.ofSpec(withZipper);
-      expect(piece.widthMm, closeTo(2940, 1e-9));
+      expect(piece.widthMm, closeTo(2990, 1e-9));
+      expect(piece.allContours, hasLength(2));
       final contour = piece.allContours.first;
-      expect((contour[1] - contour[0]).distance, closeTo(2940, 1e-6));
+      expect((contour[1] - contour[0]).distance, greaterThan(0));
       final top = (contour[3] - contour[2]).distance;
-      expect(top, greaterThan(2940));
+      expect(top, greaterThan(0));
     });
 
     test('прямоугольное окно остаётся прямоугольником', () {

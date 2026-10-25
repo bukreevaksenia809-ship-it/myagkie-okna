@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Мягкие окна — админка</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">МЯГКИЕ ОКНА <span>админка производства</span></div>
+    <div class="actions">
+      <button id="refresh">Обновить</button>
+      <button id="logout" class="ghost">Сменить ключ</button>
+    </div>
+  </header>
+  <main>
+    <section id="gate" class="gate">
+      <h1>Вход</h1>
+      <p>Внутренний ключ доступа к телеметрии.</p>
+      <input id="secret" type="password" placeholder="Ключ" />
+      <button id="enter">Войти</button>
+      <p class="hint">Ключ хранится в браузере после входа.</p>
+    </section>
+
+    <section id="app" class="hidden">
+      <nav class="tabs">
+        <button data-tab="devices" class="active">Устройства</button>
+        <button data-tab="events">События</button>
+        <button data-tab="release">Обновление</button>
+      </nav>
+
+      <div id="devices" class="tab">
+        <div class="stats">
+          <div class="stat"><b id="stat-count">0</b><span>установок</span></div>
+          <div class="stat"><b id="stat-online">0</b><span>активны за сутки</span></div>
+          <div class="stat"><b id="stat-version">—</b><span>последняя версия</span></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Установка</th><th>Версия</th><th>Последний запуск</th><th>Окон</th><th>Файлов</th><th>ПК</th></tr></thead>
+            <tbody id="devices-body"></tbody>
+          </table>
+        </div>
+        <div id="device-detail" class="detail hidden">
+          <div class="detail-head">
+            <h2 id="detail-title">Устройство</h2>
+            <button id="close-detail" class="ghost">Закрыть</button>
+          </div>
+          <div id="detail-body"></div>
+        </div>
+      </div>
+
+      <div id="events" class="tab hidden">
+        <div class="row">
+          <label>Установка <input id="events-install" placeholder="installId" /></label>
+          <button id="load-events">Показать</button>
+        </div>
+        <div id="events-list" class="events"></div>
+      </div>
+
+      <div id="release" class="tab hidden">
+        <h2>Выпуск обновления</h2>
+        <p class="hint">Файл обновления — zip с содержимым папки приложения. Клиент скачает, сверит SHA-256 и заменит файлы.</p>
+        <div class="form">
+          <label>Версия <input id="rel-version" placeholder="1.3.1" /></label>
+          <label>Ссылка на zip <input id="rel-url" placeholder="https://…/app.zip" /></label>
+          <label>SHA-256 <input id="rel-sha" placeholder="необязательно" /></label>
+          <label>Заметки <textarea id="rel-notes" rows="3"></textarea></label>
+          <label class="check"><input type="checkbox" id="rel-all" checked /> Все клиенты</label>
+          <label>Только installId (через запятую) <input id="rel-ids" placeholder="okna-…, okna-…" /></label>
+          <label class="check"><input type="checkbox" id="rel-enabled" checked /> Обновление включено</label>
+          <label class="check"><input type="checkbox" id="rel-auto" /> Ставить автоматически, без вопроса</label>
+          <button id="save-release" class="primary">Опубликовать</button>
+          <p id="release-status" class="hint"></p>
+        </div>
+        <pre id="release-current"></pre>
+      </div>
+    </section>
+  </main>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

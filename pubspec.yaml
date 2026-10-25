@@ -46,6 +46,12 @@ dependencies:
   # Хранение заказов в браузере (localStorage) для веб-версии.
   shared_preferences: ^2.3.0
 
+  # Телеметрия и проверка обновлений (Firestore REST).
+  http: ^1.2.0
+
+  # Проверка SHA-256 скачанного обновления.
+  crypto: ^3.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -30,6 +30,7 @@ class EstimateSheet extends StatelessWidget {
     this.captureKey,
     this.labelFontFamily,
     this.company,
+    this.title = 'Смета на заказ',
   });
 
   final OrderProject project;
@@ -39,6 +40,9 @@ class EstimateSheet extends StatelessWidget {
 
   /// Компания для шапки: логотип и строка реквизитов (если включено).
   final CompanyBrandingState? company;
+
+  /// Заголовок листа: «Смета на заказ» или «Смета (дилер)».
+  final String title;
 
   /// Ключ таблицы позиций — по нему тесты проверяют раскладку листа.
   static const Key tableKey = ValueKey('estimate-table');
@@ -199,7 +203,7 @@ class EstimateSheet extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _text(
-                  'Смета на заказ',
+                  title,
                   size: _captionFontSize,
                   weight: FontWeight.w700,
                   color: Colors.white,
@@ -221,7 +225,7 @@ class EstimateSheet extends StatelessWidget {
             ),
           ] else
             _text(
-              'Смета на заказ',
+              title,
               size: _captionFontSize,
               weight: FontWeight.w700,
               color: Colors.white,

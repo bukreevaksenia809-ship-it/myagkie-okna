@@ -8,7 +8,9 @@ import 'models/window_params.dart';
 import 'services/order_storage.dart';
 import 'services/client_report_pdf.dart';
 import 'widgets/client_report_dialog.dart';
+import 'widgets/pricebook_switcher.dart';
 import 'services/company_branding.dart';
+import 'services/telemetry.dart';
 import 'services/label_settings.dart';
 import 'services/tech_checks.dart';
 import 'services/pdf_export.dart';
@@ -21,14 +23,13 @@ import 'widgets/cut_sheet.dart';
 import 'widgets/estimate_sheet.dart';
 import 'widgets/drawing_sheet.dart';
 import 'widgets/orders_panel.dart';
-import 'widgets/price_panel.dart';
 import 'widgets/params_panel.dart';
 import 'widgets/print_dialog.dart';
 import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '1.2.0';
+const String kAppVersion = '1.3.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -106,6 +107,16 @@ class _BuilderScreenState extends State<BuilderScreen> {
   OrderProject get _project => _drafts[_orderIndex].project;
 
   PriceList _prices = const PriceList.defaults();
+
+  /// Второй прайс — дилерский. Начинается с клиентских цен, дальше его
+  /// можно менять отдельно; смета дилера считается по нему.
+  PriceList _dealerPrices = const PriceList.defaults();
+
+  /// Какая смета открыта: клиентская или дилерская.
+  bool _dealerEstimate = false;
+
+  /// Горизонтальная прокрутка панели листов: стрелки слева и справа.
+  final ScrollController _toolbarScroll = ScrollController();
   SheetTab _tab = SheetTab.drawing;
   List<SavedOrder> _orders = const [];
   bool _ordersBusy = false;
@@ -128,6 +139,69 @@ class _BuilderScreenState extends State<BuilderScreen> {
     DisplayUnits.current.addListener(_onUnitsChanged);
     LabelSettings.current.addListener(_onLabelSettingsChanged);
     _refreshOrders();
+    _initTelemetry();
+  }
+
+  /// Пульс на сервер и проверка обновлений — в фоне, без блокировки окна.
+  Future<void> _initTelemetry() async {
+    await Telemetry.init(project: _project, version: kAppVersion);
+    final update = await Telemetry.checkUpdate();
+    if (!mounted || update == null) return;
+    if (_isNewerVersion(update.version, kAppVersion)) _showUpdate(update);
+  }
+
+  bool _isNewerVersion(String remote, String local) {
+    List<int> parts(String value) => [
+      for (final chunk in value.split('.'))
+        int.tryParse(chunk.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
+    ];
+    final a = parts(remote);
+    final b = parts(local);
+    for (var i = 0; i < a.length || i < b.length; i++) {
+      final left = i < a.length ? a[i] : 0;
+      final right = i < b.length ? b[i] : 0;
+      if (left != right) return left > right;
+    }
+    return false;
+  }
+
+  Future<void> _showUpdate(AppUpdate update) async {
+    if (update.autoUpdate) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Обновление до ${update.version}: приложение перезапустится…')),
+      );
+      await Telemetry.applyUpdate(update);
+      return;
+    }
+    final apply = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Доступна версия ${update.version}'),
+        content: Text(
+          update.notes.trim().isEmpty
+              ? 'Обновить приложение сейчас?'
+              : update.notes,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Позже'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(Icons.system_update_alt, size: 18),
+            label: const Text('Обновить'),
+          ),
+        ],
+      ),
+    );
+    if (apply != true) return;
+    final ok = await Telemetry.applyUpdate(update);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось обновиться. Ссылка: ${update.url}')),
+      );
+    }
   }
 
   /// Переключатель мм/см перерисовывает всё приложение: подписи на панели,
@@ -163,6 +237,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
 
   @override
   void dispose() {
+    _toolbarScroll.dispose();
     CompanyBranding.current.removeListener(_onBrandingChanged);
     _zoom.removeListener(_onZoomChanged);
     DisplayUnits.current.removeListener(_onUnitsChanged);
@@ -178,9 +253,12 @@ class _BuilderScreenState extends State<BuilderScreen> {
     }
   }
 
-  void _updateProject(OrderProject project) => setState(() {
-    _drafts[_orderIndex] = _drafts[_orderIndex].copyWith(project: project);
-  });
+  void _updateProject(OrderProject project) {
+    setState(() {
+      _drafts[_orderIndex] = _drafts[_orderIndex].copyWith(project: project);
+    });
+    Telemetry.projectChanged(project, kAppVersion);
+  }
 
   void _reset() => setState(() {
     _drafts[_orderIndex] = _drafts[_orderIndex].copyWith(
@@ -435,7 +513,8 @@ class _BuilderScreenState extends State<BuilderScreen> {
     SheetTab.cut => 'Раскрой',
     SheetTab.costs => 'Расходы',
     SheetTab.docs => 'Документация',
-    SheetTab.estimate => 'Смета',
+    SheetTab.estimate =>
+      _dealerEstimate ? 'Смета дилер' : 'Смета',
     SheetTab.techCard => 'Техкарта',
   };
 
@@ -879,10 +958,14 @@ class _BuilderScreenState extends State<BuilderScreen> {
                   onCreateOrder: _createOrderDraft,
                   onRenameOrder: _renameOrderDraft,
                   onDeleteOrder: _deleteOrderDraft,
-                  pricesSection: PricePanel(
-                    prices: _prices,
+                  pricesSection: PricebookSwitcher(
+                    client: _prices,
+                    dealer: _dealerPrices,
                     materials: _project.materialsInOrder,
-                    onChanged: (prices) => setState(() => _prices = prices),
+                    onClientChanged: (prices) =>
+                        setState(() => _prices = prices),
+                    onDealerChanged: (prices) =>
+                        setState(() => _dealerPrices = prices),
                   ),
                   techSection: _techSection(),
                   ordersSection: OrdersPanel(
@@ -980,9 +1063,10 @@ class _BuilderScreenState extends State<BuilderScreen> {
             SheetTab.docs => DocsTab(project: _project, prices: _prices),
             SheetTab.estimate => EstimateSheet(
               project: _project,
-              prices: _prices,
+              prices: _dealerEstimate ? _dealerPrices : _prices,
               captureKey: _sheetKey,
               company: CompanyBranding.current.value,
+              title: _dealerEstimate ? 'Смета (дилер)' : 'Смета на заказ',
             ),
             SheetTab.techCard => TechCardSheet(
               project: _project,
@@ -1013,10 +1097,21 @@ class _BuilderScreenState extends State<BuilderScreen> {
   Widget _toolbar() {
     return Container(
       color: const Color(0xFFF2F5F9),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Row(
+        children: [
+          IconButton(
+            key: const Key('toolbar-scroll-left'),
+            tooltip: 'Прокрутить влево',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _scrollToolbar(-1),
+            icon: const Icon(Icons.chevron_left),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              controller: _toolbarScroll,
+              scrollDirection: Axis.horizontal,
+              child: Row(
           children: [
             SegmentedButton<SheetTab>(
               segments: const [
@@ -1077,6 +1172,20 @@ class _BuilderScreenState extends State<BuilderScreen> {
               onSelectionChanged: (selection) =>
                   _updateProject(_project.setSheetMode(selection.first)),
             ),
+            if (_tab == SheetTab.estimate) ...[
+              const SizedBox(width: 12),
+              SegmentedButton<bool>(
+                showSelectedIcon: false,
+                style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                segments: const [
+                  ButtonSegment(value: false, label: Text('Клиент')),
+                  ButtonSegment(value: true, label: Text('Дилер')),
+                ],
+                selected: {_dealerEstimate},
+                onSelectionChanged: (selection) =>
+                    setState(() => _dealerEstimate = selection.first),
+              ),
+            ],
             if (_tab == SheetTab.drawing &&
                 _project.sheetMode == SheetMode.grid &&
                 _project.isMultiWindow) ...[
@@ -1140,8 +1249,34 @@ class _BuilderScreenState extends State<BuilderScreen> {
               style: const TextStyle(fontSize: 11, color: Color(0xFF8A93A0)),
             ),
           ],
-        ),
+              ),
+            ),
+          ),
+          IconButton(
+            key: const Key('toolbar-scroll-right'),
+            tooltip: 'Прокрутить вправо',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _scrollToolbar(1),
+            icon: const Icon(Icons.chevron_right),
+          ),
+        ],
       ),
+    );
+  }
+
+  /// Прокрутка строки листов стрелками: на узком экране вкладки иначе
+  /// уходят за край и до них не добраться.
+  void _scrollToolbar(double direction) {
+    if (!_toolbarScroll.hasClients) return;
+    final position = _toolbarScroll.position;
+    final target = (position.pixels + direction * 320).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    _toolbarScroll.animateTo(
+      target,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
     );
   }
 }

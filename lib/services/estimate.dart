@@ -328,7 +328,7 @@ class Estimate {
         prices.isEnabled(PriceItemKeys.pocket)) {
       lines.add(
         EstimateLine(
-          title: 'Фартук под утяжитель',
+          title: 'Фартук',
           note: 'нижний/верхний фартук, ${summary.pocketCount} шт',
           quantity: summary.pocketLengthMm / 1000,
           unit: 'м',
@@ -539,6 +539,24 @@ class Estimate {
 
     // Свободные позиции ручного ввода из прайса: название, количество,
     // единица и цена. Идут отдельной строкой в работах, без привязки к окну.
+    // Дополнительные позиции: количество вводится в заказе, цена — в прайсе.
+    for (final key in PriceList.extraItemKeys) {
+      final quantity = project.extraQuantities[key] ?? 0;
+      final unitPrice = prices.extraItemPrice(key);
+      if (quantity <= 0 || unitPrice <= 0) continue;
+      final unit = PriceList.extraItemUnit(key);
+      lines.add(
+        EstimateLine(
+          title: 'Дополнительно: ${PriceList.extraItemLabel(key)}',
+          note: '${_unitPriceLabel(quantity)} $unit × '
+              '${_unitPriceLabel(unitPrice)} ₽/$unit — ручной ввод в заказе',
+          quantity: quantity,
+          unit: unit,
+          unitPrice: unitPrice,
+          group: EstimateGroup.extra,
+        ),
+      );
+    }
     for (final item in prices.customItems) {
       final title = item.name.trim();
       if (title.isEmpty) continue;

@@ -257,6 +257,40 @@ class _PricePanelState extends State<PricePanel> {
                 itemKey: PriceItemKeys.screenHem,
               ),
             ]),
+            // Дополнительные позиции: количество задаётся в заказе, здесь —
+            // только цена за единицу. В смету попадают при количестве > 0.
+            _group('Дополнительно, ₽ за единицу', [
+              _row(
+                'Доставка, ₽/шт',
+                prices.deliveryPerPiece,
+                (value) => _set(prices.copyWith(deliveryPerPiece: value)),
+              ),
+              _row(
+                'Теневой парус, ₽/м²',
+                prices.shadowSailPerM2,
+                (value) => _set(prices.copyWith(shadowSailPerM2: value)),
+              ),
+              _row(
+                'Римский навес, ₽/м²',
+                prices.romanAwningPerM2,
+                (value) => _set(prices.copyWith(romanAwningPerM2: value)),
+              ),
+              _row(
+                'Брус, ₽/пог.м',
+                prices.beamPerM,
+                (value) => _set(prices.copyWith(beamPerM: value)),
+              ),
+              _row(
+                'Декоративный брус, ₽/пог.м',
+                prices.decorBeamPerM,
+                (value) => _set(prices.copyWith(decorBeamPerM: value)),
+              ),
+              _row(
+                'Zip, ₽/м²',
+                prices.zipPerM2,
+                (value) => _set(prices.copyWith(zipPerM2: value)),
+              ),
+            ]),
             // Проценты — не позиции, а условия расчёта: у них нет тумблера,
             // «не считать» выражается нулём.
             _customItemsSection(prices),

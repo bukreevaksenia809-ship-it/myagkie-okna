@@ -366,6 +366,12 @@ class PriceList {
     this.installationPerM2 = defaultInstallationPerM2,
     this.vatPercent = defaultVatPercent,
     this.currency = defaultCurrencySymbol,
+    this.deliveryPerPiece = 0,
+    this.shadowSailPerM2 = 0,
+    this.romanAwningPerM2 = 0,
+    this.beamPerM = 0,
+    this.decorBeamPerM = 0,
+    this.zipPerM2 = 0,
     this.disabledItems = const <String>{},
     this.customItems = const <CustomPriceItem>[],
   });
@@ -452,6 +458,25 @@ class PriceList {
 
   /// Свободные позиции ручного ввода: название, количество, единица, цена.
   final List<CustomPriceItem> customItems;
+
+  // --- Дополнительные позиции (количество задаётся в заказе) ---------------
+  /// Доставка, ₽/шт.
+  final double deliveryPerPiece;
+
+  /// Теневой парус, ₽/м².
+  final double shadowSailPerM2;
+
+  /// Римский навес, ₽/м².
+  final double romanAwningPerM2;
+
+  /// Брус, ₽/пог.м.
+  final double beamPerM;
+
+  /// Декоративный брус, ₽/пог.м.
+  final double decorBeamPerM;
+
+  /// Zip (молния), ₽/м².
+  final double zipPerM2;
 
   /// Учитывать ли позицию [key] в смете. Неизвестный ключ считается
   /// включённым — это безопасный ответ для старого или будущего прайса.
@@ -606,6 +631,50 @@ class PriceList {
   /// НДС начисляется сверху (см. комментарий у класса).
   bool get isVatOnTop => vatPercent > 0;
 
+  // --- Дополнительные позиции: ключи, подписи, единицы и цены -------------
+  static const String extraDelivery = 'delivery';
+  static const String extraShadowSail = 'shadowSail';
+  static const String extraRomanAwning = 'romanAwning';
+  static const String extraBeam = 'beam';
+  static const String extraDecorBeam = 'decorBeam';
+  static const String extraZip = 'zip';
+
+  static const List<String> extraItemKeys = [
+    extraDelivery,
+    extraShadowSail,
+    extraRomanAwning,
+    extraBeam,
+    extraDecorBeam,
+    extraZip,
+  ];
+
+  static String extraItemLabel(String key) => switch (key) {
+    extraDelivery => 'Доставка',
+    extraShadowSail => 'Теневой парус',
+    extraRomanAwning => 'Римский навес',
+    extraBeam => 'Брус',
+    extraDecorBeam => 'Декоративный брус',
+    extraZip => 'Zip',
+    _ => key,
+  };
+
+  static String extraItemUnit(String key) => switch (key) {
+    extraDelivery => 'шт',
+    extraShadowSail || extraRomanAwning || extraZip => 'м²',
+    extraBeam || extraDecorBeam => 'пог.м',
+    _ => 'шт',
+  };
+
+  double extraItemPrice(String key) => switch (key) {
+    extraDelivery => deliveryPerPiece,
+    extraShadowSail => shadowSailPerM2,
+    extraRomanAwning => romanAwningPerM2,
+    extraBeam => beamPerM,
+    extraDecorBeam => decorBeamPerM,
+    extraZip => zipPerM2,
+    _ => 0,
+  };
+
   PriceList copyWith({
     double? filmClearPerM2,
     double? filmTintedPerM2,
@@ -638,6 +707,12 @@ class PriceList {
     double? eyeletInstall,
     double? cuttingPerM2,
     String? currency,
+    double? deliveryPerPiece,
+    double? shadowSailPerM2,
+    double? romanAwningPerM2,
+    double? beamPerM,
+    double? decorBeamPerM,
+    double? zipPerM2,
     Set<String>? disabledItems,
     List<CustomPriceItem>? customItems,
   }) {
@@ -672,6 +747,12 @@ class PriceList {
       installationPerM2: installationPerM2 ?? this.installationPerM2,
       vatPercent: vatPercent ?? this.vatPercent,
       currency: currency ?? this.currency,
+      deliveryPerPiece: deliveryPerPiece ?? this.deliveryPerPiece,
+      shadowSailPerM2: shadowSailPerM2 ?? this.shadowSailPerM2,
+      romanAwningPerM2: romanAwningPerM2 ?? this.romanAwningPerM2,
+      beamPerM: beamPerM ?? this.beamPerM,
+      decorBeamPerM: decorBeamPerM ?? this.decorBeamPerM,
+      zipPerM2: zipPerM2 ?? this.zipPerM2,
       disabledItems: disabledItems ?? this.disabledItems,
       customItems: customItems ?? this.customItems,
     );
@@ -707,6 +788,12 @@ class PriceList {
     'installationPerM2': installationPerM2,
     'vatPercent': vatPercent,
     'currency': currency,
+    'deliveryPerPiece': deliveryPerPiece,
+    'shadowSailPerM2': shadowSailPerM2,
+    'romanAwningPerM2': romanAwningPerM2,
+    'beamPerM': beamPerM,
+    'decorBeamPerM': decorBeamPerM,
+    'zipPerM2': zipPerM2,
     // Пустой набор не пишем: старый формат JSON остаётся прежним, а
     // «нет поля» читается как «всё включено».
     if (disabledItems.isNotEmpty)
@@ -786,6 +873,21 @@ class PriceList {
           json['currency'] is String && (json['currency'] as String).isNotEmpty
           ? json['currency'] as String
           : fallback.currency,
+      deliveryPerPiece: _price(
+        json['deliveryPerPiece'],
+        fallback.deliveryPerPiece,
+      ),
+      shadowSailPerM2: _price(
+        json['shadowSailPerM2'],
+        fallback.shadowSailPerM2,
+      ),
+      romanAwningPerM2: _price(
+        json['romanAwningPerM2'],
+        fallback.romanAwningPerM2,
+      ),
+      beamPerM: _price(json['beamPerM'], fallback.beamPerM),
+      decorBeamPerM: _price(json['decorBeamPerM'], fallback.decorBeamPerM),
+      zipPerM2: _price(json['zipPerM2'], fallback.zipPerM2),
       // Старый прайс без поля — всё включено. Неизвестные ключи (из будущих
       // версий) отбрасываем: модель не должна тащить мусор в панель и смету.
       disabledItems: _disabledItems(json['disabledItems']),

@@ -18,6 +18,7 @@ Map<String, dynamic> orderToJson(OrderProject project) => {
         'showEdgeLengths': project.options.showEdgeLengths,
         'showCallouts': project.options.showCallouts,
       },
+      'extraQuantities': project.extraQuantities,
       'windows': [for (final window in project.windows) windowToJson(window)],
     };
 
@@ -60,6 +61,14 @@ OrderProject orderFromJson(Map<String, dynamic> json) {
     options: options,
     sheetMode: _enumByName(SheetMode.values, json['sheetMode'], SheetMode.single),
     gridColumns: _int(json['gridColumns'], 0).clamp(0, 4),
+    extraQuantities: {
+      for (final entry
+          in (json['extraQuantities'] is Map
+                  ? (json['extraQuantities'] as Map).entries
+                  : const <MapEntry>[]))
+        if (entry.key is String && entry.value is num)
+          entry.key as String: (entry.value as num).toDouble(),
+    },
   );
 }
 
@@ -340,7 +349,14 @@ List<ZipperSpec> _zippersFromJson(Map<String, dynamic> json) {
           ZipperSpec(
             centered: _bool(item['centered'], true),
             offsetMm: _double(item['offsetMm'], 0),
-            bandWidth: _double(item['bandWidth'], defaultZipperBandWidth),
+            zipWidthMm: _double(item['zipWidthMm'], defaultZipperWidthMm),
+            tentWidthMm: _double(
+              item['tentWidthMm'],
+              _double(item['bandWidth'], defaultZipperTentWidthMm * 2) / 2,
+            ),
+            weldMm: _double(item['weldMm'], 0),
+            atEdge: _bool(item['atEdge'], false),
+            edgeRight: _bool(item['edgeRight'], false),
           ),
     ];
   }
@@ -349,7 +365,14 @@ List<ZipperSpec> _zippersFromJson(Map<String, dynamic> json) {
       ZipperSpec(
         centered: _bool(json['zipperCentered'], true),
         offsetMm: _double(json['zipperOffsetMm'], 0),
-        bandWidth: _double(json['zipperBandWidth'], defaultZipperBandWidth),
+        zipWidthMm: _double(json['zipperZipWidthMm'], defaultZipperWidthMm),
+        tentWidthMm: _double(
+          json['zipperTentWidthMm'],
+          _double(json['zipperBandWidth'], defaultZipperTentWidthMm * 2) / 2,
+        ),
+        weldMm: _double(json['zipperWeldMm'], 0),
+        atEdge: _bool(json['zipperAtEdge'], false),
+        edgeRight: _bool(json['zipperEdgeRight'], false),
       ),
     ];
   }

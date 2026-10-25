@@ -133,10 +133,14 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   /// Поля молний: положение от левого края и ширина спайки (ключ — номер молнии).
   final Map<int, TextEditingController> _zipperOffsetControllers = {};
-  final Map<int, TextEditingController> _zipperBandControllers = {};
+  final Map<int, TextEditingController> _zipperZipControllers = {};
+  final Map<int, TextEditingController> _zipperTentControllers = {};
+  final Map<int, TextEditingController> _zipperWeldControllers = {};
   final Map<int, TextEditingController> _strapControllers = {};
   final Map<int, String?> _zipperOffsetErrors = {};
-  final Map<int, String?> _zipperBandErrors = {};
+  final Map<int, String?> _zipperZipErrors = {};
+  final Map<int, String?> _zipperTentErrors = {};
+  final Map<int, String?> _zipperWeldErrors = {};
 
   /// Поля вырезов: ширина, высота и центры (ключ — номер выреза и поле).
   final Map<(int, _CutoutField), TextEditingController> _cutoutControllers = {};
@@ -265,22 +269,44 @@ class _ParamsPanelState extends State<ParamsPanel> {
         force: force,
       );
       _syncController(
-        _zipperBandControllers.putIfAbsent(
+        _zipperZipControllers.putIfAbsent(
           index,
-          () => TextEditingController(text: _textFor(zipper.bandWidth)),
+          () => TextEditingController(text: _textFor(zipper.zipWidthMm)),
         ),
-        zipper.bandWidth,
+        zipper.zipWidthMm,
+        force: force,
+      );
+      _syncController(
+        _zipperTentControllers.putIfAbsent(
+          index,
+          () => TextEditingController(text: _textFor(zipper.tentWidthMm)),
+        ),
+        zipper.tentWidthMm,
+        force: force,
+      );
+      _syncController(
+        _zipperWeldControllers.putIfAbsent(
+          index,
+          () => TextEditingController(text: _textFor(zipper.weldMm)),
+        ),
+        zipper.weldMm,
         force: force,
       );
       if (force) {
         _zipperOffsetErrors[index] = null;
-        _zipperBandErrors[index] = null;
+        _zipperZipErrors[index] = null;
+        _zipperTentErrors[index] = null;
+        _zipperWeldErrors[index] = null;
       }
     }
     _pruneControllers(_zipperOffsetControllers, params.zippers.length);
-    _pruneControllers(_zipperBandControllers, params.zippers.length);
+    _pruneControllers(_zipperZipControllers, params.zippers.length);
+    _pruneControllers(_zipperTentControllers, params.zippers.length);
+    _pruneControllers(_zipperWeldControllers, params.zippers.length);
     _pruneErrors(_zipperOffsetErrors, params.zippers.length);
-    _pruneErrors(_zipperBandErrors, params.zippers.length);
+    _pruneErrors(_zipperZipErrors, params.zippers.length);
+    _pruneErrors(_zipperTentErrors, params.zippers.length);
+    _pruneErrors(_zipperWeldErrors, params.zippers.length);
   }
 
   void _syncStrapFields(WindowParams params, {bool force = false}) {
@@ -419,7 +445,13 @@ class _ParamsPanelState extends State<ParamsPanel> {
     for (final controller in _zipperOffsetControllers.values) {
       controller.dispose();
     }
-    for (final controller in _zipperBandControllers.values) {
+    for (final controller in _zipperZipControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _zipperTentControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _zipperWeldControllers.values) {
       controller.dispose();
     }
     for (final controller in _strapControllers.values) {
@@ -1910,6 +1942,50 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
+  /// Дополнительные позиции заказа: количество вводится здесь, цена — в
+  /// прайсе. В смету попадают только при количестве больше нуля.
+  Widget _extraItemsSection(OrderProject project) {
+    final total = PriceList.extraItemKeys.fold<double>(
+      0,
+      (sum, key) => sum + (project.extraQuantities[key] ?? 0),
+    );
+    return _expansion(
+      title: 'Дополнительно',
+      subtitle: total > 0 ? 'позиции в смете: ${total.toStringAsFixed(0)}' : 'доставка, парус, брус, zip…',
+      children: [
+        for (final key in PriceList.extraItemKeys)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: TextFormField(
+              key: Key('extra-$key'),
+              initialValue: _textFor(project.extraQuantities[key] ?? 0),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText:
+                    '${PriceList.extraItemLabel(key)}, '
+                    '${PriceList.extraItemUnit(key)}',
+                border: const OutlineInputBorder(),
+                isDense: true,
+              ),
+              onChanged: (raw) {
+                final parsed = double.tryParse(raw.replaceAll(',', '.'));
+                if (parsed == null || parsed < 0) return;
+                widget.onChanged(
+                  project.copyWith(
+                    extraQuantities: {
+                      ...project.extraQuantities,
+                      key: parsed,
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
   /// «Цвета» — в самом низу панели.
   Widget _colorsSection(WindowParams params) {
     return Column(
@@ -1971,43 +2047,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
             title: 'Молния и фартук',
             subtitle: _specElementsSummary(params),
             children: [
-              if (params.zippers.isNotEmpty) ...[
-                SwitchListTile(
-                  key: const Key('zipper-segments-toggle'),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  value: params.zipperSegments,
-                  title: const Text(
-                    'Доп. настройка молнии — делить на сегменты',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: Text(
-                    params.zipperSegments
-                        ? 'Ширина молнии 11 см (5+1+5). Между сегментами — '
-                              'зазор, впритык к канту — вычет из кроя; и там '
-                              'и там это ширина молнии минус две напайки '
-                              'тента (11 − 2 − 2 = 7 см).'
-                        : 'Выключено: ширина молнии просто вычитается из '
-                              'ширины заготовки, без сегментов.',
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                  onChanged: (value) =>
-                      _updateWindow(params.withZipperSegments(value)),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: 230,
-                  child: _numberField(ParamField.zipperTentOverlap),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Напайка тента на полотно с каждой стороны. '
-                  '11 см при напайке 2 см → 7 см: столько и вычитается '
-                  'из кроя или уходит в зазор между сегментами.',
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-                ),
-                const SizedBox(height: 6),
-              ],
               if (params.zippers.isEmpty)
                 OutlinedButton.icon(
                   onPressed: () => _updateWindow(params.addZipper()),
@@ -2381,6 +2420,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
           const SizedBox(height: 20),
           _rollWidthSection(project, params),
           const SizedBox(height: 12),
+          _extraItemsSection(project),
+          const SizedBox(height: 12),
           _colorsSection(params),
           if (widget.ordersSection != null) ...[
             const SizedBox(height: 16),
@@ -2463,7 +2504,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
   String _specElementsSummary(WindowParams params) {
     final zipperPart = switch (params.zippers.length) {
       0 => null,
-      1 => 'молния ${formatMm(params.zippers.first.bandWidth)} ${unitSuffix()}',
+      1 => 'молния '
+          '${formatMm(WindowSpec.of(params).layers.zipperWidthFor(params.zippers.first))} '
+          '${unitSuffix()}',
       _ => 'молний ${params.zippers.length}',
     };
     final parts = <String>[
@@ -2995,11 +3038,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
     final line = layout[index];
     if (line.edge) {
       return 'Молния впритык к канту: сегменты не делятся, ширина '
-          '${formatMm(line.bandWidth)} ${unitSuffix()} вычитается из заготовки.';
+          '${formatMm(line.bandWidth)} ${unitSuffix()} вычитается из заготовки '
+          'как полоса молнии.';
     }
     return 'Молния между сегментами: зазор '
         '${formatMm(line.gapEnd - line.gapStart)} ${unitSuffix()} '
-        '(11 − 2 − 2), полотно режется на отдельные сегменты.';
+        '(полоса молнии), полотно режется на отдельные сегменты.';
   }
 
   Widget _zipperCard(WindowParams params, WindowSpec spec, int index) {
@@ -3042,7 +3086,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
               params.updateZipper(index, zipper.copyWith(centered: value)),
             ),
           ),
-          if (!zipper.centered) ...[
+          if (!zipper.centered && !zipper.atEdge) ...[
             const SizedBox(height: 4),
             Text(
               'Положение от левого края плёнки: ${formatMm(offset)} ${unitSuffix()}',
@@ -3064,28 +3108,138 @@ class _ParamsPanelState extends State<ParamsPanel> {
             _zipperOffsetField(index, offset, maxOffset),
             const SizedBox(height: 8),
           ],
-          _zipperBandField(index, zipper.bandWidth, isScreen: params.isScreen),
-          if (params.zipperSegments) ...[
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Вплотную к окантовке'),
+            subtitle: const Text(
+              'Молния у самого края: в полосу входит готовая окантовка.',
+              style: TextStyle(fontSize: 11),
+            ),
+            value: zipper.atEdge,
+            onChanged: (value) => _updateWindow(
+              params.updateZipper(
+                index,
+                zipper.copyWith(
+                  atEdge: value,
+                  centered: value ? false : zipper.centered,
+                ),
+              ),
+            ),
+          ),
+          if (zipper.atEdge) ...[
             const SizedBox(height: 4),
-            Text(
-              _zipperSegmentNote(spec, index),
-              style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+            Row(
+              children: [
+                ChoiceChip(
+                  key: Key('zipper-edge-left-$index'),
+                  label: const Text('Слева'),
+                  selected: !zipper.edgeRight,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => _updateWindow(
+                    params.updateZipper(
+                      index,
+                      zipper.copyWith(
+                        centered: false,
+                        edgeRight: false,
+                        offsetMm: 0,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                ChoiceChip(
+                  key: Key('zipper-edge-right-$index'),
+                  label: const Text('Справа'),
+                  selected: zipper.edgeRight,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => _updateWindow(
+                    params.updateZipper(
+                      index,
+                      zipper.copyWith(
+                        centered: false,
+                        edgeRight: true,
+                        offsetMm: maxOffset,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _zipperSizeField(
+                  index: index,
+                  label: 'Ширина молнии',
+                  helper: 'например 15',
+                  value: zipper.zipWidthMm,
+                  min: 1,
+                  max: 100,
+                  controllers: _zipperZipControllers,
+                  errors: _zipperZipErrors,
+                  apply: (zipper, value) =>
+                      zipper.copyWith(zipWidthMm: value),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _zipperSizeField(
+                  index: index,
+                  label: 'Ширина тента',
+                  helper: 'с одной стороны',
+                  value: zipper.tentWidthMm,
+                  min: 5,
+                  max: 300,
+                  controllers: _zipperTentControllers,
+                  errors: _zipperTentErrors,
+                  apply: (zipper, value) =>
+                      zipper.copyWith(tentWidthMm: value),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _zipperSizeField(
+                  index: index,
+                  label: 'Напайка',
+                  helper: 'на полотно',
+                  value: zipper.weldMm,
+                  min: 0,
+                  max: 100,
+                  controllers: _zipperWeldControllers,
+                  errors: _zipperWeldErrors,
+                  apply: (zipper, value) => zipper.copyWith(weldMm: value),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           Text(
-            params.isScreen
-                ? 'Полоса шириной ${formatMm(zipper.bandWidth)} ${unitSuffix()} из скрина '
-                      '(подворот или накладная полоса): молния идёт по её '
-                      'середине, шов ${formatMm(screenSeamMm)} ${unitSuffix()} по краям полосы. '
-                      'Ширина заготовки уменьшается на полосу: '
-                      '${formatMm(spec.filmCutWidthBeforeZipper)}'
-                      ' → ${formatMm(spec.filmCutWidth)} ${unitSuffix()} до припуска.'
-                : 'Спайка шириной ${formatMm(zipper.bandWidth)} ${unitSuffix()}: молния '
-                      'впаивается в полосу тента и идёт по её середине. Ширина '
-                      'заготовки уменьшается на полосу так же, как у скрина: '
-                      '${formatMm(spec.filmCutWidthBeforeZipper)}'
-                      ' → ${formatMm(spec.filmCutWidth)} ${unitSuffix()} до припуска.',
+            zipper.atEdge
+                ? 'Полоса ${formatMm(spec.layers.zipperWidthFor(zipper))} ${unitSuffix()}: '
+                      'окантовка ${formatMm(zipper.edgeRight ? spec.layers.finishedWidths[1] : spec.layers.finishedWidths[3])} + '
+                      'молния ${formatMm(zipper.zipWidthMm)} + тент '
+                      '${formatMm(zipper.tentWidthMm)} − напайка '
+                      '${formatMm(zipper.weldMm)}.'
+                : 'Полоса ${formatMm(spec.layers.zipperWidthFor(zipper))} ${unitSuffix()}: '
+                      'молния ${formatMm(zipper.zipWidthMm)} + 2 × тент '
+                      '${formatMm(zipper.tentWidthMm)} − 2 × напайка '
+                      '${formatMm(zipper.weldMm)}.',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Ширина заготовки уменьшается на полосу так же, как у скрина: '
+            '${formatMm(spec.filmCutWidthBeforeZipper)}'
+            ' → ${formatMm(spec.filmCutWidth)} ${unitSuffix()} до припуска.',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _zipperSegmentNote(spec, index),
             style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
         ],
@@ -3113,23 +3267,49 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
-  Widget _zipperBandField(int index, double value, {required bool isScreen}) {
+  Widget _zipperSizeField({
+    required int index,
+    required String label,
+    required String helper,
+    required double value,
+    required double min,
+    required double max,
+    required Map<int, TextEditingController> controllers,
+    required Map<int, String?> errors,
+    required ZipperSpec Function(ZipperSpec, double) apply,
+  }) {
     return TextField(
-      controller: _zipperBandControllers.putIfAbsent(
+      controller: controllers.putIfAbsent(
         index,
         () => TextEditingController(text: _textFor(value)),
       ),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
-        labelText: isScreen ? 'Ширина полосы' : 'Ширина спайки',
+        labelText: label,
         suffixText: 'мм',
-        helperText: '40–120 мм, по умолчанию 50',
+        helperText: helper,
         border: const OutlineInputBorder(),
         isDense: true,
-        errorText: _zipperBandErrors[index],
+        errorText: errors[index],
         errorMaxLines: 2,
       ),
-      onChanged: (raw) => _onZipperBandChanged(index, raw),
+      onChanged: (raw) {
+        final parsed = parseMm(raw);
+        if (parsed == null) {
+          setState(() => errors[index] = 'Введите число, например 50');
+          return;
+        }
+        if (parsed < min || parsed > max) {
+          setState(
+            () => errors[index] =
+                '$label: от ${formatMm(min)} до ${formatMm(max)} мм',
+          );
+          return;
+        }
+        setState(() => errors[index] = null);
+        final zipper = _params.zippers[index];
+        _updateWindow(_params.updateZipper(index, apply(zipper, parsed)));
+      },
     );
   }
 
@@ -3156,28 +3336,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
         index,
         zippers[index].copyWith(centered: false, offsetMm: value),
       ),
-    );
-  }
-
-  void _onZipperBandChanged(int index, String raw) {
-    final zippers = _params.zippers;
-    if (index < 0 || index >= zippers.length) return;
-    final value = parseMm(raw);
-    if (value == null) {
-      setState(() => _zipperBandErrors[index] = 'Введите число, например 50');
-      return;
-    }
-    if (value < 40 || value > 120) {
-      setState(
-        () => _zipperBandErrors[index] = _params.isScreen
-            ? 'Ширина полосы 40–120 мм'
-            : 'Ширина спайки 40–120 мм',
-      );
-      return;
-    }
-    setState(() => _zipperBandErrors[index] = null);
-    _updateWindow(
-      _params.updateZipper(index, zippers[index].copyWith(bandWidth: value)),
     );
   }
 

@@ -253,11 +253,11 @@ const _fiveZippers = WindowParams(
   rightHeight: 2200,
   zipperSegments: true,
   zippers: [
-    ZipperSpec(centered: false, offsetMm: 500, bandWidth: zipperSegmentBandWidth),
-    ZipperSpec(centered: false, offsetMm: 1000, bandWidth: zipperSegmentBandWidth),
-    ZipperSpec(centered: false, offsetMm: 1500, bandWidth: zipperSegmentBandWidth),
-    ZipperSpec(centered: false, offsetMm: 2000, bandWidth: zipperSegmentBandWidth),
-    ZipperSpec(centered: false, offsetMm: 2500, bandWidth: zipperSegmentBandWidth),
+    ZipperSpec(centered: false, offsetMm: 500, zipWidthMm: 10, tentWidthMm: 60, weldMm: 10),
+    ZipperSpec(centered: false, offsetMm: 1000, zipWidthMm: 10, tentWidthMm: 60, weldMm: 10),
+    ZipperSpec(centered: false, offsetMm: 1500, zipWidthMm: 10, tentWidthMm: 60, weldMm: 10),
+    ZipperSpec(centered: false, offsetMm: 2000, zipWidthMm: 10, tentWidthMm: 60, weldMm: 10),
+    ZipperSpec(centered: false, offsetMm: 2500, zipWidthMm: 10, tentWidthMm: 60, weldMm: 10),
   ],
 );
 

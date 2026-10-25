@@ -26,6 +26,7 @@ class OrderProject {
     // 0 — «Авто, окон в ряду»: для 2–3 окон программа сама перебирает
     // раскладки с поворотом и выбирает самую крупную.
     this.gridColumns = 0,
+    this.extraQuantities = const {},
   });
 
   /// Окна заказа. Номер окна — его позиция в списке (нумерация с единицы).
@@ -47,6 +48,10 @@ class OrderProject {
 
   /// Сколько окон в ряду на листе «все окна» (0 — подобрать автоматически).
   final int gridColumns;
+
+  /// Количество дополнительных позиций прайса: доставка, парус, навес,
+  /// брус, декоративный брус, zip. Ключи — [PriceList.extraItemKeys].
+  final Map<String, double> extraQuantities;
 
   int get windowCount => windows.length;
 
@@ -84,6 +89,7 @@ class OrderProject {
     DrawingOptions? options,
     SheetMode? sheetMode,
     int? gridColumns,
+    Map<String, double>? extraQuantities,
   }) {
     final nextWindows = windows ?? this.windows;
     final index = selectedIndex ?? this.selectedIndex;
@@ -95,6 +101,7 @@ class OrderProject {
       options: options ?? this.options,
       sheetMode: sheetMode ?? this.sheetMode,
       gridColumns: (gridColumns ?? this.gridColumns).clamp(0, 4),
+      extraQuantities: extraQuantities ?? this.extraQuantities,
     );
   }
 

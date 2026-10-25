@@ -1718,14 +1718,29 @@ class WindowLayers {
   /// Ширина берётся из параметров как есть (в панели допустимо 40…120 мм),
   /// без «минимальных 20 мм», которые нужны только для читаемости чертежа:
   /// вычитаться должно ровно то число, которое человек ввёл.
+  /// Фактическая ширина полосы молнии: у края учитывает окантовку, в
+  /// середине — два тента и две напайки.
+  double zipperWidthFor(ZipperSpec zipper) {
+    if (!zipper.atEdge) return zipper.bandWidth;
+    final visible = filmVisibleBounds;
+    final onLeft = zipper.atEdge
+        ? !zipper.edgeRight
+        : (zipper.centered
+                  ? visible.center.dx
+                  : visible.left + zipper.offsetMm) <
+              visible.center.dx;
+    final edgeFinished = onLeft ? finishedWidths[3] : finishedWidths[1];
+    return zipper.bandWidthFor(edgeFinished);
+  }
+
   double get zipperBandTotalMm {
-    // В режиме сегментов из ширины вычитаются только молнии впритык к канту:
-    // остальные образуют зазор 7 см и режутся отдельными заготовками.
-    final segments = params.zipperSegments && !isComposite;
+    // Раскрой всегда делится на сегменты: из ширины вычитаются только
+    // молнии впритык к канту — остальные дают зазор и отдельные заготовки.
+    final segments = !isComposite;
     final visible = filmVisibleBounds;
     var total = 0.0;
     for (final zipper in params.zippers) {
-      final width = zipper.bandWidth;
+      final width = zipperWidthFor(zipper);
       if (!width.isFinite || width <= 0) continue;
       if (segments) {
         final x = zipper.centered
@@ -1737,9 +1752,9 @@ class WindowLayers {
         final edge = x - width / 2 <= visible.left + 0.5 ||
             x + width / 2 >= visible.right - 0.5;
         if (!edge) continue;
-        // У края тент молнии на 2 см (напайка из меню) заходит и на боковой
-        // тент, поэтому из кроя вычитается 11 − 2 − 2 = 7 см.
-        total += math.max(width - 2 * params.zipperTentOverlap, 0.0);
+        // Полоса у края целиком вычитается из ширины заготовки: её размер
+        // уже посчитан из окантовки, молнии, тента и напайки.
+        total += width;
       } else {
         total += width;
       }
@@ -1759,7 +1774,7 @@ class WindowLayers {
     })
   >
   get zipperSegmentLayout {
-    if (!params.zipperSegments) return const [];
+    if (isComposite) return const [];
     final visible = filmVisibleBounds;
     return [
       for (final line in zippers)
@@ -1768,10 +1783,7 @@ class WindowLayers {
           final x = line.start.dx;
           final edge = x - half <= visible.left + 0.5 ||
               x + half >= visible.right - 0.5;
-          final gap = math.max(
-            line.bandWidth - 2 * params.zipperTentOverlap,
-            0.0,
-          );
+          final gap = line.bandWidth;
           return (
             center: x,
             bandWidth: line.bandWidth,
@@ -2240,17 +2252,28 @@ class WindowLayers {
     // Для скрина это кромка подворота: полоса не выходит за заготовку и не
     // заходит на сам подворот.
     final bounds = filmVisibleBounds;
-    final half = math.max(spec.bandWidth, 20) / 2;
-    final x = spec.centered
-        ? bounds.center.dx
-        : (bounds.left + spec.offsetMm).clamp(
-            bounds.left + half,
-            bounds.right - half,
-          );
+    // У края сторона задаётся явно: так две молнии могут стоять и слева,
+    // и справа, не перекрывая друг друга.
+    final onLeft = spec.atEdge ? !spec.edgeRight : () {
+      final requested = spec.centered
+          ? bounds.center.dx
+          : bounds.left + spec.offsetMm;
+      return requested < bounds.center.dx;
+    }();
+    // У края в полосу входит готовая окантовка этой стороны.
+    final edgeFinished = onLeft ? finishedWidths[3] : finishedWidths[1];
+    final band = spec.bandWidthFor(edgeFinished);
+    final half = math.max(band, 20) / 2;
+    final x = spec.atEdge
+        ? (onLeft ? bounds.left + half : bounds.right - half)
+        : (spec.centered
+              ? bounds.center.dx
+              : bounds.left + spec.offsetMm)
+              .clamp(bounds.left + half, bounds.right - half);
     return (
       start: Offset(x, bounds.top),
       end: Offset(x, bounds.bottom),
-      bandWidth: spec.bandWidth,
+      bandWidth: band,
     );
   }
 
@@ -3032,8 +3055,9 @@ class WindowSpec {
     final bounds = layers.filmCutBounds;
     final width = bounds.width;
     final height = bounds.height;
-    // Целевая ширина: заготовка уже без полос молний, плюс припуск на раскрой.
-    final targetWidth = filmCutWidth + params.allowanceWidthMm;
+    // Целевая ширина без полос молний: полосы у края срезаются по краям
+    // (см. ниже), а не растягивают/сжимают всё полотно пропорционально.
+    final targetWidth = filmCutWidthBeforeZipper + params.allowanceWidthMm;
     final sx = width > 1e-9 ? targetWidth / width : 1.0;
     final sy = height > 1e-9
         ? (height + params.effectiveAllowanceHeightMm) / height
@@ -3054,27 +3078,46 @@ class WindowSpec {
         ],
     ];
 
-    // «Доп. настройка молнии»: полотно режется на сегменты по зазорам 7 см.
-    if (!params.zipperSegments || isComposite || params.zippers.isEmpty) {
-      return scaled;
+    // Молнии вплотную к окантовке срезают полотно у краёв на свою полосу.
+    var leftTrim = 0.0;
+    var rightTrim = 0.0;
+    for (final gap in layers.zipperSegmentLayout) {
+      if (!gap.edge) continue;
+      if (gap.center < layers.filmVisibleBounds.center.dx) {
+        leftTrim += gap.bandWidth;
+      } else {
+        rightTrim += gap.bandWidth;
+      }
+    }
+    var pieces = scaled;
+    if (leftTrim > 0 || rightTrim > 0) {
+      final scaledBounds = boundsOfAll(scaled);
+      pieces = [
+        for (final polygon in scaled)
+          _trimPolygon(
+            polygon,
+            scaledBounds.left + leftTrim,
+            scaledBounds.right - rightTrim,
+          ),
+      ];
+    }
+
+    // Раскрой всегда режется на сегменты по зазорам молний.
+    if (isComposite || params.zippers.isEmpty) {
+      return pieces;
     }
     final gaps = layers.zipperSegmentLayout
         .where((gap) => !gap.edge)
         .toList()
       ..sort((a, b) => a.center.compareTo(b.center));
-    if (gaps.isEmpty) return scaled;
+    if (gaps.isEmpty) return pieces;
 
-    final visible = layers.filmVisibleBounds;
-    double mapX(double x) {
-      final fraction = visible.width > 1e-9
-          ? (x - visible.left) / visible.width
-          : 0.5;
-      final blankX = bounds.left + fraction * bounds.width;
-      return center.dx + (blankX - center.dx) * fx;
-    }
+    // Зазор — это абсолютная координата полосы: он не должен сжиматься
+    // вместе с общим габаритом (иначе теряются миллиметры между сегментами).
+    double mapX(double x) => center.dx + (x - center.dx) * fx;
 
     final result = <List<Offset>>[];
-    for (final polygon in scaled) {
+    for (final polygon in pieces) {
       var remaining = <List<Offset>>[polygon];
       for (final gap in gaps) {
         final leftEdge = mapX(gap.gapStart);
@@ -3095,6 +3138,15 @@ class WindowSpec {
           result.add(piece);
         }
       }
+    }
+    return result;
+  }
+
+  /// Срезает контур слева и справа до [leftX]..[rightX].
+  List<Offset> _trimPolygon(List<Offset> polygon, double leftX, double rightX) {
+    var result = _clipVertical(polygon, leftX, keepLeft: false);
+    if (result.length >= 3) {
+      result = _clipVertical(result, rightX, keepLeft: true);
     }
     return result;
   }
@@ -3160,7 +3212,7 @@ class WindowSpec {
   /// Подпись сегментов для раскроя и техкарты: «сегментов 3: 700 + 700 + 700».
   String get zipperSegmentsLabel {
     final widths = zipperSegmentWidths;
-    if (!params.zipperSegments || widths.length < 2) return '';
+    if (widths.length < 2) return '';
     return 'сегментов ${widths.length}: '
         '${widths.map(formatMm).join(' + ')} ${unitSuffix()}';
   }
@@ -3817,15 +3869,6 @@ List<ParamIssue> validateParams(WindowParams params) {
   // версии). Выход за рекомендуемые 250–450 мм — подсказка, парусность
   // (свыше 800 мм) и перерасход (ниже 150 мм) — предупреждения.
   _checkEyeletStep(params, issues);
-  if (params.zipperSegments) {
-    checkRange(
-      ParamField.zipperTentOverlap,
-      params.zipperTentOverlap,
-      minZipperTentOverlapMm,
-      maxZipperTentOverlapMm,
-      '5…50 мм',
-    );
-  }
   checkRange(
     ParamField.eyeletCornerOffset,
     params.eyeletCornerOffset,
@@ -4096,13 +4139,29 @@ List<ParamIssue> validateParams(WindowParams params) {
   }
   for (var i = 0; i < params.zippers.length; i++) {
     final spec = params.zippers[i];
-    if (spec.bandWidth < 40 || spec.bandWidth > 120) {
+    if (spec.zipWidthMm < 1 || spec.zipWidthMm > 100) {
       issues.add(
-        ParamIssue(
+        const ParamIssue(
           ParamField.bottomWidth,
-          params.isScreen
-              ? 'Ширина полосы молнии — 40–120 мм (обычно 50 мм)'
-              : 'Ширина спайки молнии — 40–120 мм (обычно 50 мм)',
+          'Ширина молнии — 1–100 мм (обычно 15 мм)',
+          isError: false,
+        ),
+      );
+    }
+    if (spec.tentWidthMm < 5 || spec.tentWidthMm > 300) {
+      issues.add(
+        const ParamIssue(
+          ParamField.bottomWidth,
+          'Ширина тента у молнии — 5–300 мм (обычно 50 мм)',
+          isError: false,
+        ),
+      );
+    }
+    if (spec.weldMm < 0 || spec.weldMm > 100) {
+      issues.add(
+        const ParamIssue(
+          ParamField.bottomWidth,
+          'Напайка тента — 0–100 мм (обычно 20 мм)',
           isError: false,
         ),
       );

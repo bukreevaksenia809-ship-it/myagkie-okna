@@ -381,22 +381,13 @@ void main() {
       final withZipper = WindowSpec.of(
         params.copyWith(zippers: const [ZipperSpec(centered: true)]),
       );
-      expect(withZipper.zipperBandTotalMm, closeTo(50, 1e-9));
-      expect(withZipper.filmCutWidth, closeTo(plain.filmCutWidth - 50, 1e-9));
+      // Молния по центру делит на сегменты, габарит и высота не меняются.
+      expect(withZipper.zipperBandTotalMm, 0);
+      expect(withZipper.filmCutWidth, closeTo(plain.filmCutWidth, 1e-9));
       expect(withZipper.filmCutHeight, closeTo(plain.filmCutHeight, 1e-9));
-      // Площадь трапеции уменьшается пропорционально ширине: 50 / 1910.
-      expect(
-        withZipper.filmCutAreaM2,
-        closeTo(
-          plain.filmCutAreaM2 * (plain.filmCutWidth - 50) / plain.filmCutWidth,
-          1e-9,
-        ),
-      );
-      // Подпись вычета — та же, что у прямоугольного окна.
-      expect(
-        withZipper.zipperWidthReductionLabel,
-        contains('минус полоса молнии ${formatMm(50)} мм'),
-      );
+      expect(withZipper.filmCutPolygons, hasLength(2));
+      expect(withZipper.filmCutAreaM2, lessThan(plain.filmCutAreaM2));
+      expect(withZipper.zipperWidthReductionLabel, isNull);
     });
 
     test('Т-окно: заготовка — прямоугольник по каждой части', () {

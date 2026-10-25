@@ -32,6 +32,7 @@ const _rect = WindowParams(
 void main() {
   _eyeletRules();
   _freeEyeletStepRules();
+  _screenZipperWidthRules();
   _roundEyeletToggleRules();
   _costsSummaryRules();
   _allowanceRules();
@@ -359,7 +360,7 @@ void main() {
       topWidth: 2000,
       leftHeight: 1500,
       rightHeight: 1500,
-      zippers: [ZipperSpec(centered: true)],
+      zippers: [ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: true)],
     );
 
     test('молния всегда вертикальная и по центру по умолчанию', () {
@@ -390,7 +391,7 @@ void main() {
 
     test('молнию можно двигать влево-вправо', () {
       final moved = withZipper.copyWith(
-        zippers: [const ZipperSpec(centered: false, offsetMm: 400)],
+        zippers: [const ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: false, offsetMm: 400)],
       );
       final layers = WindowLayers(moved, WindowGeometry.of(moved));
       final gaps = layers.zipperGaps!;
@@ -402,7 +403,7 @@ void main() {
 
     test('смещение зажимается в границах плёнки', () {
       final tooFar = withZipper.copyWith(
-        zippers: [const ZipperSpec(centered: false, offsetMm: 5000)],
+        zippers: [const ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: false, offsetMm: 5000)],
       );
       final layers = WindowLayers(tooFar, WindowGeometry.of(tooFar));
       final gaps = layers.zipperGaps!;
@@ -441,8 +442,8 @@ void main() {
       leftHeight: 1500,
       rightHeight: 1500,
       zippers: [
-        ZipperSpec(centered: true),
-        ZipperSpec(centered: false, offsetMm: 400),
+        ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: true),
+        ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: false, offsetMm: 400),
       ],
     );
 
@@ -784,20 +785,18 @@ void main() {
       expect(hasBlockingIssues(issues), isTrue);
     });
 
-    test('ширина спайки вне 40–120 — предупреждение', () {
+    test('ширина молнии вне 1–100 — предупреждение', () {
       final issues = validateParams(
         const WindowParams(
           bottomWidth: 2000,
           topWidth: 2000,
-          zippers: [ZipperSpec(bandWidth: 200)],
+          zippers: [ZipperSpec(zipWidthMm: 200)],
         ),
       );
 
-      // Отдельного поля ParamField для ширины спайки больше нет — ищем
-      // предупреждение по тексту и проверяем, что оно не блокирующее.
       expect(
         issues.any(
-          (issue) => issue.message.contains('спайки') && !issue.isError,
+          (issue) => issue.message.contains('Ширина молнии') && !issue.isError,
         ),
         isTrue,
       );
@@ -1099,7 +1098,7 @@ void _costsSummaryRules() {
         topWidth: 2000,
         leftHeight: 2200,
         rightHeight: 2200,
-        zippers: [ZipperSpec(centered: true)],
+        zippers: [ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: true)],
       );
       const two = WindowParams(
         bottomWidth: 2000,
@@ -1107,8 +1106,8 @@ void _costsSummaryRules() {
         leftHeight: 2200,
         rightHeight: 2200,
         zippers: [
-          ZipperSpec(centered: false, offsetMm: 600),
-          ZipperSpec(centered: false, offsetMm: 1400),
+          ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: false, offsetMm: 600),
+          ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: false, offsetMm: 1400),
         ],
       );
       final oneSummary = CostsSummary(const OrderProject(windows: [one]));
@@ -2944,7 +2943,7 @@ void _anyEyeletTypeRules() {
 void _screenZipperRules() {
   group('Молния на скрине', () {
     WindowParams screen({
-      List<ZipperSpec> zippers = const [ZipperSpec(centered: true)],
+      List<ZipperSpec> zippers = const [ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: true)],
       double bottom = 2000,
       double top = 2000,
     }) => WindowParams(
@@ -2991,11 +2990,13 @@ void _screenZipperRules() {
       final summary = CostsSummary(OrderProject(windows: [screen()]));
       final spec = WindowSpec.of(screen());
 
-      // Заготовка сужена на полосу: (2040 − 50) × 2060 = 4,0994 м².
-      // Площадь полосы 50 × 2000 = 0,1 м² — справочная: в расход она не
-      // добавляется, иначе полоса посчиталась бы дважды.
+      // Молния по центру делит раскрой на два сегмента; ширина заготовки
+      // остаётся полной.
+      expect(spec.filmCutPolygons, hasLength(2));
+      expect(spec.zipperBandTotalMm, 0);
       expect(spec.screenZipperBandAreaM2, closeTo(0.1, 1e-9));
-      expect(spec.filmCutWidth, closeTo(1990, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2040, 1e-9));
+      // Площадь — по двум сегментам: зазор 50 мм не входит в полотно.
       expect(summary.filmAreaM2, closeTo(4.0994, 1e-9));
       expect(summary.filmAreaWithShrinkageM2, closeTo(4.0994, 1e-9));
       expect(summary.screenZipperBandAreaM2, closeTo(0.1, 1e-9));
@@ -3016,8 +3017,8 @@ void _screenZipperRules() {
     test('две молнии: расход и подписи удваиваются', () {
       final params = screen().copyWith(
         zippers: const [
-          ZipperSpec(centered: true),
-          ZipperSpec(centered: false, offsetMm: 700),
+          ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: true),
+          ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: false, offsetMm: 700),
         ],
       );
       expect(params.zippers, hasLength(2));
@@ -3029,10 +3030,10 @@ void _screenZipperRules() {
       expect(summary.screenZipperCount, 2);
       expect(summary.zipperBandLengthMm, closeTo(4000, 1e-9));
       expect(summary.screenHemLengthMm, closeTo(12000, 1e-9));
-      // Две полосы по 50 мм: ширина 2040 − 100 = 1940 мм,
-      // площадь 1940 × 2060 = 3,9964 м².
-      expect(spec.zipperBandTotalMm, closeTo(100, 1e-9));
-      expect(spec.filmCutWidth, closeTo(1940, 1e-9));
+      // Две молнии по центру — три сегмента; ширина не уменьшается.
+      expect(spec.filmCutPolygons, hasLength(3));
+      expect(spec.zipperBandTotalMm, 0);
+      expect(spec.filmCutWidth, closeTo(2040, 1e-9));
       expect(summary.filmAreaM2, closeTo(3.9964, 1e-9));
       expect(spec.zippersSummary, contains('2 шт'));
       expect(spec.zippersSummary, contains('полоса скрина'));
@@ -3054,7 +3055,7 @@ void _screenZipperRules() {
 
       // Смещение 100 мм: полоса в 75 мм от кромки — замечание.
       final near = screen(
-        zippers: const [ZipperSpec(centered: false, offsetMm: 100)],
+        zippers: const [ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: false, offsetMm: 100)],
       );
       final nearIssues = validateParams(near);
       final nearIssue = nearIssues.firstWhere(
@@ -3065,7 +3066,7 @@ void _screenZipperRules() {
 
       // Смещение 20 мм уводит полосу за заготовку — ошибка.
       final outside = screen(
-        zippers: const [ZipperSpec(centered: false, offsetMm: 20)],
+        zippers: const [ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: false, offsetMm: 20)],
       );
       expect(
         validateParams(outside).any(
@@ -3079,8 +3080,8 @@ void _screenZipperRules() {
     test('JSON: молния скрина сохраняется и читается', () {
       final params = screen().copyWith(
         zippers: const [
-          ZipperSpec(centered: true),
-          ZipperSpec(centered: false, offsetMm: 700),
+          ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: true),
+          ZipperSpec(zipWidthMm: 10, tentWidthMm: 40, weldMm: 20, centered: false, offsetMm: 700),
         ],
       );
       final restored = windowFromJson(windowToJson(params));
@@ -3100,144 +3101,66 @@ void _screenZipperRules() {
 /// 50 мм дают 2 480 мм; две полосы по 50 — минус 100; полоса 100 — минус 100.
 /// У ПВХ всё по-прежнему: там полоса — спайка тента, ширина не меняется.
 void _screenZipperWidthRules() {
-  group('Полоса молнии сужает заготовку скрина', () {
+  group('Молния: сегменты и полоса у края', () {
     WindowParams screen({
-      required double width,
-      required double height,
       List<ZipperSpec> zippers = const [],
-      double hem = 40,
-      double allowanceWidth = 0,
+      double width = 2000,
+      double height = 2000,
     }) => WindowParams(
       material: FilmMaterial.screen,
       bottomWidth: width,
       topWidth: width,
       leftHeight: height,
       rightHeight: height,
-      hemBottomMm: hem,
-      hemRightMm: hem,
-      hemTopMm: hem,
-      hemLeftMm: hem,
-      allowanceWidthMm: allowanceWidth,
+      hemBottomMm: 40,
+      hemRightMm: 40,
+      hemTopMm: 40,
+      hemLeftMm: 40,
       zippers: zippers,
     );
 
-    test('базовый кейс: 2000 × 2000, подворот 40 → 2040/2060, молния 50 → 1990', () {
-      final without = WindowSpec.of(screen(width: 2000, height: 2000));
-      // Без молнии ширина заготовки — 2040 мм: 2000 + 20 + 20.
-      expect(without.filmCutWidthBeforeZipper, closeTo(2040, 1e-9));
-      expect(without.filmCutWidth, closeTo(2040, 1e-9));
-      expect(without.zipperBandTotalMm, 0);
-      expect(without.filmCutHeight, closeTo(2060, 1e-9));
-      expect(without.filmCutAreaM2, closeTo(4.2024, 1e-9));
+    const middle = ZipperSpec(centered: true, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20);
+    const edge = ZipperSpec(
+      centered: false,
+      offsetMm: 0,
+      atEdge: true,
+      zipWidthMm: 10,
+      tentWidthMm: 40,
+      weldMm: 20,
+    );
 
-      final withZipper = WindowSpec.of(
-        screen(
-          width: 2000,
-          height: 2000,
-          zippers: const [ZipperSpec(centered: true)],
-        ),
-      );
-      // Одна молния с полосой 50 мм: 2040 − 50 = 1990 мм.
-      expect(withZipper.zipperBandTotalMm, closeTo(50, 1e-9));
-      expect(withZipper.filmCutWidthBeforeZipper, closeTo(2040, 1e-9));
-      expect(withZipper.filmCutWidth, closeTo(1990, 1e-9));
-      // Высота полосой не меняется: она идёт по всей высоте полотна.
-      expect(withZipper.filmCutHeight, closeTo(2060, 1e-9));
-      expect(withZipper.filmCutHeightWithAllowance, closeTo(2060, 1e-9));
-      // Площадь — от новой ширины и ровно на 50 × 2060 = 0,103 м² меньше.
-      expect(withZipper.filmCutAreaM2, closeTo(4.0994, 1e-9));
-      expect(
-        without.filmCutAreaM2 - withZipper.filmCutAreaM2,
-        closeTo(50 * 2060 / 1000000, 1e-9),
-      );
-      // Формула для панели показывает вычет теми же числами.
-      expect(
-        withZipper.screenBlankWidthFormulaLabel,
-        contains('+ ${formatMm(20)} + ${formatMm(20)} − полоса молнии 50'),
-      );
-      expect(
-        withZipper.screenBlankWidthFormulaLabel,
-        contains('= ${formatMm(1990)} мм'),
-      );
-      // Заготовка с припуском: припуск прибавляется ПОСЛЕ вычета полосы.
-      final withAllowance = WindowSpec.of(
-        screen(
-          width: 2000,
-          height: 2000,
-          zippers: const [ZipperSpec(centered: true)],
-          allowanceWidth: 30,
-        ),
-      );
-      expect(withAllowance.filmCutWidthWithAllowance, closeTo(2020, 1e-9));
+    test('молния по центру: два сегмента, ширина не меняется', () {
+      final spec = WindowSpec.of(screen(zippers: const [middle]));
+      expect(spec.filmCutWidthBeforeZipper, closeTo(2040, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2040, 1e-9));
+      expect(spec.zipperBandTotalMm, 0);
+      expect(spec.filmCutPolygons, hasLength(2));
+      expect(spec.layers.zipperSegmentLayout.single.gapEnd -
+          spec.layers.zipperSegmentLayout.single.gapStart, closeTo(50, 1e-9));
     });
 
-    test('кейс заказчика: заготовка 2 490 → 2 440 мм с полосой 50 мм', () {
-      // 2 490 мм получаются из готовой ширины 2 450 мм плюс половины
-      // подворотов 20 + 20: 2 450 + 40 = 2 490. Высота 2 000 мм,
-      // подворот 40 мм — заготовка 2 490 × 2 060 мм.
-      final params = screen(width: 2450, height: 2000);
-      final without = WindowSpec.of(params);
-      expect(without.filmCutWidth, closeTo(2490, 1e-9));
-      expect(without.filmCutHeight, closeTo(2060, 1e-9));
-      expect(without.filmCutAreaM2, closeTo(2490 * 2060 / 1000000, 1e-9));
-
-      // Добавили молнию с полосой 50 мм — ширина кроя 2 440 мм.
-      final withZipper = WindowSpec.of(
-        params.copyWith(zippers: const [ZipperSpec(centered: true)]),
-      );
-      expect(withZipper.filmCutWidth, closeTo(2440, 1e-9));
-      expect(withZipper.filmCutHeight, closeTo(2060, 1e-9));
-      expect(withZipper.filmCutAreaM2, closeTo(2440 * 2060 / 1000000, 1e-9));
-      expect(
-        without.filmCutAreaM2 - withZipper.filmCutAreaM2,
-        closeTo(0.103, 1e-9),
-      );
-      // Смета и расход подхватывают новую ширину через WindowSpec.
-      final summary = CostsSummary(
-        OrderProject(
-          windows: [
-            params.copyWith(zippers: const [ZipperSpec(centered: true)]),
-          ],
-        ),
-      );
-      expect(summary.filmAreaM2, closeTo(5.0264, 1e-9));
-      expect(summary.specs.single.filmCutWidth, closeTo(2440, 1e-9));
-      // Раскладка на рулон тоже берёт суженную заготовку.
-      final rollPiece = summary.rollPlans.single.layout.placements.single.piece;
-      expect(rollPiece.width, closeTo(2440, 1e-9));
-      expect(rollPiece.height, closeTo(2060, 1e-9));
-    });
-
-    test('две молнии по 50 → минус 100 мм, полоса 100 → минус 100 мм', () {
-      final two = WindowSpec.of(
+    test('две молнии: три сегмента', () {
+      final spec = WindowSpec.of(
         screen(
-          width: 2000,
-          height: 2000,
           zippers: const [
-            ZipperSpec(centered: false, offsetMm: 700),
-            ZipperSpec(centered: false, offsetMm: 1400),
+            ZipperSpec(centered: false, offsetMm: 700, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20),
+            ZipperSpec(centered: false, offsetMm: 1400, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20),
           ],
         ),
       );
-      expect(two.zipperBandTotalMm, closeTo(100, 1e-9));
-      expect(two.filmCutWidth, closeTo(1940, 1e-9));
-      expect(two.filmCutAreaM2, closeTo(1940 * 2060 / 1000000, 1e-9));
-
-      // Одна молния с широкой полосой 100 мм даёт тот же вычет.
-      final wide = WindowSpec.of(
-        screen(
-          width: 2000,
-          height: 2000,
-          zippers: const [ZipperSpec(centered: true, bandWidth: 100)],
-        ),
-      );
-      expect(wide.zipperBandTotalMm, closeTo(100, 1e-9));
-      expect(wide.filmCutWidth, closeTo(1940, 1e-9));
-      expect(wide.filmCutAreaM2, closeTo(two.filmCutAreaM2, 1e-9));
+      expect(spec.filmCutPolygons, hasLength(3));
+      expect(spec.zipperBandTotalMm, 0);
     });
 
-    test('ПВХ с молнией: ширина заготовки уменьшается на полосу', () {
-      // ПВХ-окно: заготовка 2000 − 2 × 50 (окантовка) + 2 × 25 (запайка).
+    test('скрин: молния у края вычитается полосой', () {
+      final spec = WindowSpec.of(screen(zippers: const [edge]));
+      // У скрина окантовки нет: 0 + 10 + 40 − 20 = 30 мм.
+      expect(spec.zipperBandTotalMm, closeTo(30, 1e-9));
+      expect(spec.filmCutWidth, closeTo(2010, 1e-9));
+      expect(spec.filmCutPolygons, hasLength(1));
+    });
+
+    test('ПВХ: молния по центру делит на сегменты, ширина 1950', () {
       const pvc = WindowParams(
         bottomWidth: 2000,
         topWidth: 2000,
@@ -3245,99 +3168,30 @@ void _screenZipperWidthRules() {
         rightHeight: 2000,
         weldOverlapMm: 25,
       );
-      final plain = WindowSpec.of(pvc);
-      final withZipper = WindowSpec.of(
-        pvc.copyWith(zippers: const [ZipperSpec(centered: true)]),
-      );
-
-      expect(plain.filmCutWidth, closeTo(1950, 1e-9));
-      expect(withZipper.zipperBandTotalMm, closeTo(50, 1e-9));
-      // Полоса 50 мм вычитается из ширины так же, как у скрина: 1950 − 50.
-      expect(withZipper.filmCutWidthBeforeZipper, closeTo(1950, 1e-9));
-      expect(withZipper.filmCutWidth, closeTo(1900, 1e-9));
-      expect(withZipper.filmCutWidthWithAllowance, closeTo(1900, 1e-9));
-      // Высота не меняется, площадь — по суженной ширине.
-      expect(withZipper.filmCutHeight, closeTo(plain.filmCutHeight, 1e-9));
-      expect(withZipper.filmCutAreaM2, closeTo(1900 * 1960 / 1e6, 1e-9));
-      expect(
-        plain.filmCutAreaM2 - withZipper.filmCutAreaM2,
-        closeTo(50 * 1960 / 1e6, 1e-9),
-      );
-      // Полоса тента по-прежнему идёт в расход окантовки.
-      final summary = CostsSummary(
-        OrderProject(
-          windows: [
-            pvc.copyWith(zippers: const [ZipperSpec(centered: true)]),
-          ],
-        ),
-      );
-      expect(summary.screenZipperCount, 0);
-      expect(summary.pvcZipperCount, 1);
-      expect(summary.pvcZipperBandWidthMm, closeTo(50, 1e-9));
-      expect(summary.filmAreaM2, closeTo(withZipper.filmCutAreaM2, 1e-9));
-      expect(summary.edgeByRoll.containsKey(EdgeRoll.roll100.rawWidth), isTrue);
+      final spec = WindowSpec.of(pvc.copyWith(zippers: const [middle]));
+      expect(spec.filmCutWidth, closeTo(1950, 1e-9));
+      expect(spec.zipperBandTotalMm, 0);
+      expect(spec.filmCutPolygons, hasLength(2));
     });
 
-    test('ПВХ 2000 × 2000, окантовка 100, запайка 5: 1910 / 1860 / 1810', () {
-      // Контрольный пример заказчика. Готовая окантовка 100 / 2 = 50 мм,
-      // запайка 5 мм заходит под неё, поэтому плёнка 2000 − 2 × 45 = 1910.
+    test('ПВХ: молния у края вычитает окантовку и тент', () {
       const pvc = WindowParams(
         bottomWidth: 2000,
         topWidth: 2000,
         leftHeight: 2000,
         rightHeight: 2000,
-        weldOverlapMm: 5,
+        weldOverlapMm: 25,
       );
-      final plain = WindowSpec.of(pvc);
-      expect(plain.zipperBandTotalMm, 0);
-      expect(plain.filmCutWidth, closeTo(1910, 1e-9));
-      expect(plain.filmCutHeight, closeTo(1910, 1e-9));
-
-      final one = WindowSpec.of(
-        pvc.copyWith(zippers: const [ZipperSpec(centered: true)]),
-      );
-      expect(one.zipperBandTotalMm, closeTo(50, 1e-9));
-      expect(one.filmCutWidth, closeTo(1860, 1e-9));
-      // Высота не меняется — ни до припуска, ни с авто +10 мм.
-      expect(one.filmCutHeight, closeTo(1910, 1e-9));
-      expect(one.filmCutHeightWithAllowance, closeTo(1920, 1e-9));
-
-      final two = WindowSpec.of(
-        pvc.copyWith(
-          zippers: const [
-            ZipperSpec(centered: false, offsetMm: 600),
-            ZipperSpec(centered: false, offsetMm: 1300),
-          ],
-        ),
-      );
-      expect(two.zipperBandTotalMm, closeTo(100, 1e-9));
-      expect(two.filmCutWidth, closeTo(1810, 1e-9));
-      expect(two.filmCutHeight, closeTo(1910, 1e-9));
-      // Вычет идёт ДО припуска на раскрой: 1910 − 50 + 30 = 1890.
-      final withAllowance = WindowSpec.of(
-        pvc.copyWith(
-          allowanceWidthMm: 30,
-          zippers: const [ZipperSpec(centered: true)],
-        ),
-      );
-      expect(withAllowance.filmCutWidthWithAllowance, closeTo(1890, 1e-9));
-      // Подпись вычета — та же формулировка, что у скрина.
-      expect(
-        one.zipperWidthReductionLabel,
-        'ширина ${formatMm(1910)} → ${formatMm(1860)} мм, '
-        'минус полоса молнии ${formatMm(50)} мм',
-      );
+      final spec = WindowSpec.of(pvc.copyWith(zippers: const [edge]));
+      // 50 (окантовка) + 10 + 40 − 20 = 80 мм.
+      expect(spec.zipperBandTotalMm, closeTo(80, 1e-9));
+      expect(spec.filmCutWidth, closeTo(1870, 1e-9));
+      expect(spec.filmCutPolygons, hasLength(1));
     });
   });
+
 }
 
-// --- Круглые люверсы в углах и детерминизм расстановки ----------------------
-
-/// Тумблер «Круглые люверсы в углах» и предсказуемая расстановка.
-///
-/// Окно 2000 × 1500, окантовка 100 мм (линия люверсов 1950 × 1450), интервал
-/// 300 мм, крепёж «французский замок». Числа ниже посчитаны вручную:
-/// число интервалов по стороне = ceil(длина / 300), округление вверх.
 void _roundEyeletToggleRules() {
   WindowParams window({double offset = 0, bool round = true}) => WindowParams(
     bottomWidth: 2000,

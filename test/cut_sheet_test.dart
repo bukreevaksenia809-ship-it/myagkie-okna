@@ -95,7 +95,7 @@ const _screenZipper = WindowParams(
   hemRightMm: 40,
   hemTopMm: 40,
   hemLeftMm: 40,
-  zippers: [ZipperSpec(centered: true)],
+  zippers: [ZipperSpec(centered: true, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)],
 );
 
 /// Заказ заказчика: скрин без молнии и с молнией — видно, что заготовка
@@ -361,28 +361,29 @@ void main() {
       hemLeftMm: 40,
     );
 
-    test('прямоугольник: ширина 1990 мм и площадь 4,0994 м²', () {
+    test('прямоугольник: молния по центру делит на два сегмента', () {
       final without = CutPiece.ofSpec(WindowSpec.of(screen2000));
       expect(without.widthMm, closeTo(2040, 1e-9));
       expect(without.heightMm, closeTo(2060, 1e-9));
       expect(without.areaM2, closeTo(4.2024, 1e-9));
 
       final spec = WindowSpec.of(
-        screen2000.copyWith(zippers: const [ZipperSpec(centered: true)]),
+        screen2000.copyWith(zippers: const [ZipperSpec(centered: true, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)]),
       );
       final piece = CutPiece.ofSpec(spec);
 
-      // Заготовка на листе «Раскрой» уже на полосу: 2040 − 50 = 1990 мм.
-      expect(piece.widthMm, closeTo(1990, 1e-9));
+      // Ширина заготовки не меняется: молния уходит в зазор между
+      // сегментами, а не вычитается из габарита.
+      expect(piece.widthMm, closeTo(2040, 1e-9));
       expect(piece.widthMm, closeTo(spec.filmCutWidthWithShrinkage, 1e-9));
       expect(piece.heightMm, closeTo(2060, 1e-9));
-      // Площадь пересчитана от новой ширины: 1990 × 2060 = 4,0994 м².
+      expect(spec.filmCutPolygons, hasLength(2));
       expect(piece.areaM2, closeTo(4.0994, 1e-9));
-      expect(without.areaM2 - piece.areaM2, closeTo(50 * 2060 / 1000000, 1e-9));
+      expect(piece.areaM2, lessThan(without.areaM2));
       expect(piece.areaMm2 / 1000000, closeTo(piece.areaM2, 1e-9));
     });
 
-    test('ПВХ: полоса 50 мм сужает 1910 → 1860 мм, высота не меняется', () {
+    test('ПВХ: молния по центру делит на сегменты, ширина не меняется', () {
       // ПВХ 2000 × 2000, окантовка 100 (готовая 50), запайка 5:
       // ширина 1910, высота 1910 + авто +10 = 1920.
       const pvc = WindowParams(
@@ -398,24 +399,18 @@ void main() {
       expect(plain.areaM2, closeTo(1910 * 1920 / 1e6, 1e-9));
 
       final spec = WindowSpec.of(
-        pvc.copyWith(zippers: const [ZipperSpec(centered: true)]),
+        pvc.copyWith(zippers: const [ZipperSpec(centered: true, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)]),
       );
       final piece = CutPiece.ofSpec(spec);
-      // На листе «Раскрой» ширина уже без полосы молнии.
-      expect(spec.zipperBandTotalMm, closeTo(50, 1e-9));
-      expect(piece.widthMm, closeTo(1860, 1e-9));
-      expect(piece.widthMm, closeTo(spec.filmCutWidthWithShrinkage, 1e-9));
+      expect(spec.zipperBandTotalMm, 0);
+      expect(piece.widthMm, closeTo(plain.widthMm, 1e-9));
       expect(piece.heightMm, closeTo(1920, 1e-9));
-      expect(piece.areaM2, closeTo(1860 * 1920 / 1e6, 1e-9));
-      expect(plain.areaM2 - piece.areaM2, closeTo(50 * 1920 / 1000000, 1e-9));
-      // Та же подпись вычета, что у скрина, — её печатает лист «Раскрой».
-      expect(
-        spec.zipperWidthReductionLabel,
-        contains('минус полоса молнии ${formatMm(50)} мм'),
-      );
+      expect(spec.filmCutPolygons, hasLength(2));
+      expect(piece.areaM2, lessThan(plain.areaM2));
+      expect(spec.zipperWidthReductionLabel, isNull);
     });
 
-    test('трапеция: ширина меньше на полосу, площадь по контуру', () {
+    test('трапеция: молния делит на сегменты, ширина не меняется', () {
       // Трапеция: низ 2000, верх 1000, высота 1000, подворот 40.
       const trapezoid = WindowParams(
         material: FilmMaterial.screen,
@@ -431,25 +426,16 @@ void main() {
       final withoutSpec = WindowSpec.of(trapezoid);
       final without = CutPiece.ofSpec(withoutSpec);
       final spec = WindowSpec.of(
-        trapezoid.copyWith(zippers: const [ZipperSpec(centered: true)]),
+        trapezoid.copyWith(zippers: const [ZipperSpec(centered: true, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)]),
       );
       final piece = CutPiece.ofSpec(spec);
 
       expect(without.hasContour, isTrue);
       expect(piece.hasContour, isTrue);
-      // Габаритная ширина заготовки уменьшена ровно на полосу молнии: 50 мм.
-      expect(without.widthMm - piece.widthMm, closeTo(50, 1e-9));
-      expect(piece.widthMm, closeTo(spec.filmCutWidthWithShrinkage, 1e-9));
+      expect(piece.widthMm, closeTo(without.widthMm, 1e-9));
       expect(piece.heightMm, closeTo(without.heightMm, 1e-9));
-      // Площадь трапеции пересчитана: контур сжат по ширине пропорционально,
-      // поэтому площадь уменьшилась в (W − 50) / W раз.
-      expect(
-        piece.areaM2,
-        closeTo(
-          without.areaM2 * (without.widthMm - 50) / without.widthMm,
-          1e-9,
-        ),
-      );
+      expect(spec.filmCutPolygons, hasLength(2));
+      expect(piece.areaM2, lessThan(without.areaM2));
       expect(piece.areaM2, closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9));
       // Раскладка по-прежнему пакует по габариту, но уже узкому.
       final layout = CutLayout.place([piece], const Size(1632, 460));

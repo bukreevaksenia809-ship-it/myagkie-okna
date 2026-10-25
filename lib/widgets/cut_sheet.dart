@@ -343,10 +343,14 @@ class CutPiece {
 /// прямоугольник [rect], а ось Y зеркалится (в модели Y вверх, на листе —
 /// вниз). Функция вынесена из painter, чтобы тесты сверяли контур раскроя с
 /// контуром чертежа без запуска отрисовки.
-List<List<Offset>> cutSheetContours(Rect rect, CutPiece piece) {
+List<List<Offset>> cutSheetContours(
+  Rect rect,
+  CutPiece piece, {
+  double minGapPx = 0,
+}) {
   final contours = piece.allContours;
   if (contours.isEmpty) return const [];
-  return [
+  final mapped = [
     for (final contour in contours)
       [
         for (final point in contour)
@@ -356,6 +360,50 @@ List<List<Offset>> cutSheetContours(Rect rect, CutPiece piece) {
           ),
       ],
   ];
+  if (minGapPx <= 0 || mapped.length < 2) return mapped;
+
+  // Сегменты кроя рисуем с увеличенными зазорами: реальные 75 мм на листе
+  // превращаются в пару точек, и размерные числа соседних сегментов
+  // накладываются друг на друга. Геометрия при этом не меняется — это
+  // только оформление листа «Раскрой».
+  final boxes = [
+    for (final contour in mapped)
+      Rect.fromLTRB(
+        contour.map((point) => point.dx).reduce(math.min),
+        contour.map((point) => point.dy).reduce(math.min),
+        contour.map((point) => point.dx).reduce(math.max),
+        contour.map((point) => point.dy).reduce(math.max),
+      ),
+  ];
+  final order = List.generate(mapped.length, (index) => index)
+    ..sort((a, b) => boxes[a].left.compareTo(boxes[b].left));
+  final gap = math.min(minGapPx, rect.width * 0.08);
+  final gaps = <double>[];
+  var contentWidth = 0.0;
+  for (var i = 0; i < order.length; i++) {
+    contentWidth += boxes[order[i]].width;
+    if (i + 1 < order.length) {
+      final realGap =
+          boxes[order[i + 1]].left - boxes[order[i]].right;
+      gaps.add(math.max(realGap, gap));
+    }
+  }
+  final totalGap = gaps.fold<double>(0, (sum, value) => sum + value);
+  final scale = (rect.width - totalGap) / contentWidth;
+  if (!scale.isFinite || scale <= 0.05) return mapped;
+
+  final result = List<List<Offset>>.filled(mapped.length, const []);
+  var cursor = rect.left;
+  for (var i = 0; i < order.length; i++) {
+    final index = order[i];
+    final box = boxes[index];
+    result[index] = [
+      for (final point in mapped[index])
+        Offset(cursor + (point.dx - box.left) * scale, point.dy),
+    ];
+    cursor += box.width * scale + (i < gaps.length ? gaps[i] : 0);
+  }
+  return result;
 }
 
 /// Место заготовки на листе: прямоугольник в точках листа.
@@ -717,7 +765,7 @@ class CutSheetPainter extends CustomPainter {
 
     // Полупрозрачная плёнка, как на чертеже. Форма — фактический контур:
     // прямоугольник, трапеция или четырёхугольник с разными высотами.
-    final contours = cutSheetContours(rect, piece);
+    final contours = cutSheetContours(rect, piece, minGapPx: 40);
     if (contours.isEmpty) {
       final palette = CutPalette.of(spec.params.material);
       final path = _piecePath(rect, piece);
@@ -872,7 +920,7 @@ class CutSheetPainter extends CustomPainter {
   /// наклонные стороны — наклонную размерную линию.
   void _paintDimensions(Canvas canvas, Rect rect, CutPlacement placement) {
     final piece = placement.piece;
-    final contours = cutSheetContours(rect, piece);
+    final contours = cutSheetContours(rect, piece, minGapPx: 40);
     if (contours.isEmpty) return;
 
     final paint = Paint()

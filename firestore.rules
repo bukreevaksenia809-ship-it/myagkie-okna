@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Общий ключ для внутренней телеметрии и админки.
+    function hasKey() {
+      return request.resource.data.key == 'okna-b0ZHSRJIz3XqCnQtsbL0FXBxHu4j' ||
+             resource.data.key == 'okna-b0ZHSRJIz3XqCnQtsbL0FXBxHu4j';
+    }
+    match /installations/{installId} {
+      allow create, update: if request.resource.data.key == 'okna-b0ZHSRJIz3XqCnQtsbL0FXBxHu4j';
+      allow read: if resource.data.key == 'okna-b0ZHSRJIz3XqCnQtsbL0FXBxHu4j';
+      match /events/{eventId} {
+        allow create: if request.resource.data.key == 'okna-b0ZHSRJIz3XqCnQtsbL0FXBxHu4j';
+        allow read: if resource.data.key == 'okna-b0ZHSRJIz3XqCnQtsbL0FXBxHu4j';
+      }
+    }
+    match /config/{docId} {
+      // Конфиг обновлений читают клиенты, пишет только админка.
+      allow read: if true;
+      allow write: if request.resource.data.key == 'okna-b0ZHSRJIz3XqCnQtsbL0FXBxHu4j';
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

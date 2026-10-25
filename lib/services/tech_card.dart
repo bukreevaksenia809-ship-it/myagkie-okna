@@ -869,10 +869,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
                 '${formatMm(band.width)} × ${formatMm(band.height)} ${unitSuffix()}',
             note: isScreen
                 ? 'шов ${formatMm(screenSeamMm)} ${unitSuffix()} по краям полосы; подворот '
-                      'или накладная полоса из скрина; ширина кроя полотна '
-                      'уменьшена на ${formatMm(band.width)} ${unitSuffix()}'
-                : 'спайка ${formatMm(band.width)} ${unitSuffix()}; ширина кроя полотна '
-                      'уменьшена на ${formatMm(band.width)} ${unitSuffix()}',
+                      'или накладная полоса из скрина; ${spec.zipperBandTotalMm > 0 ? 'ширина кроя полотна уменьшена на ${formatMm(band.width)} ${unitSuffix()}' : 'полотно режется на сегменты по зазору'}'
+                : 'спайка ${formatMm(band.width)} ${unitSuffix()}; ${spec.zipperBandTotalMm > 0 ? 'ширина кроя полотна уменьшена на ${formatMm(band.width)} ${unitSuffix()}' : 'полотно режется на сегменты по зазору'}',
           ),
         );
     }
@@ -888,15 +886,12 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
                 '${formatMm(screenSeamMm)} ${unitSuffix()} по обоим краям полосы; молния идёт '
                 'по её середине. Расстояние от края полосы до кромки подворота — '
                 'не меньше ${formatMm(minScreenZipperHemMm)} ${unitSuffix()}, за пределы '
-                'заготовки полоса не выходит. Ширина заготовки скрина уменьшена '
-                'на полосу: ${formatMm(spec.filmCutWidthBeforeZipper)} → '
-                '${formatMm(spec.filmCutWidth)} ${unitSuffix()}.'
+                'заготовки полоса не выходит. '
+                '${spec.zipperBandTotalMm > 0 ? 'Ширина заготовки скрина уменьшена на полосу: ${formatMm(spec.filmCutWidthBeforeZipper)} → ${formatMm(spec.filmCutWidth)} ${unitSuffix()}.' : 'Полотно режется на ${spec.filmCutPolygons.length} сегмента по зазору молнии.'}'
           : '${params.zippers.length == 1 ? 'Впаять молнию' : 'Впаять молнии'}: '
                 '${spec.zippersSummary}. Полосу тента с молнией сварить с '
                 'полотном по всей высоте, шов ровный, полотно без волны. '
-                'Ширина заготовки уменьшена на полосу (спайку): '
-                '${formatMm(spec.filmCutWidthBeforeZipper)}'
-                ' → ${formatMm(spec.filmCutWidth)} ${unitSuffix()} до припуска.',
+                '${spec.zipperBandTotalMm > 0 ? 'Ширина заготовки уменьшена на полосу (спайку): ${formatMm(spec.filmCutWidthBeforeZipper)} → ${formatMm(spec.filmCutWidth)} ${unitSuffix()} до припуска.' : 'Полотно режется на ${spec.filmCutPolygons.length} сегмента по зазору молнии.'}',
       materials: zipperMaterials,
       tool: isScreen || isWeldedEdge
           ? 'Фен-сварочник, прижимной ролик, шаблон для ровной укладки'
