@@ -443,6 +443,12 @@ class WindowDrawingPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (options.showGrid) _paintGrid(canvas, size);
+    // Треугольник и домик: многоугольный контур, своя отрисовка.
+    if (params.isSpecialShape) {
+      _paintSpecialShape(canvas, size);
+      if (showScaleBar) _paintScaleBar(canvas, size);
+      return;
+    }
     // Т-образное окно рисуется своей веткой: у него не четыре вершины, а
     // 6–8, и подписи/размеры относятся к двум частям.
     if (params.windowType == WindowType.tShape) {
@@ -500,6 +506,108 @@ class WindowDrawingPainter extends CustomPainter {
       oldDelegate.fastenerImage != fastenerImage;
 
   // ---------------------------------------------------------------- геометрия
+
+  /// Треугольник и домик: заливка полотна, окантовка, люверсы и размеры.
+  void _paintSpecialShape(Canvas canvas, Size size) {
+    final outer = layers.outer;
+    final inner = layers.edgeInner;
+    if (outer.length < 3) return;
+    final outerPath = _polygonPath(outer);
+    final innerPath = _polygonPath(inner);
+    if (!params.isScreen) {
+      canvas.drawPath(outerPath, Paint()..color = _edgeColor);
+      // Светлая подложка: градиент плёнки полупрозрачный, иначе сквозь него
+      // просвечивает коричневая окантовка.
+      canvas.drawPath(
+        innerPath,
+        Paint()..color = const Color(0xFFEAF2FB),
+      );
+      canvas.drawPath(innerPath, Paint()..shader = _filmGradient(innerPath.getBounds()));
+      canvas.drawPath(
+        innerPath,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = _filmStrokeColor,
+      );
+    } else {
+      canvas.drawPath(outerPath, Paint()..color = const Color(0xFFE6E9ED));
+    }
+    canvas.drawPath(
+      outerPath,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2
+        ..strokeJoin = StrokeJoin.miter
+        ..color = _ink,
+    );
+
+    _paintEyelets(canvas);
+    _paintFasteners(canvas);
+    _paintManualFasteners(canvas);
+
+    if (options.showDimensions) {
+      final bounds = layout.geometry.productBounds;
+      final topLeft = Offset(bounds.left, bounds.bottom);
+      final bottomLeft = Offset(bounds.left, bounds.top);
+      final bottomRight = Offset(bounds.right, bounds.top);
+      _dimension(
+        canvas,
+        layout.toPxPoint(bottomLeft),
+        layout.toPxPoint(bottomRight),
+        const Offset(0, 42),
+        formatMm(params.bottomWidth),
+      );
+      _dimension(
+        canvas,
+        layout.toPxPoint(bottomLeft),
+        layout.toPxPoint(topLeft),
+        const Offset(-48, 0),
+        formatMm(layout.geometry.overallHeight),
+      );
+      if (params.isHouse) {
+        final wallTop = bounds.top + (layout.geometry.overallHeight - params.roofHeightMm);
+        _label(
+          canvas,
+          'крыша ${formatMm(params.roofHeightMm)}',
+          layout.toPxPoint(Offset(bounds.right, wallTop)) + const Offset(8, -6),
+          small: true,
+        );
+      }
+      if (params.apexOffsetMm.abs() > 0.5) {
+        _label(
+          canvas,
+          'вершина ${formatSignedMm(params.apexOffsetMm)}',
+          layout.toPxPoint(Offset(
+                bounds.center.dx + params.apexOffsetMm,
+                bounds.top + layout.geometry.overallHeight,
+              )) +
+              const Offset(-18, -18),
+          small: true,
+        );
+      }
+      if (options.showEdgeLengths) {
+        final polygon = outer;
+        for (var i = 0; i < polygon.length; i++) {
+          final a = polygon[i];
+          final b = polygon[(i + 1) % polygon.length];
+          final length = (b - a).distance;
+          if (length < 80) continue;
+          final middle = Offset.lerp(a, b, 0.5)!;
+          final direction = b - a;
+          final unit = direction / direction.distance;
+          final normal = Offset(unit.dy, -unit.dx);
+          _label(
+            canvas,
+            formatMm(length),
+            layout.toPxPoint(middle) + normal * 14,
+            angle: math.atan2(unit.dy, unit.dx),
+            small: true,
+          );
+        }
+      }
+    }
+  }
 
   Color get _edgeColor => Color(params.edgeColor.value);
 

@@ -1812,6 +1812,86 @@ class _ParamsPanelState extends State<ParamsPanel> {
   }
 
   /// «Размеры»: ширина/высота и поля разных сторон в компактной сетке.
+  /// Гибкие настройки треугольника и домика.
+  Widget _shapeSection(WindowParams params) {
+    double parse(String raw) {
+      final text = raw.trim().replaceAll(',', '.');
+      return double.tryParse(text) ?? 0;
+    }
+
+    return _panelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Геометрия формы',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            params.isTriangle
+                ? 'Ширина — основание, высота — общая высота треугольника. '
+                      'Вершина смещается от центра: минус — влево, плюс — вправо.'
+                : 'Ширина — основание стены, высота — общая высота (стена + крыша). '
+                      'Ниже — высота крыши, свес и смещение вершины.',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            key: const Key('shape-apex'),
+            initialValue: _textFor(params.apexOffsetMm),
+            decoration: const InputDecoration(
+              labelText: 'Смещение вершины, мм',
+              helperText: 'минус — влево, плюс — вправо',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            keyboardType:
+                const TextInputType.numberWithOptions(signed: true, decimal: true),
+            onChanged: (value) =>
+                _updateWindow(params.copyWith(apexOffsetMm: parse(value))),
+          ),
+          if (params.isHouse) ...[
+            const SizedBox(height: 8),
+            TextFormField(
+              key: const Key('shape-roof'),
+              initialValue: _textFor(params.roofHeightMm),
+              decoration: const InputDecoration(
+                labelText: 'Высота крыши, мм',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (value) =>
+                  _updateWindow(params.copyWith(roofHeightMm: parse(value))),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              key: const Key('shape-overhang'),
+              initialValue: _textFor(params.roofOverhangMm),
+              decoration: const InputDecoration(
+                labelText: 'Свес крыши с каждой стороны, мм',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (value) =>
+                  _updateWindow(params.copyWith(roofOverhangMm: parse(value))),
+            ),
+          ],
+          const SizedBox(height: 6),
+          const Text(
+            'Окантовка, люверсы и интервал — общие для фигуры: окантовка идёт '
+            'по всем кромкам, люверсы — по периметру с заданным шагом.',
+            style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _sizesSection(WindowSpec spec) {
     final params = spec.params;
     return Column(
@@ -1819,28 +1899,44 @@ class _ParamsPanelState extends State<ParamsPanel> {
       children: [
         _SectionTitle('Размеры, ${unitSuffix()}'),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(child: _numberField(ParamField.bottomWidth)),
-            const SizedBox(width: 12),
-            Expanded(child: _numberField(ParamField.topWidth)),
-          ],
-        ),
-        Row(
-          children: [
-            Expanded(child: _numberField(ParamField.leftHeight)),
-            const SizedBox(width: 12),
-            Expanded(child: _numberField(ParamField.rightHeight)),
-          ],
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Для разных сторон заполните ширину низа/верха и высоты '
-          'слева/справа.',
-          style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-        ),
-        const SizedBox(height: 10),
-        _levelEdgeSelector(params),
+        if (params.isSpecialShape) ...[
+          Row(
+            children: [
+              Expanded(child: _numberField(ParamField.bottomWidth)),
+              const SizedBox(width: 12),
+              Expanded(child: _numberField(ParamField.leftHeight)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Для фигуры: ширина — основание, высота — общая высота. '
+            'Остальные размеры задаются в «Геометрии формы».',
+            style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+        ] else ...[
+          Row(
+            children: [
+              Expanded(child: _numberField(ParamField.bottomWidth)),
+              const SizedBox(width: 12),
+              Expanded(child: _numberField(ParamField.topWidth)),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(child: _numberField(ParamField.leftHeight)),
+              const SizedBox(width: 12),
+              Expanded(child: _numberField(ParamField.rightHeight)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Для разных сторон заполните ширину низа/верха и высоты '
+            'слева/справа.',
+            style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+          const SizedBox(height: 10),
+          _levelEdgeSelector(params),
+        ],
         const SizedBox(height: 12),
         _allowanceSection(spec),
       ],
@@ -1880,10 +1976,20 @@ class _ParamsPanelState extends State<ParamsPanel> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(child: _edgeWidthEditor(params, EdgeSide.bottom)),
-            const SizedBox(width: 12),
-            Expanded(child: _edgeWidthEditor(params, EdgeSide.top)),
+            if (!params.isSpecialShape) ...[
+              const SizedBox(width: 12),
+              Expanded(child: _edgeWidthEditor(params, EdgeSide.top)),
+            ],
           ],
         ),
+        if (params.isSpecialShape) ...[
+          const SizedBox(height: 6),
+          const Text(
+            'У фигуры верхняя окантовка не используется: скаты крыши берут '
+            'левую и правую ширину.',
+            style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+        ],
         const SizedBox(height: 14),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2029,6 +2135,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
           const SizedBox(height: 12),
           // 4. Тип окна.
           _typeSection(params),
+          if (params.isSpecialShape) ...[
+            const SizedBox(height: 12),
+            _shapeSection(params),
+          ],
           const SizedBox(height: 18),
           // 5. Размеры, «Ровно» и припуски на раскрой.
           _sizesSection(spec),

@@ -78,6 +78,9 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'customer': p.customer,
       'drawingNumber': p.drawingNumber,
       'screenColor': p.screenColor,
+      'apexOffsetMm': p.apexOffsetMm,
+      'roofHeightMm': p.roofHeightMm,
+      'roofOverhangMm': p.roofOverhangMm,
       'windowType': p.windowType.name,
       'material': p.material.name,
       'bottomWidth': p.bottomWidth,
@@ -179,6 +182,9 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     customer: _string(json['customer'], fallback.customer),
     drawingNumber: _string(json['drawingNumber'], fallback.drawingNumber),
     screenColor: _string(json['screenColor'], fallback.screenColor),
+    apexOffsetMm: _double(json['apexOffsetMm'], fallback.apexOffsetMm),
+    roofHeightMm: _double(json['roofHeightMm'], fallback.roofHeightMm),
+    roofOverhangMm: _double(json['roofOverhangMm'], fallback.roofOverhangMm),
     windowType:
         _enumByName(WindowType.values, json['windowType'], fallback.windowType),
     material:

@@ -20,13 +20,22 @@ enum WindowType {
   ///
   /// В отличие от Т-образного, второй материал может пристраиваться с любой
   /// стороны и по диагональному шву; см. [CompositeSpec].
-  composite;
+  composite,
+
+  /// Треугольное окно: основание — ширина, высота — высота, вершина может
+  /// смещаться от центра.
+  triangle,
+
+  /// Домик: прямоугольная стена плюс треугольная крыша.
+  house;
 
   String get label => switch (this) {
     WindowType.fixed => 'Глухое',
     WindowType.lifting => 'Подъёмное',
     WindowType.tShape => 'Т-образное',
     WindowType.composite => 'Составное',
+    WindowType.triangle => 'Треугольник',
+    WindowType.house => 'Домик',
   };
 
   String get hint => switch (this) {
@@ -42,6 +51,11 @@ enum WindowType {
       'Основное полотно из ПВХ и второй материал (скрин или ПВХ) спаяны по '
           'общему шву. Второй сегмент можно пристроить с любой стороны, в том '
           'числе по диагональному шву',
+    WindowType.triangle =>
+      'Основание — ширина, высота — общая высота, вершина смещается от центра',
+    WindowType.house =>
+      'Прямоугольная стена плюс треугольная крыша; высота крыши и свес '
+          'задаются отдельно',
   };
 }
 
@@ -954,6 +968,9 @@ class WindowParams {
     this.hemTopMm = defaultScreenHemMm,
     this.hemLeftMm = defaultScreenHemMm,
     this.screenColor = '',
+    this.apexOffsetMm = 0,
+    this.roofHeightMm = 500,
+    this.roofOverhangMm = 0,
     this.eyeletStep = 300,
     this.eyeletCornerOffset = 0,
     this.roundEyeletsEnabled = true,
@@ -987,6 +1004,15 @@ class WindowParams {
 
   /// Цвет скрина для клиентского отчёта (например «серый», «белый»).
   final String screenColor;
+
+  /// Смещение вершины треугольника/крыши от центра, мм (+ вправо).
+  final double apexOffsetMm;
+
+  /// Высота крыши домика, мм.
+  final double roofHeightMm;
+
+  /// Свес крыши домика за стену с каждой стороны, мм.
+  final double roofOverhangMm;
 
   /// Тип окна по способу открывания.
   final WindowType windowType;
@@ -1446,6 +1472,15 @@ class WindowParams {
   /// Т-образное окно: основное полотно плюс приставка.
   bool get isTShape => windowType == WindowType.tShape;
 
+  /// Треугольное окно.
+  bool get isTriangle => windowType == WindowType.triangle;
+
+  /// Домик: стена + крыша.
+  bool get isHouse => windowType == WindowType.house;
+
+  /// Треугольник или домик — особая форма с многоугольным контуром.
+  bool get isSpecialShape => isTriangle || isHouse;
+
   /// Составное окно: ПВХ-полотно плюс второй материал по общему шву.
   bool get isComposite => windowType == WindowType.composite;
 
@@ -1566,6 +1601,9 @@ class WindowParams {
     String? customer,
     String? drawingNumber,
     String? screenColor,
+    double? apexOffsetMm,
+    double? roofHeightMm,
+    double? roofOverhangMm,
     WindowType? windowType,
     double? bottomWidth,
     double? topWidth,
@@ -1629,6 +1667,9 @@ class WindowParams {
       customer: customer ?? this.customer,
       drawingNumber: drawingNumber ?? this.drawingNumber,
     screenColor: screenColor ?? this.screenColor,
+    apexOffsetMm: apexOffsetMm ?? this.apexOffsetMm,
+    roofHeightMm: roofHeightMm ?? this.roofHeightMm,
+    roofOverhangMm: roofOverhangMm ?? this.roofOverhangMm,
       windowType: windowType ?? this.windowType,
       bottomWidth: bottomWidth ?? this.bottomWidth,
       topWidth: topWidth ?? this.topWidth,
@@ -1932,6 +1973,9 @@ class WindowParams {
     topWidth,
     leftHeight,
     rightHeight,
+    apexOffsetMm,
+    roofHeightMm,
+    roofOverhangMm,
     allowanceWidthMm,
     allowanceHeightMm,
     topAlign.name,

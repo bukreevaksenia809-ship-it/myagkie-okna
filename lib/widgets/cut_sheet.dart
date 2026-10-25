@@ -923,6 +923,32 @@ class CutSheetPainter extends CustomPainter {
     final contours = cutSheetContours(rect, piece, minGapPx: 40);
     if (contours.isEmpty) return;
 
+    // Фигуры (треугольник, домик): не подписываем каждую наклонную кромку,
+    // иначе числа накладываются. Только габарит заготовки.
+    if (piece.allContours.first.length != 4) {
+      final paint = Paint()
+        ..color = _ink
+        ..strokeWidth = 1.1;
+      _arrowedDimension(
+        canvas,
+        rect.bottomLeft,
+        rect.bottomRight,
+        const Offset(0, 34),
+        formatMm(piece.widthMm),
+        paint,
+      );
+      _arrowedDimension(
+        canvas,
+        rect.topLeft,
+        rect.bottomLeft,
+        const Offset(-34, 0),
+        formatMm(piece.heightMm),
+        paint,
+        angle: -math.pi / 2,
+      );
+      return;
+    }
+
     final paint = Paint()
       ..color = _ink
       ..strokeWidth = 1.1;
@@ -981,6 +1007,34 @@ class CutSheetPainter extends CustomPainter {
         );
       }
     }
+  }
+
+  /// Размерная линия со стрелками и подписью для фигур.
+  void _arrowedDimension(
+    Canvas canvas,
+    Offset a,
+    Offset b,
+    Offset offset,
+    String text,
+    Paint paint, {
+    double angle = 0,
+  }) {
+    final a2 = a + offset;
+    final b2 = b + offset;
+    canvas.drawLine(a + offset * 0.2, a2 + offset * 0.2, paint);
+    canvas.drawLine(b + offset * 0.2, b2 + offset * 0.2, paint);
+    canvas.drawLine(a2, b2, paint);
+    final direction = (b2 - a2) / (b2 - a2).distance;
+    _arrow(canvas, a2, -direction);
+    _arrow(canvas, b2, direction);
+    _label(
+      canvas,
+      text,
+      (a2 + b2) / 2 + offset / offset.distance * 16,
+      angle: angle,
+      fontSize: _basePx * 2.6,
+      color: _dim,
+    );
   }
 
   /// Угол подписи вдоль отрезка, повёрнутый так, чтобы текст читался слева

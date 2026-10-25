@@ -607,6 +607,7 @@ class WindowGeometry {
     this.levelEdge = LevelEdge.bottom,
     this.tLayout,
     this.compositeSpec,
+    this.shapePolygon,
     double? bottomLeftY,
     double? bottomRightY,
     double? topLeftY,
@@ -617,6 +618,50 @@ class WindowGeometry {
        topRightY = topRightY ?? rightHeight;
 
   factory WindowGeometry.of(WindowParams params) {
+    if (params.isSpecialShape) {
+      final width = _positive(params.bottomWidth);
+      final height = _positive(params.leftHeight);
+      final apexX = (width / 2 + params.apexOffsetMm)
+          .clamp(5.0, math.max(width - 5, 6))
+          .toDouble();
+      final List<Offset> polygon;
+      if (params.isTriangle) {
+        polygon = [Offset(0, 0), Offset(width, 0), Offset(apexX, height)];
+      } else {
+        final roof = params.roofHeightMm
+            .clamp(10.0, math.max(height - 10, 11))
+            .toDouble();
+        final wall = height - roof;
+        final overhang = params.roofOverhangMm
+            .clamp(0.0, width * 0.25)
+            .toDouble();
+        polygon = overhang <= 0.5
+            ? [
+                Offset(0, 0),
+                Offset(width, 0),
+                Offset(width, wall),
+                Offset(apexX, height),
+                Offset(0, wall),
+              ]
+            : [
+                Offset(0, 0),
+                Offset(width, 0),
+                Offset(width, wall),
+                Offset(width + overhang, wall),
+                Offset(apexX, height),
+                Offset(-overhang, wall),
+                Offset(0, wall),
+              ];
+      }
+      return WindowGeometry(
+        bottomWidth: width,
+        topWidth: width,
+        leftHeight: height,
+        rightHeight: height,
+        topOffset: 0,
+        shapePolygon: polygon,
+      );
+    }
     // Геометрия строится по ОСНОВНЫМ размерам изделия (замеру). Припуск на
     // раскрой сюда не входит: он добавляется только к заготовке плёнки
     // (см. WindowSpec.filmCutWidthWithAllowance), поэтому чертёж, окантовка,
@@ -709,6 +754,9 @@ class WindowGeometry {
   /// Второй сегмент составного окна (null у остальных типов).
   final CompositeSpec? compositeSpec;
 
+  /// Особый контур (треугольник/домик), null у обычных окон.
+  final List<Offset>? shapePolygon;
+
   /// Т-образное окно — контур не четырёхугольный.
   bool get isTShape => tLayout != null;
 
@@ -737,6 +785,7 @@ class WindowGeometry {
   /// У Т-образного окна вершин 6–8: это фактический контур объединения
   /// основного полотна и приставки.
   List<Offset> get corners =>
+      shapePolygon ??
       compositeLayout?.outline ??
       tLayout?.outline ??
       [bottomLeft, bottomRight, topRight, topLeft];
@@ -755,13 +804,17 @@ class WindowGeometry {
 
   /// Длина левой кромки. У Т-окна это сумма всех левых отрезков контура.
   double get leftEdgeLength {
-    if (!isTShape && !isComposite) return sideLengths[3];
+    if (shapePolygon == null && !isTShape && !isComposite) {
+      return sideLengths[3];
+    }
     return _edgeLengthOnSide(WindowSide.left);
   }
 
   /// Длина правой кромки. У Т-окна — сумма правых отрезков контура.
   double get rightEdgeLength {
-    if (!isTShape && !isComposite) return sideLengths[1];
+    if (shapePolygon == null && !isTShape && !isComposite) {
+      return sideLengths[1];
+    }
     return _edgeLengthOnSide(WindowSide.right);
   }
 
@@ -805,11 +858,13 @@ class WindowGeometry {
   double get overallHeight => productBounds.height;
 
   /// Насколько верхняя кромка выходит за нижнюю справа (мм).
-  double get rightOverhang =>
-      (isTShape || isComposite) ? 0 : topOffset + topWidth - bottomWidth;
+  double get rightOverhang => (shapePolygon != null || isTShape || isComposite)
+      ? 0
+      : topOffset + topWidth - bottomWidth;
 
   /// Насколько верхняя кромка выходит за нижнюю слева (мм).
-  double get leftOverhang => (isTShape || isComposite) ? 0 : -topOffset;
+  double get leftOverhang =>
+      (shapePolygon != null || isTShape || isComposite) ? 0 : -topOffset;
 }
 
 /// Геометрия составного окна: основное полотно ПВХ и второй сегмент,
@@ -1391,12 +1446,14 @@ class WindowLayers {
   /// кромки фактическая длина отрезка на чертеже чуть больше (как и у самого
   /// изделия, где «верх 3 050» — это ширина, а не длина наклонной кромки),
   /// поэтому подписи и документы берут именно эти значения.
-  List<double> get blankSideLengths => [
-    blankGeometry.bottomWidth,
-    blankGeometry.rightHeight,
-    blankGeometry.topWidth,
-    blankGeometry.leftHeight,
-  ];
+  List<double> get blankSideLengths => geometry.shapePolygon != null
+      ? const <double>[]
+      : [
+          blankGeometry.bottomWidth,
+          blankGeometry.rightHeight,
+          blankGeometry.topWidth,
+          blankGeometry.leftHeight,
+        ];
 
   /// Вершины заготовки: контур изделия расширен на половину подворота
   /// каждой стороны.
@@ -1415,6 +1472,13 @@ class WindowLayers {
       // (см. [filmPolygons]).
       final polygons = _buildCompositeFilmPolygons();
       return polygons.isEmpty ? const [] : polygons.first;
+    }
+    final shape = geometry.shapePolygon;
+    if (shape != null) {
+      return insetPolygonPerSide(
+        shape,
+        perEdge(shape, (side) => _blankAmount(side)),
+      );
     }
     final corners = blankGeometry.corners;
     if (corners.isEmpty) return const [];
@@ -3318,7 +3382,9 @@ class WindowSpec {
       // Составное окно — тоже глухое: крепёж по окантовке обеих частей.
       WindowType.fixed ||
       WindowType.tShape ||
-      WindowType.composite => 'Саморезы по окантовке (глухое)',
+      WindowType.composite ||
+      WindowType.triangle ||
+      WindowType.house => 'Саморезы по окантовке (глухое)',
       WindowType.lifting =>
         'Сверху саморезы, низ и бока — $movableFastenerLabel',
     };
