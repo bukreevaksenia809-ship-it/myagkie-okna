@@ -1945,17 +1945,111 @@ class WindowLayers {
     return best ?? bounds.bottom;
   }
 
+  /// Нижняя линия плёнки (внутренней кромки) при данном x: для косого окна
+  /// низ тоже может быть наклонён.
+  double _filmBottomLineYAt(double x) {
+    final bounds = filmVisibleBounds;
+    final polygons = edgeInnerPolygons;
+    if (polygons.isEmpty) return bounds.top;
+    final polygon = polygons.first;
+    double? best;
+    for (var i = 0; i < polygon.length; i++) {
+      final a = polygon[i];
+      final b = polygon[(i + 1) % polygon.length];
+      final minX = math.min(a.dx, b.dx);
+      final maxX = math.max(a.dx, b.dx);
+      if (x < minX - 1e-6 || x > maxX + 1e-6) continue;
+      final dx = b.dx - a.dx;
+      final t = dx.abs() < 1e-9 ? 0.0 : (x - a.dx) / dx;
+      final y = a.dy + (b.dy - a.dy) * t;
+      if (best == null || y < best) best = y;
+    }
+    return best ?? bounds.top;
+  }
+
+  /// Диапазон x контура на высоте y — чтобы полоса молнии не вылезала за
+  /// наклонную боковую кромку.
+  ({double left, double right})? _filmXRangeAtY(double y) {
+    final polygons = edgeInnerPolygons;
+    if (polygons.isEmpty) return null;
+    final polygon = polygons.first;
+    final xs = <double>[];
+    for (var i = 0; i < polygon.length; i++) {
+      final a = polygon[i];
+      final b = polygon[(i + 1) % polygon.length];
+      final minY = math.min(a.dy, b.dy);
+      final maxY = math.max(a.dy, b.dy);
+      if (y < minY - 1e-6 || y > maxY + 1e-6) continue;
+      final dy = b.dy - a.dy;
+      final t = dy.abs() < 1e-9 ? 0.0 : (y - a.dy) / dy;
+      final x = a.dx + (b.dx - a.dx) * t;
+      xs.add(x);
+    }
+    if (xs.length < 2) return null;
+    var left = xs.first;
+    var right = xs.first;
+    for (final x in xs) {
+      if (x < left) left = x;
+      if (x > right) right = x;
+    }
+    return (left: left, right: right);
+  }
+
   /// Полосы тента под все молнии.
   List<Rect> get zipperBands => [for (final line in zippers) _bandOf(line)];
 
   Rect _bandOf(({Offset start, Offset end, double bandWidth}) line) {
     final half = math.max(line.bandWidth, 20) / 2;
-    return Rect.fromLTRB(
-      line.start.dx - half,
-      math.min(line.start.dy, line.end.dy),
-      line.start.dx + half,
-      math.max(line.start.dy, line.end.dy),
-    );
+    var left = line.start.dx - half;
+    var right = line.start.dx + half;
+    var lowY = math.min(line.start.dy, line.end.dy);
+    var highY = math.max(line.start.dy, line.end.dy);
+
+    // Косое окно: полоса вертикальная, а тент сверху/снизу наклонён. Подрезаем
+    // полосу по внутреннему контуру и при необходимости сдвигаем её внутрь,
+    // иначе её углы вылезают за тент.
+    final simpleQuad = !isTShape && compositeLayout == null;
+    if (simpleQuad && edgeInnerPolygons.isNotEmpty) {
+      final bounds = filmVisibleBounds;
+      final topRange0 = _filmXRangeAtY(bounds.bottom);
+      final bottomRange0 = _filmXRangeAtY(bounds.top);
+      if (topRange0 != null && bottomRange0 != null) {
+        final minLeft = math.max(topRange0.left, bottomRange0.left);
+        final maxRight = math.min(topRange0.right, bottomRange0.right);
+        if (maxRight - minLeft > 20) {
+          final width = math.min(right - left, maxRight - minLeft);
+          var center = (left + right) / 2;
+          center = center.clamp(minLeft + width / 2, maxRight - width / 2);
+          left = center - width / 2;
+          right = center + width / 2;
+        }
+      }
+
+      final lowEdge = math.max(
+        _filmBottomLineYAt(left),
+        _filmBottomLineYAt(right),
+      );
+      final highEdge = math.min(_tentLineYAt(left), _tentLineYAt(right));
+      if (highEdge - lowEdge > 10) {
+        lowY = math.max(lowY, lowEdge);
+        highY = math.min(highY, highEdge);
+      }
+
+      final topRange = _filmXRangeAtY(highY);
+      final bottomRange = _filmXRangeAtY(lowY);
+      if (topRange != null && bottomRange != null) {
+        final minLeft = math.max(topRange.left, bottomRange.left);
+        final maxRight = math.min(topRange.right, bottomRange.right);
+        if (maxRight - minLeft > 10) {
+          final width = math.min(right - left, maxRight - minLeft);
+          var center = (left + right) / 2;
+          center = center.clamp(minLeft + width / 2, maxRight - width / 2);
+          left = center - width / 2;
+          right = center + width / 2;
+        }
+      }
+    }
+    return Rect.fromLTRB(left, lowY, right, highY);
   }
 
   /// Полоса первой молнии — для подписей и совместимости.

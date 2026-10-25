@@ -7,6 +7,7 @@ import 'models/price_list.dart';
 import 'models/window_params.dart';
 import 'services/order_storage.dart';
 import 'services/client_report_pdf.dart';
+import 'widgets/client_report_dialog.dart';
 import 'services/company_branding.dart';
 import 'services/label_settings.dart';
 import 'services/tech_checks.dart';
@@ -442,6 +443,13 @@ class _BuilderScreenState extends State<BuilderScreen> {
   /// окон (чертёж + раскрой), в отличие от производственных листов.
   Future<void> _exportClientReport() async {
     if (_exporting) return;
+    // Сначала данные заказчика — прямо здесь, не в панели программы.
+    final info = await showClientReportDialog(
+      context,
+      project: _project,
+      company: CompanyBranding.current.value,
+    );
+    if (info == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _exporting = true);
     try {
@@ -449,6 +457,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
         project: _project,
         prices: _prices,
         company: CompanyBranding.current.value,
+        info: info,
       );
       messenger.showSnackBar(
         SnackBar(content: Text('Отчёт для клиента: ${saved.destination}')),

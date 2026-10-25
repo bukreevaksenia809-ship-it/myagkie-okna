@@ -3109,29 +3109,6 @@ class WindowDrawingPainter extends CustomPainter {
     canvas.drawLine(topLeft, leftHeightTop, extension);
     canvas.drawLine(topRight, rightHeightTop, extension);
 
-    // У прямоугольного скрина длина кромки равна высоте стороны — подпись
-    // «кромка» дублировала бы размер и засоряла узкое поле. Оставляем её
-    // только там, где кромка действительно длиннее/короче (трапеция).
-    final screenEdgeEqualsHeight =
-        params.isScreen &&
-        (geometry.leftEdgeLength - geometry.leftHeight).abs() < 0.5 &&
-        (geometry.rightEdgeLength - geometry.rightHeight).abs() < 0.5;
-    if (options.showEdgeLengths && !screenEdgeEqualsHeight) {
-      _edgeLabel(
-        canvas,
-        bottomLeft,
-        topLeft,
-        'кромка ${formatMm(geometry.leftEdgeLength)}',
-        edgeIndex: 3,
-      );
-      _edgeLabel(
-        canvas,
-        topRight,
-        bottomRight,
-        'кромка ${formatMm(geometry.rightEdgeLength)}',
-        edgeIndex: 1,
-      );
-    }
   }
 
   void _dimension(
@@ -3184,50 +3161,6 @@ class WindowDrawingPainter extends CustomPainter {
       ..lineTo(back.dx - normal.dx, back.dy - normal.dy)
       ..close();
     canvas.drawPath(path, Paint()..color = _ink);
-  }
-
-  void _edgeLabel(
-    Canvas canvas,
-    Offset a,
-    Offset b,
-    String text, {
-    int? edgeIndex,
-  }) {
-    final direction = b - a;
-    final length = direction.distance;
-    if (length < 1) return;
-    final unit = direction / length;
-    final normal = Offset(-unit.dy, unit.dx);
-    final middle = Offset.lerp(a, b, 0.5)!;
-    final center = layout.toPxPoint(boundsOf(layers.outer).center);
-    final toCenter = center - middle;
-    final inward = (toCenter.dx * normal.dx + toCenter.dy * normal.dy) >= 0
-        ? normal
-        : -normal;
-    // Середину стороны занимает подпись шага между креплениями, а «кромка» —
-    // вспомогательная подпись: ищем для неё свободное место вдоль кромки.
-    final halfLength =
-        _textPainter(text, color: _filmEdge, small: true).width / 2;
-    final position = edgeIndex == null
-        ? middle + inward * 20
-        : _freeSpotOnEdge(
-            edgeIndex: edgeIndex,
-            a: a,
-            b: b,
-            normal: inward,
-            depth: 20,
-            halfLength: halfLength,
-          );
-    if (position == null) return;
-    _label(
-      canvas,
-      text,
-      position,
-      angle: math.atan2(unit.dy, unit.dx),
-      small: true,
-      color: _filmEdge,
-      fontSize: _labelPx(LabelKind.sideLabel),
-    );
   }
 
   // -------------------------------------------------------------- выноски
