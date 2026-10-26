@@ -34,6 +34,9 @@ class LicenseService {
 
   static String? get savedKey => _key.isEmpty ? null : _key;
 
+  /// В тестах не запускаем фоновую проверку.
+  static bool get isTest => test_env.isTestEnvironment;
+
   static Future<void> loadSaved() async {
     final prefs = await SharedPreferences.getInstance();
     _key = prefs.getString('license_key') ?? '';
@@ -98,10 +101,8 @@ class LicenseService {
       if (license == null) return LicenseState(false, 'Ключ не найден', key: _key);
       final problem = _checkFields(license);
       if (problem != null) return LicenseState(false, problem, key: _key);
-      final activated = await _activation(_key);
-      if (activated == null) {
-        return LicenseState(false, 'Ключ не активирован на этом ПК', key: _key);
-      }
+      // Для слежения за выключением достаточно самого ключа: один GET
+      // каждые несколько секунд, без лишних чтений активации.
       return LicenseState(true, 'Ключ активен: $_key', key: _key);
     } catch (_) {
       return LicenseState(true, 'Офлайн: ключ $_key', key: _key);

@@ -772,7 +772,7 @@ class WindowGeometry {
   List<Offset> get _mainQuad => [bottomLeft, bottomRight, topRight, topLeft];
 
   static double _positive(double value) =>
-      (!value.isFinite || value <= 0) ? 100 : value;
+      (!value.isFinite || value <= 0) ? 100 : value.clamp(100, 20000);
 
   Offset get bottomLeft => Offset(0, bottomLeftY);
   Offset get bottomRight => Offset(bottomWidth, bottomRightY);
@@ -2617,6 +2617,9 @@ class WindowLayers {
         // фактического интервала не попадает: крепежа там нет.
         if (sideHasEyelets(side)) steps.add(actual);
 
+        // Аварийный предел: при ошибочном размере (например, лишние нули)
+        // миллионы люверсов кладут браузер. Рабочие окна далеки от предела.
+        if (placements.length > 6000) break;
         for (var k = 0; k <= intervals; k++) {
           // Точки стороны идут строго с равным шагом [actual] от отступа
           // [offset]: k = 0 — начало стороны, k = intervals — её конец. Никаких

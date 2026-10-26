@@ -82,6 +82,18 @@ void main() {
     expect(restored.roofOverhangMm, 0);
   });
 
+  test('аварийные размеры не дают миллионы люверсов', () {
+    final huge = WindowSpec.of(
+      triangle.copyWith(bottomWidth: 20000, leftHeight: 20000),
+    );
+    expect(huge.eyeletCount, lessThanOrEqualTo(6000));
+    final tiny = WindowSpec.of(
+      triangle.copyWith(bottomWidth: 100, leftHeight: 100),
+    );
+    expect(tiny.eyeletCount, greaterThan(0));
+    expect(tiny.productAreaM2, greaterThan(0));
+  });
+
   test('смещение вершины и свес меняют контур, площадь остаётся корректной', () {
     final shifted = WindowSpec.of(
       triangle.copyWith(apexOffsetMm: 300),

@@ -501,6 +501,28 @@ class _ParamsPanelState extends State<ParamsPanel> {
       setState(() => _errors[field] = 'Значение должно быть больше нуля');
       return;
     }
+    // Защита от случайных «лишних нулей»: гигантские размеры дают миллионы
+    // люверсов и роняют отрисовку (особенно в браузере). Раньше такие
+    // значения принимались молча.
+    const dimensionFields = <ParamField>{
+      ParamField.bottomWidth,
+      ParamField.topWidth,
+      ParamField.leftHeight,
+      ParamField.rightHeight,
+      ParamField.tWidth,
+      ParamField.tHeight,
+      ParamField.t2Width,
+      ParamField.t2Height,
+      ParamField.compositeWidth,
+      ParamField.compositeDepth,
+    };
+    if (dimensionFields.contains(field) && (value < 100 || value > 20000)) {
+      setState(
+        () => _errors[field] =
+            'Размер от 100 до 20 000 ${unitSuffix()}, проверьте значение',
+      );
+      return;
+    }
     setState(() => _errors[field] = null);
 
     switch (field) {

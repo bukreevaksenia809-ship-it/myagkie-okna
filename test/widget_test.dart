@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:soft_window_drawer/main.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
 import 'package:soft_window_drawer/widgets/params_panel.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets('экран конструктора: панель, лист и переключение вкладок', (
     WidgetTester tester,
   ) async {

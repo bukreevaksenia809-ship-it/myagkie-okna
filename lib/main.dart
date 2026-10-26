@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -33,7 +35,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '1.4.0';
+const String kAppVersion = '1.4.1';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,6 +45,38 @@ Future<void> main() async {
   // Размеры подписей читаем там же: листы должны открыться с выбранными
   // кеглями, а не мигнуть стандартными.
   await LabelSettings.load();
+
+  // Ошибки построения/отрисовки: раньше они превращались в серый экран без
+  // следов. Теперь показываем понятную плашку и отправляем текст в телеметрию.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    Telemetry.event('error', {
+      'message': details.exceptionAsString(),
+      'stack': details.stack?.toString() ?? '',
+    });
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    Telemetry.event('error', {
+      'message': '$error',
+      'stack': stack.toString(),
+    });
+    return false;
+  };
+  ErrorWidget.builder = (details) => Material(
+    color: const Color(0xFFF1F4F8),
+    child: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          'Ошибка отрисовки. Обновите страницу или измените размеры.\n\n'
+          '${details.exceptionAsString()}',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Color(0xFF8A1F1F), fontSize: 13),
+        ),
+      ),
+    ),
+  );
+
   runApp(const SoftWindowApp());
 }
 
@@ -100,7 +134,8 @@ class BuilderScreen extends StatefulWidget {
   State<BuilderScreen> createState() => _BuilderScreenState();
 }
 
-class _BuilderScreenState extends State<BuilderScreen> {
+class _BuilderScreenState extends State<BuilderScreen>
+    with WidgetsBindingObserver {
   /// Заказы сверху: у каждого своё имя и свои окна. Активный — [_orderIndex].
   List<_OrderDraft> _drafts = [
     _OrderDraft(name: 'Заказ 1', project: const OrderProject()),
@@ -146,12 +181,21 @@ class _BuilderScreenState extends State<BuilderScreen> {
     _zoom.addListener(_onZoomChanged);
     DisplayUnits.current.addListener(_onUnitsChanged);
     LabelSettings.current.addListener(_onLabelSettingsChanged);
-    _refreshOrders();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshOrders(showBusy: false);
     _initTelemetry();
     _initLicense();
-    _licenseWatch = Timer.periodic(const Duration(seconds: 10), (_) {
-      _checkLicenseLive();
-    });
+    if (!LicenseService.isTest) {
+      _licenseWatch = Timer.periodic(const Duration(seconds: 5), (_) {
+        _checkLicenseLive();
+      });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Вернулись в окно — сразу проверяем ключ, не ждём тика таймера.
+    if (state == AppLifecycleState.resumed) _checkLicenseLive();
   }
 
   /// Мгновенная блокировка: админ выключил ключ — клиент узнаёт за секунды.
@@ -292,6 +336,7 @@ class _BuilderScreenState extends State<BuilderScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _licenseWatch?.cancel();
     _toolbarScroll.dispose();
     CompanyBranding.current.removeListener(_onBrandingChanged);
@@ -414,13 +459,13 @@ class _BuilderScreenState extends State<BuilderScreen> {
 
   // ------------------------------------------------------------------ заказы
 
-  Future<void> _refreshOrders() async {
-    setState(() => _ordersBusy = true);
+  Future<void> _refreshOrders({bool showBusy = true}) async {
+    if (showBusy) setState(() => _ordersBusy = true);
     final orders = await listSavedOrders();
     if (!mounted) return;
     setState(() {
       _orders = orders;
-      _ordersBusy = false;
+      if (showBusy) _ordersBusy = false;
     });
   }
 
