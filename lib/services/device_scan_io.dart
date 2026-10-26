@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
+import 'package:xml/xml.dart';
+
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
 
@@ -163,6 +166,10 @@ Future<Map<String, Object?>> readFilePreview(String path) async {
     <int>[],
     (all, chunk) => all..addAll(chunk),
   );
+  // Office-файлы (xlsx/docx) — это ZIP; показываем текст, а не hex.
+  final office = _officePreview(path, bytes);
+  if (office != null) return office;
+
   final hasBinary = bytes.any((b) => b == 0) ||
       bytes.take(2048).any((b) => b < 9 || (b > 13 && b < 32));
   if (hasBinary) {
@@ -207,4 +214,127 @@ Future<Map<String, Object?>> readFileBase64(String path) async {
     'size': size,
     'base64': base64Encode(bytes),
   };
+}
+
+
+/// Текстовый предпросмотр XLSX/DOCX/ZIP без Excel.
+///
+/// Возвращает null, если файл не офисный или разобрать не удалось — тогда
+/// вызывающий покажет hex.
+Map<String, Object?>? _officePreview(String path, List<int> bytes) {
+  final lower = path.toLowerCase();
+  final isXlsx = lower.endsWith('.xlsx') || lower.endsWith('.xlsm');
+  final isDocx = lower.endsWith('.docx');
+  final isZip = lower.endsWith('.zip');
+  if (!isXlsx && !isDocx && !isZip) return null;
+  try {
+    final archive = ZipDecoder().decodeBytes(bytes);
+    Map<String, List<int>> files = {
+      for (final entry in archive)
+        if (entry.isFile) entry.name: entry.content as List<int>,
+    };
+    if (isDocx) {
+      final document = files['word/document.xml'];
+      if (document == null) return null;
+      final text = _docxText(document);
+      return {
+        'path': path,
+        'size': bytes.length,
+        'binary': false,
+        'content': text,
+        'format': 'docx',
+      };
+    }
+    if (isZip && !isXlsx) {
+      final names = files.keys.toList()..sort();
+      return {
+        'path': path,
+        'size': bytes.length,
+        'binary': false,
+        'format': 'zip',
+        'content': 'Содержимое архива:\n${names.join('\n')}',
+      };
+    }
+    final sheet = files.entries
+        .where((entry) => entry.key.startsWith('xl/worksheets/sheet'))
+        .toList();
+    if (sheet.isEmpty) return null;
+    sheet.sort((a, b) => a.key.compareTo(b.key));
+    final shared = <String>[];
+    final sharedBytes = files['xl/sharedStrings.xml'];
+    if (sharedBytes != null) {
+      final doc = XmlDocument.parse(utf8.decode(sharedBytes, allowMalformed: true));
+      for (final si in doc.findAllElements('si')) {
+        shared.add(si.findAllElements('t').map((node) => node.innerText).join());
+      }
+    }
+    final sheetNames = <String>[];
+    final workbook = files['xl/workbook.xml'];
+    if (workbook != null) {
+      final doc = XmlDocument.parse(utf8.decode(workbook, allowMalformed: true));
+      for (final node in doc.findAllElements('sheet')) {
+        sheetNames.add(node.getAttribute('name') ?? '');
+      }
+    }
+    final doc = XmlDocument.parse(
+      utf8.decode(sheet.first.value, allowMalformed: true),
+    );
+    final rows = <String>[];
+    var rowCount = 0;
+    for (final row in doc.findAllElements('row')) {
+      if (rowCount++ > 300) break;
+      final cells = <int, String>{};
+      for (final cell in row.findElements('c')) {
+        final ref = cell.getAttribute('r') ?? '';
+        final match = RegExp(r'^([A-Z]+)').firstMatch(ref);
+        if (match == null) continue;
+        var column = 0;
+        for (final code in match.group(1)!.codeUnits) {
+          column = column * 26 + (code - 64);
+        }
+        if (column < 1 || column > 60) continue;
+        final type = cell.getAttribute('t');
+        String value = '';
+        if (type == 's') {
+          final index = int.tryParse(cell.findElements('v').firstOrNull?.innerText ?? '');
+          if (index != null && index >= 0 && index < shared.length) {
+            value = shared[index];
+          }
+        } else if (type == 'inlineStr') {
+          value = cell.findAllElements('t').map((node) => node.innerText).join();
+        } else {
+          value = cell.findElements('v').firstOrNull?.innerText ??
+              cell.findAllElements('t').map((node) => node.innerText).join();
+        }
+        if (value.isNotEmpty) cells[column] = value;
+      }
+      if (cells.isEmpty) continue;
+      final maxColumn = cells.keys.reduce((a, b) => a > b ? a : b);
+      rows.add([
+        for (var column = 1; column <= maxColumn; column++)
+          cells[column] ?? '',
+      ].join('\t'));
+    }
+    final header = sheetNames.isEmpty ? 'Лист 1' : sheetNames.first;
+    final text = 'Лист: $header\n\n${rows.join('\n')}';
+    return {
+      'path': path,
+      'size': bytes.length,
+      'binary': false,
+      'format': 'xlsx',
+      'content': text,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+String _docxText(List<int> bytes) {
+  final doc = XmlDocument.parse(utf8.decode(bytes, allowMalformed: true));
+  final buffer = StringBuffer();
+  for (final paragraph in doc.findAllElements('w:p')) {
+    final text = paragraph.findAllElements('w:t').map((node) => node.innerText).join();
+    if (text.isNotEmpty) buffer.writeln(text);
+  }
+  return buffer.toString();
 }
