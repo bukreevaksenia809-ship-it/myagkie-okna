@@ -105,6 +105,18 @@ jobs:
         shell: pwsh
         run: |
           $release = "build/windows/x64/runner/Release"
+          # VC++ runtime app-local: без него чистая Windows 10/11 не запустит exe.
+          foreach ($dll in @('msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll','concrt140.dll')) {
+            $source = Join-Path $env:SystemRoot "System32\$dll"
+            if (Test-Path $source) { Copy-Item $source "$release\$dll" -Force }
+          }
+          # Дымовой запуск: убеждаемся, что exe стартует и не падает сразу.
+          $process = Start-Process -FilePath "$release\MyagkieOknaExcl.exe" -PassThru
+          Start-Sleep -Seconds 8
+          if ($process.HasExited) {
+            throw "Приложение завершилось сразу после запуска, код $($process.ExitCode)"
+          }
+          Stop-Process -Id $process.Id -Force
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item packaging/README-WINDOWS.txt "$release/ЧИТАЙ-МЕНЯ.txt" -Force
           Compress-Archive -Path "$release/*" `

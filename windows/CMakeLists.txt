@@ -84,6 +84,21 @@ install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 
+# Visual C++ runtime рядом с exe: на чистой Windows 10/11 этих DLL может не
+# быть, и приложение не стартует ещё до Dart. Кладём app-local копии.
+if(MSVC AND DEFINED ENV{VCToolsRedistDir})
+  file(GLOB VC_CRT_DIRS "$ENV{VCToolsRedistDir}x64/Microsoft.VC*.CRT")
+  if(VC_CRT_DIRS)
+    list(GET VC_CRT_DIRS 0 VC_CRT_DIR)
+    foreach(VC_DLL msvcp140.dll vcruntime140.dll vcruntime140_1.dll concrt140.dll)
+      if(EXISTS "${VC_CRT_DIR}/${VC_DLL}")
+        install(FILES "${VC_CRT_DIR}/${VC_DLL}"
+          DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
+      endif()
+    endforeach()
+  endif()
+endif()
+
 if(PLUGIN_BUNDLED_LIBRARIES)
   install(FILES "${PLUGIN_BUNDLED_LIBRARIES}"
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
