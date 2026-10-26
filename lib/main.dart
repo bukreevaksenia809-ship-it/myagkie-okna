@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -994,17 +995,120 @@ class _BuilderScreenState extends State<BuilderScreen>
     return box?.size ?? const Size(1400, 900);
   }
 
+  /// Компактные действия для телефона: частые кнопки + меню.
+  List<Widget> _phoneActions(BuildContext context) => [
+    if (_exporting)
+      const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      )
+    else
+      IconButton(
+        tooltip: 'Сохранить PDF',
+        onPressed: _exportPdf,
+        icon: const Icon(Icons.picture_as_pdf),
+      ),
+    PopupMenuButton<String>(
+      tooltip: 'Ещё',
+      onSelected: (value) {
+        switch (value) {
+          case 'report':
+            _exportClientReport();
+          case 'print':
+            _printSheet();
+          case 'watermark':
+            showWatermarkDialog(context);
+          case 'pairing':
+            _openPairing();
+          case 'license':
+            _openLicense();
+          case 'company':
+            showCompanyDialog(context);
+          case 'reset':
+            _reset();
+        }
+      },
+      itemBuilder: (context) => const [
+        PopupMenuItem(value: 'report', child: Text('Отчёт клиенту')),
+        PopupMenuItem(value: 'print', child: Text('Печать')),
+        PopupMenuItem(value: 'watermark', child: Text('Водяной знак')),
+        PopupMenuItem(value: 'pairing', child: Text('Связь с замерщиком')),
+        PopupMenuItem(value: 'license', child: Text('Лицензия')),
+        PopupMenuItem(value: 'company', child: Text('Компания на листах')),
+        PopupMenuItem(value: 'reset', child: Text('Сбросить окно')),
+      ],
+    ),
+  ];
+
+  /// Панель параметров: на широком экране слева, на телефоне — в шторке.
+  Widget _buildParamsPanel(List<ParamIssue> issues) => ParamsPanel(
+        project: _project,
+        issues: issues,
+        onChanged: _updateProject,
+        onReset: _reset,
+        prices: _prices,
+        orderOverviews: [
+          for (var i = 0; i < _drafts.length; i++)
+            OrderOverview(
+              name: _drafts[i].name,
+              windowCount: _drafts[i].project.windowCount,
+            ),
+        ],
+        selectedOrderIndex: _orderIndex,
+        onSelectOrder: _selectOrderDraft,
+        onCreateOrder: _createOrderDraft,
+        onRenameOrder: _renameOrderDraft,
+        onDeleteOrder: _deleteOrderDraft,
+        pricesSection: PricebookSwitcher(
+          client: _prices,
+          dealer: _dealerPrices,
+          materials: _project.materialsInOrder,
+          onClientChanged: (prices) => setState(() => _prices = prices),
+          onDealerChanged: (prices) => setState(() => _dealerPrices = prices),
+        ),
+        techSection: _techSection(),
+        ordersSection: OrdersPanel(
+          orders: _orders,
+          folderPath: ordersFolderDescription(),
+          busy: _ordersBusy,
+          onSave: _saveOrder,
+          onRefresh: _refreshOrders,
+          onOpen: _openOrder,
+          onDelete: _deleteOrder,
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final selectedSpec = WindowSpec.of(_project.selected);
     final issues = validateParams(_project.selected);
     final rollPlans = buildRollPlans(_project);
-    final narrow = MediaQuery.sizeOf(context).width < 1000;
+    final width = MediaQuery.sizeOf(context).width;
+    final narrow = width < 1000;
+    final phone = width < 700;
 
     return Scaffold(
+      drawer: phone
+          ? Drawer(
+              width: math.min(width * 0.94, 420),
+              child: SafeArea(child: _buildParamsPanel(issues)),
+            )
+          : null,
       appBar: AppBar(
-        title: const Text('Мягкие окна — чертежи, раскрой, раскладка'),
-        actions: [
+        title: Text(
+          phone
+              ? 'Мягкие окна'
+              : 'Мягкие окна — чертежи, раскрой, раскладка',
+        ),
+        actions: phone
+            ? _phoneActions(context)
+            : [
           IconButton(
             key: const Key('watermark-appbar'),
             tooltip: 'Водяной знак на документах',
@@ -1114,44 +1218,7 @@ class _BuilderScreenState extends State<BuilderScreen>
             builder: (context, constraints) {
               final panel = SizedBox(
                 width: narrow ? null : 420,
-                child: ParamsPanel(
-                  project: _project,
-                  issues: issues,
-                  onChanged: _updateProject,
-                  onReset: _reset,
-                  prices: _prices,
-                  orderOverviews: [
-                    for (var i = 0; i < _drafts.length; i++)
-                      OrderOverview(
-                        name: _drafts[i].name,
-                        windowCount: _drafts[i].project.windowCount,
-                      ),
-                  ],
-                  selectedOrderIndex: _orderIndex,
-                  onSelectOrder: _selectOrderDraft,
-                  onCreateOrder: _createOrderDraft,
-                  onRenameOrder: _renameOrderDraft,
-                  onDeleteOrder: _deleteOrderDraft,
-                  pricesSection: PricebookSwitcher(
-                    client: _prices,
-                    dealer: _dealerPrices,
-                    materials: _project.materialsInOrder,
-                    onClientChanged: (prices) =>
-                        setState(() => _prices = prices),
-                    onDealerChanged: (prices) =>
-                        setState(() => _dealerPrices = prices),
-                  ),
-                  techSection: _techSection(),
-                  ordersSection: OrdersPanel(
-                    orders: _orders,
-                    folderPath: ordersFolderDescription(),
-                    busy: _ordersBusy,
-                    onSave: _saveOrder,
-                    onRefresh: _refreshOrders,
-                    onOpen: _openOrder,
-                    onDelete: _deleteOrder,
-                  ),
-                ),
+                child: _buildParamsPanel(issues),
               );
               final sheetArea = Column(
                 children: [
@@ -1161,6 +1228,10 @@ class _BuilderScreenState extends State<BuilderScreen>
                 ],
               );
 
+              if (phone) {
+                // Телефон: лист на весь экран, настройки — в шторке.
+                return sheetArea;
+              }
               if (!narrow) {
                 return Row(
                   children: [
@@ -1496,11 +1567,27 @@ class _StatusBar extends StatelessWidget {
             )
             .join(' · ');
 
+    final compact = MediaQuery.sizeOf(context).width < 700;
     return Container(
       height: 64,
       color: const Color(0xFF111C2B),
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 20),
+      child: compact
+          ? Row(
+              children: [
+                _stat('Окон', '${project.windowCount} шт'),
+                _stat(
+                  'Окно',
+                  '№${project.selectedIndex + 1} · '
+                      '${formatMm(selectedSpec.geometry.spanX)}×'
+                      '${formatMm(selectedSpec.geometry.overallHeight)}',
+                ),
+                _stat('Площадь', '${formatMeters(totalProductArea)} м²'),
+                const Spacer(),
+                const _LabelSettingsButton(),
+              ],
+            )
+          : Row(
         children: [
           _stat('Окон в заказе', '${project.windowCount} шт'),
           _stat(
