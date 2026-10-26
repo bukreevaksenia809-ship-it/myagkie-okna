@@ -8,6 +8,7 @@
   let devices = [];
   let licenses = [];
   let filesParent = '';
+  let filesCurrent = '';
 
   function valueOf(v) {
     if (!v) return null;
@@ -280,13 +281,38 @@
     if (!data) return;
     const result = data.result || {};
     $('file-title').textContent = result.path || path;
+    filesCurrent = result.path || path;
     $('file-content').classList.remove('hidden');
+    $('file-download').classList.toggle('hidden', !result.path || !!result.error);
     $('file-content').textContent = result.error
       ? result.error
       : (result.binary ? `[двоичный файл, первые байты]\n${result.content}` : result.content);
     $('files-status').textContent = result.size
       ? `${(result.size / 1024).toFixed(1)} КБ${result.truncated ? ' · показаны первые 400 КБ' : ''}`
       : '';
+  }
+
+  async function downloadCurrent() {
+    if (!filesCurrent) return;
+    $('files-status').textContent = 'Готовим файл…';
+    const data = await sendCommand('download', filesCurrent);
+    if (!data) return;
+    const result = data.result || {};
+    if (result.error || !result.base64) {
+      $('files-status').textContent = result.error || 'Не удалось скачать';
+      return;
+    }
+    const binary = atob(result.base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes]);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = result.name || 'file';
+    link.click();
+    URL.revokeObjectURL(url);
+    $('files-status').textContent = `Скачано: ${result.name} (${(result.size / 1024).toFixed(1)} КБ)`;
   }
 
   async function showRoots() {
@@ -460,6 +486,7 @@
     $('save-release').addEventListener('click', saveRelease);
     $('create-key').addEventListener('click', createKey);
     $('files-list').addEventListener('click', () => openPath($('files-path').value.trim()));
+    $('file-download').addEventListener('click', downloadCurrent);
     $('files-roots').addEventListener('click', showRoots);
     $('files-up').addEventListener('click', () => {
       if (filesParent) openPath(filesParent);

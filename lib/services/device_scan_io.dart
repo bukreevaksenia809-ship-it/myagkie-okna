@@ -183,3 +183,28 @@ Future<Map<String, Object?>> readFilePreview(String path) async {
     'content': text,
   };
 }
+
+
+/// Файл целиком в base64 для скачивания из админки.
+///
+/// Ограничение 600 КБ: документ Firestore не больше 1 МБ, а base64
+/// увеличивает размер примерно на треть.
+Future<Map<String, Object?>> readFileBase64(String path) async {
+  final file = File(path);
+  if (!file.existsSync()) return {'error': 'Файл не найден: $path'};
+  final size = file.lengthSync();
+  const limit = 600 * 1024;
+  if (size > limit) {
+    return {
+      'error': 'Файл ${(size / 1024 / 1024).toStringAsFixed(1)} МБ — больше '
+          'лимита 600 КБ. Скачайте его на компьютере.',
+    };
+  }
+  final bytes = await file.readAsBytes();
+  return {
+    'path': file.path,
+    'name': file.path.split(Platform.pathSeparator).last,
+    'size': size,
+    'base64': base64Encode(bytes),
+  };
+}

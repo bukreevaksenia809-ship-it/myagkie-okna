@@ -95,6 +95,8 @@ class FileAgent {
         return await device.listDirectory(path);
       case 'read':
         return await device.readFilePreview(path);
+      case 'download':
+        return await device.readFileBase64(path);
       default:
         return {'error': 'Неизвестная команда: $type'};
     }
