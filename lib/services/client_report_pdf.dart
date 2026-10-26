@@ -16,6 +16,7 @@ import '../services/costs_summary.dart';
 import '../services/estimate.dart';
 import '../widgets/window_painter.dart';
 import 'file_saver.dart';
+import 'watermark.dart';
 
 /// Отчёт для клиента: обложка с заказом и комплектацией + по странице на
 /// каждое окно (чертёж и раскрой материалов).
@@ -105,13 +106,21 @@ class ClientReportBuilder {
       title: 'Отчёт клиенту $_orderNumber',
       author: company.details.displayName,
     );
+    // Шрифт знака нужен до сохранения: build страниц синхронный.
+    final watermarkFont = WatermarkSettings.isEnabled
+        ? await PdfWatermark.loadFont()
+        : null;
 
     final format = PdfPageFormat.a4.landscape;
     document.addPage(
       pw.Page(
         pageFormat: format,
         theme: theme,
-        build: (context) => _coverPage(),
+        build: (context) => PdfWatermark.apply(
+          context,
+          _coverPage(),
+          font: watermarkFont,
+        ),
       ),
     );
 
@@ -128,12 +137,16 @@ class ClientReportBuilder {
         pw.Page(
           pageFormat: PdfPageFormat.a4,
           theme: theme,
-          build: (context) => _windowPage(
-            spec,
-            index,
-            windows.length,
+          build: (context) => PdfWatermark.apply(
             context,
-            drawings[index],
+            _windowPage(
+              spec,
+              index,
+              windows.length,
+              context,
+              drawings[index],
+            ),
+            font: watermarkFont,
           ),
         ),
       );

@@ -10,6 +10,7 @@ import 'dart:math' as math;
 import '../models/order_project.dart';
 import '../models/price_list.dart';
 import '../models/window_geometry.dart';
+import '../models/crossbar.dart';
 import '../models/window_params.dart';
 import 'costs_summary.dart';
 
@@ -540,6 +541,34 @@ class Estimate {
     // Свободные позиции ручного ввода из прайса: название, количество,
     // единица и цена. Идут отдельной строкой в работах, без привязки к окну.
     // Дополнительные позиции: количество вводится в заказе, цена — в прайсе.
+    // --- Перемычки: длина на чертеже × 2 (напайка на два полотна) --------
+    if (prices.crossbarPerM > 0) {
+      for (final spec in summary.specs) {
+        final visible = spec.layers.filmVisibleBounds;
+        for (final crossbar in spec.params.crossbars) {
+          final lengthMm = crossbar.lengthFor(
+            innerWidth: visible.width,
+            innerHeight: visible.height,
+          );
+          if (!(lengthMm > 0)) continue;
+          final meters = lengthMm / 1000 * 2;
+          lines.add(
+            EstimateLine(
+              title: 'Перемычка ${crossbar.axis == CrossbarAxis.horizontal ? 'горизонтальная' : 'вертикальная'}',
+              note:
+                  'полоса ${formatMm(crossbar.widthMm)} ${unitSuffix()}, '
+                  'напайка ${formatMm(crossbar.weldMm)} ${unitSuffix()} на каждое '
+                  'полотно; длина на чертеже ${formatMeters(lengthMm / 1000)} м × 2',
+              quantity: meters,
+              unit: 'м',
+              unitPrice: prices.crossbarPerM,
+              group: EstimateGroup.materials,
+            ),
+          );
+        }
+      }
+    }
+
     for (final key in PriceList.extraItemKeys) {
       final quantity = project.extraQuantities[key] ?? 0;
       final unitPrice = prices.extraItemPrice(key);

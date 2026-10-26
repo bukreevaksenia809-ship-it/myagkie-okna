@@ -631,7 +631,9 @@ class WindowGeometry {
         final roof = params.roofHeightMm
             .clamp(10.0, math.max(height - 10, 11))
             .toDouble();
-        final wall = height - roof;
+        final wall = params.wallHeightMm > 0
+            ? params.wallHeightMm.clamp(10.0, 20000.0).toDouble()
+            : height - roof;
         final overhang = params.roofOverhangMm
             .clamp(0.0, width * 0.25)
             .toDouble();
@@ -640,7 +642,7 @@ class WindowGeometry {
                 Offset(0, 0),
                 Offset(width, 0),
                 Offset(width, wall),
-                Offset(apexX, height),
+                Offset(apexX, wall + roof),
                 Offset(0, wall),
               ]
             : [
@@ -648,7 +650,7 @@ class WindowGeometry {
                 Offset(width, 0),
                 Offset(width, wall),
                 Offset(width + overhang, wall),
-                Offset(apexX, height),
+                Offset(apexX, wall + roof),
                 Offset(-overhang, wall),
                 Offset(0, wall),
               ];

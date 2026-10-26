@@ -16,6 +16,17 @@ service cloud.firestore {
         allow create: if request.resource.data.key == adminKey();
         allow read: if resource.data.key == adminKey();
       }
+      match /incoming/{orderId} {
+        allow create: if isAdmin()
+          && request.resource.data.orderId == orderId
+          && request.resource.data.status == 'new';
+        allow get, list: if wasAdmin();
+        allow update: if isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['status', 'importedAt']);
+        allow delete: if wasAdmin();
+      }
+
       match /commands/{commandId} {
         allow read: if wasAdmin();
         allow create: if isAdmin();
@@ -27,6 +38,20 @@ service cloud.firestore {
     match /config/{docId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // Коды связи с замерщиком.
+    match /pairings/{code} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if isAdmin();
+      allow delete: if wasAdmin();
+
+      match /devices/{installId} {
+        allow get, list: if wasAdmin();
+        allow create, update: if isAdmin();
+        allow delete: if wasAdmin();
+      }
     }
 
     // Ключи активации.

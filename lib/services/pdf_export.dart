@@ -14,6 +14,7 @@ import '../models/window_params.dart';
 import 'fastener_artwork.dart';
 import 'file_saver.dart';
 import 'image_slice.dart';
+import 'watermark.dart';
 
 /// Формат страницы PDF для снимка листа.
 ///
@@ -273,6 +274,11 @@ class SheetPdfBuilder {
 
   pw.Document? _document;
 
+  /// Шрифт водяного знака на время сборки. Готовится в [save] до того, как
+  /// `document.save()` вызовет `build` страниц, поэтому замыкания страниц
+  /// видят его уже загруженным.
+  pw.Font? _watermarkFont;
+
   int _pageCount = 0;
 
   /// Сколько страниц уже в документе.
@@ -332,10 +338,14 @@ class SheetPdfBuilder {
             heightPoints,
             marginAll: 0,
           ),
-          build: (context) => pw.Image(
-            image,
-            width: pageWidthPoints,
-            height: heightPoints,
+          build: (context) => PdfWatermark.apply(
+            context,
+            pw.Image(
+              image,
+              width: pageWidthPoints,
+              height: heightPoints,
+            ),
+            font: _watermarkFont,
           ),
         ),
       );
@@ -358,12 +368,16 @@ class SheetPdfBuilder {
             pageHeightPoints,
             marginAll: 0,
           ),
-          build: (context) => pw.Center(
-            child: pw.Image(
-              image,
-              width: imageWidthPoints,
-              height: imageHeightPoints,
+          build: (context) => PdfWatermark.apply(
+            context,
+            pw.Center(
+              child: pw.Image(
+                image,
+                width: imageWidthPoints,
+                height: imageHeightPoints,
+              ),
             ),
+            font: _watermarkFont,
           ),
         ),
       );
@@ -411,9 +425,21 @@ class SheetPdfBuilder {
   Future<Uint8List> save({bool? balanceEventLoop}) async {
     final document = _open;
     _document = null;
-    return document.save(
-      enableEventLoopBalancing: balanceEventLoop ?? kIsWeb,
-    );
+    // Водяной знак рисуется в `build` страниц, который вызывается внутри
+    // `document.save()`. Шрифт с кириллицей готовим заранее: асинхронность
+    // в build недопустима.
+    if (WatermarkSettings.isEnabled) {
+      _watermarkFont = await PdfWatermark.loadFont();
+    }
+    try {
+      return await document.save(
+        enableEventLoopBalancing: balanceEventLoop ?? kIsWeb,
+      );
+    } finally {
+      // Шрифт привязан к документу и держал бы его в памяти вместе со
+      // страницами-картинками. После сборки он больше не нужен.
+      _watermarkFont = null;
+    }
   }
 
   /// Собирает PDF и открывает системный диалог печати.

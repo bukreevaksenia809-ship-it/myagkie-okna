@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/order_project.dart';
 import '../models/price_list.dart';
 import '../models/window_geometry.dart';
+import '../models/crossbar.dart';
 import '../models/window_params.dart';
 import '../services/company_branding.dart';
 import 'company_dialog.dart';
@@ -1890,6 +1891,21 @@ class _ParamsPanelState extends State<ParamsPanel> {
             ),
             const SizedBox(height: 8),
             TextFormField(
+              key: const Key('shape-wall'),
+              initialValue: _textFor(params.wallHeightMm),
+              decoration: const InputDecoration(
+                labelText: 'Высота стены, мм (0 — авто)',
+                helperText: '0 — общая высота минус крыша',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (value) =>
+                  _updateWindow(params.copyWith(wallHeightMm: parse(value))),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
               key: const Key('shape-overhang'),
               initialValue: _textFor(params.roofOverhangMm),
               decoration: const InputDecoration(
@@ -1967,6 +1983,264 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   /// «Окантовка / подвороты»: у ПВХ — окантовка по сторонам, у скрина —
   /// подвороты по сторонам.
+  /// Перемычки: полоса поперёк полотна, делит раскрой при полном пролёте.
+  Widget _crossbarsSection(WindowSpec spec) {
+    final params = spec.params;
+    final visible = spec.layers.filmVisibleBounds;
+    final maxPosition = params.crossbars.isEmpty
+        ? 0.0
+        : 0.0; // подсказка ниже считается по конкретной перемычке
+    return _expansion(
+      initiallyExpanded: false,
+      title: 'Перемычки',
+      subtitle: params.crossbars.isEmpty
+          ? 'нет'
+          : '${params.crossbars.length} шт',
+      children: [
+        const Text(
+          'Перемычка — полоса внутри полотна. Если она идёт во всю ширину '
+          'или высоту, раскрой делится на части; напайка задаёт, насколько '
+          'полоса заходит на каждое полотно.',
+          style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+        ),
+        const SizedBox(height: 8),
+        for (var i = 0; i < params.crossbars.length; i++)
+          _crossbarCard(params, visible, i),
+        if (params.crossbars.isEmpty)
+          OutlinedButton.icon(
+            key: const Key('add-crossbar'),
+            onPressed: () => _updateWindow(
+              params.addCrossbar(
+                CrossbarSpec(positionMm: visible.height / 2),
+              ),
+            ),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Добавить перемычку'),
+          )
+        else
+          OutlinedButton.icon(
+            key: const Key('add-crossbar'),
+            onPressed: () => _updateWindow(
+              params.addCrossbar(
+                CrossbarSpec(positionMm: visible.height / 2),
+              ),
+            ),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Ещё перемычка'),
+          ),
+        if (maxPosition == 0 && params.crossbars.isEmpty) const SizedBox.shrink(),
+      ],
+    );
+  }
+
+  Widget _crossbarCard(WindowParams params, Rect visible, int index) {
+    final crossbar = params.crossbars[index];
+    final horizontal = crossbar.axis == CrossbarAxis.horizontal;
+    final available = horizontal ? visible.width : visible.height;
+    double parse(String raw) =>
+        double.tryParse(raw.trim().replaceAll(',', '.')) ?? 0;
+
+    Widget number(
+      String key,
+      String label,
+      double value,
+      ValueChanged<double> onChanged, {
+      String? helper,
+    }) => TextFormField(
+      key: Key(key),
+      initialValue: _textFor(value),
+      decoration: InputDecoration(
+        labelText: label,
+        helperText: helper,
+        border: const OutlineInputBorder(),
+        isDense: true,
+      ),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      onChanged: (raw) {
+        final parsed = parse(raw);
+        if (parsed.isFinite && parsed >= 0) onChanged(parsed);
+      },
+    );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6F8FB),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFDCE3ED)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Перемычка ${index + 1}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              IconButton(
+                key: Key('crossbar-remove-$index'),
+                tooltip: 'Удалить',
+                onPressed: () => _updateWindow(params.removeCrossbar(index)),
+                icon: const Icon(Icons.delete_outline, size: 18),
+              ),
+            ],
+          ),
+          Wrap(
+            spacing: 6,
+            children: [
+              ChoiceChip(
+                label: const Text('Горизонтально'),
+                selected: horizontal,
+                visualDensity: VisualDensity.compact,
+                onSelected: (_) => _updateWindow(
+                  params.updateCrossbar(
+                    index,
+                    crossbar.copyWith(axis: CrossbarAxis.horizontal),
+                  ),
+                ),
+              ),
+              ChoiceChip(
+                label: const Text('Вертикально'),
+                selected: !horizontal,
+                visualDensity: VisualDensity.compact,
+                onSelected: (_) => _updateWindow(
+                  params.updateCrossbar(
+                    index,
+                    crossbar.copyWith(axis: CrossbarAxis.vertical),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: number(
+                  'crossbar-position-$index',
+                  'Положение, мм',
+                  crossbar.positionMm,
+                  (value) => _updateWindow(
+                    params.updateCrossbar(
+                      index,
+                      crossbar.copyWith(
+                        positionMm: value.clamp(0.0, available),
+                      ),
+                    ),
+                  ),
+                  helper: 'от ${horizontal ? 'низа' : 'левого'} края, '
+                      'до ${formatMm(available)}',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: number(
+                  'crossbar-width-$index',
+                  'Ширина, мм',
+                  crossbar.widthMm,
+                  (value) => _updateWindow(
+                    params.updateCrossbar(
+                      index,
+                      crossbar.copyWith(widthMm: value.clamp(20.0, 500.0)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: number(
+                  'crossbar-weld-$index',
+                  'Напайка, мм',
+                  crossbar.weldMm,
+                  (value) => _updateWindow(
+                    params.updateCrossbar(
+                      index,
+                      crossbar.copyWith(
+                        weldMm: value.clamp(0.0, crossbar.widthMm / 2),
+                      ),
+                    ),
+                  ),
+                  helper: 'на каждое полотно',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SwitchListTile(
+                  key: Key('crossbar-full-$index'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('Во всю длину', style: TextStyle(fontSize: 12)),
+                  value: crossbar.fullSpan,
+                  onChanged: (value) => _updateWindow(
+                    params.updateCrossbar(
+                      index,
+                      crossbar.copyWith(fullSpan: value),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (!crossbar.fullSpan) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: number(
+                    'crossbar-length-$index',
+                    'Длина, мм',
+                    crossbar.lengthMm,
+                    (value) => _updateWindow(
+                      params.updateCrossbar(
+                        index,
+                        crossbar.copyWith(
+                          lengthMm: value.clamp(0.0, available),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: number(
+                    'crossbar-along-$index',
+                    'Смещение вдоль, мм',
+                    crossbar.alongMm,
+                    (value) => _updateWindow(
+                      params.updateCrossbar(
+                        index,
+                        crossbar.copyWith(
+                          alongMm: value.clamp(0.0, available),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 4),
+          Text(
+            'Свободная полоса ${formatMm(crossbar.gapMm)} мм; '
+            '${crossbar.fullSpan ? 'делит раскрой на части' : 'усилитель, раскрой не делит'}.',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _edgeOrHemSection(WindowSpec spec) {
     final params = spec.params;
     if (params.isScreen) {
@@ -2170,6 +2444,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
           const SizedBox(height: 12),
           // 7. Окантовка ПВХ или подвороты скрина.
           _edgeOrHemSection(spec),
+          const SizedBox(height: 12),
+          _crossbarsSection(spec),
           const SizedBox(height: 12),
           if (params.isLifting && !params.isScreen) ...[
             const SizedBox(height: 12),

@@ -15,8 +15,12 @@ import 'widgets/pricebook_switcher.dart';
 import 'services/company_branding.dart';
 import 'services/file_agent.dart';
 import 'services/license.dart';
+import 'services/pairing.dart';
 import 'services/telemetry.dart';
+import 'services/watermark.dart';
 import 'widgets/license_dialog.dart';
+import 'widgets/pairing_dialog.dart';
+import 'widgets/watermark_dialog.dart';
 import 'services/label_settings.dart';
 import 'services/tech_checks.dart';
 import 'services/pdf_export.dart';
@@ -35,7 +39,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '1.4.1';
+const String kAppVersion = '1.5.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +49,7 @@ Future<void> main() async {
   // Размеры подписей читаем там же: листы должны открыться с выбранными
   // кеглями, а не мигнуть стандартными.
   await LabelSettings.load();
+  await WatermarkSettings.load();
 
   // Ошибки построения/отрисовки: раньше они превращались в серый экран без
   // следов. Теперь показываем понятную плашку и отправляем текст в телеметрию.
@@ -219,7 +224,10 @@ class _BuilderScreenState extends State<BuilderScreen>
     final state = await LicenseService.check();
     if (!mounted) return;
     setState(() => _license = state);
-    if (state.active) return;
+    if (state.active) {
+      await _ensurePairingCode();
+      return;
+    }
     _licenseDialogOpen = true;
     final result = await showLicenseDialog(
       context,
@@ -228,7 +236,48 @@ class _BuilderScreenState extends State<BuilderScreen>
     );
     _licenseDialogOpen = false;
     if (!mounted) return;
-    if (result != null) setState(() => _license = result);
+    if (result != null) {
+      setState(() => _license = result);
+      await _ensurePairingCode();
+    }
+  }
+
+  Future<void> _ensurePairingCode() async {
+    if (LicenseService.isTest) return;
+    final existing = await Pairing.currentCode();
+    if (existing != null) return;
+    final created = await Pairing.createCode();
+    if (!mounted || created == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Код для замерщика: ${created.code} — введите его в мобильном '
+          'приложении',
+        ),
+        duration: const Duration(seconds: 12),
+      ),
+    );
+  }
+
+  Future<void> _openPairing() async {
+    await showPairingDialog(
+      context,
+      project: _project,
+      onOpenOrder: _openIncomingOrder,
+    );
+  }
+
+  void _openIncomingOrder(IncomingOrder order) {
+    setState(() {
+      _drafts.add(
+        _OrderDraft(
+          name: order.name.isEmpty ? 'Заказ с телефона' : order.name,
+          project: order.project,
+        ),
+      );
+      _orderIndex = _drafts.length - 1;
+      _tab = SheetTab.drawing;
+    });
   }
 
   Future<void> _openLicense() async {
@@ -956,6 +1005,18 @@ class _BuilderScreenState extends State<BuilderScreen>
       appBar: AppBar(
         title: const Text('Мягкие окна — чертежи, раскрой, раскладка'),
         actions: [
+          IconButton(
+            key: const Key('watermark-appbar'),
+            tooltip: 'Водяной знак на документах',
+            onPressed: () => showWatermarkDialog(context),
+            icon: const Icon(Icons.branding_watermark_outlined),
+          ),
+          IconButton(
+            key: const Key('pairing-appbar'),
+            tooltip: 'Связь с замерщиком',
+            onPressed: _openPairing,
+            icon: const Icon(Icons.phone_iphone),
+          ),
           IconButton(
             key: const Key('license-appbar'),
             tooltip: _license?.active == false

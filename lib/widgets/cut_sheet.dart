@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../models/order_project.dart';
+import '../models/crossbar.dart';
 import '../models/window_geometry.dart';
 import '../models/window_params.dart';
 import '../services/label_settings.dart';
@@ -56,8 +57,11 @@ class CutSheet extends StatelessWidget {
 
   /// Заготовки заказа: по одной на окно, в порядке окон.
   static List<CutPiece> piecesOf(OrderProject project) => [
-    for (final window in project.windows)
-      CutPiece.ofSpec(WindowSpec.of(window)),
+    for (var i = 0; i < project.windows.length; i++)
+      ...CutPiece.piecesOfSpec(
+        WindowSpec.of(project.windows[i]),
+        windowIndex: i,
+      ),
   ];
 
   /// Размер листа раскроя — всегда один A4 с полями рабочей области.
@@ -71,7 +75,10 @@ class CutSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final specs = [for (final window in project.windows) WindowSpec.of(window)];
-    final pieces = [for (final spec in specs) CutPiece.ofSpec(spec)];
+    final pieces = [
+      for (var i = 0; i < specs.length; i++)
+        ...CutPiece.piecesOfSpec(specs[i], windowIndex: i),
+    ];
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -200,6 +207,8 @@ class CutPiece {
     this.areaM2 = 0,
     this.nominalSideLengths = const [],
     this.materials = const [],
+    this.windowIndex = 0,
+    this.partLabel = '',
   });
 
   /// Заготовка к раскрою: плёнка с напайкой под окантовку, припуском на
@@ -259,6 +268,172 @@ class CutPiece {
       materials: compositeMaterials,
     );
   }
+  /// Заготовки окна с учётом перемычек во всю ширину/высоту.
+  static List<CutPiece> piecesOfSpec(WindowSpec spec, {int windowIndex = 0}) {
+    final base = CutPiece.ofSpec(spec);
+    final crossbars = spec.params.crossbars
+        .where((crossbar) => crossbar.fullSpan)
+        .toList();
+    if (crossbars.isEmpty) {
+      return [base.withWindow(windowIndex)];
+    }
+    final visible = spec.layers.filmVisibleBounds;
+    var pieces = [base];
+    // Горизонтальные, затем вертикальные: полосы идут через всё полотно.
+    for (final axis in [CrossbarAxis.horizontal, CrossbarAxis.vertical]) {
+      final bars = crossbars.where((bar) => bar.axis == axis).toList();
+      if (bars.isEmpty) continue;
+      final next = <CutPiece>[];
+      for (final piece in pieces) {
+        next.addAll(_splitPiece(piece, bars, visible, axis));
+      }
+      pieces = next;
+    }
+    if (pieces.length == 1) return [base.withWindow(windowIndex)];
+    return [
+      for (var i = 0; i < pieces.length; i++)
+        pieces[i].copyWith(
+          windowIndex: windowIndex,
+          partLabel: '${windowIndex + 1}.${i + 1}',
+        ),
+    ];
+  }
+
+  /// Режет заготовку полосами [bars] по оси [axis].
+  static List<CutPiece> _splitPiece(
+    CutPiece piece,
+    List<CrossbarSpec> bars,
+    Rect visible,
+    CrossbarAxis axis,
+  ) {
+    final horizontal = axis == CrossbarAxis.horizontal;
+    final total = horizontal ? piece.heightMm : piece.widthMm;
+    final visibleSize = horizontal ? visible.height : visible.width;
+    final offset = math.max(0.0, (total - visibleSize) / 2);
+    final cuts = <({double start, double end})>[];
+    for (final bar in bars) {
+      final center = (offset + bar.positionMm).clamp(0.0, total);
+      final gap = bar.gapMm;
+      final half = gap / 2;
+      cuts.add((
+        start: (center - half).clamp(0.0, total),
+        end: (center + half).clamp(0.0, total),
+      ));
+    }
+    cuts.sort((a, b) => a.start.compareTo(b.start));
+    final intervals = <({double start, double end})>[];
+    var cursor = 0.0;
+    for (final cut in cuts) {
+      if (cut.start > cursor + 0.5) {
+        intervals.add((start: cursor, end: cut.start));
+      }
+      cursor = math.max(cursor, cut.end);
+    }
+    if (cursor < total - 0.5) intervals.add((start: cursor, end: total));
+    if (intervals.length <= 1) return [piece];
+
+    final result = <CutPiece>[];
+    for (final interval in intervals) {
+      final contours = <List<Offset>>[];
+      for (final contour in piece.allContours) {
+        final clipped = _clipContour(
+          contour,
+          horizontal,
+          interval.start,
+          interval.end,
+        );
+        if (clipped.length >= 3 && polygonArea(clipped).abs() > 1) {
+          contours.add(clipped);
+        }
+      }
+      if (contours.isEmpty) continue;
+      final bounds = boundsOfAll(contours);
+      if (bounds.width <= 0 || bounds.height <= 0) continue;
+      final local = [
+        for (final contour in contours)
+          [
+            for (final point in contour)
+              Offset(point.dx - bounds.left, point.dy - bounds.top),
+          ],
+      ];
+      result.add(
+        CutPiece(
+          widthMm: bounds.width,
+          heightMm: bounds.height,
+          outline: local.first,
+          contours: local,
+          areaM2: [
+            for (final contour in local) polygonArea(contour).abs(),
+          ].fold<double>(0, (sum, value) => sum + value) /
+              1000000,
+          materials: piece.materials,
+        ),
+      );
+    }
+    return result.isEmpty ? [piece] : result;
+  }
+
+  /// Отсекает контур по полосе [min]…[max] вдоль оси.
+  static List<Offset> _clipContour(
+    List<Offset> contour,
+    bool horizontal,
+    double min,
+    double max,
+  ) {
+    List<Offset> clip(
+      List<Offset> input,
+      double Function(Offset) value,
+      double limit,
+      bool keepAbove,
+    ) {
+      final output = <Offset>[];
+      for (var i = 0; i < input.length; i++) {
+        final current = input[i];
+        final previous = input[(i - 1 + input.length) % input.length];
+        final currentIn = keepAbove ? value(current) >= limit : value(current) <= limit;
+        final previousIn = keepAbove ? value(previous) >= limit : value(previous) <= limit;
+        if (currentIn) {
+          if (!previousIn) {
+            final t = (limit - value(previous)) /
+                (value(current) - value(previous));
+            output.add(Offset.lerp(previous, current, t)!);
+          }
+          output.add(current);
+        } else if (previousIn) {
+          final t =
+              (limit - value(previous)) / (value(current) - value(previous));
+          output.add(Offset.lerp(previous, current, t)!);
+        }
+      }
+      return output;
+    }
+
+    final value = horizontal
+        ? (Offset point) => point.dy
+        : (Offset point) => point.dx;
+    var result = clip(contour, value, min, true);
+    if (result.isEmpty) return const [];
+    result = clip(result, value, max, false);
+    return result;
+  }
+
+  CutPiece withWindow(int index) => copyWith(windowIndex: index);
+
+  CutPiece copyWith({
+    int? windowIndex,
+    String? partLabel,
+  }) => CutPiece(
+    widthMm: widthMm,
+    heightMm: heightMm,
+    outline: outline,
+    contours: contours,
+    areaM2: areaM2,
+    nominalSideLengths: nominalSideLengths,
+    materials: materials,
+    windowIndex: windowIndex ?? this.windowIndex,
+    partLabel: partLabel ?? this.partLabel,
+  );
+
   final double widthMm;
   final double heightMm;
 
@@ -289,6 +464,13 @@ class CutPiece {
 
   /// Материал каждого контура: у составного окна их два.
   final List<FilmMaterial> materials;
+
+  /// Номер окна в заказе (с нуля) — для подписей, когда у окна несколько
+  /// заготовок из-за перемычек.
+  final int windowIndex;
+
+  /// Подпись части: «1.2» и т.п.; пусто — окно целиком.
+  final String partLabel;
 
   /// Материал контура [index] (по умолчанию — первый/общий).
   FilmMaterial? materialFor(int index) {
@@ -745,11 +927,12 @@ class CutSheetPainter extends CustomPainter {
     if (layout.placements.isEmpty) return;
     final dx = math.max((size.width - layout.contentWidth) / 2, 0.0);
     for (final placement in layout.placements) {
-      if (placement.index < 0 || placement.index >= specs.length) continue;
+      final windowIndex = placement.piece.windowIndex;
+      if (windowIndex < 0 || windowIndex >= specs.length) continue;
       _paintPiece(
         canvas,
         placement.rect.shift(Offset(dx, 0)),
-        specs[placement.index],
+        specs[windowIndex],
         placement,
       );
     }
@@ -804,7 +987,13 @@ class CutSheetPainter extends CustomPainter {
 
     _paintArea(canvas, rect, placement.piece, spec);
     _paintDimensions(canvas, rect, placement);
-    _paintCaption(canvas, rect, spec, placement.index);
+    _paintCaption(
+      canvas,
+      rect,
+      spec,
+      placement.piece.windowIndex,
+      placement.piece.partLabel,
+    );
   }
 
   /// Путь заготовки на листе: контур в мм переводится в точки листа.
@@ -1062,7 +1251,13 @@ class CutSheetPainter extends CustomPainter {
   }
 
   /// Подпись под заготовкой: номер и материал, припуск и усадка.
-  void _paintCaption(Canvas canvas, Rect rect, WindowSpec spec, int index) {
+  void _paintCaption(
+    Canvas canvas,
+    Rect rect,
+    WindowSpec spec,
+    int index,
+    String partLabel,
+  ) {
     final params = spec.params;
     final materials = <String>[
       for (final material in spec.isComposite
@@ -1074,7 +1269,8 @@ class CutSheetPainter extends CustomPainter {
     _label(
       canvas,
       // «Обычный ПВХ» → «обычный ПВХ», аббревиатуру не трогаем.
-      '№${index + 1} · ${material[0].toLowerCase()}${material.substring(1)}'
+      '№${partLabel.isEmpty ? index + 1 : partLabel} · '
+      '${material[0].toLowerCase()}${material.substring(1)}'
       '${spec.isComposite ? ' — две детали, шов общий' : ''}',
       Offset(rect.center.dx, rect.bottom + 78),
       color: _ink,

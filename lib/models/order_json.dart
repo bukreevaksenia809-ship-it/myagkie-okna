@@ -1,4 +1,5 @@
 import '../models/order_project.dart';
+import '../models/crossbar.dart';
 import '../models/window_params.dart';
 
 // --------------------------------------------------------------- сериализация
@@ -81,6 +82,8 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'apexOffsetMm': p.apexOffsetMm,
       'roofHeightMm': p.roofHeightMm,
       'roofOverhangMm': p.roofOverhangMm,
+      'wallHeightMm': p.wallHeightMm,
+      'crossbars': [for (final crossbar in p.crossbars) crossbar.toJson()],
       'windowType': p.windowType.name,
       'material': p.material.name,
       'bottomWidth': p.bottomWidth,
@@ -185,6 +188,11 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     apexOffsetMm: _double(json['apexOffsetMm'], fallback.apexOffsetMm),
     roofHeightMm: _double(json['roofHeightMm'], fallback.roofHeightMm),
     roofOverhangMm: _double(json['roofOverhangMm'], fallback.roofOverhangMm),
+    wallHeightMm: _double(json['wallHeightMm'], fallback.wallHeightMm),
+    crossbars: [
+      for (final raw in (json['crossbars'] as List? ?? const []))
+        if (raw is Map<String, dynamic>) CrossbarSpec.fromJson(raw),
+    ],
     windowType:
         _enumByName(WindowType.values, json['windowType'], fallback.windowType),
     material:

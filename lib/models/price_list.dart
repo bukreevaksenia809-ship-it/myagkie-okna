@@ -372,6 +372,7 @@ class PriceList {
     this.beamPerM = 0,
     this.decorBeamPerM = 0,
     this.zipPerM2 = 0,
+    this.crossbarPerM = 0,
     this.disabledItems = const <String>{},
     this.customItems = const <CustomPriceItem>[],
   });
@@ -477,6 +478,9 @@ class PriceList {
 
   /// Zip (молния), ₽/м².
   final double zipPerM2;
+
+  /// Перемычка, ₽ за погонный метр (в смете длина × 2).
+  final double crossbarPerM;
 
   /// Учитывать ли позицию [key] в смете. Неизвестный ключ считается
   /// включённым — это безопасный ответ для старого или будущего прайса.
@@ -713,6 +717,7 @@ class PriceList {
     double? beamPerM,
     double? decorBeamPerM,
     double? zipPerM2,
+    double? crossbarPerM,
     Set<String>? disabledItems,
     List<CustomPriceItem>? customItems,
   }) {
@@ -753,6 +758,7 @@ class PriceList {
       beamPerM: beamPerM ?? this.beamPerM,
       decorBeamPerM: decorBeamPerM ?? this.decorBeamPerM,
       zipPerM2: zipPerM2 ?? this.zipPerM2,
+      crossbarPerM: crossbarPerM ?? this.crossbarPerM,
       disabledItems: disabledItems ?? this.disabledItems,
       customItems: customItems ?? this.customItems,
     );
@@ -794,6 +800,7 @@ class PriceList {
     'beamPerM': beamPerM,
     'decorBeamPerM': decorBeamPerM,
     'zipPerM2': zipPerM2,
+    'crossbarPerM': crossbarPerM,
     // Пустой набор не пишем: старый формат JSON остаётся прежним, а
     // «нет поля» читается как «всё включено».
     if (disabledItems.isNotEmpty)
@@ -888,6 +895,7 @@ class PriceList {
       beamPerM: _price(json['beamPerM'], fallback.beamPerM),
       decorBeamPerM: _price(json['decorBeamPerM'], fallback.decorBeamPerM),
       zipPerM2: _price(json['zipPerM2'], fallback.zipPerM2),
+      crossbarPerM: _price(json['crossbarPerM'], fallback.crossbarPerM),
       // Старый прайс без поля — всё включено. Неизвестные ключи (из будущих
       // версий) отбрасываем: модель не должна тащить мусор в панель и смету.
       disabledItems: _disabledItems(json['disabledItems']),

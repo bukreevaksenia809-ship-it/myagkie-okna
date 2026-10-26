@@ -79,6 +79,18 @@ void main() {
     expect(tester.takeException(), isNull);
 
     // 3. Припуски на раскрой: кнопка раскрывает поля, значения — в модель.
+    // Панель выросла (перемычки), поэтому раздел может быть выше области
+    // построения — прокручиваем к нему.
+    await tester.scrollUntilVisible(
+      find.text('Припуски на раскрой'),
+      -600,
+      scrollable: find
+          .descendant(
+            of: find.byType(ParamsPanel),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     expect(find.text('Припуски на раскрой'), findsOneWidget);
     await tester.ensureVisible(find.text('Припуски на раскрой'));
     await tester.pumpAndSettle();

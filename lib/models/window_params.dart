@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'crossbar.dart';
+
 import '../services/units.dart';
 
 // Единицы и подписи доступны всем, кто импортирует модель параметров:
@@ -971,6 +973,8 @@ class WindowParams {
     this.apexOffsetMm = 0,
     this.roofHeightMm = 500,
     this.roofOverhangMm = 0,
+    this.wallHeightMm = 0,
+    this.crossbars = const [],
     this.eyeletStep = 300,
     this.eyeletCornerOffset = 0,
     this.roundEyeletsEnabled = true,
@@ -1013,6 +1017,12 @@ class WindowParams {
 
   /// Свес крыши домика за стену с каждой стороны, мм.
   final double roofOverhangMm;
+
+  /// Явная высота стены домика, мм (0 — считать как общая − крыша).
+  final double wallHeightMm;
+
+  /// Перемычки внутри полотна.
+  final List<CrossbarSpec> crossbars;
 
   /// Тип окна по способу открывания.
   final WindowType windowType;
@@ -1481,6 +1491,27 @@ class WindowParams {
   /// Треугольник или домик — особая форма с многоугольным контуром.
   bool get isSpecialShape => isTriangle || isHouse;
 
+  bool get hasCrossbars => crossbars.isNotEmpty;
+
+  WindowParams withCrossbars(List<CrossbarSpec> value) =>
+      copyWith(crossbars: value);
+
+  WindowParams addCrossbar([CrossbarSpec? value]) =>
+      withCrossbars([...crossbars, value ?? const CrossbarSpec()]);
+
+  WindowParams updateCrossbar(int index, CrossbarSpec value) {
+    if (index < 0 || index >= crossbars.length) return this;
+    final next = List<CrossbarSpec>.of(crossbars);
+    next[index] = value;
+    return withCrossbars(next);
+  }
+
+  WindowParams removeCrossbar(int index) {
+    if (index < 0 || index >= crossbars.length) return this;
+    final next = List<CrossbarSpec>.of(crossbars)..removeAt(index);
+    return withCrossbars(next);
+  }
+
   /// Составное окно: ПВХ-полотно плюс второй материал по общему шву.
   bool get isComposite => windowType == WindowType.composite;
 
@@ -1604,6 +1635,8 @@ class WindowParams {
     double? apexOffsetMm,
     double? roofHeightMm,
     double? roofOverhangMm,
+    double? wallHeightMm,
+    List<CrossbarSpec>? crossbars,
     WindowType? windowType,
     double? bottomWidth,
     double? topWidth,
@@ -1670,6 +1703,8 @@ class WindowParams {
     apexOffsetMm: apexOffsetMm ?? this.apexOffsetMm,
     roofHeightMm: roofHeightMm ?? this.roofHeightMm,
     roofOverhangMm: roofOverhangMm ?? this.roofOverhangMm,
+    wallHeightMm: wallHeightMm ?? this.wallHeightMm,
+    crossbars: crossbars ?? this.crossbars,
       windowType: windowType ?? this.windowType,
       bottomWidth: bottomWidth ?? this.bottomWidth,
       topWidth: topWidth ?? this.topWidth,
@@ -1976,6 +2011,10 @@ class WindowParams {
     apexOffsetMm,
     roofHeightMm,
     roofOverhangMm,
+    wallHeightMm,
+    [for (final crossbar in crossbars)
+      '${crossbar.axis.name}:${crossbar.positionMm}:${crossbar.widthMm}:'
+          '${crossbar.weldMm}:${crossbar.fullSpan}:${crossbar.lengthMm}'],
     allowanceWidthMm,
     allowanceHeightMm,
     topAlign.name,

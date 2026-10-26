@@ -290,6 +290,11 @@ class _PricePanelState extends State<PricePanel> {
                 prices.zipPerM2,
                 (value) => _set(prices.copyWith(zipPerM2: value)),
               ),
+              _row(
+                'Перемычка, ₽/пог.м',
+                prices.crossbarPerM,
+                (value) => _set(prices.copyWith(crossbarPerM: value)),
+              ),
             ]),
             // Проценты — не позиции, а условия расчёта: у них нет тумблера,
             // «не считать» выражается нулём.

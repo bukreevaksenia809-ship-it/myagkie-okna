@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/fastener_spans.dart';
 import '../models/window_geometry.dart';
+import '../models/crossbar.dart';
 import '../models/window_params.dart';
 import '../services/label_settings.dart';
 
@@ -475,6 +476,7 @@ class WindowDrawingPainter extends CustomPainter {
     _paintEyelets(canvas);
     _paintFasteners(canvas);
     _paintManualFasteners(canvas);
+    _paintCrossbars(canvas);
     _paintFastenerSpans(canvas);
     _paintDrains(canvas);
     if (options.showDimensions) _paintDimensions(canvas);
@@ -504,6 +506,88 @@ class WindowDrawingPainter extends CustomPainter {
       // Картинка крепежа догружается после первой сборки листа — по этому
       // сравнению лист один раз перерисуется уже с фотографией.
       oldDelegate.fastenerImage != fastenerImage;
+
+  /// Перемычки: полосы поверх плёнки, с напайкой на каждое полотно.
+  void _paintCrossbars(Canvas canvas) {
+    final crossbars = params.crossbars;
+    if (crossbars.isEmpty) return;
+    final visible = layers.filmVisibleBounds;
+    if (visible.width <= 0 || visible.height <= 0) return;
+    canvas.save();
+    canvas.clipPath(_filmPath());
+    for (final crossbar in crossbars) {
+      final horizontal = crossbar.axis == CrossbarAxis.horizontal;
+      final available = horizontal ? visible.width : visible.height;
+      final length = crossbar
+          .lengthFor(innerWidth: visible.width, innerHeight: visible.height)
+          .clamp(0.0, available);
+      final along = crossbar.fullSpan
+          ? 0.0
+          : crossbar.alongMm.clamp(0.0, math.max(available - length, 0));
+      final center = horizontal
+          ? visible.top + crossbar.positionMm
+          : visible.left + crossbar.positionMm;
+      final half = crossbar.widthMm / 2;
+      final Rect band;
+      if (horizontal) {
+        band = Rect.fromLTRB(
+          visible.left + along,
+          center - half,
+          visible.left + along + length,
+          center + half,
+        );
+      } else {
+        band = Rect.fromLTRB(
+          center - half,
+          visible.top + along,
+          center + half,
+          visible.top + along + length,
+        );
+      }
+      final px = Rect.fromLTRB(
+        layout.toPxPoint(Offset(band.left, band.top)).dx,
+        layout.toPxPoint(Offset(band.left, band.bottom)).dy,
+        layout.toPxPoint(Offset(band.right, band.top)).dx,
+        layout.toPxPoint(Offset(band.right, band.bottom)).dy,
+      );
+      canvas.drawRect(px, Paint()..color = _edgeColor);
+      // Напайки: две линии, между ними свободная полоса.
+      final weld = math.min(crossbar.weldMm, crossbar.widthMm / 2);
+      final weldPaint = Paint()
+        ..color = _ink.withValues(alpha: 0.55)
+        ..strokeWidth = 0.9;
+      if (horizontal) {
+        final low = center - half + weld;
+        final high = center + half - weld;
+        for (final y in [low, high]) {
+          canvas.drawLine(
+            Offset(px.left, layout.toPxPoint(Offset(0, y)).dy),
+            Offset(px.right, layout.toPxPoint(Offset(0, y)).dy),
+            weldPaint,
+          );
+        }
+      } else {
+        final left = center - half + weld;
+        final right = center + half - weld;
+        for (final x in [left, right]) {
+          final dx = layout.toPxPoint(Offset(x, 0)).dx;
+          canvas.drawLine(
+            Offset(dx, px.top),
+            Offset(dx, px.bottom),
+            weldPaint,
+          );
+        }
+      }
+      _label(
+        canvas,
+        'перемычка ${formatMm(crossbar.widthMm)}',
+        px.center,
+        small: true,
+        color: Colors.white,
+      );
+    }
+    canvas.restore();
+  }
 
   // ---------------------------------------------------------------- геометрия
 
@@ -545,6 +629,7 @@ class WindowDrawingPainter extends CustomPainter {
     _paintEyelets(canvas);
     _paintFasteners(canvas);
     _paintManualFasteners(canvas);
+    _paintCrossbars(canvas);
 
     if (options.showDimensions) {
       final bounds = layout.geometry.productBounds;
@@ -698,6 +783,7 @@ class WindowDrawingPainter extends CustomPainter {
     _paintEyelets(canvas);
     _paintFasteners(canvas);
     _paintManualFasteners(canvas);
+    _paintCrossbars(canvas);
     _paintFastenerSpans(canvas);
     _paintDrains(canvas);
 
@@ -881,6 +967,7 @@ class WindowDrawingPainter extends CustomPainter {
     _paintEyelets(canvas);
     _paintFasteners(canvas);
     _paintManualFasteners(canvas);
+    _paintCrossbars(canvas);
     _paintFastenerSpans(canvas);
     _paintDrains(canvas);
 
