@@ -46,6 +46,9 @@ dependencies:
   # Хранение заказов в браузере (localStorage) для веб-версии.
   shared_preferences: ^2.3.0
 
+  # Папки приложения на Android/iOS (без доступа ко всей памяти).
+  path_provider: ^2.1.5
+
   # Телеметрия и проверка обновлений (Firestore REST).
   http: ^1.2.0
 

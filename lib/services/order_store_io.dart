@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'storage_paths.dart';
+
 /// Ссылка на сохранённый заказ.
 class StoredOrderRef {
   const StoredOrderRef({
@@ -19,6 +21,8 @@ Directory ordersDirectory([String? directoryPath]) {
   if (directoryPath != null && directoryPath.isNotEmpty) {
     return Directory(directoryPath);
   }
+  final mobileDir = StoragePaths.orders;
+  if (mobileDir != null) return Directory(mobileDir);
   final home = Platform.environment['HOME'] ??
       Platform.environment['USERPROFILE'] ??
       '';

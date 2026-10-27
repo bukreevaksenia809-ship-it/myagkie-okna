@@ -11,6 +11,7 @@ import 'models/window_geometry.dart';
 import 'models/price_list.dart';
 import 'models/window_params.dart';
 import 'services/order_storage.dart';
+import 'services/storage_paths.dart';
 import 'services/client_report_pdf.dart';
 import 'widgets/client_report_dialog.dart';
 import 'widgets/pricebook_switcher.dart';
@@ -52,6 +53,7 @@ Future<void> main() async {
   // кеглями, а не мигнуть стандартными.
   await LabelSettings.load();
   await WatermarkSettings.load();
+  await StoragePaths.init();
 
   // Ошибки построения/отрисовки: раньше они превращались в серый экран без
   // следов. Теперь показываем понятную плашку и отправляем текст в телеметрию.

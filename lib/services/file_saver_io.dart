@@ -1,6 +1,10 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:printing/printing.dart';
+
+import 'storage_paths.dart';
+
 /// Куда сохранён файл: человекочитаемое место и путь на диске.
 class SavedFile {
   const SavedFile({required this.destination, this.path});
@@ -17,6 +21,8 @@ class SavedFile {
 /// На Windows переменной HOME обычно нет — там домашний каталог в USERPROFILE.
 /// Разделитель '/' понимают и Windows, и macOS.
 Directory exportDirectory() {
+  final mobileDir = StoragePaths.exports;
+  if (mobileDir != null) return Directory(mobileDir);
   final home = Platform.environment['HOME'] ??
       Platform.environment['USERPROFILE'] ??
       '';
@@ -32,6 +38,13 @@ Future<SavedFile> saveBytes(
   String fileName, {
   String? directoryPath,
 }) async {
+  // На телефоне отдаём файл системному «Поделиться»: пользователь сам
+  // выбирает «Загрузки», «Файлы» или отправляет в мессенджер. Это не требует
+  // доступа ко всей памяти и работает на Android 8+.
+  if (StoragePaths.isMobile) {
+    await Printing.sharePdf(bytes: bytes, filename: fileName);
+    return SavedFile(destination: 'файл $fileName сохранён через «Поделиться»');
+  }
   final directory = (directoryPath != null && directoryPath.isNotEmpty)
       ? Directory(directoryPath)
       : exportDirectory();
