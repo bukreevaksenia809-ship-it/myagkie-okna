@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
@@ -68,14 +69,25 @@ const double kWebSheetImageMaxSide = 3000;
 const double kDesktopSheetImageMaxSide = 4200;
 
 /// Предел разрешения снимка листа по большей стороне для текущей платформы.
-double sheetImageMaxSide() =>
-    kIsWeb ? kWebSheetImageMaxSide : kDesktopSheetImageMaxSide;
+bool get _isMobilePlatform =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS);
+
+/// На телефоне снимок меньше: большой растр в несколько листов вызывает
+/// нехватку памяти и вылет при печати/сохранении PDF.
+const double kMobileSheetImageMaxSide = 2200;
+
+double sheetImageMaxSide() => kIsWeb
+    ? kWebSheetImageMaxSide
+    : (_isMobilePlatform ? kMobileSheetImageMaxSide : kDesktopSheetImageMaxSide);
 
 /// Разумный `pixelRatio` снимка по умолчанию.
 ///
 /// В браузере 2, на десктопе 3: в вебе каждый лишний пиксель — это и память,
 /// и время блокировки главного потока при кодировании PNG и сборке PDF.
-double defaultSheetPixelRatio() => kIsWeb ? 2 : 3;
+double defaultSheetPixelRatio() =>
+    kIsWeb ? 2 : (_isMobilePlatform ? 1.5 : 3);
 
 /// Итоговое разрешение снимка листа.
 ///
@@ -551,11 +563,21 @@ Future<SavedFile> exportSheetToPdf({
 Future<bool> printPdfBytes({
   required Uint8List bytes,
   required String jobName,
-}) {
-  return Printing.layoutPdf(
-    name: jobName,
-    onLayout: (format) async => bytes,
-  );
+}) async {
+  // На Android имя задания с кириллицей некоторые принт-сервисы обрабатывают
+  // некорректно; для системы берём безопасное имя.
+  final name = _isMobilePlatform ? 'MyagkieOkna' : jobName;
+  try {
+    return await Printing.layoutPdf(
+      name: name,
+      onLayout: (format) async => bytes,
+    );
+  } catch (_) {
+    // Если системный диалог печати недоступен/падает — отдаём PDF через
+    // «Поделиться»: оттуда его можно сохранить или открыть в просмотрщике.
+    await Printing.sharePdf(bytes: bytes, filename: '$name.pdf');
+    return true;
+  }
 }
 
 /// Открывает системный диалог печати с текущим листом.

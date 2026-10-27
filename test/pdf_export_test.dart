@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -775,13 +776,20 @@ void main() {
     );
   });
 
-  test('лимиты для веба ниже, чем для десктопа', () {
+  test('лимиты: веб < телефон < десктоп', () {
     expect(kWebSheetImageMaxSide, 3000);
     expect(kDesktopSheetImageMaxSide, 4200);
+    expect(kMobileSheetImageMaxSide, 2200);
     expect(kWebSheetImageMaxSide, lessThan(kDesktopSheetImageMaxSide));
-    // Тесты идут не в браузере: по умолчанию берётся десктопный набор.
+
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     expect(sheetImageMaxSide(), kDesktopSheetImageMaxSide);
     expect(defaultSheetPixelRatio(), 3);
+
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    expect(sheetImageMaxSide(), kMobileSheetImageMaxSide);
+    expect(defaultSheetPixelRatio(), 1.5);
   });
 
   // ------------------------------------------ инкрементальная сборка PDF
