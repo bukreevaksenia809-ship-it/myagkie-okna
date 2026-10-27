@@ -54,3 +54,9 @@ firebase-debug.log
 # Содержимое versions/ игнорируется целиком, кроме этой справки.
 versions/*
 !versions/ЧИТАЙ-МЕНЯ.md
+
+# RuStore release signing (never commit)
+android/key.properties
+android/upload-keystore.jks
+*.jks
+*.keystore

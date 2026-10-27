@@ -14,7 +14,7 @@ void main() {
     await tester.pumpWidget(const SoftWindowApp());
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    expect(find.text('Мягкие окна'), findsOneWidget);
+    expect(find.text('Калькулятор мягких окон'), findsOneWidget);
     expect(find.text('Ширина низ'), findsNothing);
 
     final scaffold = tester.firstState<ScaffoldState>(find.byType(Scaffold));

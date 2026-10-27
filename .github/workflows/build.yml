@@ -72,14 +72,26 @@ jobs:
       - name: Зависимости
         run: flutter pub get
 
-      - name: Сборка APK
-        run: flutter build apk --release
+      - name: Подпись release (секреты GitHub)
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/upload-keystore.jks
+          printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=upload-keystore.jks\n' \
+            "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            "${{ secrets.ANDROID_KEY_PASSWORD }}" \
+            "${{ secrets.ANDROID_KEY_ALIAS }}" > android/key.properties
+
+      - name: Сборка APK и AAB
+        run: |
+          flutter build apk --release
+          flutter build appbundle --release
 
       - name: Артефакт
         uses: actions/upload-artifact@v4
         with:
           name: MyagkieOknaExcl-android
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/bundle/release/app-release.aab
           if-no-files-found: error
 
   windows:

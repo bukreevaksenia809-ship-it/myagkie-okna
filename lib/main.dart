@@ -40,7 +40,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '1.5.1';
+const String kAppVersion = '1.6.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -92,7 +92,7 @@ class SoftWindowApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Мягкие окна',
+      title: 'Калькулятор мягких окон',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -1103,7 +1103,7 @@ class _BuilderScreenState extends State<BuilderScreen>
       appBar: AppBar(
         title: Text(
           phone
-              ? 'Мягкие окна'
+              ? 'Калькулятор мягких окон'
               : 'Мягкие окна — чертежи, раскрой, раскладка',
         ),
         actions: phone
