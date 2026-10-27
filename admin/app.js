@@ -4,7 +4,7 @@
   const apiKey = cfg.apiKey || '';
   const base = `https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/documents`;
   const $ = (id) => document.getElementById(id);
-  let secret = localStorage.getItem('okna_admin_key') || cfg.secret || '';
+  let secret = sessionStorage.getItem('okna_admin_secret') || '';
   let devices = [];
   let licenses = [];
   let filesParent = '';
@@ -447,23 +447,59 @@
       <div class="table-wrap"><table><thead><tr><th>installId</th><th>ПК</th><th>Активирован</th><th>Последний запуск</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
-  function enter() {
-    const value = $('secret').value.trim();
-    if (!value) return;
-    secret = value;
-    localStorage.setItem('okna_admin_key', value);
+  const b64Bytes = (value) => Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
+
+  async function decryptSecret(password) {
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw', encoder.encode(password), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: b64Bytes(cfg.secretSalt),
+        iterations: cfg.kdfIterations || 200000,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']);
+    const plain = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: b64Bytes(cfg.secretIv) },
+      key,
+      b64Bytes(cfg.secretCipher));
+    return new TextDecoder().decode(plain);
+  }
+
+  function openApp() {
     $('gate').classList.add('hidden');
     $('app').classList.remove('hidden');
     loadDevices();
     loadRelease();
   }
 
+  async function login() {
+    const password = $('password').value;
+    if (!password) return;
+    $('gate-error').textContent = '';
+    try {
+      secret = await decryptSecret(password);
+      sessionStorage.setItem('okna_admin_secret', secret);
+      openApp();
+    } catch (_) {
+      secret = '';
+      $('gate-error').textContent = 'Неверный пароль';
+      $('password').value = '';
+      $('password').focus();
+    }
+  }
+
   function logout() {
-    localStorage.removeItem('okna_admin_key');
+    sessionStorage.removeItem('okna_admin_secret');
     secret = '';
     $('app').classList.add('hidden');
     $('gate').classList.remove('hidden');
-    $('secret').value = '';
+    $('password').value = '';
   }
 
   function switchTab(name) {
@@ -478,7 +514,10 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    $('enter').addEventListener('click', enter);
+    $('enter').addEventListener('click', login);
+    $('password').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') login();
+    });
     $('logout').addEventListener('click', logout);
     $('refresh').addEventListener('click', loadDevices);
     $('close-detail').addEventListener('click', () => $('device-detail').classList.add('hidden'));
@@ -495,8 +534,7 @@
     for (const tab of document.querySelectorAll('.tabs button')) {
       tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     }
-    $('secret').value = secret;
-    if (secret) enter();
+    if (secret) openApp();
     setInterval(() => {
       if (!$('app').classList.contains('hidden') && !$('devices').classList.contains('hidden')) {
         loadDevices();

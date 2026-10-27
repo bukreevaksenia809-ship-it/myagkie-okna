@@ -10,6 +10,7 @@ import '../models/order_project.dart';
 import 'costs_summary.dart';
 import 'device_scan_io.dart'
     if (dart.library.js_interop) 'device_scan_web.dart' as device;
+import '../config/backend.dart';
 import 'telemetry.dart';
 import 'test_env_io.dart'
     if (dart.library.js_interop) 'test_env_web.dart' as test_env;
@@ -38,12 +39,10 @@ class Pairing {
 
   // ------------------------------------------------------------- настройки
 
-  static const String projectId = 'okna-7dbf8';
-  static const String apiKey = 'AIzaSyAwOQn1TDzcApHt1PKmhxoQfFAtraYSaA4';
-  static const String secret = 'okna-b0ZHSRJIz3XqCnQtsbL0FXBxHu4j';
-
-  static const String _base =
-      'https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents';
+  static const String projectId = kBackendProject;
+  static const String apiKey = kBackendApiKey;
+  static const String secret = kBackendSecret;
+  static const String _base = kBackendBase;
 
   /// Сколько цифр в коде подключения.
   static const int codeLength = 6;
@@ -81,7 +80,8 @@ class Pairing {
   static String? lastError;
 
   /// В тестовом окружении Firestore не трогаем.
-  static bool get isTest => test_env.isTestEnvironment;
+  static bool get isTest =>
+      test_env.isTestEnvironment || _base.isEmpty || secret.isEmpty;
 
   // ------------------------------------------------------ чистые helper-ы
 

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/backend.dart';
 import 'device_scan_io.dart'
     if (dart.library.js_interop) 'device_scan_web.dart' as device;
 import 'test_env_io.dart'
@@ -23,11 +24,10 @@ class LicenseState {
 /// activations/{installId}. Проверка идёт по точному id документа, поэтому
 /// перебрать ключи нельзя; список доступен только админке.
 class LicenseService {
-  static const String projectId = 'okna-7dbf8';
-  static const String apiKey = 'AIzaSyAwOQn1TDzcApHt1PKmhxoQfFAtraYSaA4';
-  static const String secret = 'okna-b0ZHSRJIz3XqCnQtsbL0FXBxHu4j';
-  static const String _base =
-      'https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents';
+  static const String projectId = kBackendProject;
+  static const String apiKey = kBackendApiKey;
+  static const String secret = kBackendSecret;
+  static const String _base = kBackendBase;
 
   static String? _installId;
   static String _key = '';
@@ -49,6 +49,9 @@ class LicenseService {
   }
 
   static Future<LicenseState> check() async {
+    if (_base.isEmpty || secret.isEmpty) {
+      return const LicenseState(true, 'без сервера лицензий');
+    }
     if (test_env.isTestEnvironment) {
       return const LicenseState(true, 'тестовый режим');
     }
@@ -91,6 +94,9 @@ class LicenseService {
   /// Быстрая проверка для слежения за отключением ключа: только чтение,
   /// без записи lastSeen. Сетевые ошибки не блокируют работу.
   static Future<LicenseState> quickCheck() async {
+    if (_base.isEmpty || secret.isEmpty) {
+      return const LicenseState(true, 'без сервера лицензий');
+    }
     if (test_env.isTestEnvironment) {
       return const LicenseState(true, 'тестовый режим');
     }
@@ -121,6 +127,9 @@ class LicenseService {
     if (test_env.isTestEnvironment) {
       _key = key;
       return LicenseState(true, 'Ключ активен: $key', key: key);
+    }
+    if (_base.isEmpty || secret.isEmpty) {
+      return const LicenseState(true, 'без сервера лицензий');
     }
     await loadSaved();
     try {

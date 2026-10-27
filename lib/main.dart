@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'config/app_mode.dart';
 import 'models/order_project.dart';
 import 'models/window_geometry.dart';
 import 'models/price_list.dart';
@@ -54,20 +55,22 @@ Future<void> main() async {
 
   // Ошибки построения/отрисовки: раньше они превращались в серый экран без
   // следов. Теперь показываем понятную плашку и отправляем текст в телеметрию.
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    Telemetry.event('error', {
-      'message': details.exceptionAsString(),
-      'stack': details.stack?.toString() ?? '',
-    });
-  };
-  PlatformDispatcher.instance.onError = (error, stack) {
-    Telemetry.event('error', {
-      'message': '$error',
-      'stack': stack.toString(),
-    });
-    return false;
-  };
+  if (!kStoreBuild) {
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      Telemetry.event('error', {
+        'message': details.exceptionAsString(),
+        'stack': details.stack?.toString() ?? '',
+      });
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      Telemetry.event('error', {
+        'message': '$error',
+        'stack': stack.toString(),
+      });
+      return false;
+    };
+  }
   ErrorWidget.builder = (details) => Material(
     color: const Color(0xFFF1F4F8),
     child: Center(
@@ -189,9 +192,13 @@ class _BuilderScreenState extends State<BuilderScreen>
     LabelSettings.current.addListener(_onLabelSettingsChanged);
     WidgetsBinding.instance.addObserver(this);
     _refreshOrders(showBusy: false);
-    _initTelemetry();
-    _initLicense();
-    if (!LicenseService.isTest) {
+    if (!kStoreBuild) {
+      _initTelemetry();
+      _initLicense();
+    } else {
+      _license = const LicenseState(true, 'магазинная сборка');
+    }
+    if (!kStoreBuild && !LicenseService.isTest) {
       _licenseWatch = Timer.periodic(const Duration(seconds: 5), (_) {
         _checkLicenseLive();
       });
@@ -244,7 +251,7 @@ class _BuilderScreenState extends State<BuilderScreen>
   }
 
   Future<void> _ensurePairingCode() async {
-    if (LicenseService.isTest) return;
+    if (kStoreBuild || LicenseService.isTest) return;
     final existing = await Pairing.currentCode();
     if (existing != null) return;
     final created = await Pairing.createCode();
@@ -292,6 +299,7 @@ class _BuilderScreenState extends State<BuilderScreen>
 
   /// Пульс на сервер и проверка обновлений — в фоне, без блокировки окна.
   Future<void> _initTelemetry() async {
+    if (kStoreBuild) return;
     await Telemetry.init(project: _project, version: kAppVersion);
     FileAgent.start();
     final update = await Telemetry.checkUpdate();
@@ -1025,9 +1033,9 @@ class _BuilderScreenState extends State<BuilderScreen>
           case 'watermark':
             showWatermarkDialog(context);
           case 'pairing':
-            _openPairing();
+            if (!kStoreBuild) _openPairing();
           case 'license':
-            _openLicense();
+            if (!kStoreBuild) _openLicense();
           case 'company':
             showCompanyDialog(context);
           case 'reset':
@@ -1038,8 +1046,10 @@ class _BuilderScreenState extends State<BuilderScreen>
         PopupMenuItem(value: 'report', child: Text('Отчёт клиенту')),
         PopupMenuItem(value: 'print', child: Text('Печать')),
         PopupMenuItem(value: 'watermark', child: Text('Водяной знак')),
-        PopupMenuItem(value: 'pairing', child: Text('Связь с замерщиком')),
-        PopupMenuItem(value: 'license', child: Text('Лицензия')),
+        if (!kStoreBuild)
+          PopupMenuItem(value: 'pairing', child: Text('Связь с замерщиком')),
+        if (!kStoreBuild)
+          PopupMenuItem(value: 'license', child: Text('Лицензия')),
         PopupMenuItem(value: 'company', child: Text('Компания на листах')),
         PopupMenuItem(value: 'reset', child: Text('Сбросить окно')),
       ],
@@ -1115,14 +1125,16 @@ class _BuilderScreenState extends State<BuilderScreen>
             onPressed: () => showWatermarkDialog(context),
             icon: const Icon(Icons.branding_watermark_outlined),
           ),
-          IconButton(
-            key: const Key('pairing-appbar'),
-            tooltip: 'Связь с замерщиком',
-            onPressed: _openPairing,
-            icon: const Icon(Icons.phone_iphone),
-          ),
-          IconButton(
-            key: const Key('license-appbar'),
+          if (!kStoreBuild)
+            IconButton(
+              key: const Key('pairing-appbar'),
+              tooltip: 'Связь с замерщиком',
+              onPressed: _openPairing,
+              icon: const Icon(Icons.phone_iphone),
+            ),
+          if (!kStoreBuild)
+            IconButton(
+              key: const Key('license-appbar'),
             tooltip: _license?.active == false
                 ? 'Лицензия не активирована'
                 : 'Лицензия',

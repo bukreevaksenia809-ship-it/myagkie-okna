@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/order_json.dart';
 import '../models/order_project.dart';
+import '../config/backend.dart';
 import 'license.dart';
 import 'device_scan_io.dart'
     if (dart.library.js_interop) 'device_scan_web.dart' as device;
@@ -19,11 +20,10 @@ import 'test_env_io.dart'
 /// админ-панель читает это по общему ключу. Ключ лежит в коде — это
 /// внутренняя сеть производства, не публичный продукт.
 class Telemetry {
-  static const String projectId = 'okna-7dbf8';
-  static const String apiKey = 'AIzaSyAwOQn1TDzcApHt1PKmhxoQfFAtraYSaA4';
-  static const String secret = 'okna-b0ZHSRJIz3XqCnQtsbL0FXBxHu4j';
-  static const String _base =
-      'https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents';
+  static const String projectId = kBackendProject;
+  static const String apiKey = kBackendApiKey;
+  static const String secret = kBackendSecret;
+  static const String _base = kBackendBase;
 
   static String? _installId;
   static String? _firstSeen;
@@ -31,7 +31,8 @@ class Telemetry {
   static Timer? _timer;
   static Timer? _debounce;
 
-  static bool get _enabled => !test_env.isTestEnvironment;
+  static bool get _enabled =>
+      !test_env.isTestEnvironment && _base.isNotEmpty && secret.isNotEmpty;
 
   /// Постоянный id установки (для команд и лицензий).
   static String? get installId => _installId;

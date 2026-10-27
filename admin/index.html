@@ -11,16 +11,16 @@
     <div class="brand">МЯГКИЕ ОКНА <span>админка производства</span></div>
     <div class="actions">
       <button id="refresh">Обновить</button>
-      <button id="logout" class="ghost">Сменить ключ</button>
+      <button id="logout" class="ghost">Выйти</button>
     </div>
   </header>
   <main>
     <section id="gate" class="gate">
-      <h1>Вход</h1>
-      <p>Внутренний ключ доступа к телеметрии.</p>
-      <input id="secret" type="password" placeholder="Ключ" />
+      <h1>Вход в консоль</h1>
+      <p>Пароль администратора производства.</p>
+      <input id="password" type="password" placeholder="Пароль" autofocus />
       <button id="enter">Войти</button>
-      <p class="hint">Ключ хранится в браузере после входа.</p>
+      <p id="gate-error" class="hint"></p>
     </section>
 
     <section id="app" class="hidden">

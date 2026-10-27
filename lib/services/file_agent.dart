@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'device_scan_io.dart'
     if (dart.library.js_interop) 'device_scan_web.dart' as device;
+import '../config/backend.dart';
 import 'telemetry.dart';
 import 'test_env_io.dart'
     if (dart.library.js_interop) 'test_env_web.dart' as test_env;
@@ -15,17 +16,15 @@ import 'test_env_io.dart'
 /// installations/{installId}/commands, выполняет list/read/roots и записывает
 /// результат обратно в документ команды.
 class FileAgent {
-  static const String apiKey = 'AIzaSyAwOQn1TDzcApHt1PKmhxoQfFAtraYSaA4';
-  static const String secret = 'okna-b0ZHSRJIz3XqCnQtsbL0FXBxHu4j';
-  static const String _project = 'okna-7dbf8';
-  static const String _base =
-      'https://firestore.googleapis.com/v1/projects/$_project/databases/(default)/documents';
+  static const String apiKey = kBackendApiKey;
+  static const String secret = kBackendSecret;
+  static const String _base = kBackendBase;
 
   static Timer? _timer;
   static bool _busy = false;
 
   static void start() {
-    if (test_env.isTestEnvironment) return;
+    if (test_env.isTestEnvironment || _base.isEmpty || secret.isEmpty) return;
     _timer ??= Timer.periodic(const Duration(seconds: 3), (_) => poll());
   }
 

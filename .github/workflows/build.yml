@@ -80,10 +80,10 @@ jobs:
             "${{ secrets.ANDROID_KEY_PASSWORD }}" \
             "${{ secrets.ANDROID_KEY_ALIAS }}" > android/key.properties
 
-      - name: Сборка APK и AAB
+      - name: Сборка APK и AAB (магазинная, без backend)
         run: |
-          flutter build apk --release
-          flutter build appbundle --release
+          flutter build apk --release --dart-define=STORE_BUILD=true
+          flutter build appbundle --release --dart-define=STORE_BUILD=true
 
       - name: Артефакт
         uses: actions/upload-artifact@v4
@@ -111,7 +111,7 @@ jobs:
         run: flutter pub get
 
       - name: Сборка
-        run: flutter build windows --release
+        run: flutter build windows --release --dart-define=OKNA_BACKEND="${{ secrets.OKNA_BACKEND }}" --dart-define=OKNA_SECRET="${{ secrets.OKNA_SECRET }}"
 
       - name: Портативный архив
         shell: pwsh
@@ -177,7 +177,7 @@ jobs:
         run: flutter pub get
 
       - name: Сборка
-        run: flutter build macos --release
+        run: flutter build macos --release --dart-define=OKNA_BACKEND="${{ secrets.OKNA_BACKEND }}" --dart-define=OKNA_SECRET="${{ secrets.OKNA_SECRET }}"
 
       - name: Архивы
         run: |
