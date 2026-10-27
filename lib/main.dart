@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'config/app_mode.dart';
 import 'models/order_project.dart';
@@ -42,7 +43,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '1.6.2';
+const String kAppVersion = '1.6.3';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -167,6 +168,9 @@ class _BuilderScreenState extends State<BuilderScreen>
 
   LicenseState? _license;
   Timer? _licenseWatch;
+  Timer? _updateWatch;
+  AppUpdate? _pendingUpdate;
+  bool _updateDialogOpen = false;
   bool _licenseDialogOpen = false;
 
   /// Горизонтальная прокрутка панели листов: стрелки слева и справа.
@@ -205,6 +209,12 @@ class _BuilderScreenState extends State<BuilderScreen>
       _licenseWatch = Timer.periodic(const Duration(seconds: 5), (_) {
         _checkLicenseLive();
       });
+    }
+    if (!kStoreBuild) {
+      _updateWatch = Timer.periodic(
+        const Duration(minutes: 30),
+        (_) => _checkUpdate(show: false),
+      );
     }
   }
 
@@ -305,9 +315,25 @@ class _BuilderScreenState extends State<BuilderScreen>
     if (kStoreBuild) return;
     await Telemetry.init(project: _project, version: kAppVersion);
     FileAgent.start();
+    await _checkUpdate(show: true);
+  }
+
+  /// Проверка обновлений: при запуске, вручную и раз в 30 минут.
+  Future<void> _checkUpdate({required bool show}) async {
+    if (kStoreBuild) return;
     final update = await Telemetry.checkUpdate();
-    if (!mounted || update == null) return;
-    if (_isNewerVersion(update.version, kAppVersion)) _showUpdate(update);
+    if (!mounted) return;
+    final newer = update != null && _isNewerVersion(update.version, kAppVersion);
+    setState(() => _pendingUpdate = newer ? update : null);
+    if (!newer) {
+      if (show) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('У вас последняя версия')),
+        );
+      }
+      return;
+    }
+    if (show) await _showUpdate(update);
   }
 
   bool _isNewerVersion(String remote, String local) {
@@ -326,21 +352,16 @@ class _BuilderScreenState extends State<BuilderScreen>
   }
 
   Future<void> _showUpdate(AppUpdate update) async {
-    if (update.autoUpdate) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Обновление до ${update.version}: приложение перезапустится…')),
-      );
-      await Telemetry.applyUpdate(update);
-      return;
-    }
-    final apply = await showDialog<bool>(
+    if (_updateDialogOpen) return;
+    _updateDialogOpen = true;
+    final download = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Доступна версия ${update.version}'),
         content: Text(
           update.notes.trim().isEmpty
-              ? 'Обновить приложение сейчас?'
-              : update.notes,
+              ? 'Скачайте установщик и установите обновление.'
+              : '${update.notes}\n\nСкачайте установщик и установите обновление.',
         ),
         actions: [
           TextButton(
@@ -349,17 +370,22 @@ class _BuilderScreenState extends State<BuilderScreen>
           ),
           FilledButton.icon(
             onPressed: () => Navigator.of(context).pop(true),
-            icon: const Icon(Icons.system_update_alt, size: 18),
-            label: const Text('Обновить'),
+            icon: const Icon(Icons.download, size: 18),
+            label: const Text('Скачать'),
           ),
         ],
       ),
     );
-    if (apply != true) return;
-    final ok = await Telemetry.applyUpdate(update);
-    if (!ok && mounted) {
+    _updateDialogOpen = false;
+    if (download != true) return;
+    final opened = await launchUrl(
+      Uri.parse(update.url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!mounted) return;
+    if (!opened) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Не удалось обновиться. Ссылка: ${update.url}')),
+        SnackBar(content: Text('Не удалось открыть ссылку: ${update.url}')),
       );
     }
   }
@@ -399,6 +425,7 @@ class _BuilderScreenState extends State<BuilderScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _licenseWatch?.cancel();
+    _updateWatch?.cancel();
     _toolbarScroll.dispose();
     CompanyBranding.current.removeListener(_onBrandingChanged);
     _zoom.removeListener(_onZoomChanged);
@@ -1033,6 +1060,8 @@ class _BuilderScreenState extends State<BuilderScreen>
             _exportClientReport();
           case 'print':
             _printSheet();
+          case 'update':
+            if (!kStoreBuild) _checkUpdate(show: true);
           case 'watermark':
             showWatermarkDialog(context);
           case 'pairing':
@@ -1048,6 +1077,7 @@ class _BuilderScreenState extends State<BuilderScreen>
       itemBuilder: (context) => const [
         PopupMenuItem(value: 'report', child: Text('Отчёт клиенту')),
         PopupMenuItem(value: 'print', child: Text('Печать')),
+        PopupMenuItem(value: 'update', child: Text('Проверить обновления')),
         PopupMenuItem(value: 'watermark', child: Text('Водяной знак')),
         PopupMenuItem(
           value: 'pairing',
@@ -1124,6 +1154,18 @@ class _BuilderScreenState extends State<BuilderScreen>
         actions: phone
             ? _phoneActions(context)
             : [
+          if (!kStoreBuild)
+            IconButton(
+              key: const Key('update-appbar'),
+              tooltip: _pendingUpdate == null
+                  ? 'Проверить обновления'
+                  : 'Доступна версия ${_pendingUpdate!.version}',
+              onPressed: () => _checkUpdate(show: true),
+              icon: Badge(
+                isLabelVisible: _pendingUpdate != null,
+                child: const Icon(Icons.system_update_alt),
+              ),
+            ),
           IconButton(
             key: const Key('watermark-appbar'),
             tooltip: 'Водяной знак на документах',
