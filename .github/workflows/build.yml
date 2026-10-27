@@ -82,8 +82,8 @@ jobs:
 
       - name: Сборка APK и AAB (магазинная, без backend)
         run: |
-          flutter build apk --release --dart-define=STORE_BUILD=true
-          flutter build appbundle --release --dart-define=STORE_BUILD=true
+          flutter build apk --release --dart-define=STORE_BUILD=true             --dart-define=OKNA_BACKEND="${{ secrets.OKNA_BACKEND }}"             --dart-define=OKNA_SECRET="${{ secrets.OKNA_SECRET }}"
+          flutter build appbundle --release --dart-define=STORE_BUILD=true             --dart-define=OKNA_BACKEND="${{ secrets.OKNA_BACKEND }}"             --dart-define=OKNA_SECRET="${{ secrets.OKNA_SECRET }}"
 
       - name: Артефакт
         uses: actions/upload-artifact@v4

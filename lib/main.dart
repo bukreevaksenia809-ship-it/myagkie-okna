@@ -42,7 +42,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '1.6.1';
+const String kAppVersion = '1.6.2';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -199,6 +199,7 @@ class _BuilderScreenState extends State<BuilderScreen>
       _initLicense();
     } else {
       _license = const LicenseState(true, 'магазинная сборка');
+      _ensurePairingCode();
     }
     if (!kStoreBuild && !LicenseService.isTest) {
       _licenseWatch = Timer.periodic(const Duration(seconds: 5), (_) {
@@ -253,7 +254,7 @@ class _BuilderScreenState extends State<BuilderScreen>
   }
 
   Future<void> _ensurePairingCode() async {
-    if (kStoreBuild || LicenseService.isTest) return;
+    if (LicenseService.isTest || Pairing.isTest) return;
     final existing = await Pairing.currentCode();
     if (existing != null) return;
     final created = await Pairing.createCode();
@@ -1035,7 +1036,7 @@ class _BuilderScreenState extends State<BuilderScreen>
           case 'watermark':
             showWatermarkDialog(context);
           case 'pairing':
-            if (!kStoreBuild) _openPairing();
+            _openPairing();
           case 'license':
             if (!kStoreBuild) _openLicense();
           case 'company':
@@ -1048,8 +1049,10 @@ class _BuilderScreenState extends State<BuilderScreen>
         PopupMenuItem(value: 'report', child: Text('Отчёт клиенту')),
         PopupMenuItem(value: 'print', child: Text('Печать')),
         PopupMenuItem(value: 'watermark', child: Text('Водяной знак')),
-        if (!kStoreBuild)
-          PopupMenuItem(value: 'pairing', child: Text('Связь с замерщиком')),
+        PopupMenuItem(
+          value: 'pairing',
+          child: Text('Связь с замерщиком'),
+        ),
         if (!kStoreBuild)
           PopupMenuItem(value: 'license', child: Text('Лицензия')),
         PopupMenuItem(value: 'company', child: Text('Компания на листах')),
@@ -1127,13 +1130,12 @@ class _BuilderScreenState extends State<BuilderScreen>
             onPressed: () => showWatermarkDialog(context),
             icon: const Icon(Icons.branding_watermark_outlined),
           ),
-          if (!kStoreBuild)
-            IconButton(
-              key: const Key('pairing-appbar'),
-              tooltip: 'Связь с замерщиком',
-              onPressed: _openPairing,
-              icon: const Icon(Icons.phone_iphone),
-            ),
+          IconButton(
+            key: const Key('pairing-appbar'),
+            tooltip: 'Связь с замерщиком',
+            onPressed: _openPairing,
+            icon: const Icon(Icons.phone_iphone),
+          ),
           if (!kStoreBuild)
             IconButton(
               key: const Key('license-appbar'),
