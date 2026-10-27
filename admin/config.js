@@ -4,8 +4,8 @@
 window.OKNA_CONFIG = {
   projectId: 'okna-7dbf8',
   apiKey: 'AIzaSyAwOQn1TDzcApHt1PKmhxoQfFAtraYSaA4',
-  secretSalt: 'pYEaRKX94RDGY9cKupTcwA==',
-  secretIv: 'EyC/kWTcWxlZZhD+',
-  secretCipher: 'Ux+7OuRgzagHfm1NTD6Y/fOYKVtInuOyuD0XSlWpvXie8lH8WMaBIHoc4QcOm9B56w==',
+  secretSalt: 'DCa5CxgAFufv2Xc7N0Oi2Q==',
+  secretIv: 'vZn6MdHyMgmXHoX+',
+  secretCipher: 'WNYrggSQFd39GjhAT91Cm7EVvn9TOWtWbtRXsRAG638hYGm0ta+HzE8q6j4E0Ebjog==',
   kdfIterations: 200000,
 };

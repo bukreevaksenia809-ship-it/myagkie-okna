@@ -16,6 +16,15 @@
       ],
       "headers": [
         {
+          "source": "/admin/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
           "source": "**/*.@(js|json|wasm|otf|ttf|bin)",
           "headers": [
             {
@@ -39,6 +48,42 @@
             {
               "key": "Cache-Control",
               "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "/admin/index.html",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/admin/config.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/admin/app.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/admin/style.css",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
             }
           ]
         }
@@ -60,6 +105,15 @@
       ],
       "headers": [
         {
+          "source": "/admin/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
           "source": "**/*.@(js|json|wasm|otf|ttf|bin)",
           "headers": [
             {
@@ -83,6 +137,42 @@
             {
               "key": "Cache-Control",
               "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "/admin/index.html",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/admin/config.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/admin/app.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/admin/style.css",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
             }
           ]
         }

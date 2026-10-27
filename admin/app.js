@@ -479,16 +479,23 @@
   }
 
   async function login() {
-    const password = $('password').value;
+    const password = $('password').value.trim();
     if (!password) return;
     $('gate-error').textContent = '';
+    if (!window.crypto || !window.crypto.subtle) {
+      $('gate-error').textContent =
+        'Браузер не поддерживает шифрование. Откройте админку по HTTPS в Chrome/Edge.';
+      return;
+    }
     try {
       secret = await decryptSecret(password);
       sessionStorage.setItem('okna_admin_secret', secret);
       openApp();
     } catch (_) {
       secret = '';
-      $('gate-error').textContent = 'Неверный пароль';
+      $('gate-error').textContent = !cfg.secretSalt
+          ? 'Страница старая (нет новых настроек). Нажмите Ctrl+F5 и попробуйте снова.'
+          : 'Неверный пароль. Проверьте регистр, раскладку и что страница обновлена (Ctrl+F5).';
       $('password').value = '';
       $('password').focus();
     }
