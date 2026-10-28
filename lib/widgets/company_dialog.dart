@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:desktop_drop/desktop_drop.dart';
 
 import '../models/document.dart';
 import '../services/company_branding.dart';
@@ -147,50 +148,174 @@ class _CompanyDialogState extends State<_CompanyDialog> {
               ValueListenableBuilder<CompanyBrandingState>(
                 valueListenable: CompanyBranding.current,
                 builder: (context, branding, _) {
-                  return Row(
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 96,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F4F9),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFD9E0EA)),
-                        ),
-                        alignment: Alignment.center,
-                        child: branding.logo == null
-                            ? const Text(
-                                'лого',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF8A93A0),
-                                ),
-                              )
-                            : Image.memory(
-                                branding.logo!,
-                                fit: BoxFit.contain,
-                              ),
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          OutlinedButton.icon(
-                            key: const Key('company-logo-load'),
-                            onPressed: _busy ? null : _pickLogo,
-                            icon: const Icon(Icons.image_outlined, size: 18),
-                            label: const Text('Загрузить логотип'),
+                      DropTarget(
+                        onDragDone: (details) async {
+                          final files = details.files;
+                          if (files.isEmpty) return;
+                          final file = files.first;
+                          final lower = file.name.toLowerCase();
+                          if (!(lower.endsWith('.png') ||
+                              lower.endsWith('.jpg') ||
+                              lower.endsWith('.jpeg') ||
+                              lower.endsWith('.webp'))) {
+                            setState(() => _message =
+                                'Перетащите PNG, JPG или WEBP');
+                            return;
+                          }
+                          final bytes = await file.readAsBytes();
+                          if (!mounted) return;
+                          await CompanyBranding.setLogoBytes(
+                            bytes,
+                            fileName: file.name,
+                          );
+                          if (!mounted) return;
+                          setState(() {
+                            _message = null;
+                            _busy = false;
+                          });
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF7F9FC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(0xFFB9C7D9),
+                              style: BorderStyle.solid,
+                            ),
                           ),
-                          if (branding.logo != null)
-                            TextButton.icon(
-                              key: const Key('company-logo-remove'),
-                              onPressed: _busy
-                                  ? null
-                                  : () async {
-                                      await CompanyBranding.removeLogo();
-                                    },
-                              icon: const Icon(Icons.delete_outline, size: 18),
-                              label: const Text('Удалить логотип'),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 96,
+                                height: 64,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F4F9),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: const Color(0xFFD9E0EA),
+                                  ),
+                                ),
+                                alignment: Alignment.center,
+                                child: branding.logo == null
+                                    ? const Text(
+                                        'перетащите\nлоготип',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: Color(0xFF8A93A0),
+                                        ),
+                                      )
+                                    : Image.memory(
+                                        branding.logo!,
+                                        fit: BoxFit.contain,
+                                      ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Перетащите PNG/JPG сюда или выберите файл',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Wrap(
+                                      spacing: 6,
+                                      children: [
+                                        OutlinedButton.icon(
+                                          key: const Key('company-logo-load'),
+                                          onPressed: _busy ? null : _pickLogo,
+                                          icon: const Icon(
+                                            Icons.image_outlined,
+                                            size: 18,
+                                          ),
+                                          label: const Text('Выбрать'),
+                                        ),
+                                        if (branding.logo != null)
+                                          TextButton.icon(
+                                            key: const Key(
+                                              'company-logo-remove',
+                                            ),
+                                            onPressed: _busy
+                                                ? null
+                                                : () async {
+                                                    await CompanyBranding
+                                                        .removeLogo();
+                                                  },
+                                            icon: const Icon(
+                                              Icons.delete_outline,
+                                              size: 18,
+                                            ),
+                                            label: const Text('Удалить'),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Положение в шапке документа',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 6,
+                        children: [
+                          for (final placement in LogoPlacement.values)
+                            ChoiceChip(
+                              key: Key('logo-place-${placement.name}'),
+                              label: Text(placement.label),
+                              selected: branding.logoPlacement == placement,
+                              onSelected: (_) =>
+                                  CompanyBranding.setLogoPlacement(placement),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Где показывать логотип',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final document in LogoDocument.values)
+                            FilterChip(
+                              key: Key('logo-doc-${document.name}'),
+                              label: Text(document.label),
+                              selected: branding.logoDocuments.contains(
+                                document,
+                              ),
+                              onSelected: (selected) {
+                                final next = Set<LogoDocument>.of(
+                                  branding.logoDocuments,
+                                );
+                                if (selected) {
+                                  next.add(document);
+                                } else {
+                                  next.remove(document);
+                                }
+                                CompanyBranding.setLogoDocuments(next);
+                              },
                             ),
                         ],
                       ),

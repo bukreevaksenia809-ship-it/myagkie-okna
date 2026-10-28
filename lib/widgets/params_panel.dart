@@ -8,6 +8,7 @@ import '../models/window_geometry.dart';
 import '../models/crossbar.dart';
 import '../models/window_params.dart';
 import '../services/company_branding.dart';
+import '../services/inner_size.dart';
 import 'company_dialog.dart';
 import 'composite_preview.dart';
 
@@ -1955,12 +1956,143 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
+  /// Диалог ввода внутреннего размера полотна: 1000×1000 → наружный габарит.
+  Future<void> _showInnerSizeDialog(WindowSpec spec) async {
+    final params = spec.params;
+    final currentInner = innerSizeFromOuter(params);
+    final widthController = TextEditingController(
+      text: _textFor(currentInner.width),
+    );
+    final heightController = TextEditingController(
+      text: _textFor(currentInner.height),
+    );
+    double parse(String raw) =>
+        double.tryParse(raw.trim().replaceAll(',', '.')) ?? 0;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final innerW = parse(widthController.text);
+          final innerH = parse(heightController.text);
+          final outer = innerW > 0 && innerH > 0
+              ? outerSizeFromInner(params, innerW, innerH)
+              : null;
+          return AlertDialog(
+            title: const Text('Внутренний размер полотна'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Введите размер видимой плёнки/ткани между внутренними '
+                    'кромками окантовки. Программа пересчитает наружный '
+                    'габарит и построит чертёж/раскрой по нему.',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          key: const Key('inner-width'),
+                          controller: widthController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Внутренняя ширина',
+                            suffixText: 'мм',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          onChanged: (_) => setDialogState(() {}),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          key: const Key('inner-height'),
+                          controller: heightController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Внутренняя высота',
+                            suffixText: 'мм',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          onChanged: (_) => setDialogState(() {}),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    outer == null
+                        ? 'Введите оба размера'
+                        : 'Наружный размер: '
+                              '${formatMm(outer.width)} × '
+                              '${formatMm(outer.height)} ${unitSuffix()}',
+                    key: const Key('inner-outer-preview'),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0B62C4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Отмена'),
+              ),
+              FilledButton(
+                key: const Key('inner-apply'),
+                onPressed: outer == null
+                    ? null
+                    : () {
+                        _updateWindow(
+                          params.copyWith(
+                            bottomWidth: outer.width,
+                            topWidth: outer.width,
+                            leftHeight: outer.height,
+                            rightHeight: outer.height,
+                          ),
+                        );
+                        Navigator.of(context).pop();
+                      },
+                child: const Text('Применить'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    widthController.dispose();
+    heightController.dispose();
+  }
+
   Widget _sizesSection(WindowSpec spec) {
     final params = spec.params;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SectionTitle('Размеры, ${unitSuffix()}'),
+        Row(
+          children: [
+            Expanded(child: _SectionTitle('Размеры, ${unitSuffix()}')),
+            OutlinedButton.icon(
+              key: const Key('inner-size-button'),
+              onPressed: () => _showInnerSizeDialog(spec),
+              icon: const Icon(Icons.crop_free, size: 16),
+              label: const Text('Внутренний размер'),
+            ),
+          ],
+        ),
         const SizedBox(height: 8),
         if (params.isSpecialShape) ...[
           Row(

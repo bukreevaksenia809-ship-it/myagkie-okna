@@ -34,6 +34,12 @@ class DocumentStore {
   static const String companyOnSheetsKey =
       'soft_window_drawer_company_on_sheets_v1';
 
+  static const String companyLogoPlacementKey =
+      'soft_window_drawer_company_logo_placement_v1';
+
+  static const String companyLogoDocumentsKey =
+      'soft_window_drawer_company_logo_documents_v1';
+
   /// Готовые настройки (для тестов); null — брать SharedPreferences.
   final SharedPreferences? preferences;
   final String? _assetsDirectory;
@@ -94,6 +100,26 @@ class DocumentStore {
   Future<void> saveCompanyOnSheets(bool value) async {
     final prefs = await _prefs;
     await prefs.setBool(companyOnSheetsKey, value);
+  }
+
+  Future<String?> loadCompanyLogoPlacement() async {
+    final prefs = await _prefs;
+    return prefs.getString(companyLogoPlacementKey);
+  }
+
+  Future<void> saveCompanyLogoPlacement(String value) async {
+    final prefs = await _prefs;
+    await prefs.setString(companyLogoPlacementKey, value);
+  }
+
+  Future<List<String>> loadCompanyLogoDocuments() async {
+    final prefs = await _prefs;
+    return prefs.getStringList(companyLogoDocumentsKey) ?? const [];
+  }
+
+  Future<void> saveCompanyLogoDocuments(List<String> values) async {
+    final prefs = await _prefs;
+    await prefs.setStringList(companyLogoDocumentsKey, values);
   }
 
   Future<CompanyDetails> loadCompany() async {

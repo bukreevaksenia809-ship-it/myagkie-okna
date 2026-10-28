@@ -175,6 +175,19 @@ class EstimateSheet extends StatelessWidget {
   // ------------------------------------------------------------- шапка листа
 
   Widget _caption(Estimate estimate) {
+    final showLogo = company?.showLogoIn(LogoDocument.estimate) ?? false;
+    final placement = company?.logoPlacement ?? LogoPlacement.left;
+    Widget logo() => ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 240),
+      child: SizedBox(
+        height: 54,
+        child: Image.memory(
+          company!.logo!,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.medium,
+        ),
+      ),
+    );
     return Container(
       height: _captionHeight,
       width: double.infinity,
@@ -184,7 +197,7 @@ class EstimateSheet extends StatelessWidget {
       child: Row(
         children: [
           if (company?.isVisible ?? false) ...[
-            if (company?.logo != null) ...[
+            if (company?.showLogoIn(LogoDocument.estimate) ?? false) ...[
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 240),
                 child: SizedBox(
@@ -230,6 +243,16 @@ class EstimateSheet extends StatelessWidget {
               weight: FontWeight.w700,
               color: Colors.white,
             ),
+          if (showLogo && placement == LogoPlacement.center) ...[
+            const Spacer(),
+            logo(),
+            const SizedBox(width: 16),
+            const Spacer(),
+          ],
+          if (showLogo && placement == LogoPlacement.right) ...[
+            logo(),
+            const SizedBox(width: 16),
+          ],
           const Spacer(),
           // Длинное ИТОГО не обрезается и не ломает строку: при нехватке
           // ширины плашка контролируемо ужимается.

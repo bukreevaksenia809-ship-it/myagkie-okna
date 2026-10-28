@@ -389,15 +389,18 @@ class ClientReportBuilder {
   }
 
   pw.Widget _premiumHeader(CompanyDetails details) {
+    final showLogo = company.showLogoIn(LogoDocument.clientReport);
+    final logoRight = company.logoPlacement == LogoPlacement.right;
+    pw.Widget logo() => pw.Container(
+      height: 54,
+      constraints: const pw.BoxConstraints(maxWidth: 140),
+      child: pw.Image(pw.MemoryImage(company.logo!), fit: pw.BoxFit.contain),
+    );
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        if (company.logo != null) ...[
-          pw.Container(
-            height: 54,
-            constraints: const pw.BoxConstraints(maxWidth: 140),
-            child: pw.Image(pw.MemoryImage(company.logo!), fit: pw.BoxFit.contain),
-          ),
+        if (showLogo && !logoRight) ...[
+          logo(),
           pw.SizedBox(width: 16),
         ],
         pw.Expanded(
@@ -422,6 +425,10 @@ class ClientReportBuilder {
             ],
           ),
         ),
+        if (showLogo && logoRight) ...[
+          pw.SizedBox(width: 14),
+          logo(),
+        ],
         pw.SizedBox(width: 14),
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.end,

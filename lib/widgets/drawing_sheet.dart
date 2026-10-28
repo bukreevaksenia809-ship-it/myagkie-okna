@@ -1654,6 +1654,18 @@ class _TitleBlock extends StatelessWidget {
       return _cell(label, value, maxLines: maxLines);
     }
     final stampPx = math.min(LabelSettings.value.pxFor(LabelKind.stamp), 20.0);
+    final showLogo = branding.showLogoIn(LogoDocument.drawing);
+    final logo = showLogo
+        ? SizedBox(
+            height: 34,
+            child: Image.memory(
+              branding.logo!,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.medium,
+            ),
+          )
+        : null;
+    final logoRight = branding.logoPlacement == LogoPlacement.right;
     final contact = [
       if (branding.details.name.trim().isNotEmpty) branding.details.name.trim(),
       if (branding.details.phone.trim().isNotEmpty)
@@ -1684,15 +1696,8 @@ class _TitleBlock extends StatelessWidget {
           Expanded(
             child: Row(
               children: [
-                if (branding.logo != null) ...[
-                  SizedBox(
-                    height: 34,
-                    child: Image.memory(
-                      branding.logo!,
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.medium,
-                    ),
-                  ),
+                if (logo != null && !logoRight) ...[
+                  logo,
                   const SizedBox(width: 8),
                 ],
                 Expanded(
@@ -1725,6 +1730,10 @@ class _TitleBlock extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (logo != null && logoRight) ...[
+                  const SizedBox(width: 8),
+                  logo,
+                ],
               ],
             ),
           ),

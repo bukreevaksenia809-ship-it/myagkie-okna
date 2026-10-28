@@ -4,6 +4,37 @@ import 'package:flutter/foundation.dart';
 import '../models/document.dart';
 import 'document_store.dart';
 
+/// Где в шапке документа показывать логотип.
+enum LogoPlacement {
+  left('Слева'),
+  center('По центру'),
+  right('Справа');
+
+  const LogoPlacement(this.label);
+
+  final String label;
+
+  static LogoPlacement fromName(String? name) => values.firstWhere(
+    (value) => value.name == name,
+    orElse: () => LogoPlacement.left,
+  );
+}
+
+/// В каких документах показывать логотип.
+enum LogoDocument {
+  estimate('Смета'),
+  drawing('Чертёж'),
+  clientReport('Отчёт клиенту');
+
+  const LogoDocument(this.label);
+
+  final String label;
+
+  static LogoDocument? fromName(String? name) => values
+      .where((value) => value.name == name)
+      .firstOrNull;
+}
+
 /// Реквизиты компании и логотип для листов (смета, чертёж).
 ///
 /// Хранится отдельно от заказа: заполняется один раз в настройках и
@@ -15,11 +46,23 @@ class CompanyBrandingState {
     this.details = const CompanyDetails(),
     this.logo,
     this.showOnSheets = false,
+    this.logoPlacement = LogoPlacement.left,
+    this.logoDocuments = const {
+      LogoDocument.estimate,
+      LogoDocument.drawing,
+      LogoDocument.clientReport,
+    },
   });
 
   final CompanyDetails details;
   final Uint8List? logo;
   final bool showOnSheets;
+  final LogoPlacement logoPlacement;
+  final Set<LogoDocument> logoDocuments;
+
+  /// Показывать ли логотип в конкретном документе.
+  bool showLogoIn(LogoDocument document) =>
+      isVisible && logo != null && logoDocuments.contains(document);
 
   bool get hasDetails =>
       details.name.trim().isNotEmpty ||
@@ -45,11 +88,15 @@ class CompanyBrandingState {
     Uint8List? logo,
     bool clearLogo = false,
     bool? showOnSheets,
+    LogoPlacement? logoPlacement,
+    Set<LogoDocument>? logoDocuments,
   }) =>
       CompanyBrandingState(
         details: details ?? this.details,
         logo: clearLogo ? null : (logo ?? this.logo),
         showOnSheets: showOnSheets ?? this.showOnSheets,
+        logoPlacement: logoPlacement ?? this.logoPlacement,
+        logoDocuments: logoDocuments ?? this.logoDocuments,
       );
 }
 
@@ -72,11 +119,27 @@ class CompanyBranding {
     final details = await _documentStore.loadCompany();
     final logo = await _documentStore.readAsset(details.logoAssetRef);
     final show = await _documentStore.loadCompanyOnSheets();
+    final placement = LogoPlacement.fromName(
+      await _documentStore.loadCompanyLogoPlacement(),
+    );
+    final documentNames = await _documentStore.loadCompanyLogoDocuments();
+    final documents = documentNames.isEmpty
+        ? const {
+            LogoDocument.estimate,
+            LogoDocument.drawing,
+            LogoDocument.clientReport,
+          }
+        : documentNames
+              .map(LogoDocument.fromName)
+              .whereType<LogoDocument>()
+              .toSet();
     _loaded = true;
     current.value = CompanyBrandingState(
       details: details,
       logo: logo,
       showOnSheets: show,
+      logoPlacement: placement,
+      logoDocuments: documents,
     );
   }
 
@@ -84,6 +147,18 @@ class CompanyBranding {
   static Future<void> setShowOnSheets(bool value) async {
     await _documentStore.saveCompanyOnSheets(value);
     current.value = current.value.copyWith(showOnSheets: value);
+  }
+
+  static Future<void> setLogoPlacement(LogoPlacement value) async {
+    await _documentStore.saveCompanyLogoPlacement(value.name);
+    current.value = current.value.copyWith(logoPlacement: value);
+  }
+
+  static Future<void> setLogoDocuments(Set<LogoDocument> values) async {
+    await _documentStore.saveCompanyLogoDocuments(
+      values.map((value) => value.name).toList(),
+    );
+    current.value = current.value.copyWith(logoDocuments: values);
   }
 
   /// Сохраняет реквизиты (без картинки).
