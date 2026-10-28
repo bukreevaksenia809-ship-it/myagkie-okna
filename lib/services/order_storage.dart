@@ -16,6 +16,8 @@ class SavedOrder {
     required this.eyeletTotal,
     required this.materials,
     required this.edgeSummary,
+    this.status = OrderStatus.newOrder,
+    this.statusChangedAt,
   });
 
   /// Ссылка на запись в хранилище (файл или ключ браузера).
@@ -29,6 +31,8 @@ class SavedOrder {
   final int eyeletTotal;
   final String materials;
   final String edgeSummary;
+  final OrderStatus status;
+  final DateTime? statusChangedAt;
 
   String get title => name.isEmpty ? ref.label : name;
 }
@@ -104,6 +108,8 @@ Map<String, dynamic> orderSummaryToJson(OrderProject project) {
             '${plan.wastePercent.toStringAsFixed(1)}%',
     ],
     'totalWastePercent': summary.rollWastePercent,
+    'status': project.status.name,
+    'statusChangedAt': project.statusChangedAt?.toIso8601String(),
   };
 }
 
@@ -133,6 +139,14 @@ SavedOrder _savedOrderFromJson(
     edgeSummary:
         (summaryMap['edgeByRoll'] as List?)?.map((item) => '$item').join('; ') ??
             '',
+    status: OrderStatus.fromName(
+      summaryMap['status'] is String ? summaryMap['status'] as String : null,
+    ),
+    statusChangedAt: DateTime.tryParse(
+      summaryMap['statusChangedAt'] is String
+          ? summaryMap['statusChangedAt'] as String
+          : '',
+    ),
   );
 }
 

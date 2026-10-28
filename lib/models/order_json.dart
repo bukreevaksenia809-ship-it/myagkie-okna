@@ -20,6 +20,8 @@ Map<String, dynamic> orderToJson(OrderProject project) => {
         'showCallouts': project.options.showCallouts,
       },
       'extraQuantities': project.extraQuantities,
+      'status': project.status.name,
+      'statusChangedAt': project.statusChangedAt?.toIso8601String(),
       'windows': [for (final window in project.windows) windowToJson(window)],
     };
 
@@ -70,6 +72,14 @@ OrderProject orderFromJson(Map<String, dynamic> json) {
         if (entry.key is String && entry.value is num)
           entry.key as String: (entry.value as num).toDouble(),
     },
+    status: OrderStatus.fromName(
+      json['status'] is String ? json['status'] as String : null,
+    ),
+    statusChangedAt: DateTime.tryParse(
+      json['statusChangedAt'] is String
+          ? json['statusChangedAt'] as String
+          : '',
+    ),
   );
 }
 

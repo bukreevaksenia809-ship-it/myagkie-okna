@@ -15,6 +15,24 @@ enum SheetMode {
 }
 
 /// Заказ: одно или несколько окон, параметры раскладки на рулоне, вид листа.
+/// Статус заказа в производстве.
+enum OrderStatus {
+  newOrder('Новый'),
+  measured('Замерен'),
+  production('В производстве'),
+  ready('Готов'),
+  installed('Смонтирован');
+
+  const OrderStatus(this.label);
+
+  final String label;
+
+  static OrderStatus fromName(String? name) => values.firstWhere(
+    (value) => value.name == name,
+    orElse: () => OrderStatus.newOrder,
+  );
+}
+
 class OrderProject {
   const OrderProject({
     this.windows = const [WindowParams()],
@@ -27,6 +45,8 @@ class OrderProject {
     // раскладки с поворотом и выбирает самую крупную.
     this.gridColumns = 0,
     this.extraQuantities = const {},
+    this.status = OrderStatus.newOrder,
+    this.statusChangedAt,
   });
 
   /// Окна заказа. Номер окна — его позиция в списке (нумерация с единицы).
@@ -52,6 +72,12 @@ class OrderProject {
   /// Количество дополнительных позиций прайса: доставка, парус, навес,
   /// брус, декоративный брус, zip. Ключи — [PriceList.extraItemKeys].
   final Map<String, double> extraQuantities;
+
+  /// Статус заказа: от нового замера до монтажа.
+  final OrderStatus status;
+
+  /// Когда статус изменён — для напоминаний и контроля сроков.
+  final DateTime? statusChangedAt;
 
   int get windowCount => windows.length;
 
@@ -90,6 +116,9 @@ class OrderProject {
     SheetMode? sheetMode,
     int? gridColumns,
     Map<String, double>? extraQuantities,
+    OrderStatus? status,
+    DateTime? statusChangedAt,
+    bool clearStatusChangedAt = false,
   }) {
     final nextWindows = windows ?? this.windows;
     final index = selectedIndex ?? this.selectedIndex;
@@ -102,6 +131,10 @@ class OrderProject {
       sheetMode: sheetMode ?? this.sheetMode,
       gridColumns: (gridColumns ?? this.gridColumns).clamp(0, 4),
       extraQuantities: extraQuantities ?? this.extraQuantities,
+      status: status ?? this.status,
+      statusChangedAt: clearStatusChangedAt
+          ? null
+          : (statusChangedAt ?? this.statusChangedAt),
     );
   }
 

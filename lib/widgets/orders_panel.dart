@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/order_project.dart';
 import '../services/order_storage.dart';
 
 /// Раздел «Заказы»: сохранение, список сохранённых заказов и их сводки.
@@ -137,14 +138,40 @@ class OrdersPanel extends StatelessWidget {
                           ),
                         ],
                       ),
-                      Text(
+                      Wrap(
+                        spacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _statusColor(order.status).withValues(
+                                alpha: 0.12,
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              order.status.label,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: _statusColor(order.status),
+                              ),
+                            ),
+                          ),
+                          Text(
                         '${_date(order.savedAt)} · окон ${order.windowCount} · '
                         'плёнка ${order.filmAreaM2.toStringAsFixed(2).replaceAll('.', ',')} м² · '
                         'люверсов ${order.eyeletTotal}',
-                        style: const TextStyle(
-                          fontSize: 10.5,
-                          color: Color(0xFF41506A),
-                        ),
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              color: Color(0xFF41506A),
+                            ),
+                          ),
+                        ],
                       ),
                       if (order.edgeSummary.isNotEmpty)
                         Text(
@@ -164,6 +191,14 @@ class OrdersPanel extends StatelessWidget {
       ),
     );
   }
+
+  Color _statusColor(OrderStatus status) => switch (status) {
+    OrderStatus.newOrder => const Color(0xFF52708C),
+    OrderStatus.measured => const Color(0xFF0B62C4),
+    OrderStatus.production => const Color(0xFFB86B3D),
+    OrderStatus.ready => const Color(0xFF2E7D5B),
+    OrderStatus.installed => const Color(0xFF4E4A46),
+  };
 
   String _date(DateTime moment) {
     String two(int value) => value.toString().padLeft(2, '0');
