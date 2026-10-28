@@ -2162,5 +2162,9 @@ double? parseMm(String raw) {
       .replaceAll(' ', '')
       .replaceAll(',', '.');
   if (normalized.isEmpty) return null;
-  return double.tryParse(normalized);
+  final parsed = double.tryParse(normalized);
+  if (parsed == null) return null;
+  // Ввод идёт в текущей единице: в сантиметрах число сразу переводим в мм,
+  // чтобы модель и все формулы остались миллиметровыми.
+  return DisplayUnits.unit == LengthUnit.cm ? parsed * 10 : parsed;
 }

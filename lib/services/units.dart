@@ -1,11 +1,9 @@
 // Единицы отображения линейных размеров: миллиметры или сантиметры.
 //
 // ВАЖНО: модель, JSON, раскладка, раскрой и все расчёты остаются в
-// миллиметрах. Переключатель меняет только то, как число показывается
-// человеку: 2 080 мм ↔ 208,0 см. Ввод в полях панели — по-прежнему в мм,
-// чтобы не терять точность замера.
-import 'dart:math' as math;
-
+// миллиметрах. Переключатель меняет и показ, и ввод: в сантиметрах поле
+// принимает сантиметры и переводит их в миллиметры (266,6 → 2666 мм),
+// поэтому точность модели остаётся миллиметровой.
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -78,7 +76,8 @@ class DisplayUnits {
   /// Число в текущей единице без подписи.
   ///
   /// В миллиметрах по умолчанию 0 знаков после запятой (как раньше), в
-  /// сантиметрах — не меньше одного: 2 080 мм → «208,0», 278,6 → «27,9».
+  /// сантиметрах — один знак только при дробной части: 2 080 мм → «208»,
+  /// 278,6 мм → «27,9».
   static String formatNumber(
     num millimeters, {
     int decimals = 0,
@@ -87,11 +86,16 @@ class DisplayUnits {
     final value = millimeters.toDouble();
     if (!value.isFinite) return '—';
     final unit = inUnit ?? current.value;
-    final digits = unit == LengthUnit.cm ? math.max(decimals, 1) : decimals;
-    return formatDecimal(
+    final digits = unit == LengthUnit.cm ? 1 : decimals;
+    var text = formatDecimal(
       unit == LengthUnit.cm ? value / 10 : value,
       decimals: digits,
     );
+    // 208,0 см → 208 см: целое без хвостового нуля.
+    if (unit == LengthUnit.cm && text.endsWith(',0')) {
+      text = text.substring(0, text.length - 2);
+    }
+    return text;
   }
 }
 
@@ -130,7 +134,9 @@ String formatLength(num millimeters, LengthUnit unit) {
   final value = millimeters.toDouble();
   if (!value.isFinite) return '—';
   if (unit == LengthUnit.cm) {
-    return '${formatDecimal(value / 10, decimals: 1)} ${unit.suffix}';
+    var text = formatDecimal(value / 10, decimals: 1);
+    if (text.endsWith(',0')) text = text.substring(0, text.length - 2);
+    return '$text ${unit.suffix}';
   }
   // В миллиметрах дробную часть показываем, только если она есть:
   // 2 080 → «2 080 мм», 278,6 → «278,6 мм».

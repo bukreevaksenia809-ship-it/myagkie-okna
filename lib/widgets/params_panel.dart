@@ -118,6 +118,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
     ParamField.drainCount,
     ParamField.pocketWidth,
     ParamField.shrinkagePercent,
+    ParamField.compositeWidth,
+    ParamField.compositeDepth,
+    ParamField.compositeOffset,
+    ParamField.compositeAngle,
     // Запайка плёнки под окантовку и подворот скрина: свои поля с ручным
     // вводом и проверкой диапазона. Подворот задаётся на каждую сторону.
     ParamField.weldOverlap,
@@ -169,9 +173,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
   @override
   void initState() {
     super.initState();
+    DisplayUnits.current.addListener(_onUnitsChanged);
     for (final field in _windowFields) {
       _controllers[field] = TextEditingController(
-        text: _textFor(_params.valueOf(field)),
+        text: _textForField(field, _params.valueOf(field)),
       );
     }
     _controllers[ParamField.rollGap] = TextEditingController(
@@ -232,7 +237,13 @@ class _ParamsPanelState extends State<ParamsPanel> {
   void _syncField(ParamField field, double value, {bool force = false}) {
     final controller = _controllers[field];
     if (controller == null) return;
-    _syncController(controller, value, force: force);
+    _syncController(
+      controller,
+      value,
+      force: force,
+      parser: (text) => _parseField(field, text),
+      formatter: (number) => _textForField(field, number),
+    );
     if (force) _errors[field] = null;
   }
 
@@ -243,16 +254,18 @@ class _ParamsPanelState extends State<ParamsPanel> {
     TextEditingController controller,
     double value, {
     bool force = false,
+    double? Function(String text)? parser,
+    String Function(double value)? formatter,
   }) {
     if (!force) {
-      final parsed = parseMm(controller.text);
+      final parsed = (parser ?? parseMm)(controller.text);
       if (parsed == null) {
         return; // незавершённый или неверный ввод — не трогаем
       }
       if ((parsed - value).abs() < 1e-9) return; // всё совпадает
     }
 
-    final text = _textFor(value);
+    final text = (formatter ?? _textFor)(value);
     if (controller.text == text && !force) return;
     controller.value = TextEditingValue(
       text: text,
@@ -469,16 +482,77 @@ class _ParamsPanelState extends State<ParamsPanel> {
     for (final controller in _allowanceControllers.values) {
       controller.dispose();
     }
+    DisplayUnits.current.removeListener(_onUnitsChanged);
     _nameController.dispose();
     _customerController.dispose();
     _drawingController.dispose();
     super.dispose();
   }
 
+  /// Длина для поля ввода: в см пересчитывается, целое — без «,0».
   String _textFor(double value) {
+    if (!value.isFinite) return '';
+    final whole = value == value.roundToDouble();
+    return DisplayUnits.formatNumber(
+      value,
+      decimals: whole ? 0 : 1,
+    );
+  }
+
+  /// Не-длины (проценты, штуки, градусы) не пересчитываем.
+  String _textForRaw(double value) {
     if (!value.isFinite) return '';
     if (value == value.roundToDouble()) return value.toStringAsFixed(0);
     return value.toString().replaceAll('.', ',');
+  }
+
+  bool _isLengthField(ParamField field) => field.unit == 'мм';
+
+  String _textForField(ParamField field, double value) =>
+      _isLengthField(field) ? _textFor(value) : _textForRaw(value);
+
+  double? _parseField(ParamField field, String raw) {
+    if (_isLengthField(field)) return parseMm(raw);
+    final normalized = raw.trim().replaceAll(',', '.');
+    if (normalized.isEmpty) return null;
+    return double.tryParse(normalized);
+  }
+
+  /// Переключили мм/см — обновляем текст всех полей, модель не трогаем.
+  void _onUnitsChanged() {
+    if (!mounted) return;
+    setState(() {
+      for (final field in _windowFields) {
+        final controller = _controllers[field];
+        controller?.text = _textForField(field, _params.valueOf(field));
+      }
+      _controllers[ParamField.rollGap]?.text =
+          _textFor(widget.project.rollGap);
+      for (final side in EdgeSide.values) {
+        _edgeControllers[side]?.text = _textFor(_params.rollForSide(side));
+      }
+      for (final field in _AllowanceField.values) {
+        _allowanceControllers[field]?.text =
+            _textFor(_allowanceValue(_params, field));
+      }
+      for (var i = 0; i < _params.zippers.length; i++) {
+        final z = _params.zippers[i];
+        _zipperOffsetControllers[i]?.text = _textFor(z.offsetMm);
+        _zipperZipControllers[i]?.text = _textFor(z.zipWidthMm);
+        _zipperTentControllers[i]?.text = _textFor(z.tentWidthMm);
+        _zipperWeldControllers[i]?.text = _textFor(z.weldMm);
+      }
+      for (var i = 0; i < _params.liftStrapOffsets.length; i++) {
+        _strapControllers[i]?.text = _textFor(_params.liftStrapOffsets[i]);
+      }
+      for (var i = 0; i < _params.cutouts.length; i++) {
+        final c = _params.cutouts[i];
+        for (final field in _CutoutField.values) {
+          _cutoutControllers[(i, field)]?.text =
+              _textFor(_cutoutValue(c, field));
+        }
+      }
+    });
   }
 
   void _updateProject(OrderProject project) => widget.onChanged(project);
@@ -495,7 +569,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       _onShrinkageChanged(raw);
       return;
     }
-    final value = parseMm(raw);
+    final value = _parseField(field, raw);
     if (value == null) {
       setState(() => _errors[field] = 'Введите число, например 2500');
       return;
@@ -667,7 +741,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   /// Ввод усадки ПВХ: 0…5 %.
   void _onShrinkageChanged(String raw) {
-    final value = parseMm(raw);
+    final normalized = raw.trim().replaceAll(',', '.');
+    final value = normalized.isEmpty ? null : double.tryParse(normalized);
     if (value == null) {
       setState(
         () => _errors[ParamField.shrinkagePercent] =
@@ -769,7 +844,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(
             labelText: 'Запайка плёнки под окантовку, мм',
-            suffixText: 'мм',
+            suffixText: unitSuffix(),
             helperText:
                 '${formatMm(minWeldOverlapMm)}…'
                 '${formatMm(maxWeldOverlapMm)} ${unitSuffix()}; заготовка плёнки = готовый '
@@ -1030,7 +1105,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
             controller: _controllers[field],
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
-              suffixText: 'мм',
+              suffixText: unitSuffix(),
               suffixStyle: const TextStyle(fontSize: 11),
               border: const OutlineInputBorder(),
               isDense: true,
@@ -1188,7 +1263,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
         labelText: field.label,
-        suffixText: 'мм',
+        suffixText: unitSuffix(),
         helperText: '0…${formatMm(_maxAllowanceMm)}, шаг 1',
         border: const OutlineInputBorder(),
         isDense: true,
@@ -1956,94 +2031,116 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
-  /// Диалог ввода внутреннего размера полотна: 1000×1000 → наружный габарит.
+  /// Диалог ввода внутреннего размера полотна: четыре стороны → наружный.
   Future<void> _showInnerSizeDialog(WindowSpec spec) async {
     final params = spec.params;
-    final currentInner = innerSizeFromOuter(params);
-    final widthController = TextEditingController(
-      text: _textFor(currentInner.width),
-    );
-    final heightController = TextEditingController(
-      text: _textFor(currentInner.height),
-    );
-    double parse(String raw) =>
-        double.tryParse(raw.trim().replaceAll(',', '.')) ?? 0;
+    final inner = innerSidesFromOuter(params);
+    final controllers = <String, TextEditingController>{
+      'top': TextEditingController(text: _textFor(inner.topWidth)),
+      'bottom': TextEditingController(text: _textFor(inner.bottomWidth)),
+      'left': TextEditingController(text: _textFor(inner.leftHeight)),
+      'right': TextEditingController(text: _textFor(inner.rightHeight)),
+    };
+    String labelFor(String key) => switch (key) {
+      'top' => 'Ширина сверху',
+      'bottom' => 'Ширина снизу',
+      'left' => 'Высота слева',
+      _ => 'Высота справа',
+    };
     await showDialog<void>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-          final innerW = parse(widthController.text);
-          final innerH = parse(heightController.text);
-          final outer = innerW > 0 && innerH > 0
-              ? outerSizeFromInner(params, innerW, innerH)
-              : null;
+          InnerSides? readInner() {
+            final values = <double>[];
+            for (final key in ['top', 'bottom', 'left', 'right']) {
+              final parsed = parseMm(controllers[key]!.text);
+              if (parsed == null || parsed <= 0) return null;
+              values.add(parsed);
+            }
+            return (
+              topWidth: values[0],
+              bottomWidth: values[1],
+              leftHeight: values[2],
+              rightHeight: values[3],
+            );
+          }
+
+          final entered = readInner();
+          final outer = entered == null
+              ? null
+              : outerSidesFromInner(params, entered);
           return AlertDialog(
             title: const Text('Внутренний размер полотна'),
             content: SizedBox(
-              width: 420,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Введите размер видимой плёнки/ткани между внутренними '
-                    'кромками окантовки. Программа пересчитает наружный '
-                    'габарит и построит чертёж/раскрой по нему.',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          key: const Key('inner-width'),
-                          controller: widthController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Внутренняя ширина',
-                            suffixText: 'мм',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          onChanged: (_) => setDialogState(() {}),
-                        ),
+              width: 480,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      params.isScreen
+                          ? 'Введите видимый размер скрина по четырём сторонам. '
+                                'Подворот загибается внутрь, наружный размер '
+                                'совпадёт с введённым.'
+                          : 'Введите видимую плёнку между внутренними кромками '
+                                'окантовки — отдельно верх, низ, лево и право. '
+                                'Программа прибавит полосы окантовки и построит '
+                                'чертёж и раскрой по наружному габариту.',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF66748A),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          key: const Key('inner-height'),
-                          controller: heightController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Внутренняя высота',
-                            suffixText: 'мм',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          onChanged: (_) => setDialogState(() {}),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    outer == null
-                        ? 'Введите оба размера'
-                        : 'Наружный размер: '
-                              '${formatMm(outer.width)} × '
-                              '${formatMm(outer.height)} ${unitSuffix()}',
-                    key: const Key('inner-outer-preview'),
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF0B62C4),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    for (final pair in const [
+                      ['top', 'bottom'],
+                      ['left', 'right'],
+                    ]) ...[
+                      Row(
+                        children: [
+                          for (final key in pair) ...[
+                            Expanded(
+                              child: TextField(
+                                key: Key('inner-$key'),
+                                controller: controllers[key],
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: InputDecoration(
+                                  labelText: labelFor(key),
+                                  suffixText: unitSuffix(),
+                                  border: const OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                onChanged: (_) => setDialogState(() {}),
+                              ),
+                            ),
+                            if (key == pair.first) const SizedBox(width: 10),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    Text(
+                      outer == null
+                          ? 'Заполните все четыре размера'
+                          : 'Наружный габарит: верх ${formatMm(outer.topWidth)}, '
+                                'низ ${formatMm(outer.bottomWidth)}, '
+                                'лево ${formatMm(outer.leftHeight)}, '
+                                'право ${formatMm(outer.rightHeight)} '
+                                '${unitSuffix()}',
+                      key: const Key('inner-outer-preview'),
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF0B62C4),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             actions: [
@@ -2058,10 +2155,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     : () {
                         _updateWindow(
                           params.copyWith(
-                            bottomWidth: outer.width,
-                            topWidth: outer.width,
-                            leftHeight: outer.height,
-                            rightHeight: outer.height,
+                            topWidth: outer.topWidth,
+                            bottomWidth: outer.bottomWidth,
+                            leftHeight: outer.leftHeight,
+                            rightHeight: outer.rightHeight,
                           ),
                         );
                         Navigator.of(context).pop();
@@ -2073,8 +2170,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
         },
       ),
     );
-    widthController.dispose();
-    heightController.dispose();
+    for (final controller in controllers.values) {
+      controller.dispose();
+    }
   }
 
   Widget _sizesSection(WindowSpec spec) {
@@ -3554,7 +3652,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                         const TextInputType.numberWithOptions(decimal: true),
                     decoration: InputDecoration(
                       labelText: 'Ремень ${index + 1}: центр от левого края',
-                      suffixText: 'мм',
+                      suffixText: unitSuffix(),
                       border: const OutlineInputBorder(),
                       isDense: true,
                     ),
@@ -3858,7 +3956,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
         labelText: 'Положение от левого края',
-        suffixText: 'мм',
+        suffixText: unitSuffix(),
         helperText: '0–${formatMm(maxOffset)} ${unitSuffix()}, шаг 10',
         border: const OutlineInputBorder(),
         isDense: true,
@@ -3888,7 +3986,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
         labelText: label,
-        suffixText: 'мм',
+        suffixText: unitSuffix(),
         helperText: helper,
         border: const OutlineInputBorder(),
         isDense: true,
@@ -4190,7 +4288,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
         labelText: label,
-        suffixText: 'мм',
+        suffixText: unitSuffix(),
         border: const OutlineInputBorder(),
         isDense: true,
         errorText: _cutoutErrors[(index, field)],
@@ -4448,7 +4546,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(
             labelText: ParamField.eyeletStep.label,
-            suffixText: 'мм',
+            suffixText: unitSuffix(),
             helperText:
                 '${formatMm(minEyeletStepMm)}…'
                 '${formatMm(maxEyeletStepMm)} ${unitSuffix()}; рекомендовано '
@@ -4481,7 +4579,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
         labelText: field.label,
-        suffixText: field.unit,
+        suffixText: _isLengthField(field) ? unitSuffix() : field.unit,
         border: const OutlineInputBorder(),
         isDense: true,
         errorText: _errorFor(field),

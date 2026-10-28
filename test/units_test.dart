@@ -45,8 +45,15 @@ void main() {
       expect(formatLength(2080, LengthUnit.mm), '2\u202F080 мм');
     });
 
-    test('сантиметры: 208,0 см', () {
-      expect(formatLength(2080, LengthUnit.cm), '208,0 см');
+    test('сантиметры: 208 см без хвостового нуля', () {
+      expect(formatLength(2080, LengthUnit.cm), '208 см');
+    });
+
+    test('ввод в см переводится в мм при разборе', () async {
+      await DisplayUnits.setUnit(LengthUnit.cm);
+      expect(parseMm('100'), 1000);
+      expect(parseMm('266,6'), 2666);
+      expect(parseMm('266.6'), 2666);
     });
 
     test('278,6 мм и 27,9 см', () {
@@ -72,9 +79,9 @@ void main() {
     test('в см formatMm пересчитывает, подпись — см', () async {
       await DisplayUnits.setUnit(LengthUnit.cm);
       expect(DisplayUnits.unit, LengthUnit.cm);
-      expect(formatMm(2080), '208,0');
+      expect(formatMm(2080), '208');
       expect(formatMm(278.6), '27,9');
-      expect(formatSignedMm(-120), '−12,0');
+      expect(formatSignedMm(-120), '−12');
       expect(unitSuffix(), 'см');
       expect(formatFastenerSpanMm(278.6), '27,9');
     });
@@ -133,7 +140,7 @@ void main() {
       expect(pieceCm.areaM2, pieceMm.areaM2);
       expect(
         '${formatMm(pieceCm.widthMm)} ${unitSuffix()}',
-        '${(pieceMm.widthMm / 10).toStringAsFixed(1).replaceAll('.', ',')} см',
+        '${_cmText(pieceMm.widthMm)} см',
       );
       // Подписи чертежа/раскроя используют те же formatMm и unitSuffix.
       final spec = WindowSpec.of(_window);
@@ -195,14 +202,21 @@ void main() {
     // Нижняя строка и панель перестроились: размеры показаны в см.
     expect(find.textContaining('см'), findsWidgets);
     expect(
-      find.textContaining('150,0×252,0 см'),
+      find.textContaining('150×252 см'),
       findsWidgets,
       reason: 'выбранное окно в нижней строке пересчитано в см',
     );
-
     await tester.tap(find.byKey(const Key('unit-mm')));
     await tester.pumpAndSettle();
     expect(DisplayUnits.unit, LengthUnit.mm);
     expect(prefs.getString(DisplayUnits.storageKey), 'mm');
   });
+}
+
+
+String _cmText(double millimeters) {
+  final value = millimeters / 10;
+  return value == value.roundToDouble()
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(1).replaceAll('.', ',');
 }
