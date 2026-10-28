@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -138,7 +140,14 @@ class Telemetry {
       final enabled = fields['enabled']?['booleanValue'] == true;
       if (!enabled) return null;
       final version = fields['latestVersion']?['stringValue'] ?? '';
-      final url = fields['url']?['stringValue'] ?? '';
+      final platformUrl = defaultTargetPlatform == TargetPlatform.windows
+          ? (fields['urlWindows']?['stringValue'] ?? '')
+          : defaultTargetPlatform == TargetPlatform.macOS
+              ? (fields['urlMac']?['stringValue'] ?? '')
+              : '';
+      final url = platformUrl.isNotEmpty
+          ? platformUrl
+          : fields['url']?['stringValue'] ?? '';
       if (version.isEmpty || url.isEmpty) return null;
       final rollout = fields['rollout']?['arrayValue']?['values'];
       final ids = rollout is List
@@ -146,10 +155,18 @@ class Telemetry {
           : const <String>[];
       final all = fields['rolloutAll']?['booleanValue'] ?? true;
       if (!all && _installId != null && !ids.contains(_installId)) return null;
+      String platformSha = '';
+      if (defaultTargetPlatform == TargetPlatform.windows) {
+        platformSha = fields['sha256Windows']?['stringValue'] ?? '';
+      } else if (defaultTargetPlatform == TargetPlatform.macOS) {
+        platformSha = fields['sha256Mac']?['stringValue'] ?? '';
+      }
       return AppUpdate(
         version: version,
         url: url,
-        sha256: fields['sha256']?['stringValue'] ?? '',
+        sha256: platformSha.isNotEmpty
+            ? platformSha
+            : fields['sha256']?['stringValue'] ?? '',
         notes: fields['notes']?['stringValue'] ?? '',
         autoUpdate: fields['autoUpdate']?['booleanValue'] == true,
       );

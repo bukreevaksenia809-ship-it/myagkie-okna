@@ -122,11 +122,22 @@
           <label>Файл обновления (DMG / EXE / ZIP)
             <input id="rel-file" type="file" accept=".dmg,.exe,.zip" />
           </label>
+          <label>Куда загрузить
+            <select id="rel-target">
+              <option value="auto">Определить по файлу</option>
+              <option value="windows">Windows</option>
+              <option value="macos">macOS</option>
+            </select>
+          </label>
           <p id="rel-file-info" class="hint"></p>
           <progress id="rel-progress" max="100" value="0" class="hidden"></progress>
           <button id="upload-release" type="button">Загрузить файл в R2</button>
-          <label>Ссылка на DMG / EXE / ZIP <input id="rel-url" placeholder="https://…/MyagkieOkna.dmg" /></label>
-          <label>SHA-256 <input id="rel-sha" placeholder="необязательно" /></label>
+          <label>Ссылка Windows <input id="rel-url-windows" placeholder="https://…/MyagkieOkna-setup.exe" /></label>
+          <label>SHA-256 Windows <input id="rel-sha-windows" placeholder="необязательно" /></label>
+          <label>Ссылка macOS <input id="rel-url-macos" placeholder="https://…/MyagkieOkna.dmg" /></label>
+          <label>SHA-256 macOS <input id="rel-sha-macos" placeholder="необязательно" /></label>
+          <label>Общая ссылка (если одна на все ОС) <input id="rel-url" placeholder="https://…" /></label>
+          <label>Общий SHA-256 <input id="rel-sha" placeholder="необязательно" /></label>
           <label>Заметки <textarea id="rel-notes" rows="3"></textarea></label>
           <label class="check"><input type="checkbox" id="rel-all" checked /> Все клиенты</label>
           <label>Только installId (через запятую) <input id="rel-ids" placeholder="okna-…, okna-…" /></label>

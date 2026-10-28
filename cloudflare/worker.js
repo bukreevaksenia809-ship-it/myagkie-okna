@@ -5,6 +5,8 @@
 // GET  /files/<key>          — скачивание файла
 // GET  /health               — проверка
 //
+import { AwsClient } from 'aws4fetch';
+
 // Файлы лежат в R2, наружу отдаются через этот Worker. Egress у R2 бесплатный.
 const MAX_BYTES = 100 * 1024 * 1024; // лимит тела запроса Worker
 
@@ -66,6 +68,49 @@ export default {
       return json({ ok: true, service: 'okna-updates' }, 200, request, env);
     }
 
+    if (url.pathname === '/sign' && request.method === 'POST') {
+      if (!env.ADMIN_PASSWORD) {
+        return json({ error: 'ADMIN_PASSWORD не задан' }, 500, request, env);
+      }
+      if (request.headers.get('X-Admin-Password') !== env.ADMIN_PASSWORD) {
+        return json({ error: 'Неверный пароль загрузки' }, 401, request, env);
+      }
+      if (!env.R2_ACCOUNT_ID || !env.R2_BUCKET ||
+          !env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY) {
+        return json({ error: 'R2 S3-ключи не заданы' }, 500, request, env);
+      }
+      const name = safeName(url.searchParams.get('name'));
+      const key = `releases/${Date.now()}-${name}`;
+      const objectPath = key.split('/').map(encodeURIComponent).join('/');
+      const endpoint = `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/` +
+        `${env.R2_BUCKET}/${objectPath}`;
+      try {
+        const client = new AwsClient({
+          accessKeyId: env.R2_ACCESS_KEY_ID,
+          secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+          service: 's3',
+          region: 'auto',
+        });
+        const signed = await client.sign(
+          new Request(endpoint, { method: 'PUT' }),
+          { aws: { signQuery: true } },
+        );
+        return json(
+          {
+            uploadUrl: signed.url,
+            url: `${url.origin}/files/${encodeURIComponent(key)}`,
+            key,
+            name,
+          },
+          200,
+          request,
+          env,
+        );
+      } catch (error) {
+        return json({ error: `Не удалось подписать: ${error}` }, 500, request, env);
+      }
+    }
+
     if (url.pathname === '/upload' && request.method === 'POST') {
       if (!env.ADMIN_PASSWORD) {
         return json({ error: 'ADMIN_PASSWORD не задан' }, 500, request, env);
@@ -80,7 +125,10 @@ export default {
       const name = safeName(url.searchParams.get('name'));
       const key = `releases/${Date.now()}-${name}`;
       try {
-        await env.UPDATES.put(key, request.body, {
+        // Читаем тело целиком: поток request.body в связке с R2 put
+        // обрывался на ~64 КБ у Cloudflare-клиентов.
+        const bytes = await request.arrayBuffer();
+        await env.UPDATES.put(key, bytes, {
           httpMetadata: {
             contentType:
               request.headers.get('Content-Type') || 'application/octet-stream',
@@ -106,6 +154,7 @@ export default {
 
     if (url.pathname.startsWith('/files/') && request.method === 'GET') {
       const key = decodeURIComponent(url.pathname.slice('/files/'.length));
+      console.log('GET file', JSON.stringify(key));
       if (!key || key.includes('..')) {
         return new Response('Not found', { status: 404, headers: corsHeaders(request, env) });
       }

@@ -194,6 +194,10 @@
     $('rel-version').value = data.latestVersion || '';
     $('rel-url').value = data.url || '';
     $('rel-sha').value = data.sha256 || '';
+    $('rel-url-windows').value = data.urlWindows || '';
+    $('rel-sha-windows').value = data.sha256Windows || '';
+    $('rel-url-macos').value = data.urlMac || '';
+    $('rel-sha-macos').value = data.sha256Mac || '';
     $('rel-notes').value = data.notes || '';
     $('rel-all').checked = data.rolloutAll !== false;
     $('rel-ids').value = Array.isArray(data.rollout) ? data.rollout.join(', ') : '';
@@ -237,11 +241,16 @@
       $('rel-sha').value = await sha256Hex(file);
       $('release-status').textContent = `Загружаю ${(file.size / 1024 / 1024).toFixed(1)} МБ…`;
       const name = encodeURIComponent(file.name);
-      const url = `${cfg.uploadUrl.replace(/\/$/, '')}/upload?name=${name}`;
+      const base = cfg.uploadUrl.replace(/\/$/, '');
+      const signResponse = await fetch(`${base}/sign?name=${name}`, {
+        method: 'POST',
+        headers: { 'X-Admin-Password': password },
+      });
+      const sign = await signResponse.json();
+      if (!signResponse.ok) throw new Error(sign.error || 'Не удалось получить ссылку R2');
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open('POST', url);
-        xhr.setRequestHeader('X-Admin-Password', password);
+        xhr.open('PUT', sign.uploadUrl);
         xhr.setRequestHeader('Content-Type', 'application/octet-stream');
         xhr.upload.onprogress = (event) => {
           if (event.lengthComputable) {
@@ -250,24 +259,30 @@
         };
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              resolve(JSON.parse(xhr.responseText));
-            } catch (error) {
-              reject(new Error('Некорректный ответ Worker'));
-            }
+            resolve();
           } else {
-            let message = xhr.responseText;
-            try { message = JSON.parse(xhr.responseText).error || message; } catch (_) {}
-            reject(new Error(message || `HTTP ${xhr.status}`));
+            reject(new Error(xhr.responseText || `R2 HTTP ${xhr.status}`));
           }
         };
         xhr.onerror = () => reject(new Error('Сеть недоступна'));
         xhr.send(file);
-      }).then((data) => {
-        $('rel-url').value = data.url;
+      });
+      const data = {
+        url: sign.url,
+        name: sign.name || file.name,
+        size: file.size,
+      };
+
+        const target = $('rel-target').value === 'auto'
+          ? (data.name.toLowerCase().endsWith('.dmg') ? 'macos' : 'windows')
+          : $('rel-target').value;
+        if (target === 'macos') {
+          $('rel-url-macos').value = data.url;
+        } else {
+          $('rel-url-windows').value = data.url;
+        }
         $('release-status').textContent =
           `Загружено: ${data.name} (${(data.size / 1024 / 1024).toFixed(1)} МБ). Проверьте версию и нажмите «Опубликовать».`;
-      });
     } catch (error) {
       $('release-status').textContent = `Ошибка загрузки: ${error.message}`;
     } finally {
@@ -285,7 +300,16 @@
     $('rel-file-info').textContent =
       `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} МБ`;
     try {
-      $('rel-sha').value = await sha256Hex(file);
+      const target = $('rel-target').value === 'auto'
+        ? (file.name.toLowerCase().endsWith('.dmg') ? 'macos' : 'windows')
+        : $('rel-target').value;
+      const sha = await sha256Hex(file);
+      if (target === 'macos') {
+        $('rel-sha-macos').value = sha;
+      } else {
+        $('rel-sha-windows').value = sha;
+      }
+      $('rel-sha').value = sha;
     } catch (_) {}
   }
 
@@ -297,6 +321,10 @@
         latestVersion: s($('rel-version').value.trim()),
         url: s($('rel-url').value.trim()),
         sha256: s($('rel-sha').value.trim()),
+        urlWindows: s($('rel-url-windows').value.trim()),
+        sha256Windows: s($('rel-sha-windows').value.trim()),
+        urlMac: s($('rel-url-macos').value.trim()),
+        sha256Mac: s($('rel-sha-macos').value.trim()),
         notes: s($('rel-notes').value.trim()),
         rolloutAll: b($('rel-all').checked),
         rollout: arr(ids),
