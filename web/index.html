@@ -41,6 +41,23 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <script>
+    // Старый Flutter service worker мог навсегда закэшировать белый экран.
+    // Снимаем регистрацию и чистим кэш перед загрузкой новой версии.
+    window.unregisterServiceWorkers = function () {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (items) {
+          items.forEach(function (item) { item.unregister(); });
+        });
+      }
+      if (window.caches) {
+        caches.keys().then(function (keys) {
+          keys.forEach(function (key) { caches.delete(key); });
+        });
+      }
+    };
+    window.unregisterServiceWorkers();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

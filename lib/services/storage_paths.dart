@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Папки приложения на телефоне.
@@ -12,7 +13,8 @@ class StoragePaths {
 
   static String? _root;
 
-  static bool get isMobile => Platform.isAndroid || Platform.isIOS;
+  static bool get isMobile =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   /// Вызывается один раз на старте, до чтения заказов.
   static Future<void> init() async {
