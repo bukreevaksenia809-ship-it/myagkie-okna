@@ -1992,7 +1992,7 @@ class WindowLayers {
   /// за окантовкой. Если положения заданы вручную ([WindowParams
   /// .liftStrapOffsets]) — берём их, иначе прежняя автоматическая расстановка.
   List<Rect> get liftStraps {
-    if (!params.isLifting || params.isScreen) return const [];
+    if (!params.isLifting && !params.isScreen) return const [];
     final autoCount = params.liftStrapCount;
     final manual = params.liftStrapOffsets;
     if (manual.isEmpty && autoCount <= 0) return const [];
@@ -3282,8 +3282,10 @@ class WindowSpec {
   String get zipperSegmentsLabel {
     final widths = zipperSegmentWidths;
     if (widths.length < 2) return '';
+    final total = boundsOfAll(filmCutPolygons).width;
     return 'сегментов ${widths.length}: '
-        '${widths.map(formatMm).join(' + ')} ${unitSuffix()}';
+        '${widths.map(formatMm).join(' + ')} ${unitSuffix()} · '
+        'общая ширина ${formatMm(total)} ${unitSuffix()}';
   }
 
   /// Площадь ЗАГОТОВКИ к раскрою: припуск, без усадки, минус вырезы, м².

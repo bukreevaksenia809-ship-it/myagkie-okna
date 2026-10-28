@@ -683,19 +683,16 @@ void _areaAudit() {
         (line) => line.title.startsWith('Раскрой'),
       );
 
-      // Площадь косой заготовки по контуру: 1,392 м².
-      expectClose(film.quantity, 1.392, 'плёнка в смете', tol: 1e-9);
-      expectClose(film.amount, 1322.40, '1,392 × 950');
+      // Полотно одной строкой: контур 1,392 + отход 0,48 = 1,872 м².
+      expectClose(film.quantity, 1.872, 'плёнка в смете', tol: 1e-9);
+      expectClose(film.amount, 1778.40, '1,872 × 950');
       expectClose(cutting.quantity, 1.392, 'раскрой в смете', tol: 1e-9);
       expectClose(cutting.amount, 348.00, '1,392 × 250');
-      // Отход косой заготовки — отдельная строка: прямоугольник по габариту
-      // 1950 × 960 = 1,872 м² минус контур 1,392 м² = 0,48 м².
-      final waste = estimate.lines.firstWhere(
-        (line) => line.title == 'Отход ПВХ косых окон',
+      expect(
+        estimate.lines.any((line) => line.title.startsWith('Отход')),
+        isFalse,
+        reason: 'отход входит в строку «Полотно»',
       );
-      expectClose(waste.quantity, 0.48, 'отход 1,872 − 1,392 = 0,48 м²');
-      expectClose(waste.unitPrice, 950, 'цена отхода = цена ПВХ 950 ₽/м²');
-      expectClose(waste.amount, 456.00, '0,48 × 950 = 456,00 ₽');
       // Итого: прежние 6196,14 плюс отход 456,00 и НДС 20 % → 6743,34 ₽.
       expectClose(estimate.total, 6743.34, 'итого с НДС 6743,34 ₽', tol: 0.01);
     });

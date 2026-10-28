@@ -42,6 +42,7 @@ void main() {
     );
     expect(spec.filmCutPolygons, hasLength(3));
     expect(spec.zipperSegmentsLabel, contains('сегментов 3'));
+    expect(spec.zipperSegmentsLabel, contains('общая ширина'));
   });
 
   test('молния у края не делит полотно и вычитается полосой', () {

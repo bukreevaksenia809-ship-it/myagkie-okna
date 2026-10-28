@@ -198,7 +198,7 @@ void main() {
     final filmLine = estimate.lines.firstWhere(
       (line) => line.title.startsWith('Полотно'),
     );
-    expect(filmLine.title, contains('Скрин'));
+    expect(filmLine.note, contains('скрин'));
     expect(filmLine.quantity, closeTo(4.2024, 1e-9));
     // Цена — из прайса скрина, подпись объясняет площадь заготовки.
     final prices = PriceList.defaults();
@@ -325,7 +325,7 @@ void main() {
     final estimate = Estimate.of(project, prices);
     final titles = estimate.lines.map((line) => line.title).join(' | ');
 
-    expect(titles, contains('Полотно: Скрин'));
+    expect(titles, contains('Полотно'));
     expect(titles, contains('Молния тракторная'));
     expect(titles, contains('Подворот скрина'));
     expect(titles, isNot(contains('Окантовка')));
@@ -422,34 +422,26 @@ void main() {
   test('отход трапеции ПВХ: прямоугольник минус фактическая площадь', () {
     final prices = PriceList.defaults();
     final estimate = Estimate.ofWindow(_trapezoidPvc, prices);
-    final waste = estimate.lines.firstWhere(
-      (line) => line.title == 'Отход ПВХ косых окон',
-    );
-
-    // Заготовка трапеции: низ 2000−50+50 = 1950, верх 1000−50+50 = 950,
-    // высота 1000−50−50+50+10(авто) = 960.
-    // Прямоугольник: 1950 × 960 = 1 872 000 мм² = 1,872 м².
-    // Контур: (1950 + 950) / 2 × 960 = 1 392 000 мм² = 1,392 м².
-    // Отход: 1,872 − 1,392 = 0,48 м²; 0,48 × 950 = 456,00 ₽.
-    expect(waste.quantity, closeTo(0.48, 1e-9));
-    expect(waste.unit, 'м²');
-    expect(waste.unitPrice, prices.filmClearPerM2);
-    expect(waste.amount, closeTo(456.00, 1e-9));
-    expect(waste.group, EstimateGroup.materials);
-    expect(waste.itemKey, PriceItemKeys.filmClear);
-    expect(waste.note, contains('1,87'));
-    expect(waste.note, contains('1,39'));
-    expect(waste.note, contains('0,48'));
-    expect(waste.note, contains('припуск'));
-
-    // Полотно посчитано по контуру: отход — добавка, а не замена площади.
+    // Одна строка «Полотно»: контур 1,392 + отход 0,48 = 1,872 м².
     final film = estimate.lines.firstWhere(
       (line) => line.title.startsWith('Полотно'),
     );
-    expect(film.quantity, closeTo(1.392, 1e-9));
+    expect(film.quantity, closeTo(1.872, 1e-9));
+    expect(film.unit, 'м²');
+    expect(film.unitPrice, prices.filmClearPerM2);
+    expect(film.amount, closeTo(1.872 * prices.filmClearPerM2, 1e-9));
+    expect(film.group, EstimateGroup.materials);
+    expect(film.itemKey, PriceItemKeys.filmClear);
+    expect(film.note, contains('1,87'));
+    expect(film.note, contains('1,39'));
+    expect(film.note, contains('0,48'));
+    expect(film.note, contains('припуск'));
+    expect(
+      estimate.lines.any((line) => line.title.startsWith('Отход')),
+      isFalse,
+      reason: 'отход входит в строку «Полотно»',
+    );
     expect(estimate.filmAreaM2, closeTo(1.392, 1e-9));
-    // Без двойного счёта: контур + отход = габаритный прямоугольник.
-    expect(film.quantity + waste.quantity, closeTo(1.872, 1e-9));
     // Раскрой считается по контуру, отход в него не попадает.
     final cutting = estimate.lines.firstWhere(
       (line) => line.title.startsWith('Раскрой'),
@@ -460,30 +452,19 @@ void main() {
   test('отход трапеции скрина: прямоугольник минус контур', () {
     final prices = PriceList.defaults();
     final estimate = Estimate.ofWindow(_trapezoidScreen, prices);
-    final waste = estimate.lines.firstWhere(
-      (line) => line.title == 'Отход скрина косых окон',
-    );
-
-    // Заготовка скрина: низ 2000+20+20 = 2040, верх 1000+20+20 = 1040,
-    // высота 1000+20+20+20 = 1060.
-    // Прямоугольник: 2040 × 1060 = 2 162 400 мм² = 2,1624 м².
-    // Контур: (2040 + 1040) / 2 × 1060 = 1 632 400 мм² = 1,6324 м².
-    // Отход: 2,1624 − 1,6324 = 0,53 м²; 0,53 × 520 = 275,60 ₽.
-    expect(waste.quantity, closeTo(0.53, 1e-9));
-    expect(waste.unitPrice, prices.filmScreenPerM2);
-    expect(waste.amount, closeTo(275.60, 1e-9));
-    expect(waste.itemKey, PriceItemKeys.filmScreen);
-    expect(
-      estimate.lines.any((line) => line.title.startsWith('Отход ПВХ')),
-      isFalse,
-      reason: 'у скрина отдельная строка, ПВХ-строки быть не должно',
-    );
-
+    // Скрин: одна строка «Полотно» = контур 1,6324 + отход 0,53 = 2,1624 м².
     final film = estimate.lines.firstWhere(
       (line) => line.title.startsWith('Полотно'),
     );
-    expect(film.quantity, closeTo(1.6324, 1e-9));
-    expect(film.quantity + waste.quantity, closeTo(2.1624, 1e-9));
+    expect(film.quantity, closeTo(2.1624, 1e-9));
+    expect(film.unitPrice, prices.filmScreenPerM2);
+    expect(film.amount, closeTo(2.1624 * prices.filmScreenPerM2, 0.01));
+    expect(film.itemKey, PriceItemKeys.filmScreen);
+    expect(film.note, contains('0,53'));
+    expect(
+      estimate.lines.any((line) => line.title.startsWith('Отход')),
+      isFalse,
+    );
   });
 
   test('отход трапеции с усадкой: габарит и контур в одном масштабе', () {
@@ -497,18 +478,12 @@ void main() {
     );
     final prices = PriceList.defaults();
     final estimate = Estimate.ofWindow(shrunk, prices);
-    final waste = estimate.lines.firstWhere(
-      (line) => line.title == 'Отход ПВХ косых окон',
-    );
-
-    expect(waste.quantity, closeTo(0.5808, 1e-9));
-    expect(waste.amount, closeTo(551.76, 1e-9));
-    expect(waste.quantity, isNot(closeTo(0.87312, 1e-6)));
     final film = estimate.lines.firstWhere(
       (line) => line.title.startsWith('Полотно'),
     );
-    expect(film.quantity, closeTo(1.68432, 1e-9));
-    expect(film.quantity + waste.quantity, closeTo(2.26512, 1e-9));
+    expect(film.quantity, closeTo(2.26512, 1e-9));
+    expect(film.note, contains('0,58'));
+    expect(film.note, isNot(contains('0,87')));
   });
 
   test('отход суммируется по материалам, прямоугольник строки не даёт', () {
@@ -524,17 +499,19 @@ void main() {
     final prices = PriceList.defaults();
     final estimate = Estimate.of(project, prices);
 
-    final wasteLines = estimate.lines
-        .where((line) => line.title.startsWith('Отход'))
-        .toList();
-    expect(wasteLines, hasLength(2));
-    // Сортировка по величине отхода: ПВХ 2 × 0,48 = 0,96 м², скрин 0,53 м².
-    expect(wasteLines.first.title, 'Отход ПВХ косых окон');
-    expect(wasteLines.first.quantity, closeTo(0.96, 1e-9));
-    expect(wasteLines.first.amount, closeTo(912.00, 1e-9));
-    expect(wasteLines.last.title, 'Отход скрина косых окон');
-    expect(wasteLines.last.quantity, closeTo(0.53, 1e-9));
-    expect(wasteLines.last.amount, closeTo(275.60, 1e-9));
+    // Отдельных строк отхода больше нет: отход вошёл в «Полотно».
+    expect(
+      estimate.lines.where((line) => line.title.startsWith('Отход')),
+      isEmpty,
+    );
+    final pvcFilm = estimate.lines.firstWhere(
+      (line) => line.title == 'Полотно: ${FilmMaterial.clearPvc.label}',
+    );
+    expect(pvcFilm.quantity, closeTo(2 * 1.872 + 3.4404, 1e-9));
+    final screenFilm = estimate.lines.firstWhere(
+      (line) => line.title == 'Полотно: ${FilmMaterial.screen.label}',
+    );
+    expect(screenFilm.quantity, closeTo(2.1624, 1e-9));
 
     // Площадь полотна в смете — только фактические контуры окон, без отхода:
     // 2 × 1,392 (трапеции ПВХ) + 1,6324 (скрин) + 3,4404 (прямоугольник
@@ -557,18 +534,13 @@ void main() {
     final tinted = _trapezoidPvc.copyWith(material: FilmMaterial.tintedPvc);
     final prices = PriceList.defaults();
     final estimate = Estimate.ofWindow(tinted, prices);
-    final waste = estimate.lines.firstWhere(
-      (line) => line.title == 'Отход ПВХ косых окон (тонированный)',
+    final film = estimate.lines.firstWhere(
+      (line) => line.title.startsWith('Полотно'),
     );
-
-    expect(waste.quantity, closeTo(0.48, 1e-9));
-    expect(waste.itemKey, PriceItemKeys.filmTinted);
-    expect(waste.unitPrice, prices.filmTintedPerM2);
-    expect(waste.amount, closeTo(0.48 * prices.filmTintedPerM2, 1e-9));
-    expect(
-      estimate.lines.any((line) => line.title == 'Отход ПВХ косых окон'),
-      isFalse,
-    );
+    expect(film.quantity, closeTo(1.872, 1e-9));
+    expect(film.itemKey, PriceItemKeys.filmTinted);
+    expect(film.unitPrice, prices.filmTintedPerM2);
+    expect(film.amount, closeTo(1.872 * prices.filmTintedPerM2, 1e-9));
   });
 
   test('отход: цена из прайса, выключенная позиция убирает строку', () {
@@ -579,16 +551,16 @@ void main() {
     final project = OrderProject(windows: [_trapezoidPvc, _trapezoidScreen]);
 
     final estimate = Estimate.of(project, prices);
-    final pvcWaste = estimate.lines.firstWhere(
-      (line) => line.title == 'Отход ПВХ косых окон',
+    final pvcFilm = estimate.lines.firstWhere(
+      (line) => line.title == 'Полотно: ${FilmMaterial.clearPvc.label}',
     );
-    final screenWaste = estimate.lines.firstWhere(
-      (line) => line.title == 'Отход скрина косых окон',
+    final screenFilm = estimate.lines.firstWhere(
+      (line) => line.title == 'Полотно: ${FilmMaterial.screen.label}',
     );
-    expect(pvcWaste.unitPrice, 1000);
-    expect(pvcWaste.amount, closeTo(480.00, 1e-9));
-    expect(screenWaste.unitPrice, 600);
-    expect(screenWaste.amount, closeTo(318.00, 1e-9));
+    expect(pvcFilm.unitPrice, 1000);
+    expect(pvcFilm.quantity, closeTo(1.872, 1e-9));
+    expect(screenFilm.unitPrice, 600);
+    expect(screenFilm.quantity, closeTo(2.1624, 1e-9));
 
     // Правило 10: выключенный материал не попадает в смету — ни «Полотно»,
     // ни «Отход». Второй материал остаётся.
@@ -597,11 +569,15 @@ void main() {
       prices.withItem(PriceItemKeys.filmClear, enabled: false),
     );
     expect(
-      withoutPvc.lines.any((line) => line.title == 'Отход ПВХ косых окон'),
+      withoutPvc.lines.any(
+        (line) => line.title == 'Полотно: ${FilmMaterial.clearPvc.label}',
+      ),
       isFalse,
     );
     expect(
-      withoutPvc.lines.any((line) => line.title == 'Отход скрина косых окон'),
+      withoutPvc.lines.any(
+        (line) => line.title == 'Полотно: ${FilmMaterial.screen.label}',
+      ),
       isTrue,
     );
     expect(
@@ -617,12 +593,14 @@ void main() {
     );
     expect(
       withoutScreen.lines.any(
-        (line) => line.title == 'Отход скрина косых окон',
+        (line) => line.title == 'Полотно: ${FilmMaterial.screen.label}',
       ),
       isFalse,
     );
     expect(
-      withoutScreen.lines.any((line) => line.title == 'Отход ПВХ косых окон'),
+      withoutScreen.lines.any(
+        (line) => line.title == 'Полотно: ${FilmMaterial.clearPvc.label}',
+      ),
       isTrue,
     );
   });
@@ -632,24 +610,21 @@ void main() {
     final estimate = Estimate.ofWindow(_trapezoidPvc, prices);
     final summary = CostsSummary(const OrderProject(windows: [_trapezoidPvc]));
 
-    // Отход — отдельная ДОБАВКА: площадь в смете и в сводке остаётся
-    // площадью контура, а не габаритного прямоугольника.
+    // Площадь в сводке остаётся площадью контура; в строке «Полотно»
+    // показана площадь с отходом, но отдельной строки отхода нет.
     expect(estimate.filmAreaM2, closeTo(summary.filmAreaWithShrinkageM2, 1e-9));
     expect(estimate.filmAreaM2, closeTo(1.392, 1e-9));
-    expect(summary.filmAreaWithShrinkageM2, isNot(closeTo(1.872, 1e-6)));
     final film = estimate.lines.firstWhere(
       (line) => line.title.startsWith('Полотно'),
     );
-    final waste = estimate.lines.firstWhere(
-      (line) => line.title == 'Отход ПВХ косых окон',
-    );
-    expect(film.quantity, closeTo(estimate.filmAreaM2, 1e-9));
+    expect(film.quantity, closeTo(1.872, 1e-9));
     expect(
-      film.amount + waste.amount,
-      closeTo(
-        1.392 * prices.filmClearPerM2 + 0.48 * prices.filmClearPerM2,
-        0.01,
-      ),
+      film.amount,
+      closeTo(1.872 * prices.filmClearPerM2, 0.01),
+    );
+    expect(
+      estimate.lines.any((line) => line.title.startsWith('Отход')),
+      isFalse,
     );
   });
 

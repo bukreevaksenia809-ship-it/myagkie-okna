@@ -119,79 +119,59 @@ class Estimate {
     final lines = <EstimateLine>[];
     final hasTShape = project.windows.any((window) => window.isTShape);
 
-    // --- Материалы: полотно по материалам --------------------------------
-    // Берём площадь заготовки по контуру С усадкой: плёнка кроится по
-    // усадочным габаритам, поэтому без усадки цена была бы занижена.
-    final filmEntries = summary.filmAreaByMaterialWithShrinkage.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    for (final entry in filmEntries) {
-      if (!(entry.value > 0)) continue;
-      // Выключенный в прайсе материал не попадает в смету: строку не создаём
-      // вовсе (нулевая строка только засоряет лист «Смета»).
-      final itemKey = PriceList.filmItemKey(entry.key);
+    // --- Материалы: полотно одной строкой, вместе с отходом --------------
+    // Пользователь видит одну позицию «Полотно» на материал: площадь
+    // заготовки плюс отход косой формы. Отдельной строки «Отход» больше нет.
+    final wasteByMaterial = _obliqueWasteByMaterial(summary.specs);
+    final materials = <FilmMaterial>{
+      ...summary.filmAreaByMaterialWithShrinkage.keys,
+      ...wasteByMaterial.keys,
+    }.toList()
+      ..sort((a, b) {
+        final left = summary.filmAreaByMaterialWithShrinkage[a] ?? 0;
+        final right = summary.filmAreaByMaterialWithShrinkage[b] ?? 0;
+        return right.compareTo(left);
+      });
+    for (final material in materials) {
+      final filmArea = summary.filmAreaByMaterialWithShrinkage[material] ?? 0;
+      final waste = wasteByMaterial[material];
+      final wasteM2 = waste?.wasteM2 ?? 0;
+      final quantity = filmArea + wasteM2;
+      if (!(quantity > 0)) continue;
+      final itemKey = PriceList.filmItemKey(material);
       if (!prices.isEnabled(itemKey)) continue;
-      final pricePerM2 = prices.filmPerM2(entry.key);
+      final pricePerM2 = prices.filmPerM2(material);
+      final wasteNote = wasteM2 > 0.0001
+          ? ' В том числе отход косой заготовки '
+                '${formatMeters(wasteM2)} м² (габарит '
+                '${formatMeters(waste!.rectangleM2)} − контур '
+                '${formatMeters(waste.contourM2)}).'
+          : '';
       lines.add(
         EstimateLine(
-          title: 'Полотно: ${entry.key.label}',
-          // У скрина полотно считается по площади заготовки: готовый размер
-          // плюс половина подворота каждой стороны (к высоте ещё +20 мм),
-          // а если стоят молнии — ширина заготовки уже уменьшена на полосы под
-          // них. У ПВХ полоса (спайка) вычитается из ширины так же — подпись
-          // показывает это человеку прямо в смете.
-          note: entry.key == FilmMaterial.screen
-              ? 'скрин: заготовка по контуру ${formatMeters(entry.value)} м² × '
+          title: materials.length == 1
+              ? 'Полотно'
+              : 'Полотно: ${material.label}',
+          note: material == FilmMaterial.screen
+              ? 'скрин: заготовка по контуру ${formatMeters(filmArea)} м² × '
                     '${_unitPriceLabel(pricePerM2)} ₽/м² — готовый размер плюс '
                     'половина подворота каждой стороны, к высоте +20 мм'
                     '${summary.screenZipperCount > 0 ? ', ширина кроя уменьшена на '
                               'полосу молнии '
                               '${formatMm(summary.screenZipperBandWidthMm)} ${unitSuffix()}' : ''}'
-              : '${entry.key.thickness}; заготовка по контуру'
+                    '$wasteNote'
+              : '${material.thickness}; заготовка по контуру'
                     '${hasTShape ? ' (Т-окно: основное полотно + пристройки)' : ''}'
                     '${summary.hasShrinkage ? ' с компенсацией усадки' : ''}'
                     '${summary.hasAutoHeightAllowance ? '${summary.hasShrinkage ? ' и' : ' с'} авто-припуском '
                               '+10 мм к высоте (ПВХ)' : ''}'
                     '${summary.pvcZipperCount > 0 ? ', ширина кроя уменьшена на '
                               'полосу (спайку) молнии '
-                              '${formatMm(summary.pvcZipperBandWidthMm)} ${unitSuffix()}' : ''}',
-          quantity: entry.value,
+                              '${formatMm(summary.pvcZipperBandWidthMm)} ${unitSuffix()}' : ''}'
+                    '$wasteNote',
+          quantity: quantity,
           unit: 'м²',
           unitPrice: pricePerM2,
-          group: EstimateGroup.materials,
-          itemKey: itemKey,
-        ),
-      );
-    }
-
-    // --- Материалы: отход косых заготовок --------------------------------
-    // Косое окно (трапеция или разные высоты/ширины) кроится из
-    // прямоугольной заготовки, поэтому пустые углы — реальный отход плёнки.
-    // В строке «Полотно» уже стоит ФАКТИЧЕСКАЯ площадь контура, поэтому здесь
-    // добавляется только разница: габарит заготовки минус её контур.
-    // Прямоугольные окна и Т-окно (у него контур из прямоугольников) отхода
-    // не дают — строки не будет.
-    final wasteByMaterial = _obliqueWasteByMaterial(summary.specs);
-    final wasteEntries = wasteByMaterial.entries.toList()
-      ..sort((a, b) => b.value.wasteM2.compareTo(a.value.wasteM2));
-    for (final entry in wasteEntries) {
-      final waste = entry.value;
-      if (!(waste.wasteM2 > 0)) continue;
-      // Правило 10: выключенный материал не попадает в смету вовсе — так же,
-      // как у строки «Полотно».
-      final itemKey = PriceList.filmItemKey(entry.key);
-      if (!prices.isEnabled(itemKey)) continue;
-      lines.add(
-        EstimateLine(
-          title: _obliqueWasteTitle(entry.key),
-          note:
-              'косой контур: габарит заготовки '
-              '${formatMeters(waste.rectangleM2)} м² − контур '
-              '${formatMeters(waste.contourM2)} м² = отход '
-              '${formatMeters(waste.wasteM2)} м²; припуск и усадка учтены, '
-              'вырезы не вычтены',
-          quantity: waste.wasteM2,
-          unit: 'м²',
-          unitPrice: prices.filmPerM2(entry.key),
           group: EstimateGroup.materials,
           itemKey: itemKey,
         ),
@@ -740,18 +720,6 @@ Map<FilmMaterial, _ObliqueWaste> _obliqueWasteByMaterial(
   }
   return result;
 }
-
-/// Название строки отхода косых окон для материала.
-///
-/// Заказчику нужны две понятные строки — ПВХ и скрин. Обычный ПВХ и скрин
-/// получают ровно эти названия; тонированный ПВХ и сетка — уточнение в
-/// скобках, чтобы строки с разными ценами не сливались в одну.
-String _obliqueWasteTitle(FilmMaterial material) => switch (material) {
-  FilmMaterial.clearPvc => 'Отход ПВХ косых окон',
-  FilmMaterial.tintedPvc => 'Отход ПВХ косых окон (тонированный)',
-  FilmMaterial.mosquitoNet => 'Отход ПВХ косых окон (москитная сетка)',
-  FilmMaterial.screen => 'Отход скрина косых окон',
-};
 
 /// Ключ позиции прайса для типа крепежа: скоба, замок, ремень.
 ///

@@ -9,6 +9,7 @@ import '../models/crossbar.dart';
 import '../models/window_params.dart';
 import '../services/company_branding.dart';
 import 'company_dialog.dart';
+import 'composite_preview.dart';
 
 /// Краткая карточка заказа для верхнего списка.
 class OrderOverview {
@@ -1712,6 +1713,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
             style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
           const SizedBox(height: 8),
+          CompositePreview(spec: composite),
+          const SizedBox(height: 8),
           const Text(
             'Сторона второго материала',
             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
@@ -1754,6 +1757,17 @@ class _ParamsPanelState extends State<ParamsPanel> {
             child: _numberField(ParamField.compositeDepth),
           ),
           const SizedBox(height: 4),
+          Slider(
+            key: const Key('composite-depth-slider'),
+            value: composite.depth.clamp(50.0, 2000.0),
+            min: 50,
+            max: 2000,
+            divisions: 39,
+            label: '${formatMm(composite.depth)} ${unitSuffix()}',
+            onChanged: (value) => _updateWindow(
+              withComposite(composite.copyWith(depth: value)),
+            ),
+          ),
           const Text(
             'Второй сегмент режется ВНУТРИ введённых габаритов: ширина — вся '
             'сторона, вынос — глубина второго материала. Общий размер окна '
@@ -1801,6 +1815,17 @@ class _ParamsPanelState extends State<ParamsPanel> {
             SizedBox(
               width: 180,
               child: _numberField(ParamField.compositeAngle),
+            ),
+            Slider(
+              key: const Key('composite-angle-slider'),
+              value: composite.seamAngleDeg.clamp(5.0, 80.0),
+              min: 5,
+              max: 80,
+              divisions: 15,
+              label: '${composite.seamAngleDeg.round()}°',
+              onChanged: (value) => _updateWindow(
+                withComposite(composite.copyWith(seamAngleDeg: value)),
+              ),
             ),
             const SizedBox(height: 4),
             const Text(
@@ -2447,7 +2472,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           const SizedBox(height: 12),
           _crossbarsSection(spec),
           const SizedBox(height: 12),
-          if (params.isLifting && !params.isScreen) ...[
+          if (params.isLifting || params.isScreen) ...[
             const SizedBox(height: 12),
             _liftStrapsSection(params, spec),
           ],
@@ -3418,6 +3443,26 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
         Wrap(
           spacing: 8,
+          runSpacing: 6,
+          children: [
+            for (final count in const [2, 3, 4])
+              OutlinedButton(
+                key: Key('lift-strap-even-$count'),
+                onPressed: () => _updateWindow(
+                  params.copyWith(
+                    liftStrapOffsets: [
+                      for (var i = 1; i <= count; i++)
+                        maxOffset * i / (count + 1),
+                    ],
+                  ),
+                ),
+                child: Text('Ровно $count'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
           children: [
             OutlinedButton.icon(
               key: const Key('add-lift-strap'),
@@ -3650,6 +3695,17 @@ class _ParamsPanelState extends State<ParamsPanel> {
             _zipperSegmentNote(spec, index),
             style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
+          if (spec.zipperSegmentsLabel.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              spec.zipperSegmentsLabel,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF41506A),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
       ),
     );

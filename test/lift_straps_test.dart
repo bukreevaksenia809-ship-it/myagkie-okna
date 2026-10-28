@@ -27,6 +27,33 @@ void main() {
     expect(layers.liftStraps, hasLength(WindowSpec.of(lifting()).strapCount));
   });
 
+  test('скрин: ремни тоже доступны и строятся', () {
+    const params = WindowParams(
+      windowType: WindowType.lifting,
+      material: FilmMaterial.screen,
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      liftStrapOffsets: [500, 1500],
+    );
+    final spec = WindowSpec.of(params);
+    expect(spec.layers.liftStraps, hasLength(2));
+    expect(spec.strapCount, 2);
+  });
+
+  test('глухой скрин: ремни тоже можно поставить', () {
+    const params = WindowParams(
+      material: FilmMaterial.screen,
+      bottomWidth: 2000,
+      topWidth: 2000,
+      leftHeight: 2000,
+      rightHeight: 2000,
+      liftStrapOffsets: [500, 1500],
+    );
+    expect(WindowSpec.of(params).layers.liftStraps, hasLength(2));
+  });
+
   test('ручные положения задают число и центры ремней', () {
     final params = lifting(offsets: [400, 1000, 1600]);
     final spec = WindowSpec.of(params);

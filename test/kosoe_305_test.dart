@@ -181,7 +181,10 @@ void main() {
     final filmLine = estimate.lines.firstWhere(
       (line) => line.title.startsWith('Полотно'),
     );
-    expect(filmLine.quantity, closeTo(7.2059, 1e-9));
+    // В смете одна строка «Полотно»: контур 7,2059 + отход
+    // прямоугольника 8,1926 − 7,2059 = 8,1926 м².
+    expect(filmLine.quantity, closeTo(8.1926, 1e-9));
+    expect(filmLine.note, contains('отход'));
 
     final card = TechCard.forWindow(_customer);
     final areaMaterial = card.operations
