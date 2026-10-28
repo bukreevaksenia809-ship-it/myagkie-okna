@@ -1995,7 +1995,11 @@ class WindowLayers {
     if (!params.isLifting && !params.isScreen) return const [];
     final autoCount = params.liftStrapCount;
     final manual = params.liftStrapOffsets;
-    if (manual.isEmpty && autoCount <= 0) return const [];
+    // У глухого скрина нет автоматической расстановки: ремни появляются
+    // только когда пользователь добавил их вручную.
+    if (manual.isEmpty && (!params.isLifting || autoCount <= 0)) {
+      return const [];
+    }
     final bounds = filmVisibleBounds;
     final length = math.min(liftStrapLength, bounds.height * 0.8);
     final minCenter = bounds.left + liftStrapWidth / 2;
@@ -3403,7 +3407,7 @@ class WindowSpec {
   /// Количество подъёмных ремней.
   int get strapCount => params.liftStrapOffsets.isNotEmpty
       ? params.liftStrapOffsets.length
-      : params.liftStrapCount;
+      : (params.isLifting ? params.liftStrapCount : 0);
 
   /// Заготовка полосы под молнию: (ширина, длина), мм.
   ///
