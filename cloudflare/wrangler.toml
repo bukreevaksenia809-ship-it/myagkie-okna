@@ -10,6 +10,9 @@ bucket_name = "okna-updates"
 [vars]
 # Через запятую; можно добавить свой домен админки.
 ALLOWED_ORIGINS = "https://myagkie-okna-excl--demo-ysodwqfm.web.app,https://myagkie-okna-excl--trial3-ueu8273m.web.app"
+R2_ACCOUNT_ID = "8a8a728cc2d1d8d6232d37d1dc8d5bc5"
+R2_BUCKET = "okna-updates"
+PUBLIC_BASE = "https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev"
 
 # Секрет задаётся отдельно:
 #   npx wrangler secret put ADMIN_PASSWORD

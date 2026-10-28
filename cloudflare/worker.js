@@ -95,10 +95,14 @@ export default {
           new Request(endpoint, { method: 'PUT' }),
           { aws: { signQuery: true } },
         );
+        const publicBase = (env.PUBLIC_BASE || '').replace(/\/$/, '');
+        const publicUrl = publicBase
+          ? `${publicBase}/${key.split('/').map(encodeURIComponent).join('/')}`
+          : `${url.origin}/files/${encodeURIComponent(key)}`;
         return json(
           {
             uploadUrl: signed.url,
-            url: `${url.origin}/files/${encodeURIComponent(key)}`,
+            url: publicUrl,
             key,
             name,
           },
@@ -136,9 +140,12 @@ export default {
           },
         });
         const object = await env.UPDATES.head(key);
+        const publicBase = (env.PUBLIC_BASE || '').replace(/\/$/, '');
         return json(
           {
-            url: `${url.origin}/files/${encodeURIComponent(key)}`,
+            url: publicBase
+              ? `${publicBase}/${key.split('/').map(encodeURIComponent).join('/')}`
+              : `${url.origin}/files/${encodeURIComponent(key)}`,
             key,
             size: object?.size ?? length,
             name,
