@@ -60,3 +60,6 @@ android/key.properties
 android/upload-keystore.jks
 *.jks
 *.keystore
+
+# Cloudflare Wrangler local state
+cloudflare/.wrangler/
