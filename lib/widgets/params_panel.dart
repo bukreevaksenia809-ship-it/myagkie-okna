@@ -83,8 +83,8 @@ enum _CutoutField {
 
 /// Припуски на раскрой: добавка к габариту заготовки, мм.
 enum _AllowanceField {
-  width('Прибавить к ширине, мм'),
-  height('Прибавить к высоте, мм');
+  width('Прибавить к ширине'),
+  height('Прибавить к высоте');
 
   const _AllowanceField(this.label);
 
@@ -843,7 +843,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           controller: _controllers[ParamField.weldOverlap],
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(
-            labelText: 'Запайка плёнки под окантовку, мм',
+            labelText: 'Запайка плёнки под окантовку, ${unitSuffix()}',
             suffixText: unitSuffix(),
             helperText:
                 '${formatMm(minWeldOverlapMm)}…'
@@ -1262,7 +1262,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       controller: _allowanceControllers[field],
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
-        labelText: field.label,
+        labelText: '${field.label}, ${unitSuffix()}',
         suffixText: unitSuffix(),
         helperText: '0…${formatMm(_maxAllowanceMm)}, шаг 1',
         border: const OutlineInputBorder(),
