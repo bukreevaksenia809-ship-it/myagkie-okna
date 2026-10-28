@@ -12,11 +12,13 @@ import 'models/window_geometry.dart';
 import 'models/price_list.dart';
 import 'models/window_params.dart';
 import 'services/order_storage.dart';
+import 'services/orders_backup.dart';
 import 'services/storage_paths.dart';
 import 'services/client_report_pdf.dart';
 import 'widgets/client_report_dialog.dart';
 import 'widgets/pricebook_switcher.dart';
 import 'services/company_branding.dart';
+import 'theme/app_theme.dart';
 import 'services/file_agent.dart';
 import 'services/license.dart';
 import 'services/pairing.dart';
@@ -43,7 +45,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '1.6.6';
+const String kAppVersion = '1.6.7';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -100,10 +102,7 @@ class SoftWindowApp extends StatelessWidget {
     return MaterialApp(
       title: 'Калькулятор мягких окон',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0B62C4)),
-      ),
+      theme: buildAppTheme(),
       locale: const Locale('ru'),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
@@ -555,6 +554,20 @@ class _BuilderScreenState extends State<BuilderScreen>
       _orders = orders;
       if (showBusy) _ordersBusy = false;
     });
+  }
+
+  Future<void> _backupOrders() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final path = await backupOrdersFolder();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          path == null
+              ? 'Резервные копии доступны в настольной версии'
+              : 'Резервная копия создана: $path',
+        ),
+      ),
+    );
   }
 
   Future<void> _saveOrder() async {
@@ -1035,6 +1048,12 @@ class _BuilderScreenState extends State<BuilderScreen>
 
   /// Компактные действия для телефона: частые кнопки + меню.
   List<Widget> _phoneActions(BuildContext context) => [
+    IconButton(
+      key: const Key('phone-pairing-button'),
+      tooltip: 'Связь с ПК / замерщиком',
+      onPressed: _openPairing,
+      icon: const Icon(Icons.phone_iphone),
+    ),
     if (_exporting)
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 12),
@@ -1126,6 +1145,7 @@ class _BuilderScreenState extends State<BuilderScreen>
           onRefresh: _refreshOrders,
           onOpen: _openOrder,
           onDelete: _deleteOrder,
+          onBackup: _backupOrders,
         ),
       );
 

@@ -1274,6 +1274,88 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
+  /// Первый экран панели: короткий «фасад» приложения, а не сразу форма.
+  Widget _brandHeader(List<OrderOverview> orders, OrderProject project) {
+    final windows = orders.fold<int>(0, (sum, order) => sum + order.windowCount);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFFCF8), Color(0xFFF3E8DA)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE3D2BE)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120F1B26),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'МЯГКИЕ ОКНА · EXCL',
+            style: TextStyle(
+              fontSize: 10,
+              letterSpacing: 1.6,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFFB86B3D),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Цех без ручной работы',
+            style: TextStyle(
+              fontSize: 19,
+              height: 1.12,
+              letterSpacing: -0.4,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF18222D),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Чертежи, раскрой и сметы — в одном окне.',
+            style: TextStyle(fontSize: 11.5, color: Color(0xFF6F746F)),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _statPill('${orders.length}', 'заказов'),
+              _statPill('$windows', 'окон'),
+              _statPill('${project.windowCount}', 'в активном'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statPill(String value, String label) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.72),
+      borderRadius: BorderRadius.circular(9),
+      border: Border.all(color: const Color(0xFFE2D3C1)),
+    ),
+    child: Text(
+      '$value $label',
+      style: const TextStyle(
+        fontSize: 10.5,
+        fontWeight: FontWeight.w600,
+        color: Color(0xFF4E463E),
+      ),
+    ),
+  );
+
   /// Верхний список заказов: «Заказ 1, Заказ 2…», переключение, переименование
   /// и удаление. Кнопка «Создать заказ» открывает диалог имени в main.
   Widget _ordersTopSection(OrderProject project) {
@@ -1284,6 +1366,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _brandHeader(orders, project),
+        const SizedBox(height: 12),
         _sectionHeader('Заказы', '${orders.length} шт · сверху — активный'),
         const SizedBox(height: 8),
         for (var index = 0; index < orders.length; index++)

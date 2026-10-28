@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../models/order_project.dart';
 import '../models/window_geometry.dart';
 import '../models/window_params.dart';
+import '../models/fastener_spans.dart';
 import '../services/fastener_artwork.dart';
 import '../services/company_branding.dart';
 import '../services/label_settings.dart';
@@ -1988,6 +1989,14 @@ class _SidePanel extends StatelessWidget {
                 ],
               ),
             ),
+          if (!project.isMultiWindow) ...[
+            const SizedBox(height: 10),
+            const _SideTitle('Расстояния между креплениями'),
+            const SizedBox(height: 6),
+            _FastenerSpacingList(
+              spec: WindowSpec.of(project.windows.first),
+            ),
+          ],
           const SizedBox(height: 10),
           const _SideTitle('Масштаб листа'),
           const SizedBox(height: 6),
@@ -2192,6 +2201,69 @@ class _SidePanel extends StatelessWidget {
       else
         '${first.edgeMaterial.joining}, морозостойкость до −30 °C',
     ];
+  }
+}
+
+/// Явная сводка расстояний между центрами креплений по сторонам.
+///
+/// Дублирует мелкие размерные цепочки на чертеже: на печати А4 и при
+/// масштабировании цифры у люверсов бывают плохо читаемы, а в боковой панели
+/// всегда видно шаг и количество промежутков.
+class _FastenerSpacingList extends StatelessWidget {
+  const _FastenerSpacingList({required this.spec});
+
+  final WindowSpec spec;
+
+  List<(WindowSide, String)> _rows() {
+    final eyelets = spec.layers.eyelets;
+    final rows = <(WindowSide, String)>[];
+    for (final side in WindowSide.values) {
+      final sideEyelets = eyelets.where((eyelet) => eyelet.side == side).toList()
+        ..sort((a, b) => a.positionInEdge.compareTo(b.positionInEdge));
+      if (sideEyelets.length < 2) continue;
+      final gaps = <double>[
+        for (var i = 1; i < sideEyelets.length; i++)
+          (sideEyelets[i].center - sideEyelets[i - 1].center).distance,
+      ];
+      final first = gaps.first;
+      final equal = gaps.every(
+        (gap) => (gap - first).abs() <= fastenerSpanEqualToleranceMm,
+      );
+      final text = equal
+          ? 'шаг ${formatFastenerSpanMm(first)} ${unitSuffix()} × ${gaps.length}'
+          : '${gaps.length} промежутков: '
+                '${gaps.map(formatFastenerSpanMm).join(' / ')} ${unitSuffix()}';
+      rows.add((side, text));
+    }
+    return rows;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = _rows();
+    if (rows.isEmpty) {
+      return const Text(
+        'Крепёж не расставлен — добавьте люверсы или включите сторону.',
+        style: TextStyle(fontSize: 10.5, color: Color(0xFF7C8798)),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final row in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              '${row.$1.label}: ${row.$2}',
+              style: const TextStyle(
+                fontSize: 10.5,
+                height: 1.25,
+                color: Color(0xFF2B3440),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }
 

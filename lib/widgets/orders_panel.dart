@@ -13,6 +13,7 @@ class OrdersPanel extends StatelessWidget {
     required this.onRefresh,
     required this.onOpen,
     required this.onDelete,
+    this.onBackup,
   });
 
   final List<SavedOrder> orders;
@@ -22,6 +23,7 @@ class OrdersPanel extends StatelessWidget {
   final VoidCallback onRefresh;
   final ValueChanged<SavedOrder> onOpen;
   final ValueChanged<SavedOrder> onDelete;
+  final VoidCallback? onBackup;
 
   @override
   Widget build(BuildContext context) {
@@ -57,18 +59,26 @@ class OrdersPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Row(
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               FilledButton.icon(
                 onPressed: busy ? null : onSave,
                 icon: const Icon(Icons.save_outlined, size: 18),
                 label: const Text('Сохранить заказ'),
               ),
-              const SizedBox(width: 8),
               IconButton(
                 tooltip: 'Обновить список',
                 onPressed: busy ? null : onRefresh,
                 icon: const Icon(Icons.refresh, size: 20),
+              ),
+              IconButton(
+                key: const Key('backup-orders'),
+                tooltip: 'Резервная копия заказов',
+                onPressed: busy ? null : onBackup,
+                icon: const Icon(Icons.inventory_2_outlined, size: 20),
               ),
             ],
           ),
