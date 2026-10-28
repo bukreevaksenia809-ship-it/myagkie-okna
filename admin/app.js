@@ -5,6 +5,7 @@
   const base = `https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/documents`;
   const $ = (id) => document.getElementById(id);
   let secret = sessionStorage.getItem('okna_admin_secret') || '';
+  let adminPassword = '';
   let devices = [];
   let licenses = [];
   let filesParent = '';
@@ -199,6 +200,93 @@
     $('rel-enabled').checked = data.enabled !== false;
     $('rel-auto').checked = data.autoUpdate === true;
     $('release-current').textContent = JSON.stringify(data, null, 2);
+  }
+
+
+  async function sha256Hex(file) {
+    const buffer = await file.arrayBuffer();
+    const digest = await crypto.subtle.digest('SHA-256', buffer);
+    return Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  async function uploadRelease() {
+    const file = $('rel-file').files?.[0];
+    if (!file) {
+      $('release-status').textContent = 'Сначала выберите файл';
+      return;
+    }
+    if (!cfg.uploadUrl) {
+      $('release-status').textContent =
+        'В config.js не задан uploadUrl. Сначала разверните Cloudflare Worker.';
+      return;
+    }
+    let password = adminPassword;
+    if (!password) {
+      password = prompt('Пароль администратора для загрузки файла') || '';
+    }
+    if (!password) return;
+    const button = $('upload-release');
+    const progress = $('rel-progress');
+    button.disabled = true;
+    progress.classList.remove('hidden');
+    progress.value = 0;
+    $('release-status').textContent = 'Считаю SHA-256…';
+    try {
+      $('rel-sha').value = await sha256Hex(file);
+      $('release-status').textContent = `Загружаю ${(file.size / 1024 / 1024).toFixed(1)} МБ…`;
+      const name = encodeURIComponent(file.name);
+      const url = `${cfg.uploadUrl.replace(/\/$/, '')}/upload?name=${name}`;
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', url);
+        xhr.setRequestHeader('X-Admin-Password', password);
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            progress.value = Math.round((event.loaded / event.total) * 100);
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText));
+            } catch (error) {
+              reject(new Error('Некорректный ответ Worker'));
+            }
+          } else {
+            let message = xhr.responseText;
+            try { message = JSON.parse(xhr.responseText).error || message; } catch (_) {}
+            reject(new Error(message || `HTTP ${xhr.status}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error('Сеть недоступна'));
+        xhr.send(file);
+      }).then((data) => {
+        $('rel-url').value = data.url;
+        $('release-status').textContent =
+          `Загружено: ${data.name} (${(data.size / 1024 / 1024).toFixed(1)} МБ). Проверьте версию и нажмите «Опубликовать».`;
+      });
+    } catch (error) {
+      $('release-status').textContent = `Ошибка загрузки: ${error.message}`;
+    } finally {
+      button.disabled = false;
+      progress.classList.add('hidden');
+    }
+  }
+
+  async function onReleaseFile() {
+    const file = $('rel-file').files?.[0];
+    if (!file) {
+      $('rel-file-info').textContent = '';
+      return;
+    }
+    $('rel-file-info').textContent =
+      `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} МБ`;
+    try {
+      $('rel-sha').value = await sha256Hex(file);
+    } catch (_) {}
   }
 
   async function saveRelease() {
@@ -489,6 +577,7 @@
     }
     try {
       secret = await decryptSecret(password);
+      adminPassword = password;
       sessionStorage.setItem('okna_admin_secret', secret);
       openApp();
     } catch (_) {
@@ -504,6 +593,7 @@
   function logout() {
     sessionStorage.removeItem('okna_admin_secret');
     secret = '';
+    adminPassword = '';
     $('app').classList.add('hidden');
     $('gate').classList.remove('hidden');
     $('password').value = '';
@@ -530,6 +620,8 @@
     $('close-detail').addEventListener('click', () => $('device-detail').classList.add('hidden'));
     $('load-events').addEventListener('click', loadEvents);
     $('save-release').addEventListener('click', saveRelease);
+    $('upload-release').addEventListener('click', uploadRelease);
+    $('rel-file').addEventListener('change', onReleaseFile);
     $('create-key').addEventListener('click', createKey);
     $('files-list').addEventListener('click', () => openPath($('files-path').value.trim()));
     $('file-download').addEventListener('click', downloadCurrent);

@@ -118,7 +118,13 @@
         <h2>Выпуск обновления</h2>
         <p class="hint">Загрузите готовый DMG, EXE или ZIP на сайт/Яндекс.Диск/любой HTTPS-хостинг и вставьте прямую ссылку. Клиент увидит кнопку «Доступно обновление» и скачает файл.</p>
         <div class="form">
-          <label>Версия <input id="rel-version" placeholder="1.3.1" /></label>
+          <label>Версия <input id="rel-version" placeholder="1.6.5" /></label>
+          <label>Файл обновления (DMG / EXE / ZIP)
+            <input id="rel-file" type="file" accept=".dmg,.exe,.zip" />
+          </label>
+          <p id="rel-file-info" class="hint"></p>
+          <progress id="rel-progress" max="100" value="0" class="hidden"></progress>
+          <button id="upload-release" type="button">Загрузить файл в R2</button>
           <label>Ссылка на DMG / EXE / ZIP <input id="rel-url" placeholder="https://…/MyagkieOkna.dmg" /></label>
           <label>SHA-256 <input id="rel-sha" placeholder="необязательно" /></label>
           <label>Заметки <textarea id="rel-notes" rows="3"></textarea></label>

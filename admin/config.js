@@ -8,4 +8,6 @@ window.OKNA_CONFIG = {
   secretIv: 'vZn6MdHyMgmXHoX+',
   secretCipher: 'WNYrggSQFd39GjhAT91Cm7EVvn9TOWtWbtRXsRAG638hYGm0ta+HzE8q6j4E0Ebjog==',
   kdfIterations: 200000,
+  // Адрес Cloudflare Worker для загрузки DMG/EXE/ZIP (появится после deploy).
+  uploadUrl: '',
 };

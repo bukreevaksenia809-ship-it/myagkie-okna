@@ -1,0 +1,15 @@
+name = "okna-updates"
+main = "worker.js"
+compatibility_date = "2026-10-28"
+
+# Создать бакет: npx wrangler r2 bucket create okna-updates
+[[r2_buckets]]
+binding = "UPDATES"
+bucket_name = "okna-updates"
+
+[vars]
+# Через запятую; можно добавить свой домен админки.
+ALLOWED_ORIGINS = "https://myagkie-okna-excl--demo-ysodwqfm.web.app,https://myagkie-okna-excl--trial3-ueu8273m.web.app"
+
+# Секрет задаётся отдельно:
+#   npx wrangler secret put ADMIN_PASSWORD
