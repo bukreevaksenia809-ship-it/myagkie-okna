@@ -494,6 +494,7 @@ enum FastenerType {
   eyeletsOnly('Только люверсы'),
   turnBuckles('Поворотные скобы'),
   frenchLocks('Пластиковая скоба'),
+  metalFrenchLock('Французский замок'),
   straps('Силиконовые ремни');
 
   const FastenerType(this.label);
@@ -506,6 +507,7 @@ enum FastenerType {
     FastenerType.eyeletsOnly => 'Только люверсы',
     FastenerType.turnBuckles => 'Поворотная скоба',
     FastenerType.frenchLocks => 'Пластиковая скоба',
+    FastenerType.metalFrenchLock => 'Французский замок',
     FastenerType.straps => 'Силиконовый ремень',
   };
 }

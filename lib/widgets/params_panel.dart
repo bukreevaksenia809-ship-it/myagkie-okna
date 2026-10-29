@@ -1544,12 +1544,21 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 ),
               ),
               (
-                'fastener-french-lock',
+                'fastener-plastic-clip',
                 'Пластиковая скоба',
                 '${formatRubles(prices.fastenerPerEach(FastenerType.frenchLocks))}/шт',
                 fastening == FastenerType.frenchLocks,
                 () => _updateWindow(
                   params.copyWith(fastenerType: FastenerType.frenchLocks),
+                ),
+              ),
+              (
+                'fastener-french-lock',
+                'Французский замок',
+                '${formatRubles(prices.fastenerPerEach(FastenerType.metalFrenchLock))}/шт',
+                fastening == FastenerType.metalFrenchLock,
+                () => _updateWindow(
+                  params.copyWith(fastenerType: FastenerType.metalFrenchLock),
                 ),
               ),
               (

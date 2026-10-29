@@ -246,7 +246,7 @@ class Estimate {
       lines.add(
         EstimateLine(
           title: entry.key.itemTitle,
-          note: entry.key == FastenerType.frenchLocks
+          note: (entry.key == FastenerType.metalFrenchLock || entry.key == FastenerType.frenchLocks)
               ? 'по чертежу: в каждой точке подвижных сторон; люверс под '
                     'замком отдельной строкой не считается'
               : '${entry.value} шт × ${_unitPriceLabel(unitPrice)} ₽/шт — '
@@ -729,6 +729,7 @@ String _fastenerItemKey(FastenerType type) => switch (type) {
   FastenerType.eyeletsOnly => PriceItemKeys.strap,
   FastenerType.turnBuckles => PriceItemKeys.turnBuckle,
   FastenerType.frenchLocks => PriceItemKeys.frenchLock,
+  FastenerType.metalFrenchLock => PriceItemKeys.frenchLock,
   FastenerType.straps => PriceItemKeys.strap,
 };
 

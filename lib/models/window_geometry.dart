@@ -3327,6 +3327,7 @@ class WindowSpec {
     FastenerType.eyeletsOnly => 'только люверсы',
     FastenerType.turnBuckles => 'поворотные скобы',
     FastenerType.frenchLocks => 'пластиковая скоба',
+    FastenerType.metalFrenchLock => 'французский замок',
     FastenerType.straps => 'силиконовые ремни',
   };
 

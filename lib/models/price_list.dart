@@ -607,6 +607,7 @@ class PriceList {
     FastenerType.eyeletsOnly => 0,
     FastenerType.turnBuckles => turnBucklePrice,
     FastenerType.frenchLocks => frenchLockPrice,
+    FastenerType.metalFrenchLock => frenchLockPrice,
     FastenerType.straps => strapPrice,
   };
 

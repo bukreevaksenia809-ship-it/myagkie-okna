@@ -199,6 +199,8 @@ void main() {
       scrollable: find.byType(Scrollable).first,
       maxScrolls: 60,
     );
+    await tester.ensureVisible(toggle);
+    await tester.pumpAndSettle();
     await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(CompanyBranding.current.value.showOnSheets, isTrue);

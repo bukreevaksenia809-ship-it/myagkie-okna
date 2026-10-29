@@ -724,7 +724,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
   // люверсы. Тип крепежа у скрина больше не игнорируется.
   // Числа крепежа — те же, что в расходе и смете: точки низа и боков без
   // углов плюс саморезы верхнего ряда.
-  final isFrenchLock = params.fastenerType == FastenerType.frenchLocks;
+  final isFrenchLock = params.fastenerType == FastenerType.metalFrenchLock;
   // Французские замки стоят по вертикали: на окно — сумма левой и правой
   // высот ÷ шаг, вверх до чётного. Плюс 2 шт — запас на весь заказ, поэтому
   // в техкарте окна он показан отдельной пометкой, а не в количестве.

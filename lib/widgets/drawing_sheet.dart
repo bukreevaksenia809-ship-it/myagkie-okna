@@ -168,11 +168,22 @@ class DrawingSheet extends StatelessWidget {
     // ValueListenableBuilder перерисует лист — и в снимок для печати/PDF
     // замок попадёт уже картинкой.
     FastenerArtwork.ensureFrenchLock();
+    FastenerArtwork.ensurePlasticClip();
     return ValueListenableBuilder<LabelSettings>(
       valueListenable: LabelSettings.current,
-      builder: (context, labelSettings, _) => ValueListenableBuilder<ui.Image?>(
-        valueListenable: FastenerArtwork.frenchLock,
-        builder: (context, fastenerImage, _) => _buildSheet(fastenerImage),
+      builder: (context, labelSettings, _) => ListenableBuilder(
+        listenable: Listenable.merge([
+          FastenerArtwork.frenchLock,
+          FastenerArtwork.plasticClip,
+        ]),
+        builder: (context, _) {
+          final isClip =
+              project.selected.fastenerType == FastenerType.frenchLocks;
+          final image = isClip
+              ? FastenerArtwork.plasticClip.value
+              : FastenerArtwork.frenchLock.value;
+          return _buildSheet(image);
+        },
       ),
     );
   }
@@ -1899,6 +1910,12 @@ class _SidePanel extends StatelessWidget {
             params.isScreen
                 ? 'Пластиковая скоба по подвороту'
                 : 'Пластиковая скоба',
+          ),
+          FastenerType.metalFrenchLock => (
+            LegendKind.lock,
+            params.isScreen
+                ? 'Французский замок по подвороту'
+                : 'Французский замок',
           ),
           FastenerType.straps => (
             LegendKind.strap,

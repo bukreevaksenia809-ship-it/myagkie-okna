@@ -1397,6 +1397,7 @@ class ClientReportBuilder {
   ) {
     switch (type) {
       case FastenerType.frenchLocks:
+      case FastenerType.metalFrenchLock:
         canvas
           ..setFillColor(const PdfColor.fromInt(0xFFEDEFF2))
           ..setStrokeColor(metal)

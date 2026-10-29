@@ -21,6 +21,9 @@ class FastenerArtwork {
   /// Пластиковая скоба: фото с овальной пластиной и коричневым ремешком.
   static const String frenchLockAsset = 'assets/fasteners/french_lock.webp';
 
+  /// Первая, коричневая пластиковая скоба.
+  static const String plasticClipAsset = 'assets/fasteners/plastic_clip.webp';
+
   /// Готовая картинка пластиковой скобы; null — ещё не загружена.
   ///
   /// Слушатель нужен листу чертежа: когда картинка декодирована, лист один
@@ -29,13 +32,37 @@ class FastenerArtwork {
   static final ValueNotifier<ui.Image?> frenchLock =
       ValueNotifier<ui.Image?>(null);
 
+  static final ValueNotifier<ui.Image?> plasticClip =
+      ValueNotifier<ui.Image?>(null);
+
   static Future<ui.Image?>? _loading;
+  static Future<ui.Image?>? _clipLoading;
 
   /// Загружает пластиковая скоба (один раз), возвращает картинку или null.
   static Future<ui.Image?> ensureFrenchLock() {
     final ready = frenchLock.value;
     if (ready != null) return Future.value(ready);
     return _loading ??= _loadFrenchLock();
+  }
+
+  static Future<ui.Image?> ensurePlasticClip() {
+    final ready = plasticClip.value;
+    if (ready != null) return Future.value(ready);
+    return _clipLoading ??= _loadPlasticClip();
+  }
+
+  static Future<ui.Image?> _loadPlasticClip() async {
+    try {
+      final data = await rootBundle.load(plasticClipAsset);
+      final codec = await ui.instantiateImageCodec(
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      );
+      final frame = await codec.getNextFrame();
+      plasticClip.value = frame.image;
+      return frame.image;
+    } catch (error) {
+      return null;
+    }
   }
 
   static Future<ui.Image?> _loadFrenchLock() async {
@@ -58,6 +85,8 @@ class FastenerArtwork {
   @visibleForTesting
   static void reset() {
     _loading = null;
+    _clipLoading = null;
     frenchLock.value = null;
+    plasticClip.value = null;
   }
 }

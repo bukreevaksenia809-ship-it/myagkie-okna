@@ -328,6 +328,7 @@ void main() {
       );
       // Даём картинке декодироваться и листу перерисоваться.
       await tester.runAsync(() => FastenerArtwork.ensureFrenchLock());
+      await tester.runAsync(() => FastenerArtwork.ensurePlasticClip());
       await tester.pumpAndSettle();
 
       expect(FastenerArtwork.frenchLock.value, isNotNull);
