@@ -1274,6 +1274,19 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
+  Future<void> _pickDeadline(OrderProject project) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: project.deadline ?? now.add(const Duration(days: 7)),
+      firstDate: now.subtract(const Duration(days: 1)),
+      lastDate: now.add(const Duration(days: 365)),
+      helpText: 'Срок сдачи заказа',
+    );
+    if (picked == null) return;
+    widget.onChanged(project.copyWith(deadline: picked));
+  }
+
   /// Первый экран панели: короткий «фасад» приложения, а не сразу форма.
   Widget _brandHeader(List<OrderOverview> orders, OrderProject project) {
     final windows = orders.fold<int>(0, (sum, order) => sum + order.windowCount);
@@ -1382,6 +1395,24 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 ),
               ),
               ],
+              const SizedBox(width: 4),
+              IconButton(
+                key: const Key('order-deadline'),
+                tooltip: 'Срок сдачи',
+                visualDensity: VisualDensity.compact,
+                style: IconButton.styleFrom(
+                  minimumSize: const Size(28, 28),
+                  padding: EdgeInsets.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: () => _pickDeadline(project),
+                icon: Icon(
+                  project.deadline == null
+                      ? Icons.event_outlined
+                      : Icons.event_available,
+                  size: 17,
+                ),
+              ),
             ],
           ),
         ),

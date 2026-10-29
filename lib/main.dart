@@ -39,6 +39,7 @@ import 'widgets/cut_sheet.dart';
 import 'widgets/estimate_sheet.dart';
 import 'widgets/drawing_sheet.dart';
 import 'widgets/orders_panel.dart';
+import 'widgets/order_planner_dialog.dart';
 import 'widgets/params_panel.dart';
 import 'widgets/print_dialog.dart';
 import 'widgets/roll_sheet.dart';
@@ -1081,6 +1082,8 @@ class _BuilderScreenState extends State<BuilderScreen>
             _printSheet();
           case 'update':
             if (!kStoreBuild) _checkUpdate(show: true);
+          case 'planner':
+            showOrderPlannerDialog(context, _orders);
           case 'watermark':
             showWatermarkDialog(context);
           case 'pairing':
@@ -1097,6 +1100,7 @@ class _BuilderScreenState extends State<BuilderScreen>
         PopupMenuItem(value: 'report', child: Text('Отчёт клиенту')),
         PopupMenuItem(value: 'print', child: Text('Печать')),
         PopupMenuItem(value: 'update', child: Text('Проверить обновления')),
+        PopupMenuItem(value: 'planner', child: Text('Ежедневник')),
         PopupMenuItem(value: 'watermark', child: Text('Водяной знак')),
         PopupMenuItem(
           value: 'pairing',
@@ -1186,6 +1190,12 @@ class _BuilderScreenState extends State<BuilderScreen>
                 child: const Icon(Icons.system_update_alt),
               ),
             ),
+          IconButton(
+            key: const Key('planner-appbar'),
+            tooltip: 'Ежедневник и сроки',
+            onPressed: () => showOrderPlannerDialog(context, _orders),
+            icon: const Icon(Icons.event_note_outlined),
+          ),
           IconButton(
             key: const Key('watermark-appbar'),
             tooltip: 'Водяной знак на документах',
