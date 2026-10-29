@@ -1294,11 +1294,20 @@ class CutSheetPainter extends CustomPainter {
             '${formatMm(spec.filmCutWidthWithShrinkage)} × '
             '${formatMm(spec.filmCutHeightWithShrinkage)} ${unitSuffix()}',
     ];
+    if (spec.zipperSegmentWidths.length > 1) {
+      final total = boundsOfAll(spec.filmCutPolygons).width;
+      _label(
+        canvas,
+        'Общая ширина сегментов ${formatMm(total)} ${unitSuffix()}',
+        Offset(rect.center.dx, rect.bottom + 100),
+        color: _ink,
+      );
+    }
     if (parts.isNotEmpty) {
       _label(
         canvas,
         parts.join(' · '),
-        Offset(rect.center.dx, rect.bottom + 96),
+        Offset(rect.center.dx, rect.bottom + (spec.zipperSegmentWidths.length > 1 ? 120 : 96)),
         small: true,
         color: _dim,
       );

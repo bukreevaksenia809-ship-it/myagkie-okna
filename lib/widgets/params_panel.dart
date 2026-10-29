@@ -1787,6 +1787,34 @@ class _ParamsPanelState extends State<ParamsPanel> {
             style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
         ],
+        if (!params.isScreen) ...[
+          const SizedBox(height: 10),
+          const Text(
+            'Соединение материала',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            children: [
+              ChoiceChip(
+                key: const Key('join-weld'),
+                label: const Text('Спайка'),
+                selected: params.weldOverlapMm > 1,
+                onSelected: (_) => _updateWindow(
+                  params.copyWith(weldOverlapMm: defaultWeldOverlapMm),
+                ),
+              ),
+              ChoiceChip(
+                key: const Key('join-stitch'),
+                label: const Text('Сшивание'),
+                selected: params.weldOverlapMm <= 1,
+                onSelected: (_) =>
+                    _updateWindow(params.copyWith(weldOverlapMm: 1)),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 8),
         Text(
           '${params.material.thickness}; доступные рулоны: '

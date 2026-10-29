@@ -141,14 +141,14 @@ void main() {
       );
     });
 
-    testWidgets('декодируется из бандла в картинку 237 × 348', (tester) async {
+    testWidgets('декодируется из бандла в картинку 299 × 369', (tester) async {
       FastenerArtwork.reset();
       final image = await tester.runAsync(
         () => FastenerArtwork.ensureFrenchLock(),
       );
       expect(image, isNotNull, reason: 'картинка грузится из rootBundle');
-      expect(image!.width, 237);
-      expect(image.height, 348);
+      expect(image!.width, 299);
+      expect(image.height, 369);
       // Кэш: второй вызов отдаёт ту же картинку, без повторного декодирования.
       final again = await FastenerArtwork.ensureFrenchLock();
       expect(identical(again, image), isTrue);
