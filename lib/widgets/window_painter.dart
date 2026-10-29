@@ -2585,7 +2585,6 @@ class WindowDrawingPainter extends CustomPainter {
         case FastenerType.turnBuckles:
           _drawTurnBuckle(canvas, center, normal, bandWidth);
         case FastenerType.frenchLocks:
-        case FastenerType.frenchLocks:
         case FastenerType.metalFrenchLock:
           _drawFrenchLock(canvas, center, normal, bandWidth);
         case FastenerType.straps:
@@ -2890,7 +2889,6 @@ class WindowDrawingPainter extends CustomPainter {
       switch (fastener.type) {
         case FastenerType.turnBuckles:
           _drawTurnBuckle(canvas, center, normal, bandWidth);
-        case FastenerType.frenchLocks:
         case FastenerType.frenchLocks:
         case FastenerType.metalFrenchLock:
           _drawFrenchLock(canvas, center, normal, bandWidth);
