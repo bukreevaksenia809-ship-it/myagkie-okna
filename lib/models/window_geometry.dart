@@ -2512,24 +2512,6 @@ class WindowLayers {
   Rect get pocketTopRect =>
       params.pocketTop ? boundsOf(pocketBand(WindowSide.top)) : Rect.zero;
 
-  /// Угол касается стороны, которая расставлена вручную.
-  bool _cornerTouchesManualSide(Offset vertex) {
-    if (params.manualEyeletSides.isEmpty) return false;
-    final polygons = eyeletPolygons;
-    if (polygons.isEmpty) return false;
-    final polygon = polygons.first;
-    for (var i = 0; i < polygon.length; i++) {
-      final edgeSide = edgeSideOf(sideOfPolygonEdge(polygon, i));
-      if (!params.manualEyeletSides.contains(edgeSide)) continue;
-      final a = polygon[i];
-      final b = polygon[(i + 1) % polygon.length];
-      if ((vertex - a).distance < 1e-6 || (vertex - b).distance < 1e-6) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   _EyeletResult _computeEyelets() {
     final placements = <EyeletPlacement>[];
     final steps = <double>[];
@@ -2619,45 +2601,17 @@ class WindowLayers {
         // получается ровно один интервал: по люверсу в каждом углу стороны.
         final intervals = math.max(1, (usable / nominal).ceil());
         final actual = usable / intervals;
-        // Сторона без люверсов (кнопка «не ставить сверху/снизу») в подпись
-        // фактического интервала не попадает: крепежа там нет.
         if (sideHasEyelets(side)) steps.add(actual);
 
-        // Аварийный предел: при ошибочном размере (например, лишние нули)
-        // миллионы люверсов кладут браузер. Рабочие окна далеки от предела.
         if (placements.length > 6000) break;
         for (var k = 0; k <= intervals; k++) {
-          // Точки стороны идут строго с равным шагом [actual] от отступа
-          // [offset]: k = 0 — начало стороны, k = intervals — её конец. Никаких
-          // дополнительных «угловых» точек сверх этой последовательности нет,
-          // поэтому расстановка детерминирована: при одном и том же отступе
-          // люверсы всегда в одних и тех же координатах.
           var distance = offset + actual * k;
-          // Угол — это точка, стоящая в самом углу полотна. При отступе
-          // [eyeletCornerOffset] > 0 концы стороны сдвинуты внутрь и углами уже
-          // не являются: иначе при отступе 50 мм на чертеже появлялись бы
-          // «лишние» круглые люверсы у каждого угла (по два на угол).
           final isCornerIndex = offset < 0.5 && (k == 0 || k == intervals);
-          // Соседняя сторона правится вручную — не ставим自動 угловую точку
-          // на общем углу, иначе после перетаскивания в углу будет два люверса.
-          if (isCornerIndex &&
-              _cornerTouchesManualSide(
-                k == 0 ? polygon[i] : polygon[(i + 1) % polygon.length],
-              )) {
-            continue;
-          }
 
-          // Тумблер «Круглые люверсы в углах» выключен: угловая точка не
-          // ставится вовсе — ни на чертеже, ни в расходе, ни в смете.
-          // Точки, сдвинутые от угла на [offset] > 0, — обычные точки стороны,
-          // их выключение не трогает: там уже не угол.
           if (!params.roundEyeletsEnabled && isCornerIndex && offset < 0.5) {
             continue;
           }
 
-          // Фартук (бывший карман) снизу: угловые люверсы внизу не ставим, а
-          // боковые поднимаем, чтобы в полость фартука заводился утяжитель.
-          // Фартук сверху — зеркально: углы сверху убираем, боковые опускаем.
           if (params.pocket) {
             if (side == WindowSide.bottom && (k == 0 || k == intervals)) {
               continue;
@@ -3372,7 +3326,7 @@ class WindowSpec {
   String get movableFastenerLabel => switch (params.fastenerType) {
     FastenerType.eyeletsOnly => 'только люверсы',
     FastenerType.turnBuckles => 'поворотные скобы',
-    FastenerType.frenchLocks => 'французский замок',
+    FastenerType.frenchLocks => 'пластиковая скоба',
     FastenerType.straps => 'силиконовые ремни',
   };
 

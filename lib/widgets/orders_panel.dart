@@ -162,6 +162,15 @@ class OrdersPanel extends StatelessWidget {
                               ),
                             ),
                           ),
+                          if (order.deadline != null)
+                            Text(
+                              _deadlineText(order.deadline!),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: _deadlineColor(order.deadline!),
+                              ),
+                            ),
                           Text(
                         '${_date(order.savedAt)} · окон ${order.windowCount} · '
                         'плёнка ${order.filmAreaM2.toStringAsFixed(2).replaceAll('.', ',')} м² · '
@@ -190,6 +199,28 @@ class OrdersPanel extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _deadlineText(DateTime value) {
+    final days = DateUtils.dateOnly(value)
+        .difference(DateUtils.dateOnly(DateTime.now()))
+        .inDays;
+    final date =
+        '${value.day.toString().padLeft(2, '0')}.'
+        '${value.month.toString().padLeft(2, '0')}.${value.year}';
+    if (days < 0) return 'Срок просрочен: $date';
+    if (days == 0) return 'Сдать сегодня: $date';
+    if (days <= 2) return 'Сдать через $days дн.: $date';
+    return 'Срок: $date';
+  }
+
+  Color _deadlineColor(DateTime value) {
+    final days = DateUtils.dateOnly(value)
+        .difference(DateUtils.dateOnly(DateTime.now()))
+        .inDays;
+    if (days < 0) return const Color(0xFFB03A3A);
+    if (days <= 2) return const Color(0xFFB86B3D);
+    return const Color(0xFF66748A);
   }
 
   Color _statusColor(OrderStatus status) => switch (status) {

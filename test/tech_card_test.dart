@@ -523,10 +523,10 @@ void main() {
           );
 
       final locks = eyeletsFor(FastenerType.frenchLocks);
-      expect(locks.text, contains('французский замок'));
+      expect(locks.text, contains('пластиковая скоба'));
       expect(
         locks.materials
-            .any((material) => material.name.contains('французский замок')),
+            .any((material) => material.name.contains('пластиковая скоба')),
         isTrue,
       );
 

@@ -18,6 +18,7 @@ class SavedOrder {
     required this.edgeSummary,
     this.status = OrderStatus.newOrder,
     this.statusChangedAt,
+    this.deadline,
   });
 
   /// Ссылка на запись в хранилище (файл или ключ браузера).
@@ -33,6 +34,7 @@ class SavedOrder {
   final String edgeSummary;
   final OrderStatus status;
   final DateTime? statusChangedAt;
+  final DateTime? deadline;
 
   String get title => name.isEmpty ? ref.label : name;
 }
@@ -110,6 +112,7 @@ Map<String, dynamic> orderSummaryToJson(OrderProject project) {
     'totalWastePercent': summary.rollWastePercent,
     'status': project.status.name,
     'statusChangedAt': project.statusChangedAt?.toIso8601String(),
+    'deadline': project.deadline?.toIso8601String(),
   };
 }
 
@@ -145,6 +148,11 @@ SavedOrder _savedOrderFromJson(
     statusChangedAt: DateTime.tryParse(
       summaryMap['statusChangedAt'] is String
           ? summaryMap['statusChangedAt'] as String
+          : '',
+    ),
+    deadline: DateTime.tryParse(
+      summaryMap['deadline'] is String
+          ? summaryMap['deadline'] as String
           : '',
     ),
   );

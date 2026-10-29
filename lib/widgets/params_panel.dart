@@ -1514,7 +1514,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
               ),
               (
                 'fastener-french-lock',
-                'Французский замок',
+                'Пластиковая скоба',
                 '${formatRubles(prices.fastenerPerEach(FastenerType.frenchLocks))}/шт',
                 fastening == FastenerType.frenchLocks,
                 () => _updateWindow(
@@ -1590,7 +1590,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 const Text(
                   'Тяните люверс мышкой вдоль линии окантовки. После '
                   'перетаскивания рядом появляется меню: удалить, поставить '
-                  'круглый люверс, французский замок или поворотную скобу.',
+                  'круглый люверс, пластиковая скоба или поворотную скобу.',
                   style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
                 ),
                 const SizedBox(height: 6),
@@ -3625,7 +3625,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// Включён по умолчанию: в углу ставится круглый Ø10 мм, потому что угол
   /// тянет по диагонали и овальный люверс там не держит. Выключение убирает
   /// угловую точку целиком — с чертежа, из расхода и из сметы: например, когда
-  /// всё крепление — французские замки, скобы или ремни и круглых люверсов
+  /// всё крепление — пластиковые скобы, скобы или ремни и круглых люверсов
   /// не нужно ни одного.
   Widget _roundEyeletsSection(WindowSpec spec) {
     return _panelCard(

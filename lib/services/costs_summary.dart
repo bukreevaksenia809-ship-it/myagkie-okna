@@ -369,7 +369,7 @@ class CostsSummary {
     ];
   }
 
-  /// Подписи крепежа по типам: «Французский замок — 12 шт».
+  /// Подписи крепежа по типам: «Пластиковая скоба — 12 шт».
   List<String> get fastenerLabels {
     final entries = fastenerCount.entries.toList()
       ..sort((a, b) => a.key.index.compareTo(b.key.index));

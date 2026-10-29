@@ -164,7 +164,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('углы не задваиваются: ручная сторона убирает авто-угол соседа', () {
+  test('ручная сторона не убирает авто-углы соседних сторон', () {
     final params = base.withEyeletPositions(
       EdgeSide.bottom,
       const [0.3, 0.6],
@@ -177,8 +177,8 @@ void main() {
     );
     expect(
       near,
-      isEmpty,
-      reason: 'низ задан вручную — авто-угол слева не ставится',
+      isNotEmpty,
+      reason: 'углы остаются на месте; дубли схлопываются',
     );
   });
 
@@ -201,7 +201,7 @@ void main() {
       const PriceList.defaults(),
     );
     final line = estimate.lines.firstWhere(
-      (line) => line.title == 'Французский замок',
+      (line) => line.title == 'Пластиковая скоба',
     );
     expect(line.quantity, 1);
   });

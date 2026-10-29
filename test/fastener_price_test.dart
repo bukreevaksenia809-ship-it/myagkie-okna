@@ -1,4 +1,4 @@
-// Тесты цен на крепёж (Шаг 2): скоба, французский замок, саморез верхнего ряда.
+// Тесты цен на крепёж (Шаг 2): скоба, пластиковая скоба, саморез верхнего ряда.
 //
 // Проверяем значения по умолчанию, JSON (включая старый прайс без полей),
 // строки панели «Прайс-лист» и отсутствие блока «Цены прайса» на листе «Смета».
@@ -173,7 +173,7 @@ void main() {
 
     // Строки на месте и с ценами по умолчанию.
     expect(find.text('Поворотная скоба, ₽/шт'), findsOneWidget);
-    expect(find.text('Французский замок, ₽/шт'), findsOneWidget);
+    expect(find.text('Пластиковая скоба, ₽/шт'), findsOneWidget);
     expect(find.text('Саморез верхнего ряда, ₽/шт'), findsOneWidget);
     expect(find.text('Ремень, ₽/шт'), findsOneWidget);
     final prices = hostKey.currentState!.prices;
@@ -203,7 +203,7 @@ void main() {
     }
 
     await setRow('Поворотная скоба, ₽/шт', '245');
-    await setRow('Французский замок, ₽/шт', '430');
+    await setRow('Пластиковая скоба, ₽/шт', '430');
     await setRow('Саморез верхнего ряда, ₽/шт', '18');
     final edited = hostKey.currentState!.prices;
     expect(edited.turnBucklePrice, 245);

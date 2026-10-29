@@ -395,7 +395,7 @@ void main() {
           labelFontFamily: testFontFamily,
         ),
       ),
-      // Крепёж скрина — французский замок: размер берётся от подворота.
+      // Крепёж скрина — пластиковая скоба: размер берётся от подворота.
       'skrin-francuzskiy-zamok': (
         viewport: a4Viewport,
         build: (key) => DrawingSheet(
@@ -547,7 +547,7 @@ void main() {
     // Тип крепежа → подпись в «Условных обозначениях».
     final cases = <FastenerType, String>{
       FastenerType.turnBuckles: 'Поворотная скоба по подвороту',
-      FastenerType.frenchLocks: 'Французский замок по подвороту',
+      FastenerType.frenchLocks: 'Пластиковая скоба по подвороту',
       FastenerType.straps: 'Силиконовый ремень по подвороту',
       FastenerType.eyeletsOnly: 'Саморезы по верхней кромке',
     };

@@ -2369,7 +2369,7 @@ void _screenRules() {
       );
       expect(spec.layers.drainHoles, isEmpty);
       expect(spec.strapCount, 0);
-      expect(spec.fastenerSummary, contains('французский замок'));
+      expect(spec.fastenerSummary, contains('пластиковая скоба'));
       expect(spec.fastenerSummary, contains('по подвороту'));
       expect(spec.fastenerSummary, contains('Сверху саморезы'));
       expect(spec.eyeletCount, greaterThan(0));
@@ -3210,7 +3210,7 @@ void _roundEyeletToggleRules() {
 
   group('Круглые люверсы в углах: тумблер и детерминизм', () {
     test(
-      'французский замок, тумблер выключен: круглых ноль, числа по отступу',
+      'пластиковая скоба, тумблер выключен: круглых ноль, числа по отступу',
       () {
         // Линия люверсов 1950 × 1450. Отступ 0: по стороне 7 и 5 интервалов,
         // угловые точки не ставятся → (7−1) + (5−1) + (7−1) + (5−1) = 20.
@@ -3303,7 +3303,6 @@ void _roundEyeletToggleRules() {
               final step = (points[i].center - points[i - 1].center).distance;
               final expected = first.layers.eyeletSteps[side.index];
               expect(step, greaterThan(0));
-              // Все шаги стороны равны фактическому интервалу этой стороны.
               expect(step, closeTo(expected, 1e-6));
             }
           }

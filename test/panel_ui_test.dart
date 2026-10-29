@@ -301,7 +301,7 @@ void _screenAndWeldRules() {
     // Окантовка у скрина скрыта, а крепёж доступен любой: чипы на месте.
     expect(find.text('Окантовка'), findsNothing);
     expect(find.text('Поворотная скоба'), findsOneWidget);
-    expect(find.text('Французский замок'), findsOneWidget);
+    expect(find.text('Пластиковая скоба'), findsOneWidget);
     expect(find.text('Подвязочный ремень'), findsOneWidget);
     // Подворот задаётся на каждую сторону: четыре поля и подпись заготовки.
     expect(find.byKey(const Key('hem-bottom-field')), findsOneWidget);
@@ -373,8 +373,8 @@ void _screenAndWeldRules() {
     );
     expect(tester.takeException(), isNull);
 
-    // --- Крепёж скрина: доступен любой тип, выбираем французский замок ---
-    final frenchLock = find.text('Французский замок');
+    // --- Крепёж скрина: доступен любой тип, выбираем пластиковая скоба ---
+    final frenchLock = find.text('Пластиковая скоба');
     await tester.ensureVisible(frenchLock);
     await tester.tap(frenchLock);
     await tester.pumpAndSettle();
@@ -394,7 +394,7 @@ void _screenAndWeldRules() {
       ),
       isTrue,
     );
-    expect(fastenerSpec.fastenerSummary, contains('французский замок'));
+    expect(fastenerSpec.fastenerSummary, contains('пластиковая скоба'));
     expect(fastenerSpec.fastenerSummary, contains('по подвороту'));
     expect(tester.takeException(), isNull);
 

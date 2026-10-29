@@ -164,7 +164,7 @@ class DrawingSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Фото французского замка догружается один раз. Как только оно готово,
+    // Фото пластиковой скобы догружается один раз. Как только оно готово,
     // ValueListenableBuilder перерисует лист — и в снимок для печати/PDF
     // замок попадёт уже картинкой.
     FastenerArtwork.ensureFrenchLock();
@@ -1897,8 +1897,8 @@ class _SidePanel extends StatelessWidget {
           FastenerType.frenchLocks => (
             LegendKind.lock,
             params.isScreen
-                ? 'Французский замок по подвороту'
-                : 'Французский замок',
+                ? 'Пластиковая скоба по подвороту'
+                : 'Пластиковая скоба',
           ),
           FastenerType.straps => (
             LegendKind.strap,
@@ -2736,7 +2736,7 @@ class DrawingSheetMetrics {
 /// Жест включается только если палец/мышь нажали рядом с люверсом: иначе
 /// событие уходит родительскому `InteractiveViewer`, и лист панорамируется
 /// как обычно. После перетаскивания рядом с точкой появляется меню:
-/// удалить, поставить круглый люверс, французский замок или поворотную скобу.
+/// удалить, поставить круглый люверс, пластиковая скоба или поворотную скобу.
 class _EyeletDragLayer extends StatefulWidget {
   const _EyeletDragLayer({
     super.key,
@@ -3025,7 +3025,7 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
                 _menuItem(
                   key: 'eyelet-menu-lock',
                   icon: Icons.lock_outline,
-                  label: 'Французский замок',
+                  label: 'Пластиковая скоба',
                   onTap: () => _apply(
                     (point) => point.copyWith(kind: MarkerKind.frenchLock),
                   ),

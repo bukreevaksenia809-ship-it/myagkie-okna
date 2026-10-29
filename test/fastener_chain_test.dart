@@ -65,7 +65,8 @@ void main() {
     final labels = fastenerChainLabels(WindowSpec.of(params));
     final left = _side(labels, WindowSide.left);
     expect(left, isNotEmpty);
-    expect(left.length, 1);
+    // Углы остаются на месте, даже если сторону правили вручную.
+    expect(left.length, 3);
   });
 
   group('накопительная цепочка: окно 2000 × 1500, шаг 300, отступ 0', () {

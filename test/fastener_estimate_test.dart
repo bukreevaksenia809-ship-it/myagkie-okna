@@ -50,7 +50,7 @@ int _frenchLocks(WindowParams params) =>
     WindowSpec.of(params).layers.movableSideEyelets.length;
 
 void main() {
-  test('французский замок: счёт по вертикали и строка в смете', () {
+  test('пластиковая скоба: счёт по вертикали и строка в смете', () {
     const project = OrderProject(windows: [_lockScreen]);
     final summary = CostsSummary(project);
     final spec = summary.specs.first;
@@ -65,7 +65,7 @@ void main() {
     expect(summary.fastenerTotal, expected);
 
     final line = estimate.lines.firstWhere(
-      (candidate) => candidate.title == 'Французский замок',
+      (candidate) => candidate.title == 'Пластиковая скоба',
     );
     expect(line.quantity, expected);
     expect(line.unit, 'шт');
@@ -155,7 +155,7 @@ void main() {
 
     final titles = estimate.lines.map((line) => line.title).join(' | ');
     expect(titles, isNot(contains('Поворотная скоба')));
-    expect(titles, isNot(contains('Французский замок')));
+    expect(titles, isNot(contains('Пластиковая скоба')));
     expect(titles, isNot(contains('Силиконовый ремень')));
     // Люверсы при этом считаются как обычно.
     expect(
@@ -214,7 +214,7 @@ void main() {
     final prices = PriceList.defaults();
     final full = Estimate.ofWindow(_lockScreen, prices);
     final lockLine = full.lines.firstWhere(
-      (line) => line.title == 'Французский замок',
+      (line) => line.title == 'Пластиковая скоба',
     );
     expect(lockLine.amount, greaterThan(0));
 
@@ -222,7 +222,7 @@ void main() {
       _lockScreen,
       prices.withItem(PriceItemKeys.frenchLock, enabled: false),
     );
-    expect(off.lines.any((line) => line.title == 'Французский замок'), isFalse);
+    expect(off.lines.any((line) => line.title == 'Пластиковая скоба'), isFalse);
     expect(off.subtotal, closeTo(full.subtotal - lockLine.amount, 0.011));
 
     // Включение возвращает строку и сумму.
@@ -252,10 +252,10 @@ void main() {
     expect(summary.fastenerLabels, isNotEmpty);
     expect(
       summary.fastenerLabels.first,
-      contains('Французский замок — ${summary.fastenerTotal} шт'),
+      contains('Пластиковая скоба — ${summary.fastenerTotal} шт'),
     );
     final line = estimate.lines.firstWhere(
-      (candidate) => candidate.title == 'Французский замок',
+      (candidate) => candidate.title == 'Пластиковая скоба',
     );
     expect(line.amount, greaterThan(0));
     // Строка скрина: без окантовки и тента, как и раньше.
@@ -271,14 +271,14 @@ void main() {
       (operation) => operation.kind == TechOperationKind.eyelets,
     );
     final fastener = eyelets.materials.firstWhere(
-      (material) => material.name.contains('французский замок'),
+      (material) => material.name.contains('пластиковая скоба'),
     );
 
     // В техкарте окна — счёт на окно, как на чертеже.
     final perWindow = summary.fastenerCount[FastenerType.frenchLocks]!;
     expect(fastener.quantity, closeTo(perWindow.toDouble(), 1e-9));
     expect(fastener.size, '$perWindow шт');
-    expect(fastener.name, contains('французский замок'));
+    expect(fastener.name, contains('пластиковая скоба'));
     // Верхний ряд — саморезы, их тоже столько же, сколько в расходе.
     expect(
       eyelets.materials.any(
@@ -288,7 +288,7 @@ void main() {
       ),
       isTrue,
     );
-    expect(eyelets.description, contains('французский замок'));
+    expect(eyelets.description, contains('пластиковая скоба'));
 
     // «Только люверсы»: строки крепежа нет — техкарта сходится с расходом.
     final onlyEyelets =
@@ -349,7 +349,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Французский замок'), findsOneWidget);
+    expect(find.text('Пластиковая скоба'), findsOneWidget);
     expect(find.textContaining('по чертежу'), findsOneWidget);
     expect(find.textContaining('Саморезы верхнего ряда'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -377,10 +377,10 @@ void main() {
     await tester.pumpAndSettle();
 
     // В спецэлементах окна — тип крепежа.
-    expect(find.textContaining('французский замок'), findsWidgets);
+    expect(find.textContaining('пластиковая скоба'), findsWidgets);
     // В итогах — отдельный блок с крепежом по типам.
     expect(
-      find.textContaining('Французский замок — $count шт'),
+      find.textContaining('Пластиковая скоба — $count шт'),
       findsOneWidget,
     );
     expect(find.textContaining('Всего крепежа: $count шт'), findsOneWidget);

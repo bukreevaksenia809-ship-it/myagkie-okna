@@ -67,7 +67,7 @@ void main() {
     expect(count(project), drawn(project));
   });
 
-  test('без французских замков строки и счётчика нет', () {
+  test('без пластиковых скоб строки и счётчика нет', () {
     final project = OrderProject(
       windows: [lockWindow(fastener: FastenerType.turnBuckles)],
     );
@@ -77,7 +77,7 @@ void main() {
     );
     final lines = Estimate.of(project, const PriceList.defaults()).lines;
     expect(
-      lines.where((line) => line.title == 'Французский замок'),
+      lines.where((line) => line.title == 'Пластиковая скоба'),
       isEmpty,
     );
   });
@@ -86,7 +86,7 @@ void main() {
     final project = OrderProject(windows: [lockWindow()]);
     const prices = PriceList.defaults();
     final line = Estimate.of(project, prices).lines.firstWhere(
-      (line) => line.title == 'Французский замок',
+      (line) => line.title == 'Пластиковая скоба',
     );
     expect(line.quantity, count(project));
     expect(line.unitPrice, prices.frenchLockPrice);
@@ -102,7 +102,7 @@ void main() {
     );
     final lines = Estimate.of(project, disabled).lines;
     expect(
-      lines.where((line) => line.title == 'Французский замок'),
+      lines.where((line) => line.title == 'Пластиковая скоба'),
       isEmpty,
     );
   });

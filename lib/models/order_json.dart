@@ -22,6 +22,7 @@ Map<String, dynamic> orderToJson(OrderProject project) => {
       'extraQuantities': project.extraQuantities,
       'status': project.status.name,
       'statusChangedAt': project.statusChangedAt?.toIso8601String(),
+      'deadline': project.deadline?.toIso8601String(),
       'windows': [for (final window in project.windows) windowToJson(window)],
     };
 
@@ -79,6 +80,9 @@ OrderProject orderFromJson(Map<String, dynamic> json) {
       json['statusChangedAt'] is String
           ? json['statusChangedAt'] as String
           : '',
+    ),
+    deadline: DateTime.tryParse(
+      json['deadline'] is String ? json['deadline'] as String : '',
     ),
   );
 }

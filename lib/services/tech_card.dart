@@ -736,7 +736,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
   final topScrewCount = layers.topEyelets.length;
   final String fastenerNote;
   if (isFrenchLock) {
-    fastenerNote = 'Крепёж: французский замок — по чертежу: '
+    fastenerNote = 'Крепёж: пластиковая скоба — по чертежу: '
         '(${formatMm(params.leftHeight)} + ${formatMm(params.rightHeight)}) '
         '${unitSuffix()} ÷ шаг ${formatMm(params.eyeletStep)} ${unitSuffix()} '
         '= $frenchLockCount шт на окно (вверх до чётного); '
@@ -817,7 +817,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
             (params.isLifting || isScreen || isFrenchLock))
           TechMaterial(
             name: isFrenchLock
-                ? 'Крепёж: французский замок по вертикали'
+                ? 'Крепёж: пластиковая скоба по вертикали'
                 : 'Крепёж низа и боков: '
                       '${params.fastenerType.label.toLowerCase()}'
                       '${isScreen ? ' (по подвороту)' : ''}',

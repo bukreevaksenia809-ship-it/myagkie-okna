@@ -47,6 +47,7 @@ class OrderProject {
     this.extraQuantities = const {},
     this.status = OrderStatus.newOrder,
     this.statusChangedAt,
+    this.deadline,
   });
 
   /// Окна заказа. Номер окна — его позиция в списке (нумерация с единицы).
@@ -78,6 +79,9 @@ class OrderProject {
 
   /// Когда статус изменён — для напоминаний и контроля сроков.
   final DateTime? statusChangedAt;
+
+  /// Срок сдачи заказа (для ежедневника и предупреждений).
+  final DateTime? deadline;
 
   int get windowCount => windows.length;
 
@@ -119,6 +123,8 @@ class OrderProject {
     OrderStatus? status,
     DateTime? statusChangedAt,
     bool clearStatusChangedAt = false,
+    DateTime? deadline,
+    bool clearDeadline = false,
   }) {
     final nextWindows = windows ?? this.windows;
     final index = selectedIndex ?? this.selectedIndex;
@@ -135,6 +141,7 @@ class OrderProject {
       statusChangedAt: clearStatusChangedAt
           ? null
           : (statusChangedAt ?? this.statusChangedAt),
+      deadline: clearDeadline ? null : (deadline ?? this.deadline),
     );
   }
 

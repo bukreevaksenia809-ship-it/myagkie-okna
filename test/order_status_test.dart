@@ -4,6 +4,7 @@ import 'package:soft_window_drawer/models/order_project.dart';
 import 'package:soft_window_drawer/services/order_storage.dart';
 
 void main() {
+  _deadlineTests();
   test('статус заказа по умолчанию — новый', () {
     const project = OrderProject();
     expect(project.status, OrderStatus.newOrder);
@@ -29,5 +30,14 @@ void main() {
     final summary = orderSummaryToJson(project);
     expect(summary['status'], 'ready');
     expect(summary['statusChangedAt'], isA<String>());
+  });
+}
+
+void _deadlineTests() {
+  test('срок заказа сохраняется в JSON', () {
+    final deadline = DateTime.utc(2026, 11, 5);
+    final project = const OrderProject().copyWith(deadline: deadline);
+    expect(orderFromJson(orderToJson(project)).deadline, deadline);
+    expect(orderSummaryToJson(project)['deadline'], isA<String>());
   });
 }

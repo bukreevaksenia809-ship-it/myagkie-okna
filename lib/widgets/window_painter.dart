@@ -378,7 +378,7 @@ class WindowDrawingPainter extends CustomPainter {
   /// Множитель размера подписей: в мелких ячейках подписи делаем мельче.
   final double labelScale;
 
-  /// Фото французского замка (декодированное). Пока null — рисуется
+  /// Фото пластиковой скобы (декодированное). Пока null — рисуется
   /// прежний векторный замок, чтобы на листе не было пустого места.
   final ui.Image? fastenerImage;
 
@@ -492,7 +492,7 @@ class WindowDrawingPainter extends CustomPainter {
   bool shouldRepaint(covariant WindowDrawingPainter oldDelegate) =>
       oldDelegate.params.signature != params.signature ||
       // Тип крепежа сравниваем отдельно: signature его включает, но
-      // перерисовка при смене «скоба → французский замок» не должна
+      // перерисовка при смене «скоба → пластиковая скоба» не должна
       // зависеть от того, как собран signature.
       oldDelegate.params.fastenerType != params.fastenerType ||
       oldDelegate.options.signature != options.signature ||
@@ -3023,7 +3023,7 @@ class WindowDrawingPainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// Французский замок: металлическая планка с поворотным рычажком и
+  /// Пластиковая скоба: металлическая планка с поворотным рычажком и
   /// стрелкой поворота на 90° (замок затягивается поворотом).
   ///
   /// [bandWidth] — ширина полосы под крепежом (окантовка ПВХ или подворот
