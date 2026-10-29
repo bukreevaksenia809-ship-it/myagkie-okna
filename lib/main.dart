@@ -40,13 +40,14 @@ import 'widgets/estimate_sheet.dart';
 import 'widgets/drawing_sheet.dart';
 import 'widgets/orders_panel.dart';
 import 'widgets/order_planner_dialog.dart';
+import 'widgets/warehouse_dialog.dart';
 import 'widgets/params_panel.dart';
 import 'widgets/print_dialog.dart';
 import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '1.6.8';
+const String kAppVersion = '1.6.9';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1084,6 +1085,8 @@ class _BuilderScreenState extends State<BuilderScreen>
             if (!kStoreBuild) _checkUpdate(show: true);
           case 'planner':
             showOrderPlannerDialog(context, _orders);
+          case 'warehouse':
+            showWarehouseDialog(context);
           case 'watermark':
             showWatermarkDialog(context);
           case 'pairing':
@@ -1101,6 +1104,8 @@ class _BuilderScreenState extends State<BuilderScreen>
         PopupMenuItem(value: 'print', child: Text('Печать')),
         PopupMenuItem(value: 'update', child: Text('Проверить обновления')),
         PopupMenuItem(value: 'planner', child: Text('Ежедневник')),
+        PopupMenuItem(value: 'warehouse', child: Text('Склад материалов')),
+        PopupMenuItem(value: 'warehouse', child: Text('Склад материалов')),
         PopupMenuItem(value: 'watermark', child: Text('Водяной знак')),
         PopupMenuItem(
           value: 'pairing',
@@ -1190,6 +1195,12 @@ class _BuilderScreenState extends State<BuilderScreen>
                 child: const Icon(Icons.system_update_alt),
               ),
             ),
+          IconButton(
+            key: const Key('warehouse-appbar'),
+            tooltip: 'Склад материалов',
+            onPressed: () => showWarehouseDialog(context),
+            icon: const Icon(Icons.inventory_2_outlined),
+          ),
           IconButton(
             key: const Key('planner-appbar'),
             tooltip: 'Ежедневник и сроки',
