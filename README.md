@@ -66,9 +66,11 @@ APK/AAB и Web ZIP — там же. Метаданные обновления (�
 
 ### Зеркало R2
 
-Публикация в Cloudflare R2 — скриптом `./release-r2.sh 2.0.0` (нужен
-`npx wrangler login`). Если сессия Cloudflare истекла, скрипт остановится до
-загрузки; GitHub Releases при этом остаётся рабочим источником.
+Сборки 2.0.0 опубликованы в Cloudflare R2:
+`https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.0.0/`.
+Для будущих выпусков — `./release-r2.sh 2.0.0` (нужен живой вход Cloudflare
+или `CLOUDFLARE_API_TOKEN` для API-загрузки). GitHub Releases остаётся
+резервным источником.
 
 ## Веб-версии (демо-ссылки)
 

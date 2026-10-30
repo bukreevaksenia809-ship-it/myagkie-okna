@@ -105,7 +105,7 @@ flutter build windows --release
 - Боевой веб: https://myagkie-okna-excl.web.app (Firebase Hosting, target `excl`).
 - Админка кладётся в `build/web/admin` при `deploy-web.sh`; без этого шага на
   сайте остаётся старая версия.
-- R2-зеркало: `./release-r2.sh 2.0.0` (требует живой сессии wrangler).
+- R2-зеркало: сборки 2.0.0 загружены в `okna-updates/releases/2.0.0/`; для следующих выпусков — `./release-r2.sh 2.0.0`.
 
 ## Веб-версия и SQLite
 
