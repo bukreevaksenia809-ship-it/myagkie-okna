@@ -179,3 +179,20 @@ int _int(Object? value, int fallback) => value is num ? value.toInt() : fallback
 
 String _string(Object? value, String fallback) =>
     value is String ? value : fallback;
+
+/// Меняет статус сохранённого заказа, не создавая новый файл.
+Future<void> updateSavedOrderStatus(
+  SavedOrder order,
+  OrderStatus status,
+) async {
+  final json = await readStoredOrder(order.ref);
+  json['status'] = status.name;
+  json['statusChangedAt'] = DateTime.now().toUtc().toIso8601String();
+  final summary = json['summary'];
+  if (summary is Map) {
+    summary['status'] = status.name;
+    summary['statusChangedAt'] = json['statusChangedAt'];
+    json['summary'] = summary;
+  }
+  await storeOrder(json, order.ref.label, savedAt: order.savedAt);
+}
