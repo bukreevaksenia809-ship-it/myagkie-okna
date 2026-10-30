@@ -1522,10 +1522,6 @@ void _allowanceRules() {
 
       // Подпись окна и штамп — чистое изделие 2000 × 2000.
       expect(find.textContaining('2\u202F000×2\u202F000 мм'), findsWidgets);
-      expect(
-        find.textContaining('2\u202F000/2\u202F000 · 2\u202F000/2\u202F000'),
-        findsWidgets,
-      );
       // Старых записей «замер + припуск → размер» и «· припуск …» нет.
       expect(find.textContaining('2\u202F000 + 120'), findsNothing);
       expect(find.textContaining('2\u202F000 + 80'), findsNothing);

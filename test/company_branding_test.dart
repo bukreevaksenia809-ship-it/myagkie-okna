@@ -136,7 +136,7 @@ void main() {
     expect(find.text('ООО Скрытое'), findsNothing);
   });
 
-  testWidgets('чертёж: логотип и название в штампе', (tester) async {
+  testWidgets('чертёж: в штампе только заказчик и дата', (tester) async {
     final branding = CompanyBrandingState(
       details: const CompanyDetails(
         name: 'ООО Мягкие окна',
@@ -156,8 +156,8 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.textContaining('ООО Мягкие окна'), findsWidgets);
-    expect(find.byType(Image), findsWidgets);
+    expect(find.textContaining('Заказчик:'), findsOneWidget);
+    expect(find.textContaining('ООО Мягкие окна'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

@@ -977,6 +977,7 @@ class WindowParams {
     this.roofOverhangMm = 0,
     this.wallHeightMm = 0,
     this.crossbars = const [],
+    this.fastenerOffsets = const {},
     this.eyeletStep = 300,
     this.eyeletCornerOffset = 0,
     this.roundEyeletsEnabled = true,
@@ -1025,6 +1026,13 @@ class WindowParams {
 
   /// Перемычки внутри полотна.
   final List<CrossbarSpec> crossbars;
+
+  /// Положение крепежа в полосе окантовки: 0 — внутренний край,
+  /// 0.5 — середина, 1 — внешний. По сторонам независимо.
+  final Map<EdgeSide, double> fastenerOffsets;
+
+  double fastenerOffsetFor(EdgeSide side) =>
+      (fastenerOffsets[side] ?? 0.5).clamp(0.05, 0.95).toDouble();
 
   /// Тип окна по способу открывания.
   final WindowType windowType;
@@ -1639,6 +1647,7 @@ class WindowParams {
     double? roofOverhangMm,
     double? wallHeightMm,
     List<CrossbarSpec>? crossbars,
+    Map<EdgeSide, double>? fastenerOffsets,
     WindowType? windowType,
     double? bottomWidth,
     double? topWidth,
@@ -1707,6 +1716,7 @@ class WindowParams {
     roofOverhangMm: roofOverhangMm ?? this.roofOverhangMm,
     wallHeightMm: wallHeightMm ?? this.wallHeightMm,
     crossbars: crossbars ?? this.crossbars,
+    fastenerOffsets: fastenerOffsets ?? this.fastenerOffsets,
       windowType: windowType ?? this.windowType,
       bottomWidth: bottomWidth ?? this.bottomWidth,
       topWidth: topWidth ?? this.topWidth,

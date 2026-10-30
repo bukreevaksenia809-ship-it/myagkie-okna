@@ -1295,12 +1295,16 @@ class CutSheetPainter extends CustomPainter {
             '${formatMm(spec.filmCutHeightWithShrinkage)} ${unitSuffix()}',
     ];
     if (spec.zipperSegmentWidths.length > 1) {
-      final total = boundsOfAll(spec.filmCutPolygons).width;
+      final total = spec.zipperSegmentWidths.fold<double>(
+        0,
+        (sum, width) => sum + width,
+      );
       _label(
         canvas,
         'Общая ширина сегментов ${formatMm(total)} ${unitSuffix()}',
         Offset(rect.center.dx, rect.bottom + 100),
         color: _ink,
+        fontSize: _basePx * 2.6,
       );
     }
     if (parts.isNotEmpty) {

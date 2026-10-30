@@ -98,6 +98,10 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'roofOverhangMm': p.roofOverhangMm,
       'wallHeightMm': p.wallHeightMm,
       'crossbars': [for (final crossbar in p.crossbars) crossbar.toJson()],
+      'fastenerOffsets': {
+        for (final entry in p.fastenerOffsets.entries)
+          entry.key.name: entry.value,
+      },
       'windowType': p.windowType.name,
       'material': p.material.name,
       'bottomWidth': p.bottomWidth,
@@ -207,6 +211,11 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
       for (final raw in (json['crossbars'] as List? ?? const []))
         if (raw is Map<String, dynamic>) CrossbarSpec.fromJson(raw),
     ],
+    fastenerOffsets: {
+      for (final side in EdgeSide.values)
+        if ((json['fastenerOffsets'] as Map?)?[side.name] is num)
+          side: ((json['fastenerOffsets'] as Map)[side.name] as num).toDouble(),
+    },
     windowType:
         _enumByName(WindowType.values, json['windowType'], fallback.windowType),
     material:

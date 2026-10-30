@@ -2738,6 +2738,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
         children: [
           _hemSection(spec),
           const SizedBox(height: 8),
+          _fastenerOffsetSection(params),
+          const SizedBox(height: 8),
           const Text(
             'У скрина нет окантовки: материал подворачивается сам, шов 3 мм. '
             'К высоте заготовки добавляется 20 мм на шов и запас.',
@@ -2791,7 +2793,62 @@ class _ParamsPanelState extends State<ParamsPanel> {
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
         const SizedBox(height: 12),
+        _fastenerOffsetSection(params),
+        const SizedBox(height: 12),
         _weldOverlapField(params),
+      ],
+    );
+  }
+
+  /// Положение крепежа в полосе окантовки/подворота по каждой стороне.
+  Widget _fastenerOffsetSection(WindowParams params) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Положение крепежа в полосе',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 2),
+        const Text(
+          'Середина полосы — база. Можно сдвинуть к внутреннему или внешнему '
+          'краю отдельно для каждой стороны.',
+          style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+        ),
+        for (final side in EdgeSide.values)
+          Row(
+            children: [
+              SizedBox(
+                width: 54,
+                child: Text(side.label, style: const TextStyle(fontSize: 11)),
+              ),
+              Expanded(
+                child: Slider(
+                  key: Key('fastener-offset-${side.name}'),
+                  value: params.fastenerOffsetFor(side).clamp(0.05, 0.95),
+                  min: 0.05,
+                  max: 0.95,
+                  divisions: 18,
+                  label: '${(params.fastenerOffsetFor(side) * 100).round()}%',
+                  onChanged: (value) => _updateWindow(
+                    params.copyWith(
+                      fastenerOffsets: {
+                        ...params.fastenerOffsets,
+                        side: value,
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 38,
+                child: Text(
+                  '${(params.fastenerOffsetFor(side) * 100).round()}%',
+                  style: const TextStyle(fontSize: 10.5),
+                ),
+              ),
+            ],
+          ),
       ],
     );
   }

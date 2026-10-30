@@ -56,7 +56,7 @@ class DrawingSheet extends StatelessWidget {
   /// линейкой без поправок: 1000 мм модели при 1:20 дают ровно 50 мм на бумаге.
   static const double _paintScale = a4PxPerMm / (96 / 25.4);
 
-  static const double titleBlockHeight = 132;
+  static const double titleBlockHeight = 44;
 
   /// Ширина боковой панели: компактно под A4 (≈36 мм).
   static const double sidePanelWidth = 210;
@@ -1441,26 +1441,6 @@ class _Caption extends StatelessWidget {
 
 // ------------------------------------------------------------------ штамп
 
-/// Размеры одного окна для штампа: только основные размеры изделия.
-///
-/// Припуск на раскрой в размеры изделия не входит — он виден в примечаниях
-/// и в раскрое плёнки.
-String _sizesLabel(WindowParams params) {
-  if (params.isTShape) {
-    return '${formatMm(params.bottomWidth)} × ${formatMm(params.leftHeight)} + '
-        'приставка ${formatMm(params.tWidth)} × ${formatMm(params.tHeight)} '
-        '${params.tSide.label.toLowerCase()}';
-  }
-  return '${formatMm(params.bottomWidth)}/${formatMm(params.topWidth)} · '
-      '${formatMm(params.leftHeight)}/${formatMm(params.rightHeight)}';
-}
-
-/// Короткая запись размера окна для заказа из нескольких окон.
-String _shortSizeLabel(WindowParams params) => params.isTShape
-    ? '${formatMm(params.bottomWidth)}×${formatMm(params.leftHeight)}+'
-          '${formatMm(params.tWidth)}×${formatMm(params.tHeight)}'
-    : '${formatMm(params.bottomWidth)}×${formatMm(params.leftHeight)}';
-
 class _TitleBlock extends StatelessWidget {
   const _TitleBlock({
     required this.project,
@@ -1469,351 +1449,41 @@ class _TitleBlock extends StatelessWidget {
   });
 
   final CompanyBrandingState? company;
-
-  /// Настоящий масштаб листа — тот же, что на масштабной линейке.
   final String scaleLabel;
-
   final OrderProject project;
 
   @override
   Widget build(BuildContext context) {
-    final windows = project.windows;
-    final specs = [for (final params in windows) WindowSpec.of(params)];
-    // Плёнка на листе — заготовка к раскрою по фактическому контуру: с
-    // припуском, а усадка показана отдельным числом (и учтена в
-    // totalFilmAreaWithShrinkage).
-    final totalFilmArea = specs.fold<double>(
-      0,
-      (sum, spec) => sum + spec.filmCutAreaM2,
-    );
-    final totalFilmAreaWithShrinkage = specs.fold<double>(
-      0,
-      (sum, spec) => sum + spec.filmCutAreaWithShrinkageM2,
-    );
-    final totalProductArea = specs.fold<double>(
-      0,
-      (sum, spec) => sum + spec.productAreaM2,
-    );
-    final totalEyelets = specs.fold<int>(
-      0,
-      (sum, spec) => sum + spec.eyeletCount,
-    );
-    final consumption = <double, double>{};
-    for (final spec in specs) {
-      spec.edgeConsumption.forEach((roll, length) {
-        consumption[roll] = (consumption[roll] ?? 0) + length;
-      });
-    }
-    final consumptionLabels = consumption.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
+    final first = project.windows.first;
     final now = DateTime.now();
     final date =
-        '${now.day.toString().padLeft(2, '0')}.${now.month.toString().padLeft(2, '0')}.${now.year}';
-    final first = windows.first;
-
+        '${now.day.toString().padLeft(2, '0')}.'
+        '${now.month.toString().padLeft(2, '0')}.${now.year}';
     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Color(0xFF1B1F27), width: 1.4)),
+        border: Border(top: BorderSide(color: Color(0xFF1B1F27), width: 1.2)),
       ),
-      child: Column(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: _companyCell('Изделие', first.projectName),
-                ),
-                Expanded(flex: 2, child: _cell('Заказчик', first.customer)),
-                Expanded(
-                  flex: 2,
-                  child: _cell(
-                    'Окон в заказе',
-                    '${windows.length} шт'
-                        '${windows.length > 1 ? ' · №1…№${windows.length}' : ''}',
-                  ),
-                ),
-                Expanded(flex: 2, child: _cell('Дата', date)),
-                Expanded(
-                  flex: 3,
-                  child: _cell(
-                    'Окантовка',
-                    consumptionLabels.isEmpty
-                        ? '—'
-                        : consumptionLabels
-                              .map(
-                                (entry) =>
-                                    '${edgeBandLabel(entry.key)} — ${formatMm(entry.value)} ${unitSuffix()}',
-                              )
-                              .join(' · '),
-                  ),
-                ),
-                SizedBox(width: 104, child: _cell('Масштаб', scaleLabel)),
-              ],
-            ),
-          ),
-          const Divider(height: 1, thickness: 1, color: Color(0xFFC3CCDA)),
-          Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: _cell(
-                    'Размеры окон, ${unitSuffix()}',
-                    windows.length == 1
-                        ? _sizesLabel(first)
-                        : windows
-                              .asMap()
-                              .entries
-                              .map(
-                                (entry) =>
-                                    '№${entry.key + 1}: ${_shortSizeLabel(entry.value)}',
-                              )
-                              .join(' · '),
-                  ),
-                ),
-                Expanded(
-                  flex: 3,
-                  child: _cell(
-                    first.isScreen
-                        ? 'Скрин: подворот по сторонам'
-                        : 'Окантовка по сторонам',
-                    windows.length == 1
-                        ? specs.first.edgeBySideSummary
-                        : 'см. подписи и расход',
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: _cell(
-                    'Полотно',
-                    windows.length == 1
-                        ? windows.first.material.label
-                        : '${windows.first.material.label} и др.',
-                  ),
-                ),
-                Expanded(
-                  flex: 3,
-                  child: _cell(
-                    'Люверсы',
-                    'всего $totalEyelets шт · '
-                        'шаг ${specs.first.eyeletStepLabel}',
-                  ),
-                ),
-                Expanded(
-                  flex: 3,
-                  child: _cell(
-                    first.isScreen
-                        ? 'Скрин: заготовка с подворотом '
-                              '${first.hemBySideShortLabel} (низ/право/верх/лево)'
-                              '${specs.first.zipperBandTotalMm > 0 ? ', минус '
-                                        'полоса молнии '
-                                        '${formatMm(specs.first.zipperBandTotalMm)} ${unitSuffix()}' : ''}'
-                        : 'Полотно: раскрой с запайкой '
-                              '${formatMm(first.weldOverlapMm)} ${unitSuffix()}'
-                              '${specs.first.zipperBandTotalMm > 0 ? ', минус '
-                                        'полоса молнии '
-                                        '${formatMm(specs.first.zipperBandTotalMm)} ${unitSuffix()}' : ''}',
-                    windows.length == 1
-                        ? '${formatMm(specs.first.filmCutWidthWithAllowance)} × '
-                              '${formatMm(specs.first.filmCutHeightWithAllowance)}'
-                        : 'итого ${formatMeters(totalFilmArea)} м²',
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: _cell(
-                    first.isScreen
-                        ? 'Усадка'
-                        : first.hasShrinkage
-                        ? 'С усадкой '
-                              '${formatPercent(first.effectiveShrinkagePercent)}'
-                        : 'Без усадки',
-                    windows.length == 1
-                        ? (first.isScreen
-                              ? 'нет'
-                              : '${formatMm(specs.first.filmCutWidthWithShrinkage)} × '
-                                    '${formatMm(specs.first.filmCutHeightWithShrinkage)}')
-                        : '${formatMeters(totalFilmAreaWithShrinkage)} м²',
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: _cell(
-                    'Площадь изделий',
-                    '${formatMeters(totalProductArea)} м²',
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: _cell(
-                    'Площадь заготовок с усадкой',
-                    '${formatMeters(totalFilmAreaWithShrinkage)} м²',
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Ячейка штампа с логотипом и реквизитами компании (если включён показ).
-  Widget _companyCell(String label, String value, {int maxLines = 1}) {
-    final branding = company;
-    if (branding == null || !branding.isVisible) {
-      return _cell(label, value, maxLines: maxLines);
-    }
-    final stampPx = math.min(LabelSettings.value.pxFor(LabelKind.stamp), 20.0);
-    final showLogo = branding.showLogoIn(LogoDocument.drawing);
-    final logo = showLogo
-        ? SizedBox(
-            height: 34,
-            child: Image.memory(
-              branding.logo!,
-              fit: BoxFit.contain,
-              filterQuality: FilterQuality.medium,
-            ),
-          )
-        : null;
-    final logoRight = branding.logoPlacement == LogoPlacement.right;
-    final contact = [
-      if (branding.details.name.trim().isNotEmpty) branding.details.name.trim(),
-      if (branding.details.phone.trim().isNotEmpty)
-        'тел. ${branding.details.phone.trim()}',
-    ].join(' · ');
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: const BoxDecoration(
-        border: Border(left: BorderSide(color: Color(0xFFC3CCDA))),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Row(
         children: [
           Text(
-            label.toUpperCase(),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: stampPx * 0.68,
-              height: 1.15,
-              letterSpacing: 0.4,
-              color: const Color(0xFF7C8798),
+            'Заказчик: ${first.customer.trim().isEmpty ? '—' : first.customer}',
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF2B3440),
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 3),
-          Expanded(
-            child: Row(
-              children: [
-                if (logo != null && !logoRight) ...[
-                  logo,
-                  const SizedBox(width: 8),
-                ],
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        value.isEmpty ? '—' : value,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: stampPx,
-                          height: 1.15,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF1B1F27),
-                        ),
-                      ),
-                      if (contact.isNotEmpty)
-                        Text(
-                          contact,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: stampPx * 0.72,
-                            height: 1.15,
-                            color: const Color(0xFF5B6B80),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                if (logo != null && logoRight) ...[
-                  const SizedBox(width: 8),
-                  logo,
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _cell(String label, String value, {int maxLines = 1}) {
-    // Двухстрочное значение (размеры с припуском) набираем мельче и с
-    // меньшими отступами, чтобы клетка штампа не переполнялась.
-    final dense = maxLines > 1;
-    // Штамп ограничен 20 точками: клетки фиксированной высоты, иначе
-    // крупный кегль рвёт нижнюю полосу A4. FittedBox дополнительно
-    // подгоняет длинную строку.
-    final stampPx = math.min(LabelSettings.value.pxFor(LabelKind.stamp), 20.0);
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: dense ? 5 : 9),
-      decoration: const BoxDecoration(
-        border: Border(left: BorderSide(color: Color(0xFFC3CCDA))),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Flexible(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                label.toUpperCase(),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: stampPx * 0.68,
-                  height: 1.15,
-                  letterSpacing: 0.4,
-                  color: const Color(0xFF7C8798),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Flexible(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                value.isEmpty ? '—' : value,
-                maxLines: maxLines,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: dense ? stampPx * 0.92 : stampPx,
-                  height: dense ? 1.15 : null,
-                  color: const Color(0xFF1B1F27),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+          const Spacer(),
+          Text(
+            date,
+            style: const TextStyle(fontSize: 10.5, color: Color(0xFF66748A)),
           ),
         ],
       ),
     );
   }
 }
-
-// --------------------------------------------------- легенда и примечания
 
 class _SidePanel extends StatelessWidget {
   const _SidePanel({

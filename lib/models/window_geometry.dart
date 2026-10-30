@@ -1697,7 +1697,12 @@ class WindowLayers {
       for (final polygon in groupPolygons)
         insetPolygonPerSide(
           polygon,
-          perEdge(polygon, (side) => finishedWidthFor(side) / 2),
+          perEdge(
+            polygon,
+            (side) =>
+                finishedWidthFor(side) *
+                params.fastenerOffsetFor(edgeSideOf(side)),
+          ),
         ),
     ];
   }
@@ -3240,7 +3245,7 @@ class WindowSpec {
   String get zipperSegmentsLabel {
     final widths = zipperSegmentWidths;
     if (widths.length < 2) return '';
-    final total = boundsOfAll(filmCutPolygons).width;
+    final total = widths.fold<double>(0, (sum, width) => sum + width);
     return 'сегментов ${widths.length}: '
         '${widths.map(formatMm).join(' + ')} ${unitSuffix()} · '
         'общая ширина ${formatMm(total)} ${unitSuffix()}';
