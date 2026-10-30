@@ -134,6 +134,7 @@ class OrderRepository {
     OrderProject project = const OrderProject(),
     double? amount,
     String legacyRef = '',
+    DateTime? createdAt,
   }) async {
     final db = await _database.database;
     return db.transaction((txn) async {
@@ -156,7 +157,7 @@ class OrderRepository {
         comment: comment.trim(),
         projectJson: jsonEncode(orderToJson(project)),
         legacyRef: legacyRef,
-        createdAt: now,
+        createdAt: createdAt ?? now,
         updatedAt: now,
         statusChangedAt: now,
       );

@@ -4,8 +4,10 @@ import '../../data/order_repository.dart';
 import '../../data/warehouse_repository.dart';
 import '../../models/order_project.dart';
 import '../../models/order_record.dart';
+import '../../models/price_list.dart';
 import '../../services/order_materials.dart';
 import '../design/app_kit.dart';
+import '../warehouse/bulk_materials_dialog.dart';
 import 'new_order_dialog.dart';
 import 'order_details_dialog.dart';
 
@@ -41,10 +43,12 @@ class OrdersBoardScreen extends StatefulWidget {
     super.key,
     this.embedded = false,
     this.onOpenProject,
+    this.prices = const PriceList.defaults(),
   });
 
   final bool embedded;
   final ValueChanged<OrderRecord>? onOpenProject;
+  final PriceList prices;
 
   @override
   State<OrdersBoardScreen> createState() => _OrdersBoardScreenState();
@@ -196,6 +200,19 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
       return result.ok ? 'Материалы возвращены на склад' : result.message;
     }
     return null;
+  }
+
+  Future<void> _bulkMaterials() async {
+    final selected = _orders
+        .where((order) => _selected.contains(order.id))
+        .toList();
+    if (selected.isEmpty) return;
+    await showBulkMaterialsDialog(
+      context,
+      orders: _orders,
+      initialSelected: _selected,
+      prices: widget.prices,
+    );
   }
 
   Future<void> _bulkStatus(OrderStatus status) async {
@@ -624,6 +641,11 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
               icon: Icons.person_outline,
               label: 'Ответственный',
             ),
+          ),
+          _BulkButton(
+            icon: Icons.inventory_2_outlined,
+            label: 'Материалы',
+            onTap: _bulkMaterials,
           ),
           _BulkButton(
             icon: Icons.archive_outlined,

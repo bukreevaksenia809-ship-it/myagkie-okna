@@ -12,7 +12,7 @@ class AppDatabase {
 
   static final AppDatabase instance = AppDatabase._();
 
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
 
   Database? _database;
   Future<Database>? _opening;
@@ -95,8 +95,20 @@ class AppDatabase {
     int oldVersion,
     int newVersion,
   ) async {
-    // На будущее: switch (oldVersion) { case 1: ... }
-    if (oldVersion < 1) await _createSchema(db);
+    if (oldVersion < 1) {
+      await _createSchema(db);
+      return;
+    }
+    if (oldVersion < 2) {
+      await db.execute(
+        "ALTER TABLE warehouse_products ADD COLUMN "
+        "price_key TEXT NOT NULL DEFAULT ''",
+      );
+      await db.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_products_price_key '
+        "ON warehouse_products(price_key) WHERE price_key <> ''",
+      );
+    }
   }
 
   /// SQL схемы. Порядок важен: сначала справочники, затем журналы.
@@ -125,6 +137,7 @@ class AppDatabase {
       supplier TEXT NOT NULL DEFAULT '',
       location TEXT NOT NULL DEFAULT '',
       barcode TEXT NOT NULL DEFAULT '',
+      price_key TEXT NOT NULL DEFAULT '',
       archived INTEGER NOT NULL DEFAULT 0,
       note TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL,
@@ -135,6 +148,11 @@ class AppDatabase {
     CREATE UNIQUE INDEX idx_products_barcode
       ON warehouse_products(barcode)
       WHERE barcode <> ''
+    ''',
+    '''
+    CREATE UNIQUE INDEX idx_products_price_key
+      ON warehouse_products(price_key)
+      WHERE price_key <> ''
     ''',
     '''
     CREATE INDEX idx_products_archived

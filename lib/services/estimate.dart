@@ -590,7 +590,7 @@ class Estimate {
     // обязан попасть в смету.
     final crossbarFasteners = [
       for (final spec in summary.specs)
-        for (final crossbar in spec.params.crossbars) crossbar.fastenerCount,
+        for (final crossbar in spec.params.crossbars) crossbar.totalFastenerCount,
     ].fold<int>(0, (sum, value) => sum + value);
     if (crossbarFasteners > 0 &&
         prices.isEnabled(PriceItemKeys.eyeletRound)) {

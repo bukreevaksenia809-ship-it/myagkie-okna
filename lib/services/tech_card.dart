@@ -16,6 +16,7 @@ enum TechOperationKind {
   material('Материал'),
   cutting('Раскрой'),
   welding('Сварка'),
+  splice('Спайка полотна'),
   weldNeighbor('Спайка окон'),
   edging('Окантовка'),
   hem('Подворот'),
@@ -482,6 +483,44 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           'WindowSpec.filmCutWidthWithShrinkage / filmCutHeightWithShrinkage '
           '(видимый размер + запайка − полоса молнии + припуск на раскрой + '
           'усадка)',
+    );
+  }
+
+  // ------------------------------- 1б. спайка полотна из двух кусков
+  if (params.hasSplice) {
+    add(
+      kind: TechOperationKind.splice,
+      title: 'Спайка полотна',
+      description:
+          'Полотно шире рулона: основной кусок ${formatMm(spec.filmCutWidthWithAllowance)} '
+          '${unitSuffix()} и доборная полоса ${formatMm(params.spliceStripMm)} '
+          '${unitSuffix()} ${params.spliceSide == FilmSpliceSide.right ? 'справа' : 'слева'}. '
+          'Стык — на расстоянии ${formatMm(spec.filmCutWidthWithAllowance - params.spliceStripMm)} '
+          '${unitSuffix()} от противоположного края. Наложить полосу с нахлёстом '
+          '20 ${unitSuffix()}, приварить горячим воздухом с двух сторон, '
+          'проверить герметичность и ровность линии.',
+      materials: [
+        TechMaterial(
+          name: 'Основной кусок полотна',
+          size:
+              '${formatMm(spec.filmCutWidthWithAllowance - params.spliceStripMm)} × '
+              '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}',
+          note: 'основной рулон + доборная полоса',
+        ),
+        TechMaterial(
+          name: 'Доборная полоса',
+          size:
+              '${formatMm(params.spliceStripMm)} × '
+              '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}',
+          note: 'спайка с основным куском, нахлёст 20 ${unitSuffix()}',
+        ),
+      ],
+      tool: 'Фен-сварочник, прижимной ролик, рулетка, маркер',
+      control:
+          'Линия стыка ровная, без складок и расхождений; шов герметичен, '
+          'нахлёст 20 ${unitSuffix()}, полотно не поведено.',
+      source: 'WindowParams.spliceStripMm / spliceSide; '
+          'WindowSpec.filmCutWidthWithAllowance',
     );
   }
 

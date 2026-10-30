@@ -839,6 +839,16 @@ class Cutout {
 const double liftStrapWidth = 50;
 const double liftStrapLength = 500;
 
+/// С какой стороны добавляется полоса при спайке полотна.
+enum FilmSpliceSide {
+  right('Справа'),
+  left('Слева');
+
+  const FilmSpliceSide(this.label);
+
+  final String label;
+}
+
 /// Ориентация подвязочного ремня на полотне.
 enum LiftStrapOrientation {
   vertical('Вертикально', 'сверху вниз'),
@@ -1007,6 +1017,8 @@ class WindowParams {
     this.fastenerOffsetsMm = const {},
     this.eyeletStep = 300,
     this.eyeletEvenSpacing = true,
+    this.spliceStripMm = 0,
+    this.spliceSide = FilmSpliceSide.right,
     this.eyeletCornerOffset = 0,
     this.roundEyeletsEnabled = true,
     this.fastenerType = FastenerType.turnBuckles,
@@ -1287,6 +1299,18 @@ class WindowParams {
   /// заданного), `false` — держать ровно заданный шаг, а последний промежуток
   /// сделать остатком до угла.
   final bool eyeletEvenSpacing;
+
+  /// Ширина доборной полосы при спайке полотна, мм.
+  ///
+  /// 0 — спайки нет. Если заготовка шире выбранного рулона, мастер либо
+  /// берёт рулон шире, либо добавляет полосу [spliceStripMm] и спаивает её
+  /// с основным полотном. Стык показывается на чертеже и в техкарте.
+  final double spliceStripMm;
+
+  /// С какой стороны добавляется полоса.
+  final FilmSpliceSide spliceSide;
+
+  bool get hasSplice => spliceStripMm > 0.5;
 
   /// Отступ первого люверса от угла; 0 — люверс стоит в углу.
   final double eyeletCornerOffset;
@@ -1747,6 +1771,8 @@ class WindowParams {
     EyeletType? eyeletType,
     double? eyeletStep,
     bool? eyeletEvenSpacing,
+    double? spliceStripMm,
+    FilmSpliceSide? spliceSide,
     double? eyeletCornerOffset,
     bool? roundEyeletsEnabled,
     FastenerType? fastenerType,
@@ -1820,6 +1846,8 @@ class WindowParams {
       eyeletType: eyeletType ?? this.eyeletType,
       eyeletStep: eyeletStep ?? this.eyeletStep,
       eyeletEvenSpacing: eyeletEvenSpacing ?? this.eyeletEvenSpacing,
+      spliceStripMm: spliceStripMm ?? this.spliceStripMm,
+      spliceSide: spliceSide ?? this.spliceSide,
       eyeletCornerOffset: eyeletCornerOffset ?? this.eyeletCornerOffset,
       roundEyeletsEnabled: roundEyeletsEnabled ?? this.roundEyeletsEnabled,
       fastenerType: fastenerType ?? this.fastenerType,
@@ -2124,6 +2152,8 @@ class WindowParams {
     eyeletType.name,
     eyeletStep,
     eyeletEvenSpacing,
+    spliceStripMm,
+    spliceSide,
     eyeletCornerOffset,
     roundEyeletsEnabled,
     material.name,

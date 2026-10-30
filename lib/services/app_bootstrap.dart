@@ -1,6 +1,7 @@
 import '../data/app_database.dart';
 import 'legacy_data_migrator.dart';
 import 'database_backup_daily.dart';
+import 'price_warehouse_sync.dart';
 
 /// Инициализация локальной базы и перенос старых данных.
 ///
@@ -17,6 +18,11 @@ class AppBootstrap {
     try {
       await AppDatabase.instance.open();
       await LegacyDataMigrator().run();
+      try {
+        await PriceWarehouseSync().seedOnce();
+      } catch (_) {
+        // Склад может быть недоступен — приложение всё равно открывается.
+      }
       await DailyDatabaseBackup.run();
       ready = true;
       databaseError = null;

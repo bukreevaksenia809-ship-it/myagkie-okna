@@ -271,14 +271,27 @@ class CutPiece {
   /// Заготовки окна с учётом перемычек во всю ширину/высоту.
   static List<CutPiece> piecesOfSpec(WindowSpec spec, {int windowIndex = 0}) {
     final base = CutPiece.ofSpec(spec);
+    final splicePieces = spec.params.hasSplice
+        ? _splitSplice(base, spec)
+        : null;
     final crossbars = spec.params.crossbars
         .where((crossbar) => crossbar.fullSpan)
         .toList();
     if (crossbars.isEmpty) {
-      return [base.withWindow(windowIndex)];
+      final pieces = splicePieces ?? [base];
+      if (pieces.length == 1) return [pieces.first.withWindow(windowIndex)];
+      return [
+        for (var i = 0; i < pieces.length; i++)
+          pieces[i].copyWith(
+            windowIndex: windowIndex,
+            partLabel: pieces[i].partLabel.isEmpty
+                ? '${windowIndex + 1}.${i + 1}'
+                : pieces[i].partLabel,
+          ),
+      ];
     }
     final visible = spec.layers.filmVisibleBounds;
-    var pieces = [base];
+    var pieces = splicePieces ?? [base];
     // Горизонтальные, затем вертикальные: полосы идут через всё полотно.
     for (final axis in [CrossbarAxis.horizontal, CrossbarAxis.vertical]) {
       final bars = crossbars.where((bar) => bar.axis == axis).toList();
@@ -289,14 +302,67 @@ class CutPiece {
       }
       pieces = next;
     }
-    if (pieces.length == 1) return [base.withWindow(windowIndex)];
+    if (pieces.length == 1) return [pieces.first.withWindow(windowIndex)];
     return [
       for (var i = 0; i < pieces.length; i++)
         pieces[i].copyWith(
           windowIndex: windowIndex,
-          partLabel: '${windowIndex + 1}.${i + 1}',
+          partLabel: pieces[i].partLabel.isEmpty
+              ? '${windowIndex + 1}.${i + 1}'
+              : pieces[i].partLabel,
         ),
     ];
+  }
+
+  /// Режет заготовку на основной кусок и доборную полосу при спайке.
+  static List<CutPiece>? _splitSplice(CutPiece base, WindowSpec spec) {
+    final strip = spec.params.spliceStripMm;
+    final total = base.widthMm;
+    if (strip <= 0.5 || strip >= total - 0.5) return null;
+    final main = total - strip;
+    final intervals = spec.params.spliceSide == FilmSpliceSide.right
+        ? [(start: 0.0, end: main, label: 'основа'), (start: main, end: total, label: 'полоса')]
+        : [(start: 0.0, end: strip, label: 'полоса'), (start: strip, end: total, label: 'основа')];
+    final result = <CutPiece>[];
+    for (final interval in intervals) {
+      final contours = <List<Offset>>[];
+      for (final contour in base.allContours) {
+        final clipped = _clipContour(
+          contour,
+          false,
+          interval.start,
+          interval.end,
+        );
+        if (clipped.length >= 3 && polygonArea(clipped).abs() > 1) {
+          contours.add(clipped);
+        }
+      }
+      if (contours.isEmpty) continue;
+      final bounds = boundsOfAll(contours);
+      if (bounds.width <= 0 || bounds.height <= 0) continue;
+      final local = [
+        for (final contour in contours)
+          [
+            for (final point in contour)
+              Offset(point.dx - bounds.left, point.dy - bounds.top),
+          ],
+      ];
+      result.add(
+        CutPiece(
+          widthMm: bounds.width,
+          heightMm: bounds.height,
+          outline: local.first,
+          contours: local,
+          areaM2: [
+            for (final contour in local) polygonArea(contour).abs(),
+          ].fold<double>(0, (sum, value) => sum + value) /
+              1000000,
+          materials: base.materials,
+          partLabel: interval.label,
+        ),
+      );
+    }
+    return result.length == 2 ? result : null;
   }
 
   /// Режет заготовку полосами [bars] по оси [axis].

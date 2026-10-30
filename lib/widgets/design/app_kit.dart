@@ -64,7 +64,10 @@ class AppPageHeader extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final narrow = constraints.maxWidth < 760;
+        // Если действий много (склад), на средней ширине они уходят под
+        // заголовок: иначе они сжимают описание до одной буквы в строке.
+        final narrow =
+            constraints.maxWidth < (actions.length > 3 ? 1500 : 760);
         if (narrow) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,

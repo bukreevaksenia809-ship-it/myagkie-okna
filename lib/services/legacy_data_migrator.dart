@@ -185,6 +185,7 @@ class LegacyDataMigrator {
           status: project.status,
           deadline: deadline,
           amount: orderSummaryAmount(json),
+          createdAt: order.savedAt,
         );
       } catch (_) {
         // Один битый файл не должен останавливать перенос остальных.

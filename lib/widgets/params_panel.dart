@@ -161,6 +161,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
   final Map<EdgeSide, String?> _edgeErrors = {};
   final Map<EdgeSide, TextEditingController> _fastenerOffsetControllers = {};
 
+  /// Ширина доборной полосы при спайке полотна.
+  late final TextEditingController _spliceController;
+
   /// Поля припусков на раскрой: добавка к ширине и к высоте, мм.
   final Map<_AllowanceField, TextEditingController> _allowanceControllers = {};
   final Map<_AllowanceField, String?> _allowanceErrors = {};
@@ -178,6 +181,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
   @override
   void initState() {
     super.initState();
+    _spliceController = TextEditingController();
     DisplayUnits.current.addListener(_onUnitsChanged);
     for (final field in _windowFields) {
       _controllers[field] = TextEditingController(
@@ -497,6 +501,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     for (final controller in _fastenerOffsetControllers.values) {
       controller.dispose();
     }
+    _spliceController.dispose();
     for (final controller in _allowanceControllers.values) {
       controller.dispose();
     }
@@ -551,6 +556,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
         _fastenerOffsetControllers[side]?.text =
             _textFor(_params.fastenerOffsetMmFor(side));
       }
+      _spliceController.text = _textFor(_params.spliceStripMm);
       for (final field in _AllowanceField.values) {
         _allowanceControllers[field]?.text =
             _textFor(_allowanceValue(_params, field));
@@ -2545,9 +2551,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
           : '${params.crossbars.length} шт',
       children: [
         const Text(
-          'Перемычка — полоса внутри полотна. Если она идёт во всю ширину '
-          'или высоту, раскрой делится на части; напайка задаёт, насколько '
-          'полоса заходит на каждое полотно.',
+          'Перемычка — коричневая полоса внутри полотна. Если она идёт во всю '
+          'ширину или высоту, раскрой делится на части; напайка задаёт, '
+          'насколько полоса заходит на каждое полотно. По концам ставятся '
+          'дополнительные крепления.',
           style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
         const SizedBox(height: 8),
@@ -2702,6 +2709,20 @@ class _ParamsPanelState extends State<ParamsPanel> {
               ),
             ],
           ),
+          const SizedBox(height: 6),
+          Slider(
+            key: Key('crossbar-position-slider-$index'),
+            value: crossbar.positionMm.clamp(0.0, available).toDouble(),
+            max: available > 0 ? available : 1,
+            divisions: math.max(1, (available / 10).round()),
+            label: '${formatMm(crossbar.positionMm)} ${unitSuffix()}',
+            onChanged: (value) => _updateWindow(
+              params.updateCrossbar(
+                index,
+                crossbar.copyWith(positionMm: value),
+              ),
+            ),
+          ),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -2789,10 +2810,30 @@ class _ParamsPanelState extends State<ParamsPanel> {
               ),
             ),
           ),
-          const SizedBox(height: 4),
+          SwitchListTile(
+            key: Key('crossbar-end-fasteners-$index'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text(
+              'Крепления по концам',
+              style: TextStyle(fontSize: 12),
+            ),
+            subtitle: const Text(
+              'По одному люверсу/скобе на каждом конце перемычки',
+              style: TextStyle(fontSize: 10.5),
+            ),
+            value: crossbar.endFasteners,
+            onChanged: (value) => _updateWindow(
+              params.updateCrossbar(
+                index,
+                crossbar.copyWith(endFasteners: value),
+              ),
+            ),
+          ),
           Text(
             'Свободная полоса ${formatMm(crossbar.gapMm)} мм; '
-            '${crossbar.fullSpan ? 'делит раскрой на части' : 'усилитель, раскрой не делит'}.',
+            '${crossbar.fullSpan ? 'делит раскрой на части' : 'усилитель, раскрой не делит'}. '
+            'Всего креплений: ${crossbar.totalFastenerCount}.',
             style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
         ],
@@ -2974,11 +3015,18 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   /// «Ширина рулона» — в нижней части панели.
   Widget _rollWidthSection(OrderProject project, WindowParams params) {
+    final spec = WindowSpec.of(params);
+    final roll = project.rollWidthFor(params.material);
+    final needed = spec.filmCutWidthWithShrinkage;
+    final shortage = needed - roll;
+    final suggested = shortage > 0
+        ? math.max(10.0, (shortage / 10).ceil() * 10.0)
+        : 0.0;
     return _expansion(
       title: 'Ширина рулона',
       subtitle:
           '${params.material.label} · '
-          '${formatMm(project.rollWidthFor(params.material))} ${unitSuffix()}',
+          '${formatMm(roll)} ${unitSuffix()}',
       children: [
         Wrap(
           spacing: 6,
@@ -2990,10 +3038,16 @@ class _ParamsPanelState extends State<ParamsPanel> {
                   '${formatMm(width)} ${unitSuffix()}',
                   style: const TextStyle(fontSize: 12),
                 ),
-                selected: project.rollWidthFor(params.material) == width,
+                selected: roll == width,
                 visualDensity: VisualDensity.compact,
                 onSelected: (_) => _updateProject(
-                  project.setRollWidth(params.material, width),
+                  project.setRollWidth(params.material, width).updateSelected(
+                    params.copyWith(
+                      spliceStripMm: width >= needed - 0.5
+                          ? 0
+                          : params.spliceStripMm,
+                    ),
+                  ),
                 ),
               ),
           ],
@@ -3004,6 +3058,176 @@ class _ParamsPanelState extends State<ParamsPanel> {
           '${unitSuffix()}. Раскладка — на отдельном листе.',
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
+        if (shortage > 0.5 && !params.hasSplice) ...[
+          const SizedBox(height: 10),
+          Container(
+            key: const Key('roll-width-warning'),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF4E5),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE8C38F)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: Color(0xFFB7791F),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Заготовка ${formatMm(needed)} ${unitSuffix()} шире '
+                        'рулона ${formatMm(roll)} ${unitSuffix()}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF8A5200),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Выберите рулон шире или добавьте полосу '
+                  '${formatMm(suggested)} ${unitSuffix()} и спаяйте её с '
+                  'полотном. Стык будет показан на чертеже.',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    height: 1.45,
+                    color: Color(0xFF6F5A3A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  key: const Key('splice-add'),
+                  onPressed: () => _updateWindow(
+                    params.copyWith(
+                      spliceStripMm: suggested,
+                      spliceSide: FilmSpliceSide.right,
+                    ),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFB7791F),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
+                    ),
+                  ),
+                  icon: const Icon(Icons.content_cut, size: 16),
+                  label: Text('Добавить полосу ${formatMm(suggested)} и спаять'),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (params.hasSplice) ...[
+          const SizedBox(height: 10),
+          Container(
+            key: const Key('roll-width-splice'),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7EFE7),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE0C6AF)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.link,
+                      size: 17,
+                      color: Color(0xFF8E4E2A),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        roll < needed - 0.5
+                            ? 'Стык: ${formatMm(roll)} + '
+                                  '${formatMm(params.spliceStripMm)} '
+                                  '${unitSuffix()}'
+                            : 'Рулон уже покрывает заготовку',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF8E4E2A),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Убрать стык',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _updateWindow(
+                        params.copyWith(spliceStripMm: 0),
+                      ),
+                      icon: const Icon(Icons.close, size: 16),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        key: const Key('splice-strip-field'),
+                        controller: _spliceController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: 'Ширина полосы, ${unitSuffix()}',
+                          isDense: true,
+                          border: const OutlineInputBorder(),
+                        ),
+                        onChanged: (raw) {
+                          final value = parseMm(raw);
+                          if (value == null || value < 0) return;
+                          _updateWindow(
+                            params.copyWith(spliceStripMm: value),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SegmentedButton<FilmSpliceSide>(
+                      showSelectedIcon: false,
+                      style: const ButtonStyle(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      segments: [
+                        for (final side in FilmSpliceSide.values)
+                          ButtonSegment(
+                            value: side,
+                            label: Text(
+                              side.label,
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                      ],
+                      selected: {params.spliceSide},
+                      onSelectionChanged: (selection) => _updateWindow(
+                        params.copyWith(spliceSide: selection.first),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'На чертеже линия стыка и подпись «стык: рулон + полоса»; '
+                  'в техкарте — операция спайки.',
+                  style: TextStyle(fontSize: 10.5, color: Color(0xFF7A6652)),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

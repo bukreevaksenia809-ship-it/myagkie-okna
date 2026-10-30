@@ -371,6 +371,9 @@ class DrawingSheet extends StatelessWidget {
                         showScaleBar: false,
                         labelScale: labelScale,
                         fastenerImage: fastenerImage,
+                        spliceRollWidthMm: project.rollWidthFor(
+                          params.material,
+                        ),
                       ),
                       size: Size.infinite,
                     ),

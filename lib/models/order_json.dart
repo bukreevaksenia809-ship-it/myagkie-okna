@@ -161,6 +161,8 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'eyeletType': p.eyeletType.name,
       'eyeletStep': p.eyeletStep,
       'eyeletEvenSpacing': p.eyeletEvenSpacing,
+      'spliceStripMm': p.spliceStripMm,
+      'spliceSide': p.spliceSide.name,
       'eyeletCornerOffset': p.eyeletCornerOffset,
       // Тумблер «Круглые люверсы в углах» (по умолчанию включён).
       'roundEyeletsEnabled': p.roundEyeletsEnabled,
@@ -287,6 +289,12 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     eyeletEvenSpacing: _bool(
       json['eyeletEvenSpacing'],
       fallback.eyeletEvenSpacing,
+    ),
+    spliceStripMm: _double(json['spliceStripMm'], 0),
+    spliceSide: _enumByName(
+      FilmSpliceSide.values,
+      json['spliceSide'],
+      FilmSpliceSide.right,
     ),
     eyeletCornerOffset:
         _double(json['eyeletCornerOffset'], fallback.eyeletCornerOffset),

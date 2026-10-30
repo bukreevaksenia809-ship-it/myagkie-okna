@@ -359,6 +359,7 @@ class WindowDrawingPainter extends CustomPainter {
     this.showScaleBar = true,
     this.labelScale = 1,
     this.fastenerImage,
+    this.spliceRollWidthMm = 0,
     LengthUnit? unit,
     LabelSettings? labelSettings,
   }) : unit = unit ?? DisplayUnits.unit,
@@ -381,6 +382,9 @@ class WindowDrawingPainter extends CustomPainter {
   /// Фото пластиковой скобы (декодированное). Пока null — рисуется
   /// прежний векторный замок, чтобы на листе не было пустого места.
   final ui.Image? fastenerImage;
+
+  /// Ширина выбранного рулона, мм — для линии стыка при спайке полотна.
+  final double spliceRollWidthMm;
 
   /// Единица подписей на момент создания пейнтера. Сравнивается в
   /// [shouldRepaint]: при переключении мм/см лист перерисовывается, даже
@@ -464,6 +468,7 @@ class WindowDrawingPainter extends CustomPainter {
       return;
     }
     _paintFilm(canvas);
+    _paintFilmSplice(canvas);
     _paintEdgeBand(canvas);
     if (params.isScreen) _paintScreenHem(canvas);
     _paintSeamBand(canvas);
@@ -505,7 +510,63 @@ class WindowDrawingPainter extends CustomPainter {
       oldDelegate.labelSettings != labelSettings ||
       // Картинка крепежа догружается после первой сборки листа — по этому
       // сравнению лист один раз перерисуется уже с фотографией.
-      oldDelegate.fastenerImage != fastenerImage;
+      oldDelegate.fastenerImage != fastenerImage ||
+      oldDelegate.spliceRollWidthMm != spliceRollWidthMm;
+
+  /// Линия стыка полотна: основной рулон + доборная полоса.
+  void _paintFilmSplice(Canvas canvas) {
+    if (!params.hasSplice || spliceRollWidthMm <= 0) return;
+    final bounds = layers.filmCutBounds;
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    final strip = params.spliceStripMm.clamp(1.0, bounds.width - 1);
+    final seamX = params.spliceSide == FilmSpliceSide.right
+        ? bounds.right - strip
+        : bounds.left + strip;
+    if (seamX <= bounds.left + 1 || seamX >= bounds.right - 1) return;
+    final top = layout.toPxPoint(Offset(seamX, bounds.top));
+    final bottom = layout.toPxPoint(Offset(seamX, bounds.bottom));
+    final seam = Paint()
+      ..color = const Color(0xFFB86B3D)
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+    canvas.save();
+    canvas.clipPath(_filmPath());
+    // Полоса нахлёста 20 мм: её видно как тонкую заштрихованную зону.
+    final weldMm = 20.0;
+    final band = Rect.fromLTRB(
+      seamX - weldMm / 2,
+      bounds.top,
+      seamX + weldMm / 2,
+      bounds.bottom,
+    );
+    final bandPx = Rect.fromPoints(
+      layout.toPxPoint(Offset(band.left, band.top)),
+      layout.toPxPoint(Offset(band.right, band.bottom)),
+    );
+    canvas.drawRect(
+      bandPx,
+      Paint()..color = const Color(0xFFB86B3D).withValues(alpha: 0.18),
+    );
+    for (var y = top.dy; y < bottom.dy; y += 10) {
+      canvas.drawLine(
+        Offset(top.dx, y),
+        Offset(top.dx, math.min(y + 5, bottom.dy)),
+        seam,
+      );
+    }
+    canvas.restore();
+    _label(
+      canvas,
+      'стык ${formatMm(bounds.width - strip)} + '
+      '${formatMm(strip)} · спайка',
+      Offset(
+        top.dx.clamp(82.0, layout.size.width - 82),
+        (top.dy - 12).clamp(18.0, layout.size.height - 18),
+      ),
+      small: true,
+      color: const Color(0xFF8E4E2A),
+    );
+  }
 
   /// Перемычки: полосы поверх плёнки, с напайкой на каждое полотно.
   void _paintCrossbars(Canvas canvas) {
@@ -544,13 +605,23 @@ class WindowDrawingPainter extends CustomPainter {
           visible.top + along + length,
         );
       }
+      final a = layout.toPxPoint(band.topLeft);
+      final b = layout.toPxPoint(band.bottomRight);
       final px = Rect.fromLTRB(
-        layout.toPxPoint(Offset(band.left, band.top)).dx,
-        layout.toPxPoint(Offset(band.left, band.bottom)).dy,
-        layout.toPxPoint(Offset(band.right, band.top)).dx,
-        layout.toPxPoint(Offset(band.right, band.bottom)).dy,
+        math.min(a.dx, b.dx),
+        math.min(a.dy, b.dy),
+        math.max(a.dx, b.dx),
+        math.max(a.dy, b.dy),
       );
-      canvas.drawRect(px, Paint()..color = _edgeColor);
+      const bandColor = Color(0xFF7B4A2D);
+      canvas.drawRect(px, Paint()..color = bandColor);
+      canvas.drawRect(
+        px,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.1
+          ..color = const Color(0xFF4E2E1B),
+      );
       // Напайки: две линии, между ними свободная полоса.
       final weld = math.min(crossbar.weldMm, crossbar.widthMm / 2);
       final weldPaint = Paint()
@@ -578,32 +649,47 @@ class WindowDrawingPainter extends CustomPainter {
           );
         }
       }
-      // Крепления на перемычке: равномерно по её длине.
-      final fastenerCount = crossbar.fastenerCount;
-      if (fastenerCount > 0) {
-        final fill = Paint()..color = const Color(0xFFB86B3D);
-        final ring = Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1
-          ..color = _ink;
-        for (var i = 0; i < fastenerCount; i++) {
-          final t = (i + 1) / (fastenerCount + 1);
-          final point = horizontal
+      // Крепления на перемычке: два по концам и промежуточные равномерно.
+      final points = <Offset>[];
+      if (crossbar.endFasteners) {
+        final inset = math.min(length * 0.15, 18.0);
+        points.add(
+          horizontal
+              ? Offset(band.left + inset, center)
+              : Offset(center, band.top + inset),
+        );
+        points.add(
+          horizontal
+              ? Offset(band.right - inset, center)
+              : Offset(center, band.bottom - inset),
+        );
+      }
+      for (var i = 0; i < crossbar.fastenerCount; i++) {
+        final t = (i + 1) / (crossbar.fastenerCount + 1);
+        points.add(
+          horizontal
               ? Offset(band.left + length * t, center)
-              : Offset(center, band.top + length * t);
-          final centerPx = layout.toPxPoint(point);
-          final radius = math.max(layout.px(4), 2.4);
-          canvas.drawCircle(centerPx, radius, fill);
-          canvas.drawCircle(centerPx, radius, ring);
-        }
+              : Offset(center, band.top + length * t),
+        );
+      }
+      final fill = Paint()..color = const Color(0xFFE7C9A9);
+      final ring = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.1
+        ..color = const Color(0xFF3A2416);
+      for (final point in points) {
+        final centerPx = layout.toPxPoint(point);
+        final radius = math.max(layout.px(4.5), 2.6);
+        canvas.drawCircle(centerPx, radius, fill);
+        canvas.drawCircle(centerPx, radius, ring);
       }
       _label(
         canvas,
         'перемычка ${formatMm(crossbar.widthMm)}'
-        '${fastenerCount > 0 ? ' · $fastenerCount кр.' : ''}',
+        '${points.isNotEmpty ? ' · ${points.length} кр.' : ''}',
         px.center,
         small: true,
-        color: Colors.white,
+        color: const Color(0xFF4E2E1B),
       );
     }
     canvas.restore();

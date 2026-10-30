@@ -15,6 +15,8 @@ void main() {
     final json = crossbar.toJson();
     expect(json['fastenerCount'], 5);
     expect(CrossbarSpec.fromJson(json).fastenerCount, 5);
+    expect(CrossbarSpec.fromJson(json).endFasteners, isTrue);
+    expect(CrossbarSpec.fromJson(json).totalFastenerCount, 7);
   });
 
   test('смета считает крепления на перемычке', () {
@@ -33,7 +35,7 @@ void main() {
     final line = estimate.lines
         .where((line) => line.title == 'Крепления на перемычках')
         .single;
-    expect(line.quantity, 5);
+    expect(line.quantity, 7);
     expect(line.amount, greaterThan(0));
   });
 }

@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
+import 'package:soft_window_drawer/models/crossbar.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/widgets/costs_sheet.dart';
 import 'package:soft_window_drawer/widgets/drawing_sheet.dart';
@@ -92,6 +93,40 @@ const _rich = WindowParams(
     Cutout(width: 400, height: 300, centerXMm: 400, centerYMm: 700),
   ],
   drainHoles: true,
+);
+
+/// Полотно шире рулона: основной рулон 2000 + доборная полоса 100, стык
+/// показывается на чертеже.
+const _splice = WindowParams(
+  projectName: 'Мягкое окно веранды',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-023',
+  bottomWidth: 2100,
+  topWidth: 2100,
+  leftHeight: 2000,
+  rightHeight: 2000,
+  spliceStripMm: 100,
+  spliceSide: FilmSpliceSide.right,
+);
+
+/// Окно с перемычкой: коричневая полоса, крепления по концам и внутри.
+const _crossbar = WindowParams(
+  projectName: 'Мягкое окно веранды',
+  customer: 'Иванов И. И.',
+  drawingNumber: 'МО-024',
+  bottomWidth: 2000,
+  topWidth: 2000,
+  leftHeight: 2200,
+  rightHeight: 2200,
+  crossbars: [
+    CrossbarSpec(
+      positionMm: 1100,
+      widthMm: 100,
+      weldMm: 30,
+      fastenerCount: 3,
+      endFasteners: true,
+    ),
+  ],
 );
 
 /// Окно из москитной сетки.
@@ -365,6 +400,22 @@ void main() {
         viewport: a4Viewport,
         build: (key) => DrawingSheet(
           project: const OrderProject(windows: [_rich]),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      'peremychka-krepleniya': (
+        viewport: a4Viewport,
+        build: (key) => DrawingSheet(
+          project: const OrderProject(windows: [_crossbar]),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      'spaika-2000-100': (
+        viewport: a4Viewport,
+        build: (key) => DrawingSheet(
+          project: const OrderProject(windows: [_splice]),
           captureKey: key,
           labelFontFamily: testFontFamily,
         ),

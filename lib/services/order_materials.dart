@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../data/warehouse_repository.dart';
 import '../models/order_project.dart';
+import '../models/window_params.dart';
 import '../models/warehouse.dart';
 import '../services/estimate.dart';
 
@@ -45,8 +46,18 @@ class OrderMaterialsService {
     final merged = <String, OrderMaterialNeed>{};
     final unmatched = <String>[];
 
+    // Если в заказе один материал, смета пишет строку просто «Полотно».
+    // Подсказываем сопоставлению, какой именно материал искать.
+    final materialHint = project.materialsInOrder.length == 1
+        ? project.materialsInOrder.first
+        : null;
     for (final line in estimate.lines) {
-      final product = _match(line.title, line.unit, products);
+      final product = _match(
+        line.title,
+        line.unit,
+        products,
+        materialHint: materialHint,
+      );
       if (product == null) {
         unmatched.add('${line.title} — ${line.quantityLabel}');
         continue;
@@ -97,8 +108,9 @@ class OrderMaterialsService {
   WarehouseProduct? _match(
     String title,
     String unit,
-    List<WarehouseProduct> products,
-  ) {
+    List<WarehouseProduct> products, {
+    FilmMaterial? materialHint,
+  }) {
     final lower = title.toLowerCase();
     final scored = <(WarehouseProduct, int)>[];
     for (final product in products) {
@@ -124,7 +136,54 @@ class OrderMaterialsService {
         continue;
       }
 
+      if (materialHint != null &&
+          (lower.contains('полотно') || lower.contains('плёнка'))) {
+        final isFilmLine = category.contains('полотно') ||
+            material.contains('пвх') ||
+            material.contains('скрин') ||
+            material.contains('сетк') ||
+            name.contains('плён') ||
+            name.contains('скрин') ||
+            name.contains('сетк');
+        if (isFilmLine) {
+          var matchesHint = false;
+          if (materialHint == FilmMaterial.clearPvc) {
+            matchesHint = haystack.contains('прозрач') ||
+                haystack.contains('обычный пвх');
+          } else if (materialHint == FilmMaterial.tintedPvc) {
+            matchesHint = haystack.contains('тонир');
+          } else if (materialHint == FilmMaterial.mosquitoNet) {
+            matchesHint = haystack.contains('сетк');
+          } else if (materialHint == FilmMaterial.screen) {
+            matchesHint = haystack.contains('скрин');
+          }
+          score += matchesHint ? 50 : -20;
+        }
+      }
       if (lower.contains('люверс') && name.contains('люверс')) score += 40;
+      if ((lower.contains('тент') || lower.contains('окантов')) &&
+          (name.contains('тент') ||
+              name.contains('окантов') ||
+              category.contains('окантов'))) {
+        score += 34;
+      }
+      if (lower.contains('перемыч') &&
+          (name.contains('перемыч') ||
+              category.contains('комплект') ||
+              material.contains('тент'))) {
+        score += 34;
+      }
+      if (lower.contains('бокс') && name.contains('бокс')) score += 30;
+      if (lower.contains('саморез') && name.contains('саморез')) score += 30;
+      if (lower.contains('дренаж') && name.contains('дренаж')) score += 30;
+      if ((lower.contains('ремен') || lower.contains('ремн')) &&
+          name.contains('ремен')) {
+        score += 30;
+      }
+      if ((lower.contains('брус') || lower.contains('декор')) &&
+          name.contains('брус')) {
+        score += 28;
+      }
       if ((lower.contains('скоба') || lower.contains('замок')) &&
           (name.contains('скоб') ||
               name.contains('замок') ||

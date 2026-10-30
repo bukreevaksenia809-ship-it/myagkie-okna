@@ -7,12 +7,15 @@ import '../../data/order_repository.dart';
 import '../../data/warehouse_repository.dart';
 import '../../models/order_project.dart';
 import '../../models/order_record.dart';
+import '../../models/price_list.dart';
 import '../../models/warehouse.dart';
 import '../../services/app_bootstrap.dart';
 import '../../services/file_saver.dart';
+import '../../services/price_warehouse_sync.dart';
 import 'design/app_kit.dart';
 import 'warehouse/inventory_dialog.dart';
 import 'warehouse/operation_dialog.dart';
+import 'warehouse/bulk_materials_dialog.dart';
 import 'warehouse/order_materials_dialog.dart';
 import 'warehouse/product_editor.dart';
 
@@ -46,12 +49,16 @@ class WarehouseScreen extends StatefulWidget {
     this.currentProject,
     this.currentOrderTitle = '',
     this.onOpenOrders,
+    this.prices = const PriceList.defaults(),
   });
 
   final bool embedded;
   final OrderProject? currentProject;
   final String currentOrderTitle;
   final VoidCallback? onOpenOrders;
+
+  /// Прайс, из которого заполняется номенклатура.
+  final PriceList prices;
 
   @override
   State<WarehouseScreen> createState() => _WarehouseScreenState();
@@ -224,6 +231,22 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
     await _load();
   }
 
+  Future<void> _syncFromPrice() async {
+    setState(() => _busy = true);
+    final count = await PriceWarehouseSync(warehouse: _warehouse).sync(
+      widget.prices,
+      updatePrices: true,
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    _toast(
+      count == 0
+          ? 'Все позиции прайса уже есть на складе'
+          : 'Добавлено позиций из прайса: $count',
+    );
+    await _load();
+  }
+
   Future<void> _archive(WarehouseProduct product, bool archived) async {
     final result = await _warehouse.archiveProduct(product.id, archived);
     _toast(result.message, error: !result.ok);
@@ -267,6 +290,15 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
         onOperate: () => _operate(initial: stock),
         onArchive: () => _archive(stock.product, !stock.product.archived),
       ),
+    );
+    await _load();
+  }
+
+  Future<void> _openBulkMaterials() async {
+    await showBulkMaterialsDialog(
+      context,
+      orders: _orderList,
+      prices: widget.prices,
     );
     await _load();
   }
@@ -425,6 +457,18 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
           'Остаток всегда считается по журналу — его нельзя «потерять» правкой карточки.',
       actions: [
         OutlinedButton.icon(
+          key: const Key('warehouse-bulk-materials'),
+          onPressed: _busy ? null : _openBulkMaterials,
+          icon: const Icon(Icons.calculate_outlined, size: 18),
+          label: const Text('Потребность'),
+        ),
+        OutlinedButton.icon(
+          key: const Key('warehouse-sync-price'),
+          onPressed: _busy ? null : _syncFromPrice,
+          icon: const Icon(Icons.playlist_add, size: 18),
+          label: const Text('Из прайса'),
+        ),
+        OutlinedButton.icon(
           onPressed: _busy ? null : _openOrderMaterials,
           icon: const Icon(Icons.link, size: 18),
           label: const Text('Материалы заказа'),
@@ -535,10 +579,21 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                   ? 'В архиве нет позиций по этому фильтру.'
                   : 'Добавьте первый товар — плёнку, окантовку, люверсы или фурнитуру. '
                         'Дальше приход, продажа, списание в заказ и история.',
-              action: FilledButton.icon(
-                onPressed: () => _editProduct(),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Добавить товар'),
+              action: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => _editProduct(),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Добавить товар'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _syncFromPrice,
+                    icon: const Icon(Icons.playlist_add, size: 18),
+                    label: const Text('Заполнить из прайса'),
+                  ),
+                ],
               ),
             ),
           )

@@ -44,15 +44,42 @@ List<RollPlan> buildRollPlans(OrderProject project) {
       final window = project.windows[i];
       if (window.material != material) continue;
       final spec = WindowSpec.of(window);
-      pieces.add(
-        RollPiece(
-          id: '${i + 1}',
-          label: project.labelFor(i),
-          // На рулон укладывается заготовка с припуском на раскрой и усадкой.
-          width: spec.filmCutWidthWithShrinkage,
-          height: spec.filmCutHeightWithShrinkage,
-        ),
-      );
+      final width = spec.filmCutWidthWithShrinkage;
+      final height = spec.filmCutHeightWithShrinkage;
+      if (window.hasSplice &&
+          window.spliceStripMm > 0.5 &&
+          window.spliceStripMm < width - 0.5) {
+        // Полотно шире рулона: на рулон кладём основной кусок и доборную
+        // полосу отдельными заготовками — иначе раскладка «вылезет» за рулон.
+        final main = width - window.spliceStripMm;
+        pieces.add(
+          RollPiece(
+            id: '${i + 1}a',
+            label: '${project.labelFor(i)} · основа',
+            width: main,
+            height: height,
+          ),
+        );
+        pieces.add(
+          RollPiece(
+            id: '${i + 1}b',
+            label: '${project.labelFor(i)} · полоса '
+                '${formatMm(window.spliceStripMm)}',
+            width: window.spliceStripMm,
+            height: height,
+          ),
+        );
+      } else {
+        pieces.add(
+          RollPiece(
+            id: '${i + 1}',
+            label: project.labelFor(i),
+            // На рулон укладывается заготовка с припуском на раскрой и усадкой.
+            width: width,
+            height: height,
+          ),
+        );
+      }
     }
     if (pieces.isEmpty) continue;
     final rollWidth = project.rollWidthFor(material);

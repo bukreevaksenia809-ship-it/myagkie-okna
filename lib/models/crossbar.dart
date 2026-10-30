@@ -27,6 +27,7 @@ class CrossbarSpec {
     this.lengthMm = 0,
     this.alongMm = 0,
     this.fastenerCount = 0,
+    this.endFasteners = true,
   });
 
   final CrossbarAxis axis;
@@ -39,8 +40,14 @@ class CrossbarSpec {
   /// Смещение начала полосы вдоль окна для неполной перемычки, мм.
   final double alongMm;
 
-  /// Крепления (люверсы/скобы) на перемычке, шт. 0 — без креплений.
+  /// Крепления (люверсы/скобы) на перемычке, шт. 0 — только по концам.
   final int fastenerCount;
+
+  /// Ставить по креплению на каждом конце перемычки.
+  final bool endFasteners;
+
+  /// Сколько креплений всего: концевые + промежуточные.
+  int get totalFastenerCount => fastenerCount + (endFasteners ? 2 : 0);
 
   /// Свободная полоса между напайками: ширина минус две напайки.
   double get gapMm => math.max(0, widthMm - weldMm * 2);
@@ -60,6 +67,7 @@ class CrossbarSpec {
     double? lengthMm,
     double? alongMm,
     int? fastenerCount,
+    bool? endFasteners,
   }) => CrossbarSpec(
     axis: axis ?? this.axis,
     positionMm: positionMm ?? this.positionMm,
@@ -69,6 +77,7 @@ class CrossbarSpec {
     lengthMm: lengthMm ?? this.lengthMm,
     alongMm: alongMm ?? this.alongMm,
     fastenerCount: fastenerCount ?? this.fastenerCount,
+    endFasteners: endFasteners ?? this.endFasteners,
   );
 
   Map<String, dynamic> toJson() => {
@@ -80,6 +89,7 @@ class CrossbarSpec {
     'lengthMm': lengthMm,
     'alongMm': alongMm,
     'fastenerCount': fastenerCount,
+    'endFasteners': endFasteners,
   };
 
   factory CrossbarSpec.fromJson(Map<String, dynamic> json) => CrossbarSpec(
@@ -94,6 +104,7 @@ class CrossbarSpec {
     lengthMm: _double(json['lengthMm'], 0),
     alongMm: _double(json['alongMm'], 0),
     fastenerCount: ((json['fastenerCount'] as num?)?.toInt() ?? 0).clamp(0, 24),
+    endFasteners: json['endFasteners'] != false,
   );
 
   static double _double(Object? value, double fallback) {

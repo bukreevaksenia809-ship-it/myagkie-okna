@@ -73,6 +73,7 @@ class WarehouseProduct {
     this.supplier = '',
     this.location = '',
     this.barcode = '',
+    this.priceKey = '',
     this.archived = false,
     this.note = '',
     this.createdAt,
@@ -95,6 +96,10 @@ class WarehouseProduct {
   final String supplier;
   final String location;
   final String barcode;
+
+  /// Ключ позиции прайса, если товар создан из прайса.
+  final String priceKey;
+
   final bool archived;
   final String note;
   final DateTime? createdAt;
@@ -145,6 +150,7 @@ class WarehouseProduct {
     String? supplier,
     String? location,
     String? barcode,
+    String? priceKey,
     bool? archived,
     String? note,
     DateTime? createdAt,
@@ -166,6 +172,7 @@ class WarehouseProduct {
     supplier: supplier ?? this.supplier,
     location: location ?? this.location,
     barcode: barcode ?? this.barcode,
+    priceKey: priceKey ?? this.priceKey,
     archived: archived ?? this.archived,
     note: note ?? this.note,
     createdAt: createdAt ?? this.createdAt,
@@ -189,6 +196,7 @@ class WarehouseProduct {
     'supplier': supplier,
     'location': location,
     'barcode': barcode,
+    'price_key': priceKey,
     'archived': archived ? 1 : 0,
     'note': note,
     'created_at': (createdAt ?? DateTime.now()).toIso8601String(),
@@ -213,6 +221,7 @@ class WarehouseProduct {
         supplier: '${row['supplier'] ?? ''}',
         location: '${row['location'] ?? ''}',
         barcode: '${row['barcode'] ?? ''}',
+        priceKey: '${row['price_key'] ?? ''}',
         archived: _int(row['archived']) == 1,
         note: '${row['note'] ?? ''}',
         createdAt: DateTime.tryParse('${row['created_at'] ?? ''}'),
@@ -404,7 +413,8 @@ class WarehouseStock {
 
   double get saleValue => balance * product.salePrice;
 
-  bool get isLow => balance <= product.minQuantity;
+  bool get isLow =>
+      product.minQuantity > 0 && balance <= product.minQuantity;
 
   bool get isOut => balance <= 0;
 

@@ -58,7 +58,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.0.0';
+const String kAppVersion = '2.1.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1643,6 +1643,7 @@ class _BuilderScreenState extends State<BuilderScreen>
   Widget _ordersSection() => OrdersBoardScreen(
     embedded: true,
     onOpenProject: _openBoardOrder,
+    prices: _prices,
   );
 
   Widget _warehouseSection() => WarehouseScreen(
@@ -1650,6 +1651,7 @@ class _BuilderScreenState extends State<BuilderScreen>
     currentProject: _project,
     currentOrderTitle: _drafts[_orderIndex].name,
     onOpenOrders: () => setState(() => _section = AppSection.orders),
+    prices: _prices,
   );
 
   Widget _documentsSection() {
