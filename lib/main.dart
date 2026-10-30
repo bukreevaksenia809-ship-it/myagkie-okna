@@ -2052,6 +2052,7 @@ class _StatusBar extends StatelessWidget {
                       '${formatMm(selectedSpec.geometry.overallHeight)}',
                 ),
                 _stat('Площадь', '${formatMeters(totalProductArea)} м²'),
+                _stat('Шаг', selectedSpec.eyeletStepLabel),
                 const Spacer(),
                 const _LabelSettingsButton(),
               ],
@@ -2068,6 +2069,7 @@ class _StatusBar extends StatelessWidget {
           _stat('Площадь изделий', '${formatMeters(totalProductArea)} м²'),
           _stat('Плёнка: заготовки', '${formatMeters(totalFilmArea)} м²'),
           _stat('Люверсы', 'всего $totalEyelets шт'),
+          _stat('Шаг крепежа', selectedSpec.eyeletStepLabel),
           _stat('Расход окантовки', consumptionText),
           _stat(
             'Рулоны (материал)',
