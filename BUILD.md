@@ -95,6 +95,18 @@ flutter build windows --release
 - имя бинарника и идентификатор: `windows/CMakeLists.txt`
   (`BINARY_NAME = MyagkieOknaExcl`, `APPLICATION_ID = ru.myagkieokna.excl`).
 
+## Выпуск 2.0.0 (уже сделан)
+
+- GitHub Actions собирает Windows ZIP, macOS DMG/ZIP, Android APK/AAB и Web ZIP,
+  тег `v2.0.0`; все файлы лежат в Releases публичного репозитория
+  `bukreevaksenia809-ship-it/myagkie-okna`.
+- Firestore `config/app` обновлён: `latestVersion = 2.0.0`, ссылки на GitHub
+  Releases, SHA-256 Windows/macOS.
+- Боевой веб: https://myagkie-okna-excl.web.app (Firebase Hosting, target `excl`).
+- Админка кладётся в `build/web/admin` при `deploy-web.sh`; без этого шага на
+  сайте остаётся старая версия.
+- R2-зеркало: `./release-r2.sh 2.0.0` (требует живой сессии wrangler).
+
 ## Веб-версия и SQLite
 
 Перед первой веб-сборкой (или после обновления пакета

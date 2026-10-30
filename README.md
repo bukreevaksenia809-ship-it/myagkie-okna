@@ -50,6 +50,26 @@ git-тег `myagkie-okna-1`, архивы исходников и веб-сбо�
 `versions/Мягкие окна 1/` (что это и как запустить — `versions/ЧИТАЙ-МЕНЯ.md`).
 **Вся дальнейшая разработка идёт здесь — в версии «Мягкие окна Excl».**
 
+## Готовые сборки 2.0.0
+
+| Платформа | Где скачать |
+|---|---|
+| **Web** (рабочая версия) | https://myagkie-okna-excl.web.app |
+| **Страница обновления** | https://myagkie-okna-excl.web.app/updates/ |
+| **Админка** | https://myagkie-okna-excl.web.app/admin/ |
+| **Windows / macOS / Android / Web ZIP** | [GitHub Releases v2.0.0](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/tag/v2.0.0) |
+
+Windows-сборка сделана на Windows-раннере GitHub Actions; macOS DMG, Android
+APK/AAB и Web ZIP — там же. Метаданные обновления (версия, ссылки, SHA-256)
+опубликованы в Firestore `config/app`; клиент 1.9.2 увидит 2.0.0 при проверке
+обновлений.
+
+### Зеркало R2
+
+Публикация в Cloudflare R2 — скриптом `./release-r2.sh 2.0.0` (нужен
+`npx wrangler login`). Если сессия Cloudflare истекла, скрипт остановится до
+загрузки; GitHub Releases при этом остаётся рабочим источником.
+
 ## Веб-версии (демо-ссылки)
 
 | Версия | Ссылка | Живёт до |
