@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/order_repository.dart';
 import '../../data/warehouse_repository.dart';
+import '../../services/order_materials.dart';
 import '../../models/order_project.dart';
 import '../../models/order_record.dart';
 import '../../models/price_list.dart';
@@ -170,9 +171,32 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
 
   Future<void> _setStatus(OrderStatus status) async {
     final result = await _repo.setStatus(_order.id, status);
+    String? warehouse;
+    if (result.ok) {
+      final warehouseRepo = WarehouseRepository.instance;
+      if (status == OrderStatus.production) {
+        final plan = await OrderMaterialsService().plan(
+          _repo.projectOf(_order),
+        );
+        final reserved = await warehouseRepo.reserveOrder(_order.id, plan.needs);
+        warehouse = reserved.ok
+            ? 'Материалы зарезервированы автоматически'
+            : 'Резерв: ${reserved.message}';
+      } else if (status == OrderStatus.ready) {
+        final issued = await warehouseRepo.issueOrder(_order.id);
+        warehouse = issued.ok
+            ? 'Материалы списаны в заказ'
+            : 'Списание: ${issued.message}';
+      } else if (status == OrderStatus.cancelled) {
+        final returned = await warehouseRepo.returnOrder(_order.id);
+        warehouse = returned.ok
+            ? 'Материалы возвращены на склад'
+            : 'Возврат: ${returned.message}';
+      }
+    }
     if (!mounted) return;
     setState(() {
-      _message = result.message;
+      _message = [result.message, ?warehouse].join('\n');
       _messageError = !result.ok;
       _changed = _changed || result.ok;
     });
