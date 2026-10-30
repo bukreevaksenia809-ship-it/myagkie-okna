@@ -716,6 +716,8 @@ void _levelEdgePanelRules() {
     // Ширины 1200, высоты 1000/1400.
     await tester.enterText(find.byKey(const Key('bottomWidth-field')), '1200');
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('four-sizes-toggle')));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('topWidth-field')), '1200');
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('leftHeight-field')), '1000');

@@ -12,6 +12,7 @@ import 'models/window_geometry.dart';
 import 'models/price_list.dart';
 import 'models/window_params.dart';
 import 'services/order_storage.dart';
+import 'services/session_store.dart';
 import 'services/orders_backup.dart';
 import 'services/storage_paths.dart';
 import 'services/client_report_pdf.dart';
@@ -48,7 +49,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '1.8.0';
+const String kAppVersion = '1.9.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -171,6 +172,7 @@ class _BuilderScreenState extends State<BuilderScreen>
   LicenseState? _license;
   Timer? _licenseWatch;
   Timer? _updateWatch;
+  Timer? _sessionSaveTimer;
   AppUpdate? _pendingUpdate;
   bool _updateDialogOpen = false;
   bool _licenseDialogOpen = false;
@@ -199,6 +201,7 @@ class _BuilderScreenState extends State<BuilderScreen>
     DisplayUnits.current.addListener(_onUnitsChanged);
     LabelSettings.current.addListener(_onLabelSettingsChanged);
     WidgetsBinding.instance.addObserver(this);
+    _restoreSession();
     _refreshOrders(showBusy: false);
     if (!kStoreBuild) {
       _initTelemetry();
@@ -428,6 +431,7 @@ class _BuilderScreenState extends State<BuilderScreen>
     WidgetsBinding.instance.removeObserver(this);
     _licenseWatch?.cancel();
     _updateWatch?.cancel();
+    _sessionSaveTimer?.cancel();
     _toolbarScroll.dispose();
     CompanyBranding.current.removeListener(_onBrandingChanged);
     _zoom.removeListener(_onZoomChanged);
@@ -448,21 +452,47 @@ class _BuilderScreenState extends State<BuilderScreen>
     setState(() {
       _drafts[_orderIndex] = _drafts[_orderIndex].copyWith(project: project);
     });
+    _scheduleSessionSave(project);
     Telemetry.projectChanged(project, kAppVersion);
   }
 
-  void _reset() => setState(() {
-    _drafts[_orderIndex] = _drafts[_orderIndex].copyWith(
-      project: const OrderProject(),
+  /// Автосохранение рабочей сессии с небольшой задержкой, чтобы не писать
+  /// на диск на каждый символ.
+  void _scheduleSessionSave(OrderProject project) {
+    _sessionSaveTimer?.cancel();
+    _sessionSaveTimer = Timer(
+      const Duration(milliseconds: 350),
+      () => SessionStore.save(project),
     );
-    _zoom.value = Matrix4.identity();
-  });
+  }
+
+  Future<void> _restoreSession() async {
+    final saved = await SessionStore.load();
+    if (!mounted || saved == null) return;
+    setState(() {
+      _drafts = [
+        _OrderDraft(name: 'Восстановленный заказ', project: saved),
+      ];
+      _orderIndex = 0;
+    });
+  }
+
+  void _reset() {
+    setState(() {
+      _drafts[_orderIndex] = _drafts[_orderIndex].copyWith(
+        project: const OrderProject(),
+      );
+      _zoom.value = Matrix4.identity();
+    });
+    SessionStore.save(const OrderProject());
+  }
 
   // ---------------------------------------------------------- верхние заказы
 
   void _selectOrderDraft(int index) {
     if (index < 0 || index >= _drafts.length) return;
     setState(() => _orderIndex = index);
+    _scheduleSessionSave(_project);
     _resetZoom();
   }
 
@@ -479,6 +509,7 @@ class _BuilderScreenState extends State<BuilderScreen>
       ];
       _orderIndex = _drafts.length - 1;
     });
+    _scheduleSessionSave(_project);
     _resetZoom();
   }
 

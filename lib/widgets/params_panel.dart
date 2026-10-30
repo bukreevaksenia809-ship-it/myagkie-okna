@@ -163,6 +163,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   /// Раскрыт ли блок припусков на раскрой.
   bool _allowanceExpanded = false;
+  bool _fourSizes = false;
 
   late final TextEditingController _nameController;
   late final TextEditingController _customerController;
@@ -2209,6 +2210,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       'left': TextEditingController(text: _textFor(inner.leftHeight)),
       'right': TextEditingController(text: _textFor(inner.rightHeight)),
     };
+    var four = false;
     String labelFor(String key) => switch (key) {
       'top' => 'Ширина сверху',
       'bottom' => 'Ширина снизу',
@@ -2220,17 +2222,29 @@ class _ParamsPanelState extends State<ParamsPanel> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           InnerSides? readInner() {
-            final values = <double>[];
-            for (final key in ['top', 'bottom', 'left', 'right']) {
-              final parsed = parseMm(controllers[key]!.text);
-              if (parsed == null || parsed <= 0) return null;
-              values.add(parsed);
+            final top = parseMm(controllers['top']!.text);
+            final left = parseMm(controllers['left']!.text);
+            if (top == null || left == null || top <= 0 || left <= 0) {
+              return null;
+            }
+            if (!four) {
+              return (
+                topWidth: top,
+                bottomWidth: top,
+                leftHeight: left,
+                rightHeight: left,
+              );
+            }
+            final bottom = parseMm(controllers['bottom']!.text);
+            final right = parseMm(controllers['right']!.text);
+            if (bottom == null || right == null || bottom <= 0 || right <= 0) {
+              return null;
             }
             return (
-              topWidth: values[0],
-              bottomWidth: values[1],
-              leftHeight: values[2],
-              rightHeight: values[3],
+              topWidth: top,
+              bottomWidth: bottom,
+              leftHeight: left,
+              rightHeight: right,
             );
           }
 
@@ -2261,11 +2275,26 @@ class _ParamsPanelState extends State<ParamsPanel> {
                         color: Color(0xFF66748A),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    for (final pair in const [
-                      ['top', 'bottom'],
-                      ['left', 'right'],
-                    ]) ...[
+                    const SizedBox(height: 6),
+                    TextButton.icon(
+                      key: const Key('inner-four-toggle'),
+                      onPressed: () => setDialogState(() => four = !four),
+                      icon: Icon(
+                        four ? Icons.view_agenda_outlined : Icons.grid_view,
+                        size: 16,
+                      ),
+                      label: Text(four ? '2 размера' : '4 размера'),
+                    ),
+                    const SizedBox(height: 6),
+                    for (final pair in four
+                        ? const [
+                            ['top', 'bottom'],
+                            ['left', 'right'],
+                          ]
+                        : const [
+                            ['top'],
+                            ['left'],
+                          ]) ...[
                       Row(
                         children: [
                           for (final key in pair) ...[
@@ -2359,7 +2388,17 @@ class _ParamsPanelState extends State<ParamsPanel> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
+        TextButton.icon(
+          key: const Key('four-sizes-toggle'),
+          onPressed: () => setState(() => _fourSizes = !_fourSizes),
+          icon: Icon(
+            _fourSizes ? Icons.grid_view : Icons.view_agenda_outlined,
+            size: 16,
+          ),
+          label: Text(_fourSizes ? '2 размера' : '4 размера'),
+        ),
+        const SizedBox(height: 4),
         if (params.isSpecialShape) ...[
           Row(
             children: [
@@ -2374,6 +2413,32 @@ class _ParamsPanelState extends State<ParamsPanel> {
             'Остальные размеры задаются в «Геометрии формы».',
             style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
+        ] else if (!_fourSizes) ...[
+          Row(
+            children: [
+              Expanded(
+                child: _numberField(
+                  ParamField.bottomWidth,
+                  label: 'Ширина',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _numberField(
+                  ParamField.leftHeight,
+                  label: 'Высота',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Одинаковые размеры со всех сторон. Нужны разные — включите '
+            '«4 размера».',
+            style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+          const SizedBox(height: 10),
+          _levelEdgeSelector(params),
         ] else ...[
           Row(
             children: [
@@ -4740,20 +4805,51 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
   }
 
-  Widget _numberField(ParamField field) {
+  Widget _numberField(ParamField field, {String? label}) {
+    final isWidth = field == ParamField.bottomWidth;
+    final isHeight = field == ParamField.leftHeight;
+    final symmetric = !_fourSizes && (isWidth || isHeight);
     return TextField(
       key: Key('${field.name}-field'),
       controller: _controllers[field],
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
-        labelText: field.label,
+        labelText: label ?? field.label,
         suffixText: _isLengthField(field) ? unitSuffix() : field.unit,
         border: const OutlineInputBorder(),
         isDense: true,
         errorText: _errorFor(field),
         errorMaxLines: 2,
       ),
-      onChanged: (value) => _onNumberChanged(field, value),
+      onChanged: (value) {
+        if (symmetric) {
+          _onSymmetricDimension(isWidth, value);
+        } else {
+          _onNumberChanged(field, value);
+        }
+      },
+    );
+  }
+
+  void _onSymmetricDimension(bool width, String raw) {
+    final field = width ? ParamField.bottomWidth : ParamField.leftHeight;
+    final value = _parseField(field, raw);
+    if (value == null || value <= 0) {
+      setState(() => _errors[field] = 'Введите размер больше нуля');
+      return;
+    }
+    if (value < 100 || value > 20000) {
+      setState(
+        () => _errors[field] =
+            'Размер от 100 до 20 000 ${unitSuffix()}, проверьте значение',
+      );
+      return;
+    }
+    setState(() => _errors[field] = null);
+    _updateWindow(
+      width
+          ? _params.copyWith(bottomWidth: value, topWidth: value)
+          : _params.copyWith(leftHeight: value, rightHeight: value),
     );
   }
 }

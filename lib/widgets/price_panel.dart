@@ -219,6 +219,11 @@ class _PricePanelState extends State<PricePanel> {
                 itemKey: PriceItemKeys.frenchLock,
               ),
               _row(
+                'Французский замок, ₽/шт',
+                prices.frenchLockPrice,
+                (value) => _set(prices.copyWith(frenchLockPrice: value)),
+              ),
+              _row(
                 'Саморез верхнего ряда, ₽/шт',
                 prices.screwPrice,
                 (value) => _set(prices.copyWith(screwPrice: value)),

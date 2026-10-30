@@ -860,6 +860,29 @@ class ClientReportBuilder {
     );
   }
 
+  Map<String, String> _eyeletSpacings(WindowSpec spec) {
+    final result = <String, String>{};
+    for (final side in WindowSide.values) {
+      final points = spec.layers.eyelets
+          .where((eyelet) => eyelet.side == side)
+          .toList()
+        ..sort((a, b) => a.positionInEdge.compareTo(b.positionInEdge));
+      if (points.length < 2) continue;
+      final gaps = <double>[
+        for (var i = 1; i < points.length; i++)
+          (points[i].center - points[i - 1].center).distance,
+      ];
+      final first = gaps.first;
+      final equal = gaps.every(
+        (gap) => (gap - first).abs() <= fastenerSpanEqualToleranceMm,
+      );
+      result['Шаг ${side.label}'] = equal
+          ? '${formatFastenerSpanMm(first)} ${unitSuffix()} × ${gaps.length}'
+          : gaps.map(formatFastenerSpanMm).join(' / ');
+    }
+    return result;
+  }
+
   pw.Widget _paramsCard(WindowSpec spec) {
     final geometry = spec.geometry;
     final edge = spec.layers.finishedWidths
@@ -1108,6 +1131,8 @@ class ClientReportBuilder {
           pw.SizedBox(height: 4),
           for (final entry in eyelets.entries)
             _lightSpec(entry.key, '${entry.value} шт.'),
+          for (final entry in _eyeletSpacings(spec).entries)
+            _lightSpec(entry.key, entry.value),
           for (final entry in fasteners.entries)
             _lightSpec(entry.key, '${entry.value} шт.'),
           if (spec.layers.zipperBands.isNotEmpty)

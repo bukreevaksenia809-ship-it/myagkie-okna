@@ -20,6 +20,8 @@ void main() {
 
     await tester.pumpWidget(const SoftWindowApp());
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('four-sizes-toggle')));
+    await tester.pumpAndSettle();
 
     // Панель параметров и список окон заказа.
     expect(
