@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/order_project.dart';
 import '../models/price_list.dart';
+import '../models/fastener_spans.dart';
 import '../models/window_geometry.dart';
 import '../models/crossbar.dart';
 import '../models/window_params.dart';
@@ -74,7 +75,9 @@ enum _CutoutField {
   width('Ширина'),
   height('Высота'),
   centerX('Центр от левого края'),
-  centerY('Центр от низа');
+  centerY('Центр от низа'),
+  edging('Окантовка выреза'),
+  eyelets('Люверсы по контуру');
 
   const _CutoutField(this.label);
 
@@ -156,6 +159,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// Поля «своя ширина, мм» окантовки — по одной на каждую сторону окна.
   final Map<EdgeSide, TextEditingController> _edgeControllers = {};
   final Map<EdgeSide, String?> _edgeErrors = {};
+  final Map<EdgeSide, TextEditingController> _fastenerOffsetControllers = {};
 
   /// Поля припусков на раскрой: добавка к ширине и к высоте, мм.
   final Map<_AllowanceField, TextEditingController> _allowanceControllers = {};
@@ -398,6 +402,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _CutoutField.height => cutout.height,
     _CutoutField.centerX => cutout.centerXMm,
     _CutoutField.centerY => cutout.centerYMm,
+    _CutoutField.edging => cutout.edgingMm,
+    _CutoutField.eyelets => cutout.eyeletCount.toDouble(),
   };
 
   /// Суффикс ключа поля выреза: w/h/x/y.
@@ -409,6 +415,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _CutoutField.height => 'h',
     _CutoutField.centerX => 'x',
     _CutoutField.centerY => 'y',
+    _CutoutField.edging => 'e',
+    _CutoutField.eyelets => 'n',
   };
 
   /// Синхронизация полей «своя ширина, мм» окантовки: текст переписывается
@@ -425,6 +433,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
         force: force,
       );
       if (force) _edgeErrors[side] = null;
+      final offsetController = _fastenerOffsetControllers[side];
+      if (offsetController != null) {
+        offsetController.text = _textFor(
+          params.fastenerOffsetMmFor(side),
+        );
+      }
     }
   }
 
@@ -480,6 +494,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
     for (final controller in _edgeControllers.values) {
       controller.dispose();
     }
+    for (final controller in _fastenerOffsetControllers.values) {
+      controller.dispose();
+    }
     for (final controller in _allowanceControllers.values) {
       controller.dispose();
     }
@@ -531,6 +548,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
           _textFor(widget.project.rollGap);
       for (final side in EdgeSide.values) {
         _edgeControllers[side]?.text = _textFor(_params.rollForSide(side));
+        _fastenerOffsetControllers[side]?.text =
+            _textFor(_params.fastenerOffsetMmFor(side));
       }
       for (final field in _AllowanceField.values) {
         _allowanceControllers[field]?.text =
@@ -921,6 +940,44 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 if (edge != LevelEdge.values.first) const SizedBox(width: 6),
                 Expanded(child: _levelEdgeButton(params, edge, enabled)),
               ],
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: FilterChip(
+                  key: const Key('level-left'),
+                  label: const Text(
+                    'Лево ровно',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  selected: params.levelLeft,
+                  onSelected: enabled
+                      ? (value) => _updateWindow(
+                          params.copyWith(levelLeft: value),
+                        )
+                      : null,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: FilterChip(
+                  key: const Key('level-right'),
+                  label: const Text(
+                    'Право ровно',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  selected: params.levelRight,
+                  onSelected: enabled
+                      ? (value) => _updateWindow(
+                          params.copyWith(levelRight: value),
+                        )
+                      : null,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -1609,6 +1666,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
         _noEyeletsSection(params),
         const SizedBox(height: 12),
         _eyeletStepField(spec),
+        const SizedBox(height: 10),
+        _fastenerDistancesBlock(spec),
         const SizedBox(height: 10),
         Text(
           params.isScreen
@@ -2718,6 +2777,18 @@ class _ParamsPanelState extends State<ParamsPanel> {
               ],
             ),
           ],
+          const SizedBox(height: 6),
+          number(
+            'crossbar-fasteners-$index',
+            'Крепления на перемычке, шт',
+            crossbar.fastenerCount.toDouble(),
+            (value) => _updateWindow(
+              params.updateCrossbar(
+                index,
+                crossbar.copyWith(fastenerCount: value.round().clamp(0, 24)),
+              ),
+            ),
+          ),
           const SizedBox(height: 4),
           Text(
             'Свободная полоса ${formatMm(crossbar.gapMm)} мм; '
@@ -2738,7 +2809,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
         children: [
           _hemSection(spec),
           const SizedBox(height: 8),
-          _fastenerOffsetSection(params),
+          _fastenerOffsetSection(params, spec),
           const SizedBox(height: 8),
           const Text(
             'У скрина нет окантовки: материал подворачивается сам, шов 3 мм. '
@@ -2793,7 +2864,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
         const SizedBox(height: 12),
-        _fastenerOffsetSection(params),
+        _fastenerOffsetSection(params, spec),
         const SizedBox(height: 12),
         _weldOverlapField(params),
       ],
@@ -2801,7 +2872,26 @@ class _ParamsPanelState extends State<ParamsPanel> {
   }
 
   /// Положение крепежа в полосе окантовки/подворота по каждой стороне.
-  Widget _fastenerOffsetSection(WindowParams params) {
+  double _fastenerBandWidth(EdgeSide side) {
+    final spec = WindowSpec.of(_params);
+    if (_params.isScreen) {
+      return switch (side) {
+        EdgeSide.bottom => _params.hemBottomMm,
+        EdgeSide.top => _params.hemTopMm,
+        EdgeSide.left => _params.hemLeftMm,
+        EdgeSide.right => _params.hemRightMm,
+      };
+    }
+    final windowSide = switch (side) {
+      EdgeSide.bottom => WindowSide.bottom,
+      EdgeSide.top => WindowSide.top,
+      EdgeSide.left => WindowSide.left,
+      EdgeSide.right => WindowSide.right,
+    };
+    return spec.layers.finishedWidthFor(windowSide);
+  }
+
+  Widget _fastenerOffsetSection(WindowParams params, WindowSpec spec) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2811,43 +2901,72 @@ class _ParamsPanelState extends State<ParamsPanel> {
         ),
         const SizedBox(height: 2),
         const Text(
-          'Середина полосы — база. Можно сдвинуть к внутреннему или внешнему '
-          'краю отдельно для каждой стороны.',
+          'Отступ от внутреннего края полосы, в миллиметрах/сантиметрах, '
+          'отдельно для каждой стороны. Пусто — середина полосы.',
           style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
+        const SizedBox(height: 4),
         for (final side in EdgeSide.values)
-          Row(
-            children: [
-              SizedBox(
-                width: 54,
-                child: Text(side.label, style: const TextStyle(fontSize: 11)),
-              ),
-              Expanded(
-                child: Slider(
-                  key: Key('fastener-offset-${side.name}'),
-                  value: params.fastenerOffsetFor(side).clamp(0.05, 0.95),
-                  min: 0.05,
-                  max: 0.95,
-                  divisions: 18,
-                  label: '${(params.fastenerOffsetFor(side) * 100).round()}%',
-                  onChanged: (value) => _updateWindow(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 48,
+                  child: Text(
+                    side.label,
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ),
+                Expanded(
+                  child: TextField(
+                    key: Key('fastener-offset-mm-${side.name}'),
+                    controller: _fastenerOffsetControllers.putIfAbsent(
+                      side,
+                      () => TextEditingController(
+                        text: _textFor(
+                          params.fastenerOffsetMmFor(side),
+                        ),
+                      ),
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Отступ от края',
+                      suffixText: unitSuffix(),
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                    ),
+                    onChanged: (raw) {
+                      final value = parseMm(raw);
+                      final band = _fastenerBandWidth(side);
+                      if (value == null || band <= 0) return;
+                      _updateWindow(
+                        params.copyWith(
+                          fastenerOffsetsMm: {
+                            ...params.fastenerOffsetsMm,
+                            side: value.clamp(0.0, band).toDouble(),
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Вернуть середину полосы',
+                  onPressed: () => _updateWindow(
                     params.copyWith(
-                      fastenerOffsets: {
-                        ...params.fastenerOffsets,
-                        side: value,
+                      fastenerOffsetsMm: {
+                        ...params.fastenerOffsetsMm,
+                        side: _fastenerBandWidth(side) / 2,
                       },
                     ),
                   ),
+                  icon: const Icon(Icons.restart_alt, size: 18),
                 ),
-              ),
-              SizedBox(
-                width: 38,
-                child: Text(
-                  '${(params.fastenerOffsetFor(side) * 100).round()}%',
-                  style: const TextStyle(fontSize: 10.5),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
       ],
     );
@@ -3925,6 +4044,25 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     'окантовкой.',
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
+        const SizedBox(height: 8),
+        SegmentedButton<LiftStrapOrientation>(
+          showSelectedIcon: false,
+          style: const ButtonStyle(visualDensity: VisualDensity.compact),
+          segments: [
+            for (final orientation in LiftStrapOrientation.values)
+              ButtonSegment(
+                value: orientation,
+                label: Text(
+                  orientation.label,
+                  style: const TextStyle(fontSize: 11),
+                ),
+              ),
+          ],
+          selected: {params.liftStrapOrientation},
+          onSelectionChanged: (selection) => _updateWindow(
+            params.copyWith(liftStrapOrientation: selection.first),
+          ),
+        ),
         const SizedBox(height: 6),
         for (var index = 0; index < offsets.length; index++)
           Padding(
@@ -4460,6 +4598,28 @@ class _ParamsPanelState extends State<ParamsPanel> {
             value: cutout.centerYMm,
             maxMm: maxY,
           ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _cutoutField(
+                  index: index,
+                  field: _CutoutField.edging,
+                  value: cutout.edgingMm,
+                  label: 'Окантовка выреза, мм',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _cutoutField(
+                  index: index,
+                  field: _CutoutField.eyelets,
+                  value: cutout.eyeletCount.toDouble(),
+                  label: 'Люверсы по контуру, шт',
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 2),
           Text(
             'По видимой плёнке: 0…${formatMm(maxX)} ${unitSuffix()} по горизонтали, '
@@ -4599,14 +4759,31 @@ class _ParamsPanelState extends State<ParamsPanel> {
     }
     final isCenter =
         field == _CutoutField.centerX || field == _CutoutField.centerY;
+    final isOptional = field == _CutoutField.edging ||
+        field == _CutoutField.eyelets;
     if (isCenter && value < 0) {
       setState(
         () => _cutoutErrors[key] = 'Смещение не может быть отрицательным',
       );
       return;
     }
-    if (!isCenter && value <= 0) {
+    if (isOptional && value < 0) {
+      setState(() => _cutoutErrors[key] = 'Значение не может быть отрицательным');
+      return;
+    }
+    if (!isCenter && !isOptional && value <= 0) {
       setState(() => _cutoutErrors[key] = 'Размер должен быть больше нуля');
+      return;
+    }
+    if (field == _CutoutField.edging && value > 300) {
+      setState(() => _cutoutErrors[key] = 'Окантовка выреза — не более 300 мм');
+      return;
+    }
+    if (field == _CutoutField.eyelets &&
+        (value > 48 || value != value.roundToDouble())) {
+      setState(
+        () => _cutoutErrors[key] = 'Люверсов — целое число от 0 до 48',
+      );
       return;
     }
     setState(() => _cutoutErrors[key] = null);
@@ -4616,6 +4793,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
       _CutoutField.height => cutout.copyWith(height: value),
       _CutoutField.centerX => cutout.copyWith(centerXMm: value),
       _CutoutField.centerY => cutout.copyWith(centerYMm: value),
+      _CutoutField.edging => cutout.copyWith(edgingMm: value),
+      _CutoutField.eyelets => cutout.copyWith(eyeletCount: value.round()),
     };
     _updateWindow(_params.updateCutout(index, updated));
   }
@@ -4829,6 +5008,25 @@ class _ParamsPanelState extends State<ParamsPanel> {
               ),
           ],
         ),
+        const SizedBox(height: 8),
+        SegmentedButton<bool>(
+          showSelectedIcon: false,
+          style: const ButtonStyle(visualDensity: VisualDensity.compact),
+          segments: const [
+            ButtonSegment(
+              value: true,
+              label: Text('Равномерно', style: TextStyle(fontSize: 11)),
+            ),
+            ButtonSegment(
+              value: false,
+              label: Text('Шаг + остаток', style: TextStyle(fontSize: 11)),
+            ),
+          ],
+          selected: {params.eyeletEvenSpacing},
+          onSelectionChanged: (selection) => _updateWindow(
+            params.copyWith(eyeletEvenSpacing: selection.first),
+          ),
+        ),
         const SizedBox(height: 6),
         TextField(
           key: const Key('eyelet-step-field'),
@@ -4852,13 +5050,118 @@ class _ParamsPanelState extends State<ParamsPanel> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Задан ${formatMm(value)} ${unitSuffix()} → фактически '
-          '${spec.eyeletStepLabel} по сторонам: число интервалов округляют '
-          'вверх, поэтому факт не больше заданного.',
+          params.eyeletEvenSpacing
+              ? 'Задан ${formatMm(value)} ${unitSuffix()} → фактически '
+                    '${spec.eyeletStepLabel} по сторонам: число интервалов '
+                    'округляют вверх, поэтому факт не больше заданного.'
+              : 'Шаг держится ровно ${formatMm(value)} ${unitSuffix()}, '
+                    'последний промежуток до угла — остаток. '
+                    '${spec.eyeletStepLabel}.',
           key: const Key('eyelet-step-actual'),
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
       ],
+    );
+  }
+
+  /// Сводка расстояний между креплениями по сторонам.
+  ///
+  /// Дублирует подписи на чертеже: на крупном масштабе цифры легко потерять,
+  /// а в панели всегда видно фактический шаг и число промежутков.
+  Widget _fastenerDistancesBlock(WindowSpec spec) {
+    final rows = <(String, String)>[];
+    for (final side in WindowSide.values) {
+      final points = spec.layers.eyelets
+          .where((eyelet) => eyelet.side == side)
+          .toList()
+        ..sort((a, b) => a.positionInEdge.compareTo(b.positionInEdge));
+      if (points.length < 2) continue;
+      final gaps = <double>[
+        for (var i = 1; i < points.length; i++)
+          (points[i].center - points[i - 1].center).distance,
+      ];
+      if (gaps.isEmpty) continue;
+      final first = gaps.first;
+      final equal = gaps.every(
+        (gap) => (gap - first).abs() <= fastenerSpanEqualToleranceMm,
+      );
+      rows.add((
+        side.label,
+        equal
+            ? 'шаг ${formatFastenerSpanMm(first)} ${unitSuffix()} × ${gaps.length}'
+            : gaps.map(formatFastenerSpanMm).join(' / '),
+      ));
+    }
+    if (rows.isEmpty) {
+      return const Text(
+        'Расстояния между креплениями: на этом окне крепежа нет.',
+        style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+      );
+    }
+    return Container(
+      key: const Key('fastener-distances'),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F7FC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFD9E0EA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.straighten,
+                size: 15,
+                color: Color(0xFF0B62C4),
+              ),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Расстояния между креплениями',
+                  maxLines: 2,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF33465E),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          for (final row in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 54,
+                    child: Text(
+                      row.$1.toLowerCase(),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF66748A),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      row.$2,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF18222D),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 

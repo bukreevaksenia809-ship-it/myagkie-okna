@@ -1,7 +1,7 @@
 # Сборка и выпуск приложения
 
 Приложение называется **«Мягкие окна Excl»** (`MyagkieOknaExcl`), текущая
-версия 2.0.0. Иконка — мягкое окно: коричневая окантовка, плёнка, люверсы и
+версия 2.0.0 (сборка 21). Иконка — мягкое окно: коричневая окантовка, плёнка, люверсы и
 молния.
 
 > Предыдущая версия **«Мягкие окна 1»** (приложение `MyagkieOkna`, версия 1.1.0)
@@ -42,7 +42,7 @@ hdiutil create -volname "Мягкие окна Excl" -srcfolder dist/dmg -ov -fo
 - отображаемое имя «Мягкие окна Excl»: `macos/Runner/Info.plist`
   (`CFBundleName`, `CFBundleDisplayName`) и заголовок окна в
   `macos/Runner/MainFlutterWindow.swift`;
-- версия берётся из `pubspec.yaml` (`version: 2.0.0+5`);
+- версия берётся из `pubspec.yaml` (`version: 2.0.0+21`);
 - права: запись в `~/Downloads` и печать (`macos/Runner/*.entitlements`).
 
 ### Подпись и Gatekeeper
@@ -95,7 +95,18 @@ flutter build windows --release
 - имя бинарника и идентификатор: `windows/CMakeLists.txt`
   (`BINARY_NAME = MyagkieOknaExcl`, `APPLICATION_ID = ru.myagkieokna.excl`).
 
-## Веб-версия
+## Веб-версия и SQLite
+
+Перед первой веб-сборкой (или после обновления пакета
+`sqflite_common_ffi_web`) служебные файлы кладутся в `web/`:
+
+```bash
+dart run sqflite_common_ffi_web:setup
+# создаёт web/sqlite3.wasm и web/sqflite_sw.js
+```
+
+Без них склад и заказы в браузере не откроются: это SQLite WASM и worker.
+Оба файла уже в репозитории, `flutter build web` копирует их в `build/web`.
 
 ```bash
 export PATH="$HOME/Downloads/flutter/bin:$PATH"
@@ -192,7 +203,7 @@ Windows-сборку делает сам GitHub — на виртуальной 
 
 ## Версия и имя в коде
 
-- `pubspec.yaml` → `version: 2.0.0+5`, `name: soft_window_drawer`
+- `pubspec.yaml` → `version: 2.0.0+21`, `name: soft_window_drawer`
   (имя Dart-пакета менять не нужно, оно не видно пользователю),
   `description: «Мягкие окна Excl: чертежи, раскрой и раскладка. ПВХ и скрин.»`;
 - заголовок в приложении и в окне: «Мягкие окна Excl».

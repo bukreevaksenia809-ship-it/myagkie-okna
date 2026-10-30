@@ -578,9 +578,29 @@ class WindowDrawingPainter extends CustomPainter {
           );
         }
       }
+      // Крепления на перемычке: равномерно по её длине.
+      final fastenerCount = crossbar.fastenerCount;
+      if (fastenerCount > 0) {
+        final fill = Paint()..color = const Color(0xFFB86B3D);
+        final ring = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = _ink;
+        for (var i = 0; i < fastenerCount; i++) {
+          final t = (i + 1) / (fastenerCount + 1);
+          final point = horizontal
+              ? Offset(band.left + length * t, center)
+              : Offset(center, band.top + length * t);
+          final centerPx = layout.toPxPoint(point);
+          final radius = math.max(layout.px(4), 2.4);
+          canvas.drawCircle(centerPx, radius, fill);
+          canvas.drawCircle(centerPx, radius, ring);
+        }
+      }
       _label(
         canvas,
-        'перемычка ${formatMm(crossbar.widthMm)}',
+        'перемычка ${formatMm(crossbar.widthMm)}'
+        '${fastenerCount > 0 ? ' · $fastenerCount кр.' : ''}',
         px.center,
         small: true,
         color: Colors.white,
@@ -1878,6 +1898,7 @@ class WindowDrawingPainter extends CustomPainter {
             ..strokeWidth = 1.8
             ..color = _ink,
         );
+        _paintCutoutEyelets(canvas, cutout, cutout.spec.edgingMm);
         _label(
           canvas,
           _cutoutLabel(cutout),
@@ -1888,7 +1909,9 @@ class WindowDrawingPainter extends CustomPainter {
       return;
     }
     for (final cutout in layers.cutouts) {
-      final width = _drawWidths[0];
+      final width = cutout.spec.edgingMm > 0
+          ? cutout.spec.edgingMm
+          : _drawWidths[0];
       final seamWidth = math.max(width - params.weldOverlapMm, width * 0.35);
       final outerBounds = _cutoutBounds(cutout, width);
 
@@ -1935,6 +1958,7 @@ class WindowDrawingPainter extends CustomPainter {
           ..color = _edgeDark,
       );
 
+      _paintCutoutEyelets(canvas, cutout, width);
       _label(
         canvas,
         _cutoutLabel(cutout),
@@ -1944,9 +1968,76 @@ class WindowDrawingPainter extends CustomPainter {
     }
   }
 
-  String _cutoutLabel(CutoutGeometry cutout) => cutout.isCircle
-      ? 'вырез Ø${formatMm(cutout.spec.width)}'
-      : 'вырез ${formatMm(cutout.spec.width)}×${formatMm(cutout.spec.height)}';
+  /// Люверсы по контуру выреза: ставятся по наружному краю окантовки.
+  void _paintCutoutEyelets(
+    Canvas canvas,
+    CutoutGeometry cutout,
+    double bandMm,
+  ) {
+    final count = cutout.spec.eyeletCount;
+    if (count <= 0) return;
+    final points = _cutoutEyeletPoints(cutout, bandMm / 2);
+    final fill = Paint()..color = _edgeColor;
+    final ring = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..color = _ink;
+    for (final point in points) {
+      final center = layout.toPxPoint(point);
+      final radius = math.max(layout.px(4.5), 2.6);
+      canvas.drawCircle(center, radius, fill);
+      canvas.drawCircle(center, radius, ring);
+      canvas.drawCircle(center, radius * 0.45, Paint()..color = _ink);
+    }
+  }
+
+  List<Offset> _cutoutEyeletPoints(CutoutGeometry cutout, double offsetMm) {
+    final count = cutout.spec.eyeletCount;
+    if (count <= 0) return const [];
+    final result = <Offset>[];
+    if (cutout.isCircle) {
+      final radius = (cutout.radius ?? 0) + offsetMm;
+      for (var i = 0; i < count; i++) {
+        final angle = -math.pi / 2 + 2 * math.pi * i / count;
+        result.add(
+          cutout.center +
+              Offset(math.cos(angle) * radius, math.sin(angle) * radius),
+        );
+      }
+      return result;
+    }
+    final bounds = cutout.bounds.inflate(offsetMm);
+    final width = bounds.width;
+    final height = bounds.height;
+    final perimeter = 2 * (width + height);
+    if (perimeter <= 0) return const [];
+    for (var i = 0; i < count; i++) {
+      var distance = perimeter * i / count;
+      if (distance <= width) {
+        result.add(Offset(bounds.left + distance, bounds.top));
+      } else if ((distance -= width) <= height) {
+        result.add(Offset(bounds.right, bounds.top + distance));
+      } else if ((distance -= height) <= width) {
+        result.add(Offset(bounds.right - distance, bounds.bottom));
+      } else {
+        distance -= width;
+        result.add(Offset(bounds.left, bounds.bottom - distance));
+      }
+    }
+    return result;
+  }
+
+  String _cutoutLabel(CutoutGeometry cutout) {
+    final base = cutout.isCircle
+        ? 'вырез Ø${formatMm(cutout.spec.width)}'
+        : 'вырез ${formatMm(cutout.spec.width)}×${formatMm(cutout.spec.height)}';
+    final extras = <String>[
+      if (cutout.spec.edgingMm > 0)
+        'окантовка ${formatMm(cutout.spec.edgingMm)}',
+      if (cutout.spec.eyeletCount > 0) '${cutout.spec.eyeletCount} люверсов',
+    ];
+    return extras.isEmpty ? base : '$base · ${extras.join(' · ')}';
+  }
 
   Rect _cutoutBounds(CutoutGeometry cutout, double grow) => Rect.fromPoints(
     layout.toPxPoint(

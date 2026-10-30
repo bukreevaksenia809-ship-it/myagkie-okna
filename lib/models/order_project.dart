@@ -21,7 +21,8 @@ enum OrderStatus {
   measured('Замерен'),
   production('В производстве'),
   ready('Готов'),
-  installed('Смонтирован');
+  installed('Смонтирован'),
+  cancelled('Отменён');
 
   const OrderStatus(this.label);
 

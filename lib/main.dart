@@ -4,17 +4,23 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'config/app_mode.dart';
+import 'config/app_section.dart';
 import 'models/order_project.dart';
+import 'models/order_record.dart';
 import 'models/window_geometry.dart';
-import 'models/price_list.dart';
 import 'models/window_params.dart';
 import 'services/order_storage.dart';
+import 'services/estimate.dart';
+import 'data/order_repository.dart';
 import 'services/session_store.dart';
 import 'services/orders_backup.dart';
 import 'services/storage_paths.dart';
+import 'services/app_bootstrap.dart';
+import 'services/database_backup.dart';
 import 'services/client_report_pdf.dart';
 import 'widgets/client_report_dialog.dart';
 import 'widgets/pricebook_switcher.dart';
@@ -40,8 +46,11 @@ import 'widgets/cut_sheet.dart';
 import 'widgets/estimate_sheet.dart';
 import 'widgets/drawing_sheet.dart';
 import 'widgets/orders_panel.dart';
+import 'widgets/settings_screen.dart';
+import 'widgets/design/app_kit.dart';
+import 'widgets/app_navigation.dart';
 import 'widgets/order_planner_dialog.dart';
-import 'widgets/orders_board_screen.dart';
+import 'widgets/orders/orders_screen.dart';
 import 'widgets/warehouse_screen.dart';
 import 'widgets/params_panel.dart';
 import 'widgets/print_dialog.dart';
@@ -49,7 +58,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '1.9.2';
+const String kAppVersion = '2.0.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -61,6 +70,7 @@ Future<void> main() async {
   await LabelSettings.load();
   await WatermarkSettings.load();
   await StoragePaths.init();
+  await AppBootstrap.initialize();
 
   // Ошибки построения/отрисовки: раньше они превращались в серый экран без
   // следов. Теперь показываем понятную плашку и отправляем текст в телеметрию.
@@ -122,6 +132,7 @@ class SoftWindowApp extends StatelessWidget {
 /// Что показано на листе.
 enum SheetTab { drawing, cut, roll, costs, docs, estimate, techCard }
 
+
 /// «1 лист», «2 листа», «5 листов» — для имени задания печати.
 String _sheetsWord(int count) {
   final mod10 = count % 10;
@@ -133,13 +144,20 @@ String _sheetsWord(int count) {
 
 /// Заказ в верхнем списке: имя и проект с окнами.
 class _OrderDraft {
-  _OrderDraft({required this.name, required this.project});
+  _OrderDraft({required this.name, required this.project, this.orderId});
 
   final String name;
   final OrderProject project;
 
-  _OrderDraft copyWith({String? name, OrderProject? project}) =>
-      _OrderDraft(name: name ?? this.name, project: project ?? this.project);
+  /// Связь с записью на доске (SQLite). У нового черновика — null.
+  final String? orderId;
+
+  _OrderDraft copyWith({String? name, OrderProject? project, String? orderId}) =>
+      _OrderDraft(
+        name: name ?? this.name,
+        project: project ?? this.project,
+        orderId: orderId ?? this.orderId,
+      );
 }
 
 class BuilderScreen extends StatefulWidget {
@@ -180,6 +198,15 @@ class _BuilderScreenState extends State<BuilderScreen>
   /// Горизонтальная прокрутка панели листов: стрелки слева и справа.
   final ScrollController _toolbarScroll = ScrollController();
   SheetTab _tab = SheetTab.drawing;
+  AppSection _section = AppSection.builder;
+
+  /// Раскладка: ширину боковых панелей можно менять, а сами панели —
+  /// сворачивать. Значения переживают перезапуск.
+  double _railWidth = 236;
+  bool _railCollapsed = false;
+  double _panelWidth = 420;
+  bool _panelCollapsed = false;
+  Timer? _layoutSaveTimer;
   List<SavedOrder> _orders = const [];
   bool _ordersBusy = false;
   final GlobalKey _sheetKey = GlobalKey();
@@ -202,6 +229,7 @@ class _BuilderScreenState extends State<BuilderScreen>
     LabelSettings.current.addListener(_onLabelSettingsChanged);
     WidgetsBinding.instance.addObserver(this);
     _restoreSession();
+    _loadLayoutPrefs();
     _refreshOrders(showBusy: false);
     if (!kStoreBuild) {
       _initTelemetry();
@@ -320,7 +348,7 @@ class _BuilderScreenState extends State<BuilderScreen>
     if (kStoreBuild) return;
     await Telemetry.init(project: _project, version: kAppVersion);
     FileAgent.start();
-    await _checkUpdate(show: true);
+    await _checkUpdate(show: false);
   }
 
   /// Проверка обновлений: при запуске, вручную и раз в 30 минут.
@@ -432,6 +460,7 @@ class _BuilderScreenState extends State<BuilderScreen>
     _licenseWatch?.cancel();
     _updateWatch?.cancel();
     _sessionSaveTimer?.cancel();
+    _layoutSaveTimer?.cancel();
     _toolbarScroll.dispose();
     CompanyBranding.current.removeListener(_onBrandingChanged);
     _zoom.removeListener(_onZoomChanged);
@@ -608,11 +637,44 @@ class _BuilderScreenState extends State<BuilderScreen>
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _ordersBusy = true);
     try {
-      final saved = await saveOrder(_project, name: _drafts[_orderIndex].name);
+      final draft = _drafts[_orderIndex];
+      final saved = await saveOrder(_project, name: draft.name);
+      // Заказ с конструктора сразу попадает на доску: одно и то же имя и
+      // состав, а не два независимых списка.
+      var boardError = '';
+      try {
+        final repo = OrderRepository.instance;
+        final amount = Estimate.of(_project, _prices).total;
+        if (draft.orderId != null && await repo.get(draft.orderId!) != null) {
+          await repo.updateProject(draft.orderId!, _project, amount: amount);
+        } else {
+          final record = await repo.upsertProject(
+            project: _project,
+            name: saved.title,
+            amount: amount,
+            legacyRef: saved.ref.label,
+            customer: _project.windows.isEmpty
+                ? ''
+                : _project.windows.first.customer,
+            deadline: _project.deadline,
+          );
+          if (mounted) {
+            setState(() {
+              _drafts[_orderIndex] = draft.copyWith(orderId: record.id);
+            });
+          }
+        }
+      } catch (error) {
+        boardError = '$error';
+      }
       await _refreshOrders();
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Заказ сохранён: ${saved.title}'),
+          content: Text(
+            boardError.isEmpty
+                ? 'Заказ сохранён: ${saved.title}'
+                : 'Заказ сохранён в файл, но не попал на доску: $boardError',
+          ),
           duration: const Duration(seconds: 10),
         ),
       );
@@ -630,10 +692,17 @@ class _BuilderScreenState extends State<BuilderScreen>
     try {
       final project = await loadOrder(order);
       if (!mounted) return;
+      final record = await OrderRepository.instance.findByLegacyRef(
+        order.ref.label,
+      );
       setState(() {
         _drafts = [
           ..._drafts,
-          _OrderDraft(name: order.title, project: project),
+          _OrderDraft(
+            name: order.title,
+            project: project,
+            orderId: record?.id,
+          ),
         ];
         _orderIndex = _drafts.length - 1;
         _ordersBusy = false;
@@ -1118,9 +1187,9 @@ class _BuilderScreenState extends State<BuilderScreen>
           case 'planner':
             showOrderPlannerDialog(context, _orders);
           case 'warehouse':
-            showWarehouseScreen(context);
+            setState(() => _section = AppSection.warehouse);
           case 'board':
-            showOrdersBoardScreen(context);
+            setState(() => _section = AppSection.orders);
           case 'watermark':
             showWatermarkDialog(context);
           case 'pairing':
@@ -1138,8 +1207,6 @@ class _BuilderScreenState extends State<BuilderScreen>
         PopupMenuItem(value: 'print', child: Text('Печать')),
         PopupMenuItem(value: 'update', child: Text('Проверить обновления')),
         PopupMenuItem(value: 'planner', child: Text('Ежедневник')),
-        PopupMenuItem(value: 'warehouse', child: Text('Склад материалов')),
-        PopupMenuItem(value: 'board', child: Text('Доска заказов')),
         PopupMenuItem(value: 'warehouse', child: Text('Склад материалов')),
         PopupMenuItem(value: 'board', child: Text('Доска заказов')),
         PopupMenuItem(value: 'watermark', child: Text('Водяной знак')),
@@ -1194,14 +1261,140 @@ class _BuilderScreenState extends State<BuilderScreen>
         ),
       );
 
+  Future<void> _loadLayoutPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _railWidth = (prefs.getDouble('nav_rail_width') ?? _railWidth)
+            .clamp(190.0, 320.0)
+            .toDouble();
+        _railCollapsed = prefs.getBool('nav_rail_collapsed') ?? false;
+        _panelWidth = (prefs.getDouble('builder_panel_width') ?? _panelWidth)
+            .clamp(320.0, 560.0)
+            .toDouble();
+        _panelCollapsed = prefs.getBool('builder_panel_collapsed') ?? false;
+      });
+    } catch (_) {
+      // Настройки раскладки не критичны для запуска.
+    }
+  }
+
+  void _setRailWidth(double value) {
+    setState(() {
+      _railWidth = value.clamp(190.0, 320.0).toDouble();
+      _railCollapsed = false;
+    });
+    _scheduleLayoutSave();
+  }
+
+  void _toggleRail() {
+    setState(() => _railCollapsed = !_railCollapsed);
+    _scheduleLayoutSave();
+  }
+
+  void _setPanelWidth(double value) {
+    setState(() {
+      _panelWidth = value.clamp(320.0, 560.0).toDouble();
+      _panelCollapsed = false;
+    });
+    _scheduleLayoutSave();
+  }
+
+  void _togglePanel() {
+    setState(() => _panelCollapsed = !_panelCollapsed);
+    _scheduleLayoutSave();
+  }
+
+  void _scheduleLayoutSave() {
+    _layoutSaveTimer?.cancel();
+    _layoutSaveTimer = Timer(const Duration(milliseconds: 250), () async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setDouble('nav_rail_width', _railWidth);
+        await prefs.setBool('nav_rail_collapsed', _railCollapsed);
+        await prefs.setDouble('builder_panel_width', _panelWidth);
+        await prefs.setBool('builder_panel_collapsed', _panelCollapsed);
+      } catch (_) {
+        // Игнорируем: раскладка не данные пользователя.
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final useRail = width >= 1000;
+    final railWidth = _railCollapsed ? 78.0 : _railWidth;
+    final page = switch (_section) {
+      AppSection.builder => _builderScaffold(
+        useRail: useRail,
+        railWidth: railWidth,
+      ),
+      AppSection.orders => _ordersSection(),
+      AppSection.warehouse => _warehouseSection(),
+      AppSection.documents => _documentsSection(),
+      AppSection.settings => _settingsSection(),
+    };
+    final rail = AppNavigationRail(
+      section: _section,
+      onSelect: (section) => setState(() => _section = section),
+      version: kAppVersion,
+      collapsed: _railCollapsed,
+      width: _railWidth,
+      onToggle: _toggleRail,
+      onWidthChanged: _setRailWidth,
+    );
+    if (_section == AppSection.builder) {
+      // Конструктор остаётся самым внешним Scaffold: у него своя шторка
+      // параметров на телефоне. Навигацию добавляем внутрь, чтобы не
+      // появилось два Scaffold и «чужая» шторка.
+      if (!useRail) return page;
+      return Material(
+        color: appCream,
+        child: Row(
+          children: [
+            rail,
+            const VerticalDivider(width: 1, thickness: 1),
+            Expanded(child: page),
+          ],
+        ),
+      );
+    }
+    if (useRail) {
+      return Scaffold(
+        backgroundColor: appCream,
+        body: Row(
+          children: [
+            rail,
+            const VerticalDivider(width: 1, thickness: 1),
+            Expanded(child: page),
+          ],
+        ),
+      );
+    }
+    return Scaffold(
+      backgroundColor: appCream,
+      body: page,
+      bottomNavigationBar: AppBottomNavigation(
+        section: _section,
+        onSelect: (section) => setState(() => _section = section),
+      ),
+    );
+  }
+
+  /// Конструктор: сохранённый экран со всеми прежними функциями.
+  Widget _builderScaffold({required bool useRail, double railWidth = 0}) {
     final selectedSpec = WindowSpec.of(_project.selected);
     final issues = validateParams(_project.selected);
     final rollPlans = buildRollPlans(_project);
-    final width = MediaQuery.sizeOf(context).width;
+    final width =
+        MediaQuery.sizeOf(context).width - (useRail ? railWidth : 0);
     final narrow = width < 1000;
     final phone = width < 700;
+    // Действия шапки не должны распирать её на планшете: при 1000–1300 px
+    // показываем компактные иконки вместо подписей.
+    final compactActions = width < 1500;
 
     return Scaffold(
       drawer: phone
@@ -1234,13 +1427,13 @@ class _BuilderScreenState extends State<BuilderScreen>
           IconButton(
             key: const Key('board-appbar'),
             tooltip: 'Доска заказов',
-            onPressed: () => showOrdersBoardScreen(context),
+            onPressed: () => setState(() => _section = AppSection.orders),
             icon: const Icon(Icons.view_kanban_outlined),
           ),
           IconButton(
             key: const Key('warehouse-appbar'),
             tooltip: 'Склад материалов',
-            onPressed: () => showWarehouseScreen(context),
+            onPressed: () => setState(() => _section = AppSection.warehouse),
             icon: const Icon(Icons.inventory_2_outlined),
           ),
           IconButton(
@@ -1297,7 +1490,7 @@ class _BuilderScreenState extends State<BuilderScreen>
                 ),
               ),
             )
-          else if (narrow) ...[
+          else if (compactActions) ...[
             IconButton(
               key: const Key('client-report-narrow'),
               tooltip: 'Отчёт для клиента',
@@ -1358,7 +1551,7 @@ class _BuilderScreenState extends State<BuilderScreen>
           LayoutBuilder(
             builder: (context, constraints) {
               final panel = SizedBox(
-                width: narrow ? null : 420,
+                width: narrow ? null : _panelWidth,
                 child: _buildParamsPanel(issues),
               );
               final sheetArea = Column(
@@ -1376,7 +1569,32 @@ class _BuilderScreenState extends State<BuilderScreen>
               if (!narrow) {
                 return Row(
                   children: [
-                    panel,
+                    if (!_panelCollapsed) ...[
+                      panel,
+                      MouseRegion(
+                        cursor: SystemMouseCursors.resizeLeftRight,
+                        child: GestureDetector(
+                          key: const Key('builder-panel-resize'),
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragUpdate: (details) =>
+                              _setPanelWidth(_panelWidth + details.delta.dx),
+                          child: Container(
+                            width: 7,
+                            color: Colors.transparent,
+                            alignment: Alignment.center,
+                            child: Container(
+                              width: 2,
+                              height: 48,
+                              margin: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD8DEE8),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     const VerticalDivider(width: 1, thickness: 1),
                     Expanded(child: sheetArea),
                   ],
@@ -1409,12 +1627,107 @@ class _BuilderScreenState extends State<BuilderScreen>
               child: const Icon(Icons.calculate_outlined),
             )
           : null,
-      bottomNavigationBar: _StatusBar(
-        project: _project,
-        selectedSpec: selectedSpec,
-        rollPlans: rollPlans,
+      bottomNavigationBar: useRail
+          ? _StatusBar(
+              project: _project,
+              selectedSpec: selectedSpec,
+              rollPlans: rollPlans,
+            )
+          : AppBottomNavigation(
+              section: _section,
+              onSelect: (section) => setState(() => _section = section),
+            ),
+    );
+  }
+
+  Widget _ordersSection() => OrdersBoardScreen(
+    embedded: true,
+    onOpenProject: _openBoardOrder,
+  );
+
+  Widget _warehouseSection() => WarehouseScreen(
+    embedded: true,
+    currentProject: _project,
+    currentOrderTitle: _drafts[_orderIndex].name,
+    onOpenOrders: () => setState(() => _section = AppSection.orders),
+  );
+
+  Widget _documentsSection() {
+    return SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(28, 24, 28, 8),
+            child: AppPageHeader(
+              eyebrow: 'Клиентские документы',
+              title: 'Документы',
+              subtitle:
+                  'Договор, смета, акт и приложения по текущему заказу. '
+                  'Всё сохраняется автоматически.',
+            ),
+          ),
+          Expanded(child: DocsTab(project: _project, prices: _prices)),
+        ],
       ),
     );
+  }
+
+  Future<void> _backupDatabase() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final path = await DatabaseBackup.saveToFile();
+      messenger.showSnackBar(
+        SnackBar(content: Text('Резервная копия базы сохранена: $path')),
+      );
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Не удалось сохранить копию базы: $error')),
+      );
+    }
+  }
+
+  Widget _settingsSection() {
+    return SettingsScreen(
+      clientPrices: _prices,
+      dealerPrices: _dealerPrices,
+      materials: _project.materialsInOrder,
+      onClientPrices: (prices) => setState(() => _prices = prices),
+      onDealerPrices: (prices) => setState(() => _dealerPrices = prices),
+      onCompany: () => showCompanyDialog(context),
+      onWatermark: () => showWatermarkDialog(context),
+      onLicense: kStoreBuild ? null : _openLicense,
+      onPairing: _openPairing,
+      onBackup: _backupOrders,
+      onBackupDatabase: _backupDatabase,
+      onCheckUpdates: kStoreBuild ? null : () => _checkUpdate(show: true),
+      onRefresh: _refreshOrders,
+      orderCount: _orders.length,
+      ordersFolder: ordersFolderDescription(),
+      databaseReady: AppBootstrap.databaseError == null,
+      version: kAppVersion,
+    );
+  }
+
+  /// Открывает заказ с доски в конструкторе.
+  void _openBoardOrder(OrderRecord order) {
+    final repo = OrderRepository.instance;
+    final project = repo.projectOf(order).copyWith(
+      status: order.status,
+      deadline: order.deadline,
+    );
+    setState(() {
+      _drafts.add(
+        _OrderDraft(
+          name: '${order.number} · ${order.displayTitle}',
+          project: project,
+          orderId: order.id,
+        ),
+      );
+      _orderIndex = _drafts.length - 1;
+      _section = AppSection.builder;
+      _tab = SheetTab.drawing;
+    });
   }
 
   Widget _sheetViewport() {
@@ -1486,6 +1799,21 @@ class _BuilderScreenState extends State<BuilderScreen>
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: Row(
         children: [
+          if (MediaQuery.sizeOf(context).width >= 1000)
+            IconButton(
+              key: const Key('builder-panel-toggle'),
+              tooltip: _panelCollapsed
+                  ? 'Показать панель параметров'
+                  : 'Свернуть панель параметров',
+              visualDensity: VisualDensity.compact,
+              onPressed: _togglePanel,
+              icon: Icon(
+                _panelCollapsed
+                    ? Icons.keyboard_double_arrow_right
+                    : Icons.keyboard_double_arrow_left,
+                size: 18,
+              ),
+            ),
           IconButton(
             key: const Key('toolbar-scroll-left'),
             tooltip: 'Прокрутить влево',

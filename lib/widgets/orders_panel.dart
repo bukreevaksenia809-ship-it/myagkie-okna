@@ -229,6 +229,7 @@ class OrdersPanel extends StatelessWidget {
     OrderStatus.production => const Color(0xFFB86B3D),
     OrderStatus.ready => const Color(0xFF2E7D5B),
     OrderStatus.installed => const Color(0xFF4E4A46),
+    OrderStatus.cancelled => const Color(0xFFB03A3A),
   };
 
   String _date(DateTime moment) {

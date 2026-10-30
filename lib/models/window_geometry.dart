@@ -670,12 +670,22 @@ class WindowGeometry {
     // люверсы, площадь изделия и документы считаются по чистому изделию.
     final bottom = _positive(params.bottomWidth);
     final top = _positive(params.topWidth);
-    final offset = switch (params.topAlign) {
+    var offset = switch (params.topAlign) {
       TopAlign.center => (bottom - top) / 2,
       TopAlign.left => 0.0,
       TopAlign.right => bottom - top,
       TopAlign.custom => params.topOffsetMm.isFinite ? params.topOffsetMm : 0.0,
     };
+    // «Ровно» по вертикали: левая/правая кромка остаётся вертикальной.
+    // Комбинация обеих сторон возможна при равных ширинах (тогда это
+    // прямоугольник); иначе приоритет у левой — правую не выпрямить.
+    if (params.levelLeft && params.levelRight) {
+      offset = (bottom - top) / 2;
+    } else if (params.levelLeft) {
+      offset = 0;
+    } else if (params.levelRight) {
+      offset = bottom - top;
+    }
     final pocketWidth = params.pocketWidth.isFinite && params.pocketWidth > 0
         ? params.pocketWidth
         : 0.0;
@@ -1700,8 +1710,11 @@ class WindowLayers {
           perEdge(
             polygon,
             (side) =>
-                finishedWidthFor(side) *
-                params.fastenerOffsetFor(edgeSideOf(side)),
+                finishedWidthFor(side) -
+                params.fastenerOffsetMmFor(edgeSideOf(side)).clamp(
+                  0.0,
+                  finishedWidthFor(side),
+                ),
           ),
         ),
     ];
@@ -2006,7 +2019,6 @@ class WindowLayers {
       return const [];
     }
     final bounds = filmVisibleBounds;
-    final length = math.min(liftStrapLength, bounds.height * 0.8);
     final minCenter = bounds.left + liftStrapWidth / 2;
     final maxCenter = math.max(bounds.right - liftStrapWidth / 2, minCenter);
     final centers = manual.isNotEmpty
@@ -2018,6 +2030,21 @@ class WindowLayers {
             for (var i = 1; i <= autoCount; i++)
               bounds.left + bounds.width * i / (autoCount + 1),
           ];
+    if (params.liftStrapOrientation == LiftStrapOrientation.horizontal) {
+      final length = math.min(liftStrapLength, bounds.width * 0.8);
+      final minLeft = bounds.left;
+      final maxLeft = math.max(bounds.right - length, minLeft);
+      return [
+        for (final center in centers)
+          Rect.fromLTWH(
+            (center - length / 2).clamp(minLeft, maxLeft).toDouble(),
+            _tentLineYAt(center) - liftStrapWidth,
+            length,
+            liftStrapWidth,
+          ),
+      ];
+    }
+    final length = math.min(liftStrapLength, bounds.height * 0.8);
     return [
       for (final center in centers)
         Rect.fromLTWH(
@@ -2604,13 +2631,41 @@ class WindowLayers {
         // 269…291 мм по сторонам.
         // Если заданный интервал больше стороны (1500 мм на стороне 800 мм),
         // получается ровно один интервал: по люверсу в каждом углу стороны.
-        final intervals = math.max(1, (usable / nominal).ceil());
-        final actual = usable / intervals;
-        if (sideHasEyelets(side)) steps.add(actual);
+        // Два режима:
+        //  • равномерно — интервалы округляются вверх, факт не больше
+        //    заданного (прежнее поведение);
+        //  • «шаг + остаток» — держим ровно заданный шаг 300 мм, а последний
+        //    промежуток до угла равен остатку.
+        final exactDistances = <double>[];
+        if (!params.eyeletEvenSpacing) {
+          final full = (usable / nominal).floor();
+          for (var k = 0; k <= full; k++) {
+            exactDistances.add(nominal * k);
+          }
+          final remainder = usable - nominal * full;
+          if (remainder > 1) exactDistances.add(usable);
+          if (exactDistances.length < 2) {
+            exactDistances
+              ..clear()
+              ..addAll([0, usable]);
+          }
+        }
+        final exact = exactDistances.isNotEmpty;
+        final intervals = exact
+            ? exactDistances.length - 1
+            : math.max(1, (usable / nominal).ceil());
+        final actual = exact ? nominal : usable / intervals;
+        if (sideHasEyelets(side)) {
+          // По одной записи на сторону: этого ждут подписи цепочки и тесты.
+          // Для режима «шаг + остаток» записываем средний фактический шаг,
+          // а точные промежутки видны по координатам люверсов.
+          steps.add(exact ? usable / intervals : actual);
+        }
 
         if (placements.length > 6000) break;
         for (var k = 0; k <= intervals; k++) {
-          var distance = offset + actual * k;
+          var distance = offset +
+              (exact ? exactDistances[k] : actual * k);
           final isCornerIndex = offset < 0.5 && (k == 0 || k == intervals);
 
           if (!params.roundEyeletsEnabled && isCornerIndex && offset < 0.5) {

@@ -773,6 +773,8 @@ class Cutout {
     this.height = 300,
     this.centerXMm = 0,
     this.centerYMm = 400,
+    this.edgingMm = 0,
+    this.eyeletCount = 0,
   });
 
   final CutoutShape shape;
@@ -789,18 +791,28 @@ class Cutout {
   /// Центр от нижней внутренней кромки плёнки, мм.
   final double centerYMm;
 
+  /// Ширина окантовки вокруг выреза, мм. 0 — без окантовки.
+  final double edgingMm;
+
+  /// Люверсы по контуру выреза, шт. 0 — без люверсов.
+  final int eyeletCount;
+
   Cutout copyWith({
     CutoutShape? shape,
     double? width,
     double? height,
     double? centerXMm,
     double? centerYMm,
+    double? edgingMm,
+    int? eyeletCount,
   }) => Cutout(
     shape: shape ?? this.shape,
     width: width ?? this.width,
     height: height ?? this.height,
     centerXMm: centerXMm ?? this.centerXMm,
     centerYMm: centerYMm ?? this.centerYMm,
+    edgingMm: edgingMm ?? this.edgingMm,
+    eyeletCount: eyeletCount ?? this.eyeletCount,
   );
 
   /// Площадь выреза, мм².
@@ -818,12 +830,25 @@ class Cutout {
     'height': height,
     'centerXMm': centerXMm,
     'centerYMm': centerYMm,
+    'edgingMm': edgingMm,
+    'eyeletCount': eyeletCount,
   };
 }
 
 /// Подъёмный ремень: ширина и длина заготовки, мм.
 const double liftStrapWidth = 50;
 const double liftStrapLength = 500;
+
+/// Ориентация подвязочного ремня на полотне.
+enum LiftStrapOrientation {
+  vertical('Вертикально', 'сверху вниз'),
+  horizontal('Горизонтально', 'вдоль верхней кромки');
+
+  const LiftStrapOrientation(this.label, this.hint);
+
+  final String label;
+  final String hint;
+}
 
 /// Ширина молнии по умолчанию, мм.
 const double defaultZipperWidthMm = 15;
@@ -946,6 +971,8 @@ class WindowParams {
     this.topAlign = TopAlign.center,
     this.topOffsetMm = 0,
     this.levelEdge = LevelEdge.bottom,
+    this.levelLeft = false,
+    this.levelRight = false,
     this.tSide = TShapeSide.right,
     this.tWidth = 800,
     this.tHeight = 600,
@@ -977,8 +1004,9 @@ class WindowParams {
     this.roofOverhangMm = 0,
     this.wallHeightMm = 0,
     this.crossbars = const [],
-    this.fastenerOffsets = const {},
+    this.fastenerOffsetsMm = const {},
     this.eyeletStep = 300,
+    this.eyeletEvenSpacing = true,
     this.eyeletCornerOffset = 0,
     this.roundEyeletsEnabled = true,
     this.fastenerType = FastenerType.turnBuckles,
@@ -986,6 +1014,7 @@ class WindowParams {
     this.zipperSegments = false,
     this.zipperTentOverlap = defaultZipperTentOverlapMm,
     this.liftStrapOffsets = const [],
+    this.liftStrapOrientation = LiftStrapOrientation.vertical,
     this.cutouts = const [],
     this.eyeletPositions = const [],
     this.manualEyeletSides = const [],
@@ -1027,12 +1056,30 @@ class WindowParams {
   /// Перемычки внутри полотна.
   final List<CrossbarSpec> crossbars;
 
-  /// Положение крепежа в полосе окантовки: 0 — внутренний край,
-  /// 0.5 — середина, 1 — внешний. По сторонам независимо.
-  final Map<EdgeSide, double> fastenerOffsets;
+  /// Положение крепежа в полосе окантовки/подворота, **мм от внутреннего
+  /// края полосы**. По сторонам независимо.
+  ///
+  /// Пустая карта — крепёж по середине полосы. Значение хранится в
+  /// миллиметрах, а не в процентах: ширина полосы у сторон разная, и
+  /// «середина» в процентах давала разные отступы при смене рулона.
+  final Map<EdgeSide, double> fastenerOffsetsMm;
 
-  double fastenerOffsetFor(EdgeSide side) =>
-      (fastenerOffsets[side] ?? 0.5).clamp(0.05, 0.95).toDouble();
+  /// Ширина полосы, в которой стоит крепёж, мм.
+  double fastenerBandFor(EdgeSide side) => isScreen
+      ? hemForSide(side)
+      : finishedEdgeWidth(rollForSide(side));
+
+  /// Отступ крепежа от внутреннего края полосы, мм.
+  double fastenerOffsetMmFor(EdgeSide side) {
+    final band = fastenerBandFor(side);
+    final value = fastenerOffsetsMm[side];
+    if (value == null || !value.isFinite) return band / 2;
+    return value.clamp(0.0, band).toDouble();
+  }
+
+  /// Отступ от наружного края полосы, мм — его использует геометрия.
+  double fastenerInsetFromOuterMm(EdgeSide side) =>
+      fastenerBandFor(side) - fastenerOffsetMmFor(side);
 
   /// Тип окна по способу открывания.
   final WindowType windowType;
@@ -1074,6 +1121,11 @@ class WindowParams {
   /// наклонён (прежняя геометрия). [LevelEdge.top] фиксирует верх, [none]
   /// делит перепад поровну между верхом и низом.
   final LevelEdge levelEdge;
+
+  /// Дополнительно «ровно» по вертикали: левая/правая кромка остаётся
+  /// вертикальной, а разница ширин уходит в противоположную сторону.
+  final bool levelLeft;
+  final bool levelRight;
 
   // --- Т-образное окно (windowType == WindowType.tShape) -------------------
   //
@@ -1231,6 +1283,11 @@ class WindowParams {
   /// `WindowLayers.eyeletSteps` и `WindowSpec.eyeletStepLabel`).
   final double eyeletStep;
 
+  /// Как раскладывать шаг: `true` — равномерно (фактический шаг меньше
+  /// заданного), `false` — держать ровно заданный шаг, а последний промежуток
+  /// сделать остатком до угла.
+  final bool eyeletEvenSpacing;
+
   /// Отступ первого люверса от угла; 0 — люверс стоит в углу.
   final double eyeletCornerOffset;
 
@@ -1259,6 +1316,9 @@ class WindowParams {
   /// [liftStrapCount]. Непустой — ровно эти ремни; каждый привязан к линии
   /// тента на своей высоте (на косом окне линии тоже косая).
   final List<double> liftStrapOffsets;
+
+  /// Как лежит ремень: вертикально (сверху вниз) или горизонтально.
+  final LiftStrapOrientation liftStrapOrientation;
 
   /// «Доп. настройка молнии»: делить полотно на сегменты по молниям.
   ///
@@ -1647,7 +1707,7 @@ class WindowParams {
     double? roofOverhangMm,
     double? wallHeightMm,
     List<CrossbarSpec>? crossbars,
-    Map<EdgeSide, double>? fastenerOffsets,
+    Map<EdgeSide, double>? fastenerOffsetsMm,
     WindowType? windowType,
     double? bottomWidth,
     double? topWidth,
@@ -1658,6 +1718,8 @@ class WindowParams {
     TopAlign? topAlign,
     double? topOffsetMm,
     LevelEdge? levelEdge,
+    bool? levelLeft,
+    bool? levelRight,
     TShapeSide? tSide,
     double? tWidth,
     double? tHeight,
@@ -1684,6 +1746,7 @@ class WindowParams {
     double? hemLeftMm,
     EyeletType? eyeletType,
     double? eyeletStep,
+    bool? eyeletEvenSpacing,
     double? eyeletCornerOffset,
     bool? roundEyeletsEnabled,
     FastenerType? fastenerType,
@@ -1691,6 +1754,7 @@ class WindowParams {
     bool? zipperSegments,
     double? zipperTentOverlap,
     List<double>? liftStrapOffsets,
+    LiftStrapOrientation? liftStrapOrientation,
     List<Cutout>? cutouts,
     List<EyeletPosition>? eyeletPositions,
     List<EdgeSide>? manualEyeletSides,
@@ -1716,7 +1780,7 @@ class WindowParams {
     roofOverhangMm: roofOverhangMm ?? this.roofOverhangMm,
     wallHeightMm: wallHeightMm ?? this.wallHeightMm,
     crossbars: crossbars ?? this.crossbars,
-    fastenerOffsets: fastenerOffsets ?? this.fastenerOffsets,
+    fastenerOffsetsMm: fastenerOffsetsMm ?? this.fastenerOffsetsMm,
       windowType: windowType ?? this.windowType,
       bottomWidth: bottomWidth ?? this.bottomWidth,
       topWidth: topWidth ?? this.topWidth,
@@ -1727,6 +1791,8 @@ class WindowParams {
       topAlign: topAlign ?? this.topAlign,
       topOffsetMm: topOffsetMm ?? this.topOffsetMm,
       levelEdge: levelEdge ?? this.levelEdge,
+      levelLeft: levelLeft ?? this.levelLeft,
+      levelRight: levelRight ?? this.levelRight,
       tSide: tSide ?? this.tSide,
       tWidth: tWidth ?? this.tWidth,
       tHeight: tHeight ?? this.tHeight,
@@ -1753,6 +1819,7 @@ class WindowParams {
       hemLeftMm: hemLeftMm ?? this.hemLeftMm,
       eyeletType: eyeletType ?? this.eyeletType,
       eyeletStep: eyeletStep ?? this.eyeletStep,
+      eyeletEvenSpacing: eyeletEvenSpacing ?? this.eyeletEvenSpacing,
       eyeletCornerOffset: eyeletCornerOffset ?? this.eyeletCornerOffset,
       roundEyeletsEnabled: roundEyeletsEnabled ?? this.roundEyeletsEnabled,
       fastenerType: fastenerType ?? this.fastenerType,
@@ -1760,6 +1827,8 @@ class WindowParams {
       zipperSegments: zipperSegments ?? this.zipperSegments,
       zipperTentOverlap: zipperTentOverlap ?? this.zipperTentOverlap,
       liftStrapOffsets: liftStrapOffsets ?? this.liftStrapOffsets,
+      liftStrapOrientation:
+          liftStrapOrientation ?? this.liftStrapOrientation,
       cutouts: cutouts ?? this.cutouts,
       eyeletPositions: eyeletPositions ?? this.eyeletPositions,
       manualEyeletSides: manualEyeletSides ?? this.manualEyeletSides,
@@ -2016,6 +2085,8 @@ class WindowParams {
     // Какая кромка горизонтальна: меняет координаты углов, а габарит и
     // масштаб у режимов совпадают — без этого поля перерисовки не было.
     levelEdge.name,
+    levelLeft,
+    levelRight,
     bottomWidth,
     topWidth,
     leftHeight,
@@ -2052,6 +2123,7 @@ class WindowParams {
     weldOverlapMm,
     eyeletType.name,
     eyeletStep,
+    eyeletEvenSpacing,
     eyeletCornerOffset,
     roundEyeletsEnabled,
     material.name,
@@ -2067,7 +2139,7 @@ class WindowParams {
     for (final offset in liftStrapOffsets) offset,
     for (final cutout in cutouts)
       '${cutout.shape.name}:${cutout.width}:${cutout.height}:'
-          '${cutout.centerXMm}:${cutout.centerYMm}',
+          '${cutout.centerXMm}:${cutout.centerYMm}:${cutout.edgingMm}:${cutout.eyeletCount}',
     for (final side in manualEyeletSides) side.name,
     for (final eyelet in eyeletPositions)
       '${eyelet.side.name}:${eyelet.fraction.toStringAsFixed(5)}:${eyelet.kind.name}',

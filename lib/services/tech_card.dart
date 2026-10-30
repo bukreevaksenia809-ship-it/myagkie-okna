@@ -923,7 +923,9 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
                     '${formatMm(cutout.spec.height)} ${unitSuffix()}',
           note:
               'центр ${formatMm(cutout.spec.centerXMm)} × '
-              '${formatMm(cutout.spec.centerYMm)} ${unitSuffix()} от левого нижнего угла плёнки',
+              '${formatMm(cutout.spec.centerYMm)} ${unitSuffix()} от левого нижнего угла плёнки'
+              '${cutout.spec.edgingMm > 0 ? ', окантовка ${formatMm(cutout.spec.edgingMm)} ${unitSuffix()}' : ''}'
+              '${cutout.spec.eyeletCount > 0 ? ', люверсов ${cutout.spec.eyeletCount}' : ''}',
         ),
       TechMaterial(
         name: 'Окантовка по контуру вырезов',
@@ -937,7 +939,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       description:
           'Вырезать ${params.cutouts.length} шт по разметке: '
           '${spec.cutoutsSummary}. Кромку обработать окантовкой по всему '
-          'контуру.',
+          'контуру${params.cutouts.any((cutout) => cutout.eyeletCount > 0) ? ', '
+                'поставить люверсы по контуру вырезов' : ''}.',
       materials: cutoutMaterials,
       tool: 'Нож, шаблон или циркуль, маркер, фен-сварочник',
       control:

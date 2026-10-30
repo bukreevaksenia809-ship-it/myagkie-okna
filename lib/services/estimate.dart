@@ -364,6 +364,42 @@ class Estimate {
       );
     }
 
+    // Окантовка и люверсы вырезов — только если мастер их включил. Старые
+    // заказы без этих полей дают ноль и смета не меняется.
+    final cutoutEdgingMm = <double>[
+      for (final spec in summary.specs)
+        for (final cutout in spec.params.cutouts)
+          if (cutout.edgingMm > 0) cutout.perimeterMm,
+    ].fold<double>(0, (sum, value) => sum + value);
+    if (cutoutEdgingMm > 0) {
+      lines.add(
+        EstimateLine(
+          title: 'Окантовка вырезов',
+          note: 'полоса по контуру выреза, ширина — из карточки выреза',
+          quantity: cutoutEdgingMm / 1000,
+          unit: 'м',
+          unitPrice: prices.edge100PerM,
+          group: EstimateGroup.hardware,
+        ),
+      );
+    }
+    final cutoutEyelets = <int>[
+      for (final spec in summary.specs)
+        for (final cutout in spec.params.cutouts) cutout.eyeletCount,
+    ].fold<int>(0, (sum, value) => sum + value);
+    if (cutoutEyelets > 0) {
+      lines.add(
+        EstimateLine(
+          title: 'Люверсы в вырезах',
+          note: 'установка по контуру выреза, шт',
+          quantity: cutoutEyelets.toDouble(),
+          unit: 'шт',
+          unitPrice: prices.eyeletPrice + prices.eyeletInstall,
+          group: EstimateGroup.hardware,
+        ),
+      );
+    }
+
     // --- Работы -----------------------------------------------------------
     if (summary.productAreaM2 > 0 && prices.isEnabled(PriceItemKeys.labor)) {
       lines.add(
@@ -547,6 +583,28 @@ class Estimate {
           );
         }
       }
+    }
+
+    // Крепления на перемычках считаются независимо от цены самой перемычки:
+    // мастер может не продавать перемычку отдельной строкой, но крепёж
+    // обязан попасть в смету.
+    final crossbarFasteners = [
+      for (final spec in summary.specs)
+        for (final crossbar in spec.params.crossbars) crossbar.fastenerCount,
+    ].fold<int>(0, (sum, value) => sum + value);
+    if (crossbarFasteners > 0 &&
+        prices.isEnabled(PriceItemKeys.eyeletRound)) {
+      lines.add(
+        EstimateLine(
+          title: 'Крепления на перемычках',
+          note: 'люверсы/скобы по перемычке, установка',
+          quantity: crossbarFasteners.toDouble(),
+          unit: 'шт',
+          unitPrice: prices.eyeletPrice + prices.eyeletInstall,
+          group: EstimateGroup.hardware,
+          itemKey: PriceItemKeys.eyeletRound,
+        ),
+      );
     }
 
     for (final key in PriceList.extraItemKeys) {

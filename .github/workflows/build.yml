@@ -94,6 +94,63 @@ jobs:
             build/app/outputs/bundle/release/app-release.aab
           if-no-files-found: error
 
+      - name: Релиз
+        if: startsWith(github.ref, 'refs/tags/') || inputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then TAG="${{ github.ref_name }}"; else TAG="v${{ inputs.version }}"; fi
+          gh release view "$TAG" --repo ${{ github.repository }} >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo ${{ github.repository }} \
+              --title "Мягкие окна Excl $TAG" \
+              --notes "Сборка приложения «Мягкие окна Excl»: чертежи, раскрой, склад, заказы."
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/MyagkieOknaExcl-android.apk
+          cp build/app/outputs/bundle/release/app-release.aab dist/MyagkieOknaExcl-android.aab
+          gh release upload "$TAG" dist/MyagkieOknaExcl-android.apk dist/MyagkieOknaExcl-android.aab \
+            --repo ${{ github.repository }} --clobber
+
+  web:
+    name: Web (ZIP)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Зависимости
+        run: flutter pub get
+      - name: SQLite WASM для браузера
+        run: dart run sqflite_common_ffi_web:setup
+      - name: Сборка
+        run: flutter build web --release --pwa-strategy=none
+      - name: Архив
+        run: |
+          mkdir -p dist
+          cd build/web
+          zip -qr ../../dist/MyagkieOknaExcl-web.zip .
+      - name: Артефакт
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyagkieOknaExcl-web
+          path: dist/MyagkieOknaExcl-web.zip
+          if-no-files-found: error
+      - name: Релиз
+        if: startsWith(github.ref, 'refs/tags/') || inputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then TAG="${{ github.ref_name }}"; else TAG="v${{ inputs.version }}"; fi
+          gh release view "$TAG" --repo ${{ github.repository }} >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo ${{ github.repository }} \
+              --title "Мягкие окна Excl $TAG" \
+              --notes "Сборка приложения «Мягкие окна Excl»: чертежи, раскрой, склад, заказы."
+          gh release upload "$TAG" dist/MyagkieOknaExcl-web.zip \
+            --repo ${{ github.repository }} --clobber
+
   windows:
     name: Windows (.exe)
     needs: test

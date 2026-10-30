@@ -3,22 +3,85 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Обновление Калькулятор мягких окон</title>
+  <title>Мягкие окна Excl 2.0 — обновление</title>
   <style>
-    body{font-family:-apple-system,Segoe UI,Arial,sans-serif;background:#f3f6fb;color:#17202b;margin:0;padding:40px 16px}
-    main{max-width:640px;margin:0 auto;background:#fff;border:1px solid #dbe3ef;border-radius:18px;padding:28px}
-    h1{font-size:24px;margin:0 0 8px} p{color:#5b6b80;line-height:1.5}
-    a{display:block;text-decoration:none;color:#fff;background:#0b62c4;border-radius:12px;padding:14px 16px;margin:10px 0;font-weight:600}
-    a.mac{background:#25364d} small{color:#7c8798}
+    :root{--ink:#18222d;--copper:#b86b3d;--cream:#f4efe7;--paper:#fffcf8;--line:#e3d9cc;--muted:#6f746f}
+    *{box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:
+      radial-gradient(1200px 600px at 80% -10%,#f7e7d8 0,transparent 60%),var(--cream);
+      color:var(--ink);margin:0;padding:48px 18px;min-height:100vh}
+    main{max-width:760px;margin:0 auto;background:var(--paper);border:1px solid var(--line);
+      border-radius:26px;padding:36px 34px;box-shadow:0 24px 60px rgba(24,34,45,.10)}
+    .eyebrow{font-size:11px;letter-spacing:2px;font-weight:800;color:var(--copper);text-transform:uppercase}
+    h1{font-size:38px;line-height:1.04;letter-spacing:-1.2px;margin:10px 0 10px}
+    .lead{color:var(--muted);line-height:1.6;margin:0 0 22px;font-size:15px}
+    .badge{display:inline-block;background:#f2e2d5;border:1px solid #e8cbb8;color:#8e4e2a;
+      border-radius:999px;padding:5px 11px;font-size:11px;font-weight:800;margin-bottom:18px}
+    h2{font-size:15px;margin:26px 0 10px;letter-spacing:-.2px}
+    a.download{display:flex;align-items:center;justify-content:space-between;gap:14px;
+      text-decoration:none;color:#fff;background:var(--ink);border-radius:16px;padding:16px 18px;
+      margin:10px 0;font-weight:700;transition:transform .15s ease}
+    a.download:hover{transform:translateY(-1px)}
+    a.download span{font-weight:400;font-size:12px;opacity:.72}
+    a.mac{background:#2a3a4a} a.aab{background:#6d4c41}
+    ul{color:#3a4652;line-height:1.65;padding-left:20px;font-size:13.5px}
+    li b{color:var(--ink)}
+    .note{background:#f7f1e8;border:1px solid var(--line);border-radius:14px;padding:13px 15px;
+      color:var(--muted);font-size:12px;line-height:1.55;margin-top:18px}
+    .footer{margin-top:24px;color:#8a938d;font-size:11px;line-height:1.6}
+    code{background:#efe6da;border-radius:5px;padding:1px 5px;font-size:11px}
+    @media(max-width:560px){main{padding:26px 20px;border-radius:20px}h1{font-size:30px}}
   </style>
 </head>
 <body>
   <main>
-    <h1>Обновление 1.6.8</h1>
-    <p>Скачайте установщик для своей системы и установите поверх текущей версии.</p>
-    <a href="https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/1.6.8/MyagkieOknaExcl-windows.zip">Windows (ZIP)</a>
-    <a class="mac" href="https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/1.6.8/MyagkieOknaExcl-macos.dmg">macOS (DMG)</a>
-    <p><small>Статусы заказов, расстояния креплений в панели, связь с ПК на телефоне, резервные копии.</small></p>
+    <div class="eyebrow">Мягкие окна Excl</div>
+    <h1>Версия 2.0</h1>
+    <div class="badge">Склад · заказы · производство</div>
+    <p class="lead">Крупное обновление: полноценный склад на SQLite с партиями и резервами,
+      Jira-доска заказов, календарь сроков и единый премиальный интерфейс на ПК, планшете
+      и телефоне.</p>
+
+    <h2>Скачать</h2>
+    <a class="download" href="https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.0.0/MyagkieOknaExcl-windows.zip">
+      Windows <span>ZIP · распаковать целиком</span>
+    </a>
+    <a class="download mac" href="https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.0.0/MyagkieOknaExcl-macos.dmg">
+      macOS <span>DMG · Apple Silicon и Intel</span>
+    </a>
+    <a class="download aab" href="https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.0.0/MyagkieOknaExcl-android.apk">
+      Android <span>APK · прямая установка</span>
+    </a>
+
+    <h2>Что нового</h2>
+    <ul>
+      <li><b>Склад:</b> номенклатура, приход и закупка, продажа, списание в заказ, брак,
+        возврат, перемещение и инвентаризация. Остаток считается по журналу.</li>
+      <li><b>Партии и цены:</b> FIFO, средняя себестоимость, история закупочных и продажных
+        цен, наценка и маржа.</li>
+      <li><b>Заказы:</b> доска со статусами и drag-and-drop, поиск, фильтры, сортировка,
+        приоритеты, ответственные, метки, сроки, просроченные, архив и массовые действия.</li>
+      <li><b>Связь заказа и склада:</b> потребность по смете, проверка остатков, резерв при
+        запуске в производство, списание при готовности и возврат при отмене.</li>
+      <li><b>Производство:</b> календарь сроков, напоминания за 2 дня, чек-листы,
+        комментарии, история изменений, фото и документы.</li>
+      <li><b>Геометрия:</b> отступ крепежа в миллиметрах, шаг люверсов «300 + остаток»,
+        «Ровно» по левой и правой кромке, ориентация подвязочных ремней, крепления на
+        перемычках, окантовка и люверсы вырезов.</li>
+      <li><b>Данные:</b> локальная SQLite с транзакциями, автоматические резервные копии
+        и перенос старых складов и заказов.</li>
+    </ul>
+
+    <div class="note">
+      Установка поверх прошлой версии сохраняет заказы и настройки. При первом запуске
+      старый склад и сохранённые заказы переносятся в локальную базу автоматически.
+      Резервную копию можно сделать в разделе <b>Настройки → Данные</b>.
+    </div>
+    <p class="footer">
+      Файлы публикуются в GitHub Releases. Зеркало в R2 —
+      <code>releases/2.0.0/</code> после загрузки скриптом <code>release-r2.sh</code>. Приложение не подписано сертификатом
+      Apple: при первом запуске откройте его через «Правый клик → Открыть».
+    </p>
   </main>
 </body>
 </html>

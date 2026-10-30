@@ -46,3 +46,20 @@ curl https://okna-updates.<account>.workers.dev/health
 
 Ограничение Worker — 100 МБ на файл. Для больших файлов нужен presigned URL
 (следующий этап).
+
+
+## Публикация готовых сборок версии 2.0
+
+```bash
+cd ..
+./release-r2.sh 2.0.0
+```
+
+Скрипт загружает Windows ZIP, macOS DMG, Android APK/AAB и веб-архив в
+`releases/2.0.0/`. Нужен `npx wrangler login`; срок токена проверяется
+командой `npx wrangler whoami`.
+
+После загрузки откройте админку → «Обновление», укажите версию `2.0.0`,
+ссылки `https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.0.0/…`
+и нажмите «Опубликовать». Страница `web/updates/index.html` уже содержит эти
+ссылки.

@@ -98,9 +98,17 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'roofOverhangMm': p.roofOverhangMm,
       'wallHeightMm': p.wallHeightMm,
       'crossbars': [for (final crossbar in p.crossbars) crossbar.toJson()],
-      'fastenerOffsets': {
-        for (final entry in p.fastenerOffsets.entries)
+      'fastenerOffsetsMm': {
+        for (final entry in p.fastenerOffsetsMm.entries)
           entry.key.name: entry.value,
+      },
+      // Старое поле — доля полосы: пишем для совместимости со старыми
+      // версиями. Читается только если нового поля нет.
+      'fastenerOffsets': {
+        for (final side in EdgeSide.values)
+          if (p.fastenerOffsetsMm.containsKey(side))
+            side.name: p.fastenerOffsetMmFor(side) /
+                (p.fastenerBandFor(side) <= 0 ? 1 : p.fastenerBandFor(side)),
       },
       'windowType': p.windowType.name,
       'material': p.material.name,
@@ -115,6 +123,8 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'topOffsetMm': p.topOffsetMm,
       // Какая кромка горизонтальна: bottom / top / none.
       'levelEdge': p.levelEdge.name,
+      'levelLeft': p.levelLeft,
+      'levelRight': p.levelRight,
       // Т-образное окно: сторона, размеры приставки, смещение и спайка.
       'tSide': p.tSide.name,
       'tWidth': p.tWidth,
@@ -150,6 +160,7 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       if (p.hasUniformHem) 'hemMm': p.hemBottomMm,
       'eyeletType': p.eyeletType.name,
       'eyeletStep': p.eyeletStep,
+      'eyeletEvenSpacing': p.eyeletEvenSpacing,
       'eyeletCornerOffset': p.eyeletCornerOffset,
       // Тумблер «Круглые люверсы в углах» (по умолчанию включён).
       'roundEyeletsEnabled': p.roundEyeletsEnabled,
@@ -160,6 +171,7 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
       'zipperTentOverlap': p.zipperTentOverlap,
       // Ручные положения подъёмных ремней, мм от левого края.
       'liftStrapOffsets': p.liftStrapOffsets,
+      'liftStrapOrientation': p.liftStrapOrientation.name,
       'cutouts': [for (final cutout in p.cutouts) cutout.toJson()],
       // Ручные положения люверсов (перетащены на чертеже).
       'eyeletPositions': [
@@ -198,7 +210,7 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
   // Старые заказы хранят один подворот на все стороны: читаем его как общий,
   // а новые четыре поля имеют приоритет над ним.
   final legacyHem = _double(json['hemMm'], fallback.hemBottomMm);
-  return WindowParams(
+  final parsed = WindowParams(
     projectName: _string(json['projectName'], fallback.projectName),
     customer: _string(json['customer'], fallback.customer),
     drawingNumber: _string(json['drawingNumber'], fallback.drawingNumber),
@@ -211,10 +223,11 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
       for (final raw in (json['crossbars'] as List? ?? const []))
         if (raw is Map<String, dynamic>) CrossbarSpec.fromJson(raw),
     ],
-    fastenerOffsets: {
+    fastenerOffsetsMm: {
       for (final side in EdgeSide.values)
-        if ((json['fastenerOffsets'] as Map?)?[side.name] is num)
-          side: ((json['fastenerOffsets'] as Map)[side.name] as num).toDouble(),
+        if ((json['fastenerOffsetsMm'] as Map?)?[side.name] is num)
+          side: ((json['fastenerOffsetsMm'] as Map)[side.name] as num)
+              .toDouble(),
     },
     windowType:
         _enumByName(WindowType.values, json['windowType'], fallback.windowType),
@@ -237,6 +250,8 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
       json['levelEdge'],
       LevelEdge.bottom,
     ),
+    levelLeft: _bool(json['levelLeft'], false),
+    levelRight: _bool(json['levelRight'], false),
     tSide: _enumByName(TShapeSide.values, json['tSide'], fallback.tSide),
     tWidth: _double(json['tWidth'], fallback.tWidth),
     tHeight: _double(json['tHeight'], fallback.tHeight),
@@ -269,6 +284,10 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     eyeletType:
         _enumByName(EyeletType.values, json['eyeletType'], fallback.eyeletType),
     eyeletStep: _eyeletStepFromJson(json['eyeletStep'], fallback.eyeletStep),
+    eyeletEvenSpacing: _bool(
+      json['eyeletEvenSpacing'],
+      fallback.eyeletEvenSpacing,
+    ),
     eyeletCornerOffset:
         _double(json['eyeletCornerOffset'], fallback.eyeletCornerOffset),
     roundEyeletsEnabled:
@@ -282,6 +301,11 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
       defaultZipperTentOverlapMm,
     ),
     liftStrapOffsets: _doubleList(json['liftStrapOffsets']),
+    liftStrapOrientation: _enumByName(
+      LiftStrapOrientation.values,
+      json['liftStrapOrientation'],
+      LiftStrapOrientation.vertical,
+    ),
     cutouts: _cutoutsFromJson(json['cutouts']),
     eyeletPositions: _eyeletPositionsFromJson(json['eyeletPositions']),
     manualEyeletSides: _sidesFromJson(json['manualEyeletSides']),
@@ -303,6 +327,22 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
       fallback.pvcHeightAllowanceEnabled,
     ),
   );
+  // Старые заказы хранят долю полосы (0…1), новые — миллиметры. Долю
+  // переводим в мм по ширине полосы конкретной стороны.
+  final legacyOffsets = json['fastenerOffsets'];
+  if (legacyOffsets is Map && parsed.fastenerOffsetsMm.isEmpty) {
+    final converted = <EdgeSide, double>{};
+    for (final side in EdgeSide.values) {
+      final value = legacyOffsets[side.name];
+      if (value is! num) continue;
+      final fraction = value.toDouble().clamp(0.0, 1.0);
+      converted[side] = fraction * parsed.fastenerBandFor(side);
+    }
+    if (converted.isNotEmpty) {
+      return parsed.copyWith(fastenerOffsetsMm: converted);
+    }
+  }
+  return parsed;
 }
 
 /// Тумблер усадки из JSON.
@@ -431,6 +471,8 @@ List<Cutout> _cutoutsFromJson(Object? raw) {
           height: _double(item['height'], 300),
           centerXMm: _double(item['centerXMm'], 0),
           centerYMm: _double(item['centerYMm'], 400),
+          edgingMm: _double(item['edgingMm'], 0),
+          eyeletCount: _int(item['eyeletCount'], 0).clamp(0, 48),
         ),
   ];
 }
