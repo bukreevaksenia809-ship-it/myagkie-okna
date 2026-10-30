@@ -126,7 +126,10 @@ jobs:
       - name: SQLite WASM для браузера
         run: dart run sqflite_common_ffi_web:setup
       - name: Сборка
-        run: flutter build web --release --pwa-strategy=none
+        run: |
+          flutter build web --release --pwa-strategy=none
+          rm -rf build/web/admin
+          cp -R admin build/web/admin
       - name: Архив
         run: |
           mkdir -p dist

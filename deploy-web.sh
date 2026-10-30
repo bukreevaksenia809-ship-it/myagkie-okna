@@ -20,9 +20,12 @@ echo "== 1/3 Сборка веб-версии =="
 "$FLUTTER_BIN" pub get
 "$FLUTTER_BIN" build web --release
 
-echo "== 2/3 Проверка входа в Firebase =="
+echo "== 2/3 Админка и вход в Firebase =="
+# Админка лежит отдельно от Flutter-сборки: кладём её в build/web/admin,
+# иначе на сайте остаётся старая версия.
+rm -rf build/web/admin
+cp -R admin build/web/admin
 "$FIREBASE_BIN" projects:list >/dev/null
-
 echo "== 3/3 Публикация (target: $TARGET, проект: $PROJECT) =="
 "$FIREBASE_BIN" deploy --only "hosting:$TARGET" --project "$PROJECT"
 
