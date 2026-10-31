@@ -57,7 +57,10 @@ git-тег `myagkie-okna-1`, архивы исходников и веб-сбо�
 | **Web** (рабочая версия) | https://myagkie-okna-excl.web.app |
 | **Страница обновления** | https://myagkie-okna-excl.web.app/updates/ |
 | **Админка** | https://myagkie-okna-excl.web.app/admin/ |
-| **Windows / macOS / Android / Web ZIP** | [GitHub Releases v2.1.0](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/tag/v2.1.0) |
+| **Windows** | [MyagkieOknaExcl-windows.zip](https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.1.0/MyagkieOknaExcl-windows.zip) |
+| **macOS** | [MyagkieOknaExcl-macos.dmg](https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.1.0/MyagkieOknaExcl-macos.dmg) |
+| **Android** | [MyagkieOknaExcl-android.apk](https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.1.0/MyagkieOknaExcl-android.apk) |
+| **Все файлы** | [GitHub Releases v2.1.0](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/tag/v2.1.0) |
 
 Windows-сборка сделана на Windows-раннере GitHub Actions; macOS DMG, Android
 APK/AAB и Web ZIP — там же. Метаданные обновления (версия, ссылки, SHA-256)
