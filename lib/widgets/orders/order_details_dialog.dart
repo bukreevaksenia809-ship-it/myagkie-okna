@@ -2,9 +2,11 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../data/finance_repository.dart';
 import '../../data/order_repository.dart';
 import '../../data/warehouse_repository.dart';
 import '../../services/order_materials.dart';
+import '../../models/finance.dart';
 import '../../models/order_project.dart';
 import '../../models/order_record.dart';
 import '../../models/price_list.dart';
@@ -12,6 +14,7 @@ import '../../models/warehouse.dart';
 import '../design/app_kit.dart';
 import '../docs/docs_tab.dart';
 import '../warehouse/order_materials_dialog.dart';
+import 'finance_dialogs.dart';
 
 /// Открывает карточку заказа. Возвращает true, если что-то изменилось.
 Future<bool> showOrderDetailsDialog(
@@ -22,10 +25,8 @@ Future<bool> showOrderDetailsDialog(
   final changed = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
-    builder: (context) => _OrderDetailsDialog(
-      order: order,
-      onOpenProject: onOpenProject,
-    ),
+    builder: (context) =>
+        _OrderDetailsDialog(order: order, onOpenProject: onOpenProject),
   );
   return changed == true;
 }
@@ -33,6 +34,7 @@ Future<bool> showOrderDetailsDialog(
 enum _OrderTab {
   overview('Обзор', Icons.dashboard_outlined),
   materials('Материалы', Icons.inventory_2_outlined),
+  finance('Финансы', Icons.payments_outlined),
   checklist('Чек-лист', Icons.checklist_outlined),
   comments('Комментарии', Icons.forum_outlined),
   history('История', Icons.history),
@@ -60,6 +62,7 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
   late OrderRecord _order = widget.order;
   OrderDetails? _details;
   List<OrderMaterial> _materials = const [];
+  OrderFinance? _finance;
   _OrderTab _tab = _OrderTab.overview;
   bool _loading = true;
   bool _saving = false;
@@ -117,11 +120,17 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
   Future<void> _load() async {
     try {
       final details = await _repo.details(_order.id);
-      final materials = await WarehouseRepository.instance.orderMaterials(_order.id);
+      final materials = await WarehouseRepository.instance.orderMaterials(
+        _order.id,
+      );
+      final finance = await FinanceRepository.instance.orderFinance(
+        details.order,
+      );
       if (!mounted) return;
       setState(() {
         _details = details;
         _materials = materials;
+        _finance = finance;
         _order = details.order;
         _loading = false;
       });
@@ -178,7 +187,10 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
         final plan = await OrderMaterialsService().plan(
           _repo.projectOf(_order),
         );
-        final reserved = await warehouseRepo.reserveOrder(_order.id, plan.needs);
+        final reserved = await warehouseRepo.reserveOrder(
+          _order.id,
+          plan.needs,
+        );
         warehouse = reserved.ok
             ? 'Материалы зарезервированы автоматически'
             : 'Резерв: ${reserved.message}';
@@ -342,7 +354,8 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
               child: const Text('Отмена'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+              onPressed: () =>
+                  Navigator.of(context).pop(controller.text.trim()),
               child: const Text('Добавить'),
             ),
           ],
@@ -514,7 +527,9 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
               child: Text(
                 _order.priority == OrderPriority.urgent
                     ? '!'
-                    : _order.number.replaceAll(RegExp(r'\D'), '').padLeft(2, '0'),
+                    : _order.number
+                          .replaceAll(RegExp(r'\D'), '')
+                          .padLeft(2, '0'),
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
@@ -700,7 +715,10 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
                 icon: Icon(tab.icon, size: 17),
                 label: Text(
                   tab.label,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
@@ -713,6 +731,7 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
     return switch (_tab) {
       _OrderTab.overview => _overview(narrow),
       _OrderTab.materials => _materialsTab(),
+      _OrderTab.finance => _financeTab(),
       _OrderTab.checklist => _checklistTab(),
       _OrderTab.comments => _commentsTab(),
       _OrderTab.history => _historyTab(),
@@ -819,6 +838,30 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
                 'по прайсу на момент сохранения',
                 style: TextStyle(fontSize: 10, color: AppTokens.faint),
               ),
+              if (_finance != null) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Оплачено ${appMoneyShort(_finance!.paid)} · '
+                        'долг ${appMoneyShort(_finance!.due)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _finance!.hasDebt
+                              ? AppTokens.red
+                              : AppTokens.green,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() => _tab = _OrderTab.finance),
+                      child: const Text('Финансы'),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -918,7 +961,11 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
           ),
           child: Row(
             children: [
-              const Icon(Icons.event_outlined, size: 18, color: AppTokens.copper),
+              const Icon(
+                Icons.event_outlined,
+                size: 18,
+                color: AppTokens.copper,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: InkWell(
@@ -950,6 +997,458 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _addPayment() async {
+    final finance = _finance;
+    if (finance == null) return;
+    final changed = await showOrderPaymentDialog(
+      context,
+      order: _order,
+      finance: finance,
+      author: _order.assignee,
+    );
+    if (!changed || !mounted) return;
+    _changed = true;
+    await _load();
+  }
+
+  Future<void> _addExpense() async {
+    final changed = await showOrderExpenseDialog(
+      context,
+      order: _order,
+      author: _order.assignee,
+    );
+    if (!changed || !mounted) return;
+    _changed = true;
+    await _load();
+  }
+
+  Future<void> _deletePayment(OrderPayment payment) async {
+    final ok = await _confirmDelete('Удалить оплату?', payment.amount);
+    if (!ok) return;
+    await FinanceRepository.instance.deletePayment(_order.id, payment.id);
+    if (!mounted) return;
+    _changed = true;
+    await _load();
+  }
+
+  Future<void> _deleteExpense(OrderExpense expense) async {
+    final ok = await _confirmDelete('Удалить расход?', expense.amount);
+    if (!ok) return;
+    await FinanceRepository.instance.deleteExpense(_order.id, expense.id);
+    if (!mounted) return;
+    _changed = true;
+    await _load();
+  }
+
+  Future<bool> _confirmDelete(String title, double amount) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text('Сумма: ${appMoney(amount)}. Действие нельзя отменить.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: AppTokens.red),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
+  Future<void> _editAmount() async {
+    final controller = TextEditingController(text: _plainMoney(_order.amount));
+    final value = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Сумма заказа'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Сумма, ₽',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final parsed = double.tryParse(
+                controller.text.trim().replaceAll(',', '.'),
+              );
+              Navigator.of(context).pop(parsed);
+            },
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null || !value.isFinite || value < 0) return;
+    final result = await _repo.updateMetadata(_order.copyWith(amount: value));
+    if (!mounted) return;
+    if (!result.ok) {
+      setState(() {
+        _message = result.message;
+        _messageError = true;
+      });
+      return;
+    }
+    _changed = true;
+    await _load();
+  }
+
+  String _plainMoney(double value) {
+    if (value == value.roundToDouble()) return value.round().toString();
+    return value.toStringAsFixed(2).replaceAll('.', ',');
+  }
+
+  Widget _financeTab() {
+    final finance = _finance;
+    if (finance == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final margin = finance.margin;
+    final marginTone = margin >= 0 ? AppTokens.green : AppTokens.red;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Сумма заказа и маржа',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _editAmount,
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: const Text('Изменить сумму'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          AppResponsiveGrid(
+            minItemWidth: 145,
+            maxColumns: 5,
+            children: [
+              AppMetricCard(
+                label: 'Сумма заказа',
+                value: appMoneyShort(finance.amount),
+                icon: Icons.receipt_long_outlined,
+                tone: AppTokens.inkSoft,
+              ),
+              AppMetricCard(
+                label: 'Оплачено',
+                value: appMoneyShort(finance.paid),
+                hint: finance.refunded > 0
+                    ? 'возвраты ${appMoneyShort(finance.refunded)}'
+                    : null,
+                icon: Icons.payments_outlined,
+                tone: AppTokens.green,
+              ),
+              AppMetricCard(
+                label: 'Долг',
+                value: appMoneyShort(finance.due),
+                hint: finance.overpaid > 0
+                    ? 'переплата ${appMoneyShort(finance.overpaid)}'
+                    : null,
+                icon: Icons.account_balance_wallet_outlined,
+                tone: finance.hasDebt ? AppTokens.red : AppTokens.green,
+              ),
+              AppMetricCard(
+                label: 'Себестоимость',
+                value: appMoneyShort(finance.totalCost),
+                hint: 'материалы ${appMoneyShort(finance.materialCost)}',
+                icon: Icons.inventory_2_outlined,
+                tone: AppTokens.copper,
+              ),
+              AppMetricCard(
+                label: 'Маржа',
+                value: appMoneyShort(margin),
+                hint: finance.marginPercent == null
+                    ? null
+                    : '${finance.marginPercent!.toStringAsFixed(1)}%',
+                icon: margin >= 0 ? Icons.trending_up : Icons.trending_down,
+                tone: marginTone,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          AppSurface(
+            padding: const EdgeInsets.all(14),
+            shadow: false,
+            child: Column(
+              children: [
+                _fact(
+                  'Материалы со склада (FIFO)',
+                  appMoney(finance.materialCost),
+                ),
+                _fact(
+                  'Работа',
+                  appMoney(finance.costByCategory[ExpenseCategory.labor]!),
+                ),
+                _fact(
+                  'Доставка',
+                  appMoney(finance.costByCategory[ExpenseCategory.delivery]!),
+                ),
+                _fact(
+                  'Монтаж',
+                  appMoney(
+                    finance.costByCategory[ExpenseCategory.installation]!,
+                  ),
+                ),
+                _fact(
+                  'Прочие расходы',
+                  appMoney(
+                    finance.costByCategory[ExpenseCategory.other]! +
+                        finance.costByCategory[ExpenseCategory.materials]!,
+                  ),
+                ),
+                _fact(
+                  'Итого расходов',
+                  appMoney(finance.totalCost),
+                  bold: true,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _paymentsSection(finance),
+          const SizedBox(height: 12),
+          _expensesSection(finance),
+          const SizedBox(height: 12),
+          Text(
+            'Маржа = сумма заказа − материалы со склада − ручные расходы. '
+            'Оплаты влияют на долг и кассу, но не на маржу.',
+            style: const TextStyle(fontSize: 10.5, color: AppTokens.faint),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _paymentsSection(OrderFinance finance) {
+    return AppSurface(
+      padding: const EdgeInsets.all(14),
+      shadow: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppSectionTitle(
+            title: 'Оплаты',
+            subtitle: 'Аванс, доплата и возврат',
+            trailing: FilledButton.tonalIcon(
+              onPressed: _addPayment,
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Добавить'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (finance.payments.isEmpty)
+            const AppEmptyState(
+              compact: true,
+              icon: Icons.payments_outlined,
+              title: 'Оплат пока нет',
+              message: 'Добавьте аванс или полную оплату — долг пересчитается.',
+            )
+          else
+            for (final payment in finance.payments) _paymentRow(payment),
+        ],
+      ),
+    );
+  }
+
+  Widget _paymentRow(OrderPayment payment) {
+    final refund = payment.kind == PaymentKind.refund;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppTokens.lineSoft)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            refund ? Icons.undo : Icons.check_circle_outline,
+            size: 18,
+            color: refund ? AppTokens.red : AppTokens.green,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${payment.kind.label} · ${payment.method.label}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  [
+                    appDate(payment.at),
+                    if (payment.note.isNotEmpty) payment.note,
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10, color: AppTokens.faint),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '${refund ? '−' : '+'}${appMoney(payment.amount)}',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              color: refund ? AppTokens.red : AppTokens.green,
+            ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Действия',
+            onSelected: (_) => _deletePayment(payment),
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'delete', child: Text('Удалить')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _expensesSection(OrderFinance finance) {
+    return AppSurface(
+      padding: const EdgeInsets.all(14),
+      shadow: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppSectionTitle(
+            title: 'Расходы',
+            subtitle: 'Работа, доставка, монтаж и покупки вне склада',
+            trailing: FilledButton.tonalIcon(
+              onPressed: _addExpense,
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Добавить'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: AppTokens.lineSoft)),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.inventory_2_outlined,
+                  size: 18,
+                  color: AppTokens.copper,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Материалы со склада (автоматически)',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Text(
+                  appMoney(finance.materialCost),
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (finance.expenses.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: Text(
+                'Ручных расходов нет. Добавьте работу, доставку или монтаж.',
+                style: TextStyle(fontSize: 11, color: AppTokens.muted),
+              ),
+            )
+          else
+            for (final expense in finance.expenses) _expenseRow(expense),
+        ],
+      ),
+    );
+  }
+
+  Widget _expenseRow(OrderExpense expense) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppTokens.lineSoft)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.remove_circle_outline,
+            size: 18,
+            color: AppTokens.red,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  expense.category.label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  [
+                    appDate(expense.at),
+                    if (expense.note.isNotEmpty) expense.note,
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10, color: AppTokens.faint),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '−${appMoney(expense.amount)}',
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              color: AppTokens.red,
+            ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Действия',
+            onSelected: (_) => _deleteExpense(expense),
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'delete', child: Text('Удалить')),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -985,7 +1484,8 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
                 ),
                 icon: Icons.lock_outline,
                 tone: AppTokens.copper,
-                hint: '${_materials.where((m) => m.reservedQty > 0).length} поз.',
+                hint:
+                    '${_materials.where((m) => m.reservedQty > 0).length} поз.',
               ),
               AppMetricCard(
                 label: 'Списано',
@@ -1315,9 +1815,7 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
               Wrap(
                 spacing: 10,
                 runSpacing: 10,
-                children: [
-                  for (final file in files) _attachmentCard(file),
-                ],
+                children: [for (final file in files) _attachmentCard(file)],
               ),
           ],
         ),
@@ -1367,10 +1865,7 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
             file.name,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-            ),
+            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
           ),
           Text(
             appDate(file.addedAt),
@@ -1412,7 +1907,7 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
     );
   }
 
-  Widget _fact(String label, String value, {Color? color}) {
+  Widget _fact(String label, String value, {Color? color, bool bold = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -1430,7 +1925,7 @@ class _OrderDetailsDialogState extends State<_OrderDetailsDialog> {
               value,
               style: TextStyle(
                 fontSize: 11.5,
-                fontWeight: FontWeight.w700,
+                fontWeight: bold ? FontWeight.w800 : FontWeight.w700,
                 color: color ?? AppTokens.inkSoft,
               ),
             ),

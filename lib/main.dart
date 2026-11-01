@@ -52,6 +52,8 @@ import 'widgets/design/app_kit.dart';
 import 'widgets/app_navigation.dart';
 import 'widgets/order_planner_dialog.dart';
 import 'widgets/orders/orders_screen.dart';
+import 'widgets/orders/order_details_dialog.dart';
+import 'widgets/finance_screen.dart';
 import 'widgets/warehouse_screen.dart';
 import 'widgets/params_panel.dart';
 import 'widgets/print_dialog.dart';
@@ -59,7 +61,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.2.2';
+const String kAppVersion = '2.3.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1398,6 +1400,7 @@ class _BuilderScreenState extends State<BuilderScreen>
       ),
       AppSection.orders => _ordersSection(),
       AppSection.warehouse => _warehouseSection(),
+      AppSection.finance => _financeSection(),
       AppSection.documents => _documentsSection(),
       AppSection.settings => _settingsSection(),
     };
@@ -1718,6 +1721,21 @@ class _BuilderScreenState extends State<BuilderScreen>
     onOpenOrders: () => setState(() => _section = AppSection.orders),
     prices: _prices,
   );
+
+  Widget _financeSection() => FinanceScreen(
+    embedded: true,
+    onOpenOrder: _openFinanceOrder,
+    onOpenOrders: () => setState(() => _section = AppSection.orders),
+  );
+
+  Future<void> _openFinanceOrder(OrderRecord order) async {
+    await showOrderDetailsDialog(
+      context,
+      order,
+      onOpenProject: _openBoardOrder,
+    );
+    await _refreshOrders(showBusy: false);
+  }
 
   Widget _documentsSection() {
     return SafeArea(

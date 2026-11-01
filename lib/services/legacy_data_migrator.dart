@@ -13,11 +13,9 @@ import '../services/order_store.dart';
 /// Переносит данные старых версий (shared_preferences и JSON-файлы заказов)
 /// в SQLite. Запускается один раз; повторный запуск ничего не дублирует.
 class LegacyDataMigrator {
-  LegacyDataMigrator({
-    AppDatabase? database,
-    OrderRepository? orders,
-  }) : _database = database ?? AppDatabase.instance,
-       _orders = orders ?? OrderRepository.instance;
+  LegacyDataMigrator({AppDatabase? database, OrderRepository? orders})
+    : _database = database ?? AppDatabase.instance,
+      _orders = orders ?? OrderRepository.instance;
 
   final AppDatabase _database;
   final OrderRepository _orders;
@@ -38,11 +36,10 @@ class LegacyDataMigrator {
     await _importWarehouse();
     if (orders) await _importOrders();
 
-    await db.insert(
-      'app_meta',
-      {'key': _doneKey, 'value': DateTime.now().toIso8601String()},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('app_meta', {
+      'key': _doneKey,
+      'value': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> _importWarehouse() async {
@@ -193,14 +190,10 @@ class LegacyDataMigrator {
     }
     if (saved.isNotEmpty) {
       final db = await _database.database;
-      await db.insert(
-        'app_meta',
-        {
-          'key': 'legacy_orders_imported',
-          'value': '${saved.length}',
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert('app_meta', {
+        'key': 'legacy_orders_imported',
+        'value': '${saved.length}',
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
 
@@ -233,9 +226,11 @@ Future<String> exportDatabaseBackup() async {
   final checklist = await db.query('order_checklist');
   final attachments = await db.query('order_attachments');
   final materials = await db.query('order_materials');
+  final payments = await db.query('order_payments');
+  final expenses = await db.query('order_expenses');
   return jsonEncode({
     'format': 'soft_window_drawer_backup',
-    'version': 1,
+    'version': 2,
     'exportedAt': DateTime.now().toIso8601String(),
     'warehouse_products': products,
     'stock_batches': batches,
@@ -248,5 +243,7 @@ Future<String> exportDatabaseBackup() async {
     'order_checklist': checklist,
     'order_attachments': attachments,
     'order_materials': materials,
+    'order_payments': payments,
+    'order_expenses': expenses,
   });
 }

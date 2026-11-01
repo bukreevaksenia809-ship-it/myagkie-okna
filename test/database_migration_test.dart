@@ -49,6 +49,8 @@ void main() {
         'order_checklist',
         'order_attachments',
         'order_materials',
+        'order_payments',
+        'order_expenses',
         'app_meta',
       ]),
     );

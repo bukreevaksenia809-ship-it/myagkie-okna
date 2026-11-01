@@ -12,7 +12,7 @@ class AppDatabase {
 
   static final AppDatabase instance = AppDatabase._();
 
-  static const int schemaVersion = 2;
+  static const int schemaVersion = 3;
 
   Database? _database;
   Future<Database>? _opening;
@@ -74,9 +74,7 @@ class AppDatabase {
     await factory.deleteDatabase(path);
   }
 
-  Future<T> transaction<T>(
-    Future<T> Function(Transaction txn) action,
-  ) async {
+  Future<T> transaction<T>(Future<T> Function(Transaction txn) action) async {
     final db = await database;
     return db.transaction<T>(action);
   }
@@ -107,6 +105,51 @@ class AppDatabase {
       await db.execute(
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_products_price_key '
         "ON warehouse_products(price_key) WHERE price_key <> ''",
+      );
+    }
+    if (oldVersion < 3) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS order_payments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          order_id TEXT NOT NULL,
+          amount REAL NOT NULL DEFAULT 0,
+          kind TEXT NOT NULL DEFAULT 'payment',
+          method TEXT NOT NULL DEFAULT 'cash',
+          at TEXT NOT NULL,
+          note TEXT NOT NULL DEFAULT '',
+          author TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_order_payments_order '
+        'ON order_payments(order_id, at DESC)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_order_payments_at '
+        'ON order_payments(at DESC)',
+      );
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS order_expenses (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          order_id TEXT NOT NULL,
+          category TEXT NOT NULL DEFAULT 'other',
+          amount REAL NOT NULL DEFAULT 0,
+          at TEXT NOT NULL,
+          note TEXT NOT NULL DEFAULT '',
+          author TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_order_expenses_order '
+        'ON order_expenses(order_id, at DESC)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_order_expenses_at '
+        'ON order_expenses(at DESC)',
       );
     }
   }
@@ -330,6 +373,49 @@ class AppDatabase {
     '''
     CREATE INDEX idx_order_attachments_order
       ON order_attachments(order_id, added_at DESC)
+    ''',
+    '''
+    CREATE TABLE order_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id TEXT NOT NULL,
+      amount REAL NOT NULL DEFAULT 0,
+      kind TEXT NOT NULL DEFAULT 'payment',
+      method TEXT NOT NULL DEFAULT 'cash',
+      at TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      author TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+    )
+    ''',
+    '''
+    CREATE INDEX idx_order_payments_order
+      ON order_payments(order_id, at DESC)
+    ''',
+    '''
+    CREATE INDEX idx_order_payments_at
+      ON order_payments(at DESC)
+    ''',
+    '''
+    CREATE TABLE order_expenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'other',
+      amount REAL NOT NULL DEFAULT 0,
+      at TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      author TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+    )
+    ''',
+    '''
+    CREATE INDEX idx_order_expenses_order
+      ON order_expenses(order_id, at DESC)
+    ''',
+    '''
+    CREATE INDEX idx_order_expenses_at
+      ON order_expenses(at DESC)
     ''',
     '''
     CREATE TABLE order_materials (
