@@ -3531,8 +3531,8 @@ class WindowDrawingPainter extends CustomPainter {
   }
 
   void _arrowHead(Canvas canvas, Offset tip, Offset direction) {
-    const length = 11.5;
-    const halfWidth = 4.0;
+    const length = 13.5;
+    const halfWidth = 5.0;
     final back = tip - direction * length;
     final normal = Offset(-direction.dy, direction.dx) * halfWidth;
     final path = Path()

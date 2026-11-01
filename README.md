@@ -7,7 +7,7 @@
 («тетрис» для расхода материалов), ведомости расхода и сохранения заказов.
 ПВХ и скрин.
 
-**Версия 2.2.0 («Мягкие окна Excl»).** Готовые сборки и инструкции по выпуску —
+**Версия 2.2.1 («Мягкие окна Excl»).** Готовые сборки и инструкции по выпуску —
 в [BUILD.md](BUILD.md).
 
 ## Что нового в 2.2
@@ -61,28 +61,28 @@ git-тег `myagkie-okna-1`, архивы исходников и веб-сбо�
 `versions/Мягкие окна 1/` (что это и как запустить — `versions/ЧИТАЙ-МЕНЯ.md`).
 **Вся дальнейшая разработка идёт здесь — в версии «Мягкие окна Excl».**
 
-## Готовые сборки 2.2.0
+## Готовые сборки 2.2.1
 
 | Платформа | Где скачать |
 |---|---|
 | **Web** (рабочая версия) | https://myagkie-okna-excl.web.app |
 | **Страница обновления** | https://myagkie-okna-excl.web.app/updates/ |
 | **Админка** | https://myagkie-okna-excl.web.app/admin/ |
-| **Windows** | [MyagkieOknaExcl-windows.zip](https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.2.0/MyagkieOknaExcl-windows.zip) |
-| **macOS** | [MyagkieOknaExcl-macos.dmg](https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.2.0/MyagkieOknaExcl-macos.dmg) |
-| **Android** | [MyagkieOknaExcl-android.apk](https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.2.0/MyagkieOknaExcl-android.apk) |
-| **Все файлы** | [GitHub Releases v2.2.0](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/tag/v2.2.0) |
+| **Windows** | [MyagkieOknaExcl-windows.zip](https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.2.1/MyagkieOknaExcl-windows.zip) |
+| **macOS** | [MyagkieOknaExcl-macos.dmg](https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.2.1/MyagkieOknaExcl-macos.dmg) |
+| **Android** | [MyagkieOknaExcl-android.apk](https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.2.1/MyagkieOknaExcl-android.apk) |
+| **Все файлы** | [GitHub Releases v2.2.1](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/tag/v2.2.1) |
 
 Windows-сборка сделана на Windows-раннере GitHub Actions; macOS DMG, Android
 APK/AAB и Web ZIP — там же. Метаданные обновления (версия, ссылки, SHA-256)
-опубликованы в Firestore `config/app`; клиент 1.9.2 увидит 2.2.0 при проверке
+опубликованы в Firestore `config/app`; клиент 1.9.2 увидит 2.2.1 при проверке
 обновлений.
 
 ### Зеркало R2
 
-Сборки 2.2.0 опубликованы в Cloudflare R2:
-`https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.2.0/`.
-Для будущих выпусков — `./release-r2.sh 2.2.0` (нужен живой вход Cloudflare
+Сборки 2.2.1 опубликованы в Cloudflare R2:
+`https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.2.1/`.
+Для будущих выпусков — `./release-r2.sh 2.2.1` (нужен живой вход Cloudflare
 или `CLOUDFLARE_API_TOKEN` для API-загрузки). GitHub Releases остаётся
 резервным источником.
 

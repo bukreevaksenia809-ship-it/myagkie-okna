@@ -244,7 +244,10 @@ class DrawingSheet extends StatelessWidget {
   /// Поля подробного чертежа — под размеры и выноски (в точках листа).
   static const double _detailPadLeft = 104;
   static const double _detailPadRight = 104;
-  static const double _detailPadTop = 86;
+  // Сверху нужен запас не только под размерную линию (52), но и под
+  // подпись с крупным кеглем: иначе «Ширина верх» и её стрелки
+  // обрезаются верхней рамкой листа.
+  static const double _detailPadTop = 112;
   static const double _detailPadBottom = 96;
 
   /// Меньшие поля для ячейки режима «Все окна»: там чертёж мельче.
