@@ -68,9 +68,9 @@ git-тег `myagkie-okna-1`, архивы исходников и веб-сбо�
 | **Web** (рабочая версия) | https://myagkie-okna-excl.web.app |
 | **Страница обновления** | https://myagkie-okna-excl.web.app/updates/ |
 | **Админка** | https://myagkie-okna-excl.web.app/admin/ |
-| **Windows** | [MyagkieOknaExcl-windows.zip](https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.2.1/MyagkieOknaExcl-windows.zip) |
-| **macOS** | [MyagkieOknaExcl-macos.dmg](https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.2.1/MyagkieOknaExcl-macos.dmg) |
-| **Android** | [MyagkieOknaExcl-android.apk](https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.2.1/MyagkieOknaExcl-android.apk) |
+| **Windows** | [MyagkieOknaExcl-windows.zip](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.2.1/MyagkieOknaExcl-windows.zip) |
+| **macOS** | [MyagkieOknaExcl-macos.dmg](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.2.1/MyagkieOknaExcl-macos.dmg) |
+| **Android** | [MyagkieOknaExcl-android.apk](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.2.1/MyagkieOknaExcl-android.apk) |
 | **Все файлы** | [GitHub Releases v2.2.1](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/tag/v2.2.1) |
 
 Windows-сборка сделана на Windows-раннере GitHub Actions; macOS DMG, Android
@@ -80,11 +80,9 @@ APK/AAB и Web ZIP — там же. Метаданные обновления (�
 
 ### Зеркало R2
 
-Сборки 2.2.1 опубликованы в Cloudflare R2:
-`https://pub-0f1422253d90493ebf4b3a585b198489.r2.dev/releases/2.2.1/`.
-Для будущих выпусков — `./release-r2.sh 2.2.1` (нужен живой вход Cloudflare
-или `CLOUDFLARE_API_TOKEN` для API-загрузки). GitHub Releases остаётся
-резервным источником.
+Сборки 2.2.1 опубликованы в GitHub Releases:
+`https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.2.1/`.
+R2-зеркало 2.1.0 остаётся доступным; для 2.2.1 основной источник — GitHub Releases.
 
 ## Веб-версии (демо-ссылки)
 

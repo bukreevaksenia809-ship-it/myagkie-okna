@@ -100,12 +100,12 @@ flutter build windows --release
 - GitHub Actions собирает Windows ZIP, macOS DMG/ZIP, Android APK/AAB и Web ZIP,
   тег `v2.2.1`; все файлы лежат в Releases публичного репозитория
   `bukreevaksenia809-ship-it/myagkie-okna`.
-- Firestore `config/app` обновлён: `latestVersion = 2.2.1`, ссылки на R2,
-  SHA-256 Windows/macOS. R2-объекты проверены HTTP 200.
+- Firestore `config/app` обновлён: `latestVersion = 2.2.1`, ссылки на GitHub Releases,
+  SHA-256 Windows/macOS. 
 - Боевой веб: https://myagkie-okna-excl.web.app (Firebase Hosting, target `excl`).
 - Админка кладётся в `build/web/admin` при `deploy-web.sh`; без этого шага на
   сайте остаётся старая версия.
-- R2-зеркало: сборки 2.2.1 загружены в `okna-updates/releases/2.2.1/`; для следующих выпусков — `./release-r2.sh 2.2.1`.
+- R2-зеркало 2.1.0 остаётся; 2.2.1 распространяется через GitHub Releases.
 
 ## Веб-версия и SQLite
 
