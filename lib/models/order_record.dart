@@ -74,7 +74,8 @@ class OrderRecord {
   final DateTime? updatedAt;
   final DateTime? statusChangedAt;
 
-  String get displayTitle => title.trim().isEmpty ? 'Заказ $number' : title.trim();
+  String get displayTitle =>
+      title.trim().isEmpty ? 'Заказ $number' : title.trim();
 
   String get initials {
     final source = assignee.trim().isNotEmpty
@@ -83,21 +84,26 @@ class OrderRecord {
         ? customer.trim()
         : displayTitle;
     final parts = source.split(RegExp(r'\s+')).where((part) => part.isNotEmpty);
-    return parts.take(2).map((part) => part.characters.first.toUpperCase()).join();
+    return parts
+        .take(2)
+        .map((part) => part.characters.first.toUpperCase())
+        .join();
   }
 
   bool get isOverdue {
     final value = deadline;
     if (value == null || archived) return false;
-    return DateUtils.dateOnly(value).isBefore(DateUtils.dateOnly(DateTime.now()));
+    return DateUtils.dateOnly(
+      value,
+    ).isBefore(DateUtils.dateOnly(DateTime.now()));
   }
 
   int get daysToDeadline {
     final value = deadline;
     if (value == null) return 0;
-    return DateUtils.dateOnly(value)
-        .difference(DateUtils.dateOnly(DateTime.now()))
-        .inDays;
+    return DateUtils.dateOnly(
+      value,
+    ).difference(DateUtils.dateOnly(DateTime.now())).inDays;
   }
 
   DeadlineState get deadlineState {
@@ -216,7 +222,10 @@ class OrderRecord {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
-        return [for (final item in decoded) if (item is String) item];
+        return [
+          for (final item in decoded)
+            if (item is String) item,
+        ];
       }
     } catch (_) {
       // Битая метка не должна ломать карточку.
@@ -384,6 +393,8 @@ class OrderCardStats {
     this.attachments = 0,
     this.reservedMaterials = 0,
     this.issuedMaterials = 0,
+    this.paid = 0,
+    this.due = 0,
   });
 
   final int checklistDone;
@@ -392,6 +403,10 @@ class OrderCardStats {
   final int attachments;
   final int reservedMaterials;
   final int issuedMaterials;
+
+  /// Оплачено и долг — для бейджа на карточке заказа.
+  final double paid;
+  final double due;
 
   double get checklistProgress =>
       checklistTotal == 0 ? 0 : checklistDone / checklistTotal;
@@ -487,17 +502,19 @@ class OrderFilter {
       }
       result.add(order);
     }
-    result.sort((a, b) => switch (sort) {
-      OrderSort.deadline => _compareDeadline(a, b),
-      OrderSort.priority => b.priority.index.compareTo(a.priority.index),
-      OrderSort.created => (b.createdAt ?? DateTime(0)).compareTo(
-        a.createdAt ?? DateTime(0),
-      ),
-      OrderSort.amount => b.amount.compareTo(a.amount),
-      OrderSort.title => a.displayTitle.toLowerCase().compareTo(
-        b.displayTitle.toLowerCase(),
-      ),
-    });
+    result.sort(
+      (a, b) => switch (sort) {
+        OrderSort.deadline => _compareDeadline(a, b),
+        OrderSort.priority => b.priority.index.compareTo(a.priority.index),
+        OrderSort.created => (b.createdAt ?? DateTime(0)).compareTo(
+          a.createdAt ?? DateTime(0),
+        ),
+        OrderSort.amount => b.amount.compareTo(a.amount),
+        OrderSort.title => a.displayTitle.toLowerCase().compareTo(
+          b.displayTitle.toLowerCase(),
+        ),
+      },
+    );
     return result;
   }
 

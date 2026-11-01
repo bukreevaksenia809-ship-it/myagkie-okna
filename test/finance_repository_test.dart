@@ -132,6 +132,20 @@ void main() {
     expect(tooMuch, contains('Возврат больше'));
   });
 
+  test('карточка заказа получает оплачено и долг', () async {
+    final order = await orders.create(title: 'Карточка', amount: 1000);
+    await finance.addPayment(
+      order: order,
+      amount: 300,
+      kind: PaymentKind.advance,
+      method: PaymentMethod.cash,
+      at: DateTime(2026, 11, 1),
+    );
+    final stats = (await orders.stats())[order.id]!;
+    expect(stats.paid, 300);
+    expect(stats.due, 700);
+  });
+
   test('касса, долги и период', () async {
     final first = await orders.create(
       title: 'Первый',

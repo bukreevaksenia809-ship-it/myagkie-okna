@@ -46,7 +46,8 @@ class OrderRepository {
     final rows = await db.query(
       'orders',
       where: includeArchived ? null : 'archived = 0',
-      orderBy: "CASE WHEN deadline IS NULL THEN 1 ELSE 0 END, deadline ASC, "
+      orderBy:
+          "CASE WHEN deadline IS NULL THEN 1 ELSE 0 END, deadline ASC, "
           'created_at DESC',
       limit: limit,
     );
@@ -111,12 +112,8 @@ class OrderRepository {
       order: order,
       events: [for (final row in events) OrderEvent.fromDb(row)],
       comments: [for (final row in comments) OrderComment.fromDb(row)],
-      checklist: [
-        for (final row in checklist) OrderChecklistItem.fromDb(row),
-      ],
-      attachments: [
-        for (final row in attachments) OrderAttachment.fromDb(row),
-      ],
+      checklist: [for (final row in checklist) OrderChecklistItem.fromDb(row)],
+      attachments: [for (final row in attachments) OrderAttachment.fromDb(row)],
     );
   }
 
@@ -242,12 +239,7 @@ class OrderRepository {
         amount: amount ?? _amountFor(project),
         updatedAt: now,
       );
-      await txn.update(
-        'orders',
-        next.toDb(),
-        where: 'id = ?',
-        whereArgs: [id],
-      );
+      await txn.update('orders', next.toDb(), where: 'id = ?', whereArgs: [id]);
       await _diffEvents(txn, current, next, now);
       return next;
     });
@@ -385,7 +377,10 @@ class OrderRepository {
         (SELECT COUNT(*) FROM order_comments c WHERE c.order_id = o.id) AS comments,
         (SELECT COUNT(*) FROM order_attachments a WHERE a.order_id = o.id) AS attachments,
         (SELECT COUNT(*) FROM order_materials m WHERE m.order_id = o.id AND m.reserved_qty > 0) AS reserved_materials,
-        (SELECT COUNT(*) FROM order_materials m WHERE m.order_id = o.id AND m.issued_qty > 0) AS issued_materials
+        (SELECT COUNT(*) FROM order_materials m WHERE m.order_id = o.id AND m.issued_qty > 0) AS issued_materials,
+        o.amount AS order_amount,
+        (SELECT COALESCE(SUM(CASE WHEN p.kind = 'refund' THEN -p.amount ELSE p.amount END), 0)
+           FROM order_payments p WHERE p.order_id = o.id) AS paid
       FROM orders o
     ''');
     return {
@@ -397,6 +392,14 @@ class OrderRepository {
           attachments: (row['attachments'] as num?)?.toInt() ?? 0,
           reservedMaterials: (row['reserved_materials'] as num?)?.toInt() ?? 0,
           issuedMaterials: (row['issued_materials'] as num?)?.toInt() ?? 0,
+          paid: (row['paid'] as num?)?.toDouble() ?? 0,
+          due:
+              ((row['order_amount'] as num?)?.toDouble() ?? 0) -
+                      ((row['paid'] as num?)?.toDouble() ?? 0) >
+                  0
+              ? ((row['order_amount'] as num?)?.toDouble() ?? 0) -
+                    ((row['paid'] as num?)?.toDouble() ?? 0)
+              : 0,
         ),
     };
   }
@@ -428,7 +431,11 @@ class OrderRepository {
 
   // ------------------------------------------------------- комментарии
 
-  Future<void> addComment(String orderId, String text, {String author = ''}) async {
+  Future<void> addComment(
+    String orderId,
+    String text, {
+    String author = '',
+  }) async {
     if (text.trim().isEmpty) return;
     final db = await _database.database;
     final now = DateTime.now();
@@ -462,13 +469,14 @@ class OrderRepository {
   }) async {
     if (text.trim().isEmpty) return;
     final db = await _database.database;
-    final nextSort = sort ??
+    final nextSort =
+        sort ??
         ((await db.rawQuery(
                   'SELECT COALESCE(MAX(sort), 0) + 1 AS s '
                   'FROM order_checklist WHERE order_id = ?',
                   [orderId],
-                ))
-                .first['s'] as num?)
+                )).first['s']
+                as num?)
             ?.toInt() ??
         1;
     await db.insert('order_checklist', {
@@ -560,13 +568,7 @@ class OrderRepository {
     String author = '',
   }) async {
     final db = await _database.database;
-    await _event(
-      db,
-      orderId,
-      text,
-      DateTime.now(),
-      author: author,
-    );
+    await _event(db, orderId, text, DateTime.now(), author: author);
   }
 
   /// Загружает проект заказа.
@@ -663,11 +665,7 @@ class OrderRepository {
       await add('Ответственный', before.assignee, after.assignee);
     }
     if (before.deadline != after.deadline) {
-      await add(
-        'Срок',
-        _date(before.deadline),
-        _date(after.deadline),
-      );
+      await add('Срок', _date(before.deadline), _date(after.deadline));
     }
     if (before.labels.join(',') != after.labels.join(',')) {
       await add('Метки', before.labels.join(', '), after.labels.join(', '));
@@ -720,7 +718,8 @@ class OrderRepository {
   }
 }
 
-DateTime _dateOnly(DateTime value) => DateTime(value.year, value.month, value.day);
+DateTime _dateOnly(DateTime value) =>
+    DateTime(value.year, value.month, value.day);
 
 String _newOrderId() =>
     'ord-${DateTime.now().microsecondsSinceEpoch}-'

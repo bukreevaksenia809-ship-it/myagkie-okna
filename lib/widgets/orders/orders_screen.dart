@@ -18,9 +18,7 @@ Future<void> showOrdersBoardScreen(
 }) {
   return Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => OrdersBoardScreen(
-        onOpenProject: onOpenProject,
-      ),
+      builder: (_) => OrdersBoardScreen(onOpenProject: onOpenProject),
     ),
   );
 }
@@ -168,19 +166,13 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
     if (order.status == status) return;
     final result = await _repo.setStatus(order.id, status);
     final warehouse = result.ok ? await _syncWarehouse(order, status) : null;
-    _toast(
-      [result.message, ?warehouse].join('\n'),
-      error: !result.ok,
-    );
+    _toast([result.message, ?warehouse].join('\n'), error: !result.ok);
     await _load();
   }
 
   /// Автоматическая связь статуса со складом:
   /// производство — резерв, готовность — списание, отмена — возврат.
-  Future<String?> _syncWarehouse(
-    OrderRecord order,
-    OrderStatus status,
-  ) async {
+  Future<String?> _syncWarehouse(OrderRecord order, OrderStatus status) async {
     final warehouse = WarehouseRepository.instance;
     if (status == OrderStatus.production) {
       final plan = await OrderMaterialsService().plan(_repo.projectOf(order));
@@ -402,9 +394,8 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
           hint: _soon == 0 ? 'сроки в норме' : '$_soon сдают в ближайшие 2 дня',
           icon: Icons.warning_amber_outlined,
           tone: _overdue == 0 ? AppTokens.green : AppTokens.red,
-          onTap: () => setState(
-            () => _filter = _filter.copyWith(onlyOverdue: true),
-          ),
+          onTap: () =>
+              setState(() => _filter = _filter.copyWith(onlyOverdue: true)),
         ),
         AppMetricCard(
           label: 'Сумма активных',
@@ -449,9 +440,7 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
                   onTap: () {
                     final next = {..._filter.statuses};
                     if (!next.remove(status)) next.add(status);
-                    setState(
-                      () => _filter = _filter.copyWith(statuses: next),
-                    );
+                    setState(() => _filter = _filter.copyWith(statuses: next));
                   },
                 ),
             ],
@@ -484,9 +473,8 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
                 _menuCheck(
                   value: 'Все',
                   checked: _filter.assignee.isEmpty,
-                  onTap: () => setState(
-                    () => _filter = _filter.copyWith(assignee: ''),
-                  ),
+                  onTap: () =>
+                      setState(() => _filter = _filter.copyWith(assignee: '')),
                 ),
                 for (final assignee in _assignees)
                   _menuCheck(
@@ -506,9 +494,8 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
                 _menuCheck(
                   value: 'Все',
                   checked: _filter.label.isEmpty,
-                  onTap: () => setState(
-                    () => _filter = _filter.copyWith(label: ''),
-                  ),
+                  onTap: () =>
+                      setState(() => _filter = _filter.copyWith(label: '')),
                 ),
                 for (final label in _labels)
                   _menuCheck(
@@ -523,16 +510,14 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
           FilterChip(
             label: const Text('Просроченные'),
             selected: _filter.onlyOverdue,
-            onSelected: (value) => setState(
-              () => _filter = _filter.copyWith(onlyOverdue: value),
-            ),
+            onSelected: (value) =>
+                setState(() => _filter = _filter.copyWith(onlyOverdue: value)),
           ),
           FilterChip(
             label: const Text('2 дня'),
             selected: _filter.onlySoon,
-            onSelected: (value) => setState(
-              () => _filter = _filter.copyWith(onlySoon: value),
-            ),
+            onSelected: (value) =>
+                setState(() => _filter = _filter.copyWith(onlySoon: value)),
           ),
           FilterChip(
             label: const Text('Архив'),
@@ -549,17 +534,14 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
                 _menuCheck(
                   value: sort.label,
                   checked: _filter.sort == sort,
-                  onTap: () => setState(
-                    () => _filter = _filter.copyWith(sort: sort),
-                  ),
+                  onTap: () =>
+                      setState(() => _filter = _filter.copyWith(sort: sort)),
                 ),
             ],
           ),
           if (_filter.isActive)
             TextButton.icon(
-              onPressed: () => setState(
-                () => _filter = const OrderFilter(),
-              ),
+              onPressed: () => setState(() => _filter = const OrderFilter()),
               icon: const Icon(Icons.filter_alt_off, size: 16),
               label: const Text('Сбросить'),
             ),
@@ -613,10 +595,7 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
               for (final status in OrderStatus.values)
                 PopupMenuItem(value: status, child: Text(status.label)),
             ],
-            child: const _BulkButton(
-              icon: Icons.swap_horiz,
-              label: 'Статус',
-            ),
+            child: const _BulkButton(icon: Icons.swap_horiz, label: 'Статус'),
           ),
           PopupMenuButton<OrderPriority>(
             tooltip: 'Приоритет',
@@ -896,10 +875,7 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    width: 4,
-                    color: order.priority.color,
-                  ),
+                  Container(width: 4, color: order.priority.color),
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(10, 9, 8, 9),
@@ -1008,13 +984,27 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
                                   ),
                                 ),
                               ),
-                              Text(
-                                appMoneyShort(order.amount),
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTokens.inkSoft,
-                                ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    appMoneyShort(order.amount),
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppTokens.inkSoft,
+                                    ),
+                                  ),
+                                  if ((stats?.due ?? 0) > 0.005)
+                                    Text(
+                                      'долг ${appMoneyShort(stats!.due)}',
+                                      style: const TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppTokens.red,
+                                      ),
+                                    ),
+                                ],
                               ),
                             ],
                           ),
@@ -1049,10 +1039,7 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
                           Row(
                             children: [
                               if (order.assignee.isNotEmpty)
-                                _Avatar(
-                                  name: order.assignee,
-                                  size: 21,
-                                ),
+                                _Avatar(name: order.assignee, size: 21),
                               if (order.assignee.isNotEmpty)
                                 const SizedBox(width: 5),
                               Expanded(
@@ -1230,10 +1217,7 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
                   ),
                 ),
               ),
-              _cell(
-                order.assignee.isEmpty ? '—' : order.assignee,
-                flex: 2,
-              ),
+              _cell(order.assignee.isEmpty ? '—' : order.assignee, flex: 2),
               _cell(appMoneyShort(order.amount), flex: 2, bold: true),
               SizedBox(
                 width: 34,
@@ -1382,7 +1366,8 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
   Widget _calendarCell(int day, List<OrderRecord> visible) {
     final today = DateUtils.dateOnly(DateTime.now());
     final date = DateTime(_month.year, _month.month, day);
-    final valid = day >= 1 && day <= DateTime(_month.year, _month.month + 1, 0).day;
+    final valid =
+        day >= 1 && day <= DateTime(_month.year, _month.month + 1, 0).day;
     final orders = valid
         ? visible
               .where(
@@ -1445,7 +1430,9 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: _statusColor(order.status).withValues(alpha: 0.12),
+                        color: _statusColor(
+                          order.status,
+                        ).withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -1474,17 +1461,20 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
   }
 
   Future<void> _showNotifications() async {
-    final items = _active
-        .where(
-          (order) =>
-              order.deadlineState == DeadlineState.overdue ||
-              order.deadlineState == DeadlineState.soon ||
-              order.deadlineState == DeadlineState.today,
-        )
-        .toList()
-      ..sort((a, b) => (a.deadline ?? DateTime(0)).compareTo(
-        b.deadline ?? DateTime(0),
-      ));
+    final items =
+        _active
+            .where(
+              (order) =>
+                  order.deadlineState == DeadlineState.overdue ||
+                  order.deadlineState == DeadlineState.soon ||
+                  order.deadlineState == DeadlineState.today,
+            )
+            .toList()
+          ..sort(
+            (a, b) => (a.deadline ?? DateTime(0)).compareTo(
+              b.deadline ?? DateTime(0),
+            ),
+          );
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1650,7 +1640,10 @@ class _FilterMenu extends StatelessWidget {
       itemBuilder: (context) => [
         PopupMenuItem<void>(
           enabled: false,
-          child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+          child: Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
         ),
         ...items,
       ],
@@ -1706,11 +1699,7 @@ PopupMenuItem<void> _menuCheck({
 }
 
 class _BulkButton extends StatelessWidget {
-  const _BulkButton({
-    required this.icon,
-    required this.label,
-    this.onTap,
-  });
+  const _BulkButton({required this.icon, required this.label, this.onTap});
 
   final IconData icon;
   final String label;
