@@ -58,7 +58,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.1.0';
+const String kAppVersion = '2.2.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

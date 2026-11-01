@@ -19,7 +19,7 @@ class PriceWarehouseSync {
   final AppDatabase _database;
   final WarehouseRepository _warehouse;
 
-  static const String _seedKey = 'price_warehouse_seed_v2';
+  static const String _seedKey = 'price_warehouse_seed_v3';
 
   /// Один раз при первом запуске 2.1: добавляет материалы прайса в пустой
   /// или старый склад. Повторно не навязывает позиции.
@@ -32,7 +32,7 @@ class PriceWarehouseSync {
       limit: 1,
     );
     if (rows.isNotEmpty) return 0;
-    final created = await sync(prices, updatePrices: true);
+    final created = await sync(prices);
     await db.insert('app_meta', {
       'key': _seedKey,
       'value': DateTime.now().toIso8601String(),
@@ -220,6 +220,15 @@ class PriceWarehouseSync {
         color: 'Серебристый',
         unit: StockUnit.piece,
         salePrice: p.drainPrice,
+      ),
+      _PriceProduct(
+        key: PriceItemKeys.pocket,
+        name: 'Фартук (полоса тента 200 мм)',
+        category: 'Комплектующие',
+        material: 'Тент',
+        color: 'Коричневый',
+        unit: StockUnit.meter,
+        salePrice: p.pocketPerM,
       ),
       _PriceProduct(
         key: 'crossbar',

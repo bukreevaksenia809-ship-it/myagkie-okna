@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/data/app_database.dart';
 import 'package:soft_window_drawer/data/warehouse_repository.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
+import 'package:soft_window_drawer/models/crossbar.dart';
 import 'package:soft_window_drawer/models/price_list.dart';
+import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/models/warehouse.dart';
 import 'package:soft_window_drawer/services/order_materials.dart';
 import 'package:soft_window_drawer/services/price_warehouse_sync.dart';
@@ -118,6 +120,41 @@ void main() {
       ),
       isTrue,
     );
+  });
+
+  test('фартук, перемычка и окантовка выреза находят свои позиции', () async {
+    final sync = PriceWarehouseSync(database: database, warehouse: warehouse);
+    await sync.sync(const PriceList.defaults());
+    const params = WindowParams(
+      pocket: true,
+      crossbars: [
+        CrossbarSpec(positionMm: 1000, widthMm: 100, fastenerCount: 3),
+      ],
+      cutouts: [
+        Cutout(
+          width: 300,
+          height: 220,
+          centerXMm: 900,
+          centerYMm: 1000,
+          edgingMm: 120,
+          eyeletCount: 4,
+        ),
+      ],
+    );
+    final plan = await OrderMaterialsService(warehouse: warehouse).plan(
+      const OrderProject(windows: [params]),
+      prices: const PriceList.defaults().copyWith(crossbarPerM: 500),
+    );
+    expect(plan.unmatched, isEmpty);
+    final keys = {
+      for (final product in await warehouse.products())
+        product.id: product.priceKey,
+    };
+    final neededKeys = {for (final need in plan.needs) keys[need.productId]};
+    expect(neededKeys, contains(PriceItemKeys.pocket));
+    expect(neededKeys, contains(PriceItemKeys.edge120));
+    expect(neededKeys, contains('crossbar'));
+    expect(neededKeys, contains(PriceItemKeys.eyeletRound));
   });
 
   test('миграция базы 1 → 2 добавляет price_key и сохраняет товар', () async {

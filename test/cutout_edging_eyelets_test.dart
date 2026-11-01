@@ -31,8 +31,14 @@ void main() {
     final before = Estimate.of(base, prices);
     final after = Estimate.of(withCutout, prices);
     expect(after.total, greaterThan(before.total));
-    expect(after.lines.any((line) => line.title == 'Окантовка вырезов'), isTrue);
-    expect(after.lines.any((line) => line.title == 'Люверсы в вырезах'), isTrue);
+    expect(
+      after.lines.any((line) => line.title.startsWith('Окантовка вырезов')),
+      isTrue,
+    );
+    expect(
+      after.lines.any((line) => line.title == 'Люверсы в вырезах'),
+      isTrue,
+    );
 
     final plainCutout = OrderProject(
       windows: [
@@ -42,8 +48,14 @@ void main() {
       ],
     );
     final plain = Estimate.of(plainCutout, prices);
-    expect(plain.lines.any((line) => line.title == 'Окантовка вырезов'), isFalse);
-    expect(plain.lines.any((line) => line.title == 'Люверсы в вырезах'), isFalse);
+    expect(
+      plain.lines.any((line) => line.title.startsWith('Окантовка вырезов')),
+      isFalse,
+    );
+    expect(
+      plain.lines.any((line) => line.title == 'Люверсы в вырезах'),
+      isFalse,
+    );
   });
 
   test('техкарта перечисляет окантовку и люверсы выреза', () {

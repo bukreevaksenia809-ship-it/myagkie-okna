@@ -28,49 +28,54 @@ void main() {
     await database.close();
   });
 
-  test('потребность заказа сопоставляется со складом, резервируется и списывается', () async {
-    final product = const WarehouseProduct(
-      id: 'film',
-      name: 'Плёнка ПВХ прозрачная',
-      category: 'Полотно',
-      material: 'ПВХ',
-      unit: StockUnit.squareMeter,
-      purchasePrice: 500,
-      salePrice: 900,
-      minQuantity: 10,
-    );
-    expect((await warehouse.saveProduct(product)).ok, isTrue);
-    expect(
-      (await warehouse.perform(
-        StockOperation(
-          type: StockMoveType.receipt,
-          productId: 'film',
-          quantity: 100,
-          unitCost: 500,
-        ),
-      )).ok,
-      isTrue,
-    );
+  test(
+    'потребность заказа сопоставляется со складом, резервируется и списывается',
+    () async {
+      final product = const WarehouseProduct(
+        id: 'film',
+        name: 'Плёнка ПВХ прозрачная',
+        category: 'Полотно',
+        material: 'ПВХ',
+        unit: StockUnit.squareMeter,
+        purchasePrice: 500,
+        salePrice: 900,
+        minQuantity: 10,
+      );
+      expect((await warehouse.saveProduct(product)).ok, isTrue);
+      expect(
+        (await warehouse.perform(
+          StockOperation(
+            type: StockMoveType.receipt,
+            productId: 'film',
+            quantity: 100,
+            unitCost: 500,
+          ),
+        )).ok,
+        isTrue,
+      );
 
-    final order = await orders.create(title: 'Заказ на плёнку');
-    final project = orders.projectOf(order);
-    final plan = await OrderMaterialsService().plan(project);
-    expect(plan.needs, isNotEmpty);
-    final filmNeed = plan.needs.firstWhere((need) => need.productId == 'film');
-    expect(filmNeed.quantity, greaterThan(0));
-    expect(filmNeed.available, 100);
+      final order = await orders.create(title: 'Заказ на плёнку');
+      final project = orders.projectOf(order);
+      final plan = await OrderMaterialsService().plan(project);
+      expect(plan.needs, isNotEmpty);
+      final filmNeed = plan.needs.firstWhere(
+        (need) => need.productId == 'film',
+      );
+      expect(filmNeed.quantity, greaterThan(0));
+      expect(filmNeed.available, 100);
 
-    final reserved = await warehouse.reserveOrder(order.id, plan.needs);
-    expect(reserved.ok, isTrue, reason: reserved.message);
-    final stock = await warehouse.stockFor('film');
-    expect(stock!.reserved, closeTo(filmNeed.quantity, 0.001));
+      final reserved = await warehouse.reserveOrder(order.id, plan.needs);
+      expect(reserved.ok, isTrue, reason: reserved.message);
+      final stock = await warehouse.stockFor('film');
+      expect(stock!.reserved, closeTo(filmNeed.quantity, 0.001));
 
-    final issued = await warehouse.issueOrder(order.id);
-    expect(issued.ok, isTrue, reason: issued.message);
-    final after = await warehouse.stockFor('film');
-    expect(after!.balance, closeTo(100 - filmNeed.quantity, 0.001));
-    expect(after.reserved, 0);
-  });
+      final issued = await warehouse.issueOrder(order.id);
+      expect(issued.ok, isTrue, reason: issued.message);
+      final after = await warehouse.stockFor('film');
+      expect(after!.balance, closeTo(100 - filmNeed.quantity, 0.001));
+      expect(after.reserved, 0);
+    },
+  );
 
   test('скрин не сопоставляется с товаром ПВХ', () async {
     await warehouse.saveProduct(
@@ -132,5 +137,75 @@ void main() {
     final result = await warehouse.reserveOrder(order.id, plan.needs);
     expect(result.ok, isFalse);
     expect(result.shortages, isNotEmpty);
+  });
+  test(
+    'окантовка сопоставляется по ширине рулона, а не по первой позиции',
+    () async {
+      for (final width in [80.0, 100.0, 120.0]) {
+        await warehouse.saveProduct(
+          WarehouseProduct(
+            id: 'edge-${width.toInt()}',
+            name: 'Окантовка тент ${width.toInt()} мм',
+            category: 'Окантовка',
+            material: 'Тент',
+            unit: StockUnit.meter,
+            widthMm: width,
+            purchasePrice: 50,
+            salePrice: 100,
+          ),
+        );
+      }
+      const project = OrderProject(
+        windows: [
+          WindowParams(
+            bottomWidth: 2000,
+            topWidth: 2000,
+            leftHeight: 2000,
+            rightHeight: 2000,
+            rollBottom: 120,
+            rollTop: 100,
+            rollLeft: 80,
+            rollRight: 120,
+            pvcHeightAllowanceEnabled: false,
+          ),
+        ],
+      );
+      final plan = await OrderMaterialsService(
+        warehouse: warehouse,
+      ).plan(project);
+      for (final width in [80, 100, 120]) {
+        final need = plan.needs.where(
+          (item) => item.productId == 'edge-$width',
+        );
+        expect(need, isNotEmpty, reason: 'нет потребности для $width мм');
+        expect(need.first.quantity, greaterThan(0));
+      }
+      expect(
+        plan.unmatched.where((line) => line.contains('окантов')).toList(),
+        isEmpty,
+      );
+    },
+  );
+
+  test('несовместимые единицы не превращаются молча в количество', () async {
+    await warehouse.saveProduct(
+      const WarehouseProduct(
+        id: 'film-meter',
+        name: 'Плёнка ПВХ прозрачная',
+        category: 'Полотно',
+        material: 'ПВХ',
+        unit: StockUnit.meter,
+        purchasePrice: 500,
+        salePrice: 900,
+      ),
+    );
+    final plan = await OrderMaterialsService(
+      warehouse: warehouse,
+    ).plan(const OrderProject());
+    expect(plan.needs.any((need) => need.productId == 'film-meter'), isFalse);
+    expect(
+      plan.unmatched.any((line) => line.contains('единицы не совпадают')),
+      isTrue,
+    );
   });
 }

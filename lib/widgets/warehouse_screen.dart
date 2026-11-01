@@ -10,6 +10,7 @@ import '../../models/order_record.dart';
 import '../../models/price_list.dart';
 import '../../models/warehouse.dart';
 import '../../services/app_bootstrap.dart';
+import '../../services/bulk_materials.dart';
 import '../../services/file_saver.dart';
 import '../../services/price_warehouse_sync.dart';
 import 'design/app_kit.dart';
@@ -21,14 +22,13 @@ import 'warehouse/product_editor.dart';
 
 /// Открывает склад как отдельный экран (для старых точек входа).
 Future<void> showWarehouseScreen(BuildContext context) {
-  return Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => const WarehouseScreen(),
-    ),
-  );
+  return Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const WarehouseScreen()));
 }
 
 enum WarehouseTab {
+  need('Потребность', Icons.calculate_outlined),
   stock('Номенклатура', Icons.inventory_2_outlined),
   journal('Журнал', Icons.receipt_long_outlined),
   batches('Партии', Icons.layers_outlined),
@@ -71,7 +71,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
   WarehouseSnapshot? _snapshot;
   List<OrderRecord> _orderList = const [];
   WarehouseReport? _report;
-  WarehouseTab _tab = WarehouseTab.stock;
+  WarehouseTab _tab = WarehouseTab.need;
   bool _loading = true;
   bool _busy = false;
   String _query = '';
@@ -84,6 +84,15 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
   WarehouseReportKind _reportKind = WarehouseReportKind.stock;
   DateTime? _reportFrom;
   DateTime? _reportTo;
+
+  BulkMaterialsResult? _needResult;
+  bool _needLoading = false;
+  String _needQuery = '';
+  bool _needOnlyShortage = false;
+  bool _needAllStatuses = false;
+  bool _needIncludeArchived = false;
+  bool _needSortByShortage = false;
+  String _needError = '';
 
   @override
   void initState() {
@@ -103,6 +112,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
         _loading = false;
       });
       if (_tab == WarehouseTab.reports) await _loadReport();
+      if (_tab == WarehouseTab.need) await _loadNeed();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -122,6 +132,541 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
     if (!mounted) return;
     setState(() => _report = report);
   }
+
+  static const Set<OrderStatus> _needActiveStatuses = {
+    OrderStatus.newOrder,
+    OrderStatus.measured,
+    OrderStatus.production,
+  };
+
+  bool _needOrderIncluded(OrderRecord order) {
+    if (order.archived && !_needIncludeArchived) return false;
+    if (!_needAllStatuses && !_needActiveStatuses.contains(order.status)) {
+      return false;
+    }
+    return true;
+  }
+
+  List<OrderRecord> get _needOrders =>
+      _orderList.where(_needOrderIncluded).toList();
+
+  Future<void> _loadNeed() async {
+    if (!mounted) return;
+    setState(() {
+      _needLoading = true;
+      _needError = '';
+    });
+    try {
+      final result = await BulkMaterialsCalculator(
+        orders: _orders,
+        warehouse: _warehouse,
+      ).calculate(_needOrders, prices: widget.prices);
+      if (!mounted) return;
+      setState(() {
+        _needResult = result;
+        _needLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _needLoading = false;
+        _needError = 'Не удалось посчитать потребность: $error';
+      });
+    }
+  }
+
+  void _showNeedTab() {
+    setState(() => _tab = WarehouseTab.need);
+    _loadNeed();
+  }
+
+  List<BulkMaterialLine> get _needLines {
+    final result = _needResult;
+    if (result == null) return const [];
+    final query = _needQuery.trim().toLowerCase();
+    final lines = [
+      for (final line in result.lines)
+        if ((!_needOnlyShortage || line.shortage > 0.0001) &&
+            (query.isEmpty ||
+                line.name.toLowerCase().contains(query) ||
+                line.source.toLowerCase().contains(query)))
+          line,
+    ];
+    if (_needSortByShortage) {
+      lines.sort((a, b) {
+        final byShortage = b.shortage.compareTo(a.shortage);
+        if (byShortage != 0) return byShortage;
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
+    }
+    return lines;
+  }
+
+  Widget _needTab() {
+    final result = _needResult;
+    if (_needError.isNotEmpty) {
+      return AppBanner(
+        title: 'Ошибка расчёта',
+        message: _needError,
+        tone: AppTokens.red,
+        icon: Icons.error_outline,
+        action: TextButton(
+          onPressed: _loadNeed,
+          child: const Text('Повторить'),
+        ),
+      );
+    }
+    if (result == null) {
+      return const AppSurface(
+        child: Padding(
+          padding: EdgeInsets.all(30),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+    final lines = _needLines;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _needSummary(result),
+        const SizedBox(height: 12),
+        _needFilters(),
+        if (_needLoading) ...[
+          const SizedBox(height: 8),
+          const LinearProgressIndicator(minHeight: 2),
+        ],
+        if (result.unmatched.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _needUnmatched(result),
+        ],
+        const SizedBox(height: 12),
+        if (lines.isEmpty)
+          _needEmpty()
+        else
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < 860) {
+                return Column(
+                  children: [
+                    for (final line in lines)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _needCard(line),
+                      ),
+                  ],
+                );
+              }
+              return _needTable(lines);
+            },
+          ),
+        const SizedBox(height: 8),
+        Text(
+          'Нужно — сумма по сметам всех выбранных заказов, независимо от '
+          'остатка. На складе — свободный остаток. Дефицит = нужно − '
+          'доступно − уже зарезервировано/списано по этим заказам.',
+          style: const TextStyle(fontSize: 10.5, color: AppTokens.faint),
+        ),
+      ],
+    );
+  }
+
+  Widget _needSummary(BulkMaterialsResult result) {
+    return AppResponsiveGrid(
+      minItemWidth: 180,
+      maxColumns: 4,
+      children: [
+        AppMetricCard(
+          label: 'Заказов в расчёте',
+          value: '${result.orderCount}',
+          hint: _needAllStatuses ? 'все статусы' : 'новые, замер, производство',
+          icon: Icons.work_outline,
+          tone: AppTokens.blue,
+        ),
+        AppMetricCard(
+          label: 'Окон',
+          value: '${result.windowCount}',
+          hint: 'по всем выбранным заказам',
+          icon: Icons.window_outlined,
+          tone: AppTokens.inkSoft,
+        ),
+        AppMetricCard(
+          label: 'Позиций материалов',
+          value: '${result.lines.length}',
+          hint: 'нужно по сметам',
+          icon: Icons.inventory_2_outlined,
+          tone: AppTokens.copper,
+        ),
+        AppMetricCard(
+          label: 'Позиций к закупке',
+          value: '${result.shortageCount}',
+          hint: result.shortageCount == 0
+              ? 'остатков достаточно'
+              : 'не хватает на складе',
+          icon: Icons.warning_amber_outlined,
+          tone: result.shortageCount == 0 ? AppTokens.green : AppTokens.red,
+        ),
+      ],
+    );
+  }
+
+  Widget _needFilters() {
+    return AppSurface(
+      padding: const EdgeInsets.all(12),
+      shadow: false,
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: 300,
+            child: AppSearchField(
+              key: const Key('need-search'),
+              hint: 'Материал или заказ',
+              onChanged: (value) => setState(() => _needQuery = value),
+            ),
+          ),
+          ChoiceChip(
+            label: const Text('В работе'),
+            selected: !_needAllStatuses,
+            onSelected: (_) {
+              if (_needAllStatuses) {
+                setState(() => _needAllStatuses = false);
+                _loadNeed();
+              }
+            },
+          ),
+          ChoiceChip(
+            label: const Text('Все статусы'),
+            selected: _needAllStatuses,
+            onSelected: (_) {
+              if (!_needAllStatuses) {
+                setState(() => _needAllStatuses = true);
+                _loadNeed();
+              }
+            },
+          ),
+          FilterChip(
+            label: const Text('Только дефицит'),
+            selected: _needOnlyShortage,
+            onSelected: (value) => setState(() => _needOnlyShortage = value),
+          ),
+          FilterChip(
+            label: const Text('Сначала дефицит'),
+            selected: _needSortByShortage,
+            onSelected: (value) => setState(() => _needSortByShortage = value),
+          ),
+          FilterChip(
+            label: const Text('Архив'),
+            selected: _needIncludeArchived,
+            onSelected: (value) {
+              setState(() => _needIncludeArchived = value);
+              _loadNeed();
+            },
+          ),
+          OutlinedButton.icon(
+            onPressed: () => _openBulkMaterials(
+              initialSelected: _needOrders.map((order) => order.id).toSet(),
+            ),
+            icon: const Icon(Icons.checklist, size: 17),
+            label: const Text('Выбрать заказы'),
+          ),
+          OutlinedButton.icon(
+            onPressed: _needLines.isEmpty ? null : _exportNeedCsv,
+            icon: const Icon(Icons.download_outlined, size: 17),
+            label: const Text('CSV'),
+          ),
+          IconButton(
+            tooltip: 'Пересчитать',
+            onPressed: _loadNeed,
+            icon: const Icon(Icons.refresh, size: 20),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _needUnmatched(BulkMaterialsResult result) {
+    final preview = result.unmatched.take(8).join('\n');
+    return AppBanner(
+      title: 'Не сопоставлено со складом: ${result.unmatched.length}',
+      message:
+          'Эти строки не попали в потребность. Проверьте номенклатуру, '
+          'ширину и единицы измерения.\n$preview'
+          '${result.unmatched.length > 8 ? '\n…' : ''}',
+      tone: AppTokens.amber,
+      icon: Icons.link_off,
+      action: TextButton(
+        onPressed: _syncFromPrice,
+        child: const Text('Из прайса'),
+      ),
+    );
+  }
+
+  Widget _needTable(List<BulkMaterialLine> lines) {
+    return AppSurface(
+      padding: EdgeInsets.zero,
+      clip: true,
+      shadow: true,
+      child: Column(
+        children: [
+          const AppTableHeader(
+            cells: [
+              'Материал',
+              'Ед.',
+              'Нужно',
+              'На складе',
+              'Дефицит',
+              'Заказов',
+            ],
+            flex: [5, 1, 1, 1, 1, 1],
+          ),
+          for (final line in lines) _needRow(line),
+        ],
+      ),
+    );
+  }
+
+  Widget _needRow(BulkMaterialLine line) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppTokens.lineSoft)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  line.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (line.source.isNotEmpty)
+                  Text(
+                    line.source,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: AppTokens.faint,
+                    ),
+                  ),
+                if (line.allocated > 0.0001)
+                  Text(
+                    'уже в заказах: ${appQty(line.allocated)} '
+                    '${line.unit.shortLabel}',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: AppTokens.copper,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          _tableCell(line.unit.shortLabel, flex: 1),
+          Expanded(
+            flex: 1,
+            child: Text(
+              appQty(line.quantity),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: AppTokens.blue,
+              ),
+            ),
+          ),
+          _tableCell(
+            appQty(line.available),
+            flex: 1,
+            color: line.available <= 0 ? AppTokens.red : AppTokens.green,
+            bold: true,
+          ),
+          _tableCell(
+            line.shortage <= 0 ? '—' : appQty(line.shortage),
+            flex: 1,
+            color: line.shortage <= 0 ? AppTokens.green : AppTokens.red,
+            bold: true,
+          ),
+          _tableCell('${line.orders}', flex: 1),
+        ],
+      ),
+    );
+  }
+
+  Widget _needCard(BulkMaterialLine line) {
+    return AppSurface(
+      padding: const EdgeInsets.all(12),
+      shadow: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            line.name,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+          ),
+          if (line.source.isNotEmpty)
+            Text(
+              line.source,
+              style: const TextStyle(fontSize: 10, color: AppTokens.faint),
+            ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              _needChip(
+                'Нужно',
+                '${appQty(line.quantity)} ${line.unit.shortLabel}',
+                AppTokens.blue,
+              ),
+              _needChip(
+                'На складе',
+                appQty(line.available),
+                line.available > 0 ? AppTokens.green : AppTokens.red,
+              ),
+              _needChip(
+                'Дефицит',
+                line.shortage <= 0 ? '—' : appQty(line.shortage),
+                line.shortage <= 0 ? AppTokens.green : AppTokens.red,
+              ),
+              _needChip('Заказов', '${line.orders}', AppTokens.inkSoft),
+              if (line.allocated > 0.0001)
+                _needChip(
+                  'Уже в заказах',
+                  '${appQty(line.allocated)} ${line.unit.shortLabel}',
+                  AppTokens.copper,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _needChip(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _needEmpty() {
+    if (_needOrders.isEmpty) {
+      return AppSurface(
+        child: AppEmptyState(
+          icon: Icons.calculate_outlined,
+          title: 'Нет заказов для расчёта',
+          message:
+              'Создайте заказы — программа автоматически посчитает, '
+              'сколько материалов нужно на все окна. Остаток склада на '
+              'расчёт не влияет.',
+          action: widget.onOpenOrders == null
+              ? OutlinedButton.icon(
+                  onPressed: _loadNeed,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Обновить'),
+                )
+              : FilledButton.icon(
+                  onPressed: widget.onOpenOrders,
+                  icon: const Icon(Icons.arrow_forward, size: 18),
+                  label: const Text('Перейти к заказам'),
+                ),
+        ),
+      );
+    }
+    if (_needLines.isEmpty) {
+      return AppSurface(
+        child: AppEmptyState(
+          icon: Icons.filter_alt_off,
+          title: 'Нет строк по фильтру',
+          message: _needOnlyShortage
+              ? 'Дефицита нет — свободного остатка хватает на выбранные заказы.'
+              : 'Измените поиск или снимите фильтр.',
+          action: OutlinedButton.icon(
+            onPressed: () => setState(() {
+              _needQuery = '';
+              _needOnlyShortage = false;
+            }),
+            icon: const Icon(Icons.filter_alt_off, size: 18),
+            label: const Text('Сбросить фильтр'),
+          ),
+        ),
+      );
+    }
+    return AppSurface(
+      child: AppEmptyState(
+        icon: Icons.inventory_2_outlined,
+        title: 'Материалы не сопоставлены',
+        message:
+            'В заказах есть строки, которым не нашлось товара на складе. '
+            'Добавьте материалы из прайса или проверьте единицы измерения.',
+        action: FilledButton.icon(
+          onPressed: _syncFromPrice,
+          icon: const Icon(Icons.playlist_add, size: 18),
+          label: const Text('Заполнить из прайса'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportNeedCsv() async {
+    final lines = _needLines;
+    if (lines.isEmpty) return;
+    final buffer = StringBuffer();
+    buffer.writeln('Потребность в материалах');
+    buffer.writeln(
+      'Заказов;${_needResult?.orderCount ?? 0};'
+      'Окон;${_needResult?.windowCount ?? 0};'
+      'Статусы;${_needAllStatuses ? 'все' : 'в работе'}',
+    );
+    buffer.writeln(
+      'Материал;Единица;Нужно;На складе;Уже в заказах;Дефицит;Заказов',
+    );
+    for (final line in lines) {
+      buffer.writeln(
+        '${_csvCell(line.name)};${line.unit.shortLabel};'
+        '${appQty(line.quantity)};${appQty(line.available)};'
+        '${appQty(line.allocated)};${appQty(line.shortage)};${line.orders}',
+      );
+    }
+    final result = _needResult;
+    if (result != null && result.unmatched.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('Не сопоставлено');
+      for (final line in result.unmatched) {
+        buffer.writeln(_csvCell(line));
+      }
+    }
+    final saved = await saveBytes(
+      Uint8List.fromList(utf8.encode('\uFEFF$buffer')),
+      'Потребность-${DateTime.now().toIso8601String().substring(0, 10)}.csv',
+    );
+    if (!mounted) return;
+    _toast('CSV сохранён: ${saved.destination}');
+  }
+
+  String _csvCell(String value) => value.contains(';') || value.contains('"')
+      ? '"${value.replaceAll('"', '""')}"'
+      : value;
 
   List<WarehouseStock> get _stocks {
     final snapshot = _snapshot;
@@ -233,10 +778,9 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
 
   Future<void> _syncFromPrice() async {
     setState(() => _busy = true);
-    final count = await PriceWarehouseSync(warehouse: _warehouse).sync(
-      widget.prices,
-      updatePrices: true,
-    );
+    final count = await PriceWarehouseSync(
+      warehouse: _warehouse,
+    ).sync(widget.prices, updatePrices: true);
     if (!mounted) return;
     setState(() => _busy = false);
     _toast(
@@ -294,10 +838,11 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
     await _load();
   }
 
-  Future<void> _openBulkMaterials() async {
+  Future<void> _openBulkMaterials({Set<String>? initialSelected}) async {
     await showBulkMaterialsDialog(
       context,
       orders: _orderList,
+      initialSelected: initialSelected,
       prices: widget.prices,
     );
     await _load();
@@ -320,7 +865,9 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
                   children: [
-                    Expanded(child: Text('${item.number} · ${item.displayTitle}')),
+                    Expanded(
+                      child: Text('${item.number} · ${item.displayTitle}'),
+                    ),
                     AppPill(
                       label: item.status.label,
                       color: item.isOverdue ? AppTokens.red : AppTokens.muted,
@@ -415,7 +962,9 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                       const SizedBox(height: 18),
                       _tabs(),
                       const SizedBox(height: 14),
-                      if (_tab == WarehouseTab.stock)
+                      if (_tab == WarehouseTab.need)
+                        _needTab()
+                      else if (_tab == WarehouseTab.stock)
                         _stockTab()
                       else if (_tab == WarehouseTab.journal)
                         _journalTab()
@@ -453,12 +1002,13 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
       eyebrow: 'Производство · склад',
       title: 'Склад',
       subtitle:
-          'Номенклатура, партии по FIFO, движение, резервы под заказы и отчёты. '
-          'Остаток всегда считается по журналу — его нельзя «потерять» правкой карточки.',
+          'Номенклатура, партии по FIFO, движение и резервы. Вкладка '
+          '«Потребность» показывает, сколько материалов нужно на все активные '
+          'заказы, даже если на складе ноль. Остаток всегда считается по журналу.',
       actions: [
         OutlinedButton.icon(
           key: const Key('warehouse-bulk-materials'),
-          onPressed: _busy ? null : _openBulkMaterials,
+          onPressed: _busy ? null : _showNeedTab,
           icon: const Icon(Icons.calculate_outlined, size: 18),
           label: const Text('Потребность'),
         ),
@@ -501,7 +1051,8 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
         AppMetricCard(
           label: 'Позиций в работе',
           value: '${snapshot.stocks.where((s) => !s.product.archived).length}',
-          hint: '${_snapshot!.stocks.where((s) => s.product.archived).length} в архиве',
+          hint:
+              '${_snapshot!.stocks.where((s) => s.product.archived).length} в архиве',
           icon: Icons.inventory_2_outlined,
           tone: AppTokens.blue,
         ),
@@ -522,7 +1073,9 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
         AppMetricCard(
           label: 'Ниже минимума',
           value: '${snapshot.lowCount}',
-          hint: snapshot.lowCount == 0 ? 'все позиции в норме' : 'нужно докупить',
+          hint: snapshot.lowCount == 0
+              ? 'все позиции в норме'
+              : 'нужно докупить',
           icon: Icons.warning_amber_outlined,
           tone: snapshot.lowCount == 0 ? AppTokens.green : AppTokens.red,
           onTap: () => setState(() {
@@ -544,7 +1097,9 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
               label: tab.label,
               icon: tab.icon,
               selected: _tab == tab,
-              badge: tab == WarehouseTab.stock
+              badge: tab == WarehouseTab.need
+                  ? '${_needResult?.lines.length ?? 0}'
+                  : tab == WarehouseTab.stock
                   ? '${_stocks.length}'
                   : tab == WarehouseTab.journal
                   ? '${_snapshot?.moves.length ?? 0}'
@@ -554,6 +1109,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
               onTap: () async {
                 setState(() => _tab = tab);
                 if (tab == WarehouseTab.reports) await _loadReport();
+                if (tab == WarehouseTab.need) await _loadNeed();
               },
             ),
             const SizedBox(width: 8),
@@ -768,7 +1324,10 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
               ],
             ),
           ),
-          _tableCell(product.category.isEmpty ? '—' : product.category, flex: 2),
+          _tableCell(
+            product.category.isEmpty ? '—' : product.category,
+            flex: 2,
+          ),
           Expanded(
             flex: 2,
             child: Row(
@@ -808,7 +1367,10 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
             flex: 2,
             small: true,
           ),
-          _tableCell(product.location.isEmpty ? '—' : product.location, flex: 2),
+          _tableCell(
+            product.location.isEmpty ? '—' : product.location,
+            flex: 2,
+          ),
           Expanded(
             flex: 1,
             child: Align(
@@ -842,10 +1404,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                       product.archived ? 'Вернуть из архива' : 'В архив',
                     ),
                   ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Text('Удалить'),
-                  ),
+                  const PopupMenuItem(value: 'delete', child: Text('Удалить')),
                 ],
               ),
             ),
@@ -904,7 +1463,9 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                       ),
                     ),
                     Text(
-                      product.subtitle.isEmpty ? 'Без категории' : product.subtitle,
+                      product.subtitle.isEmpty
+                          ? 'Без категории'
+                          : product.subtitle,
                       style: const TextStyle(
                         fontSize: 10.5,
                         color: AppTokens.faint,
@@ -924,7 +1485,10 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
           const SizedBox(height: 12),
           Row(
             children: [
-              _miniStat('Остаток', '${appQty(stock.balance)} ${product.unit.shortLabel}'),
+              _miniStat(
+                'Остаток',
+                '${appQty(stock.balance)} ${product.unit.shortLabel}',
+              ),
               _miniStat('Резерв', appQty(stock.reserved)),
               _miniStat(
                 'Доступно',
@@ -943,7 +1507,10 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                   '${product.supplier.isEmpty ? '' : ' · ${product.supplier}'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 10.5, color: AppTokens.muted),
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    color: AppTokens.muted,
+                  ),
                 ),
               ),
               Text(
@@ -992,7 +1559,8 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
           compact: true,
           icon: Icons.receipt_long_outlined,
           title: 'Журнал пуст',
-          message: 'Проведите приход или другую операцию — каждая запись '
+          message:
+              'Проведите приход или другую операцию — каждая запись '
               'навсегда останется в журнале.',
         ),
       );
@@ -1044,11 +1612,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
               ),
             ),
           ),
-          _tableCell(
-            product?.name ?? 'Товар удалён',
-            flex: 3,
-            bold: true,
-          ),
+          _tableCell(product?.name ?? 'Товар удалён', flex: 3, bold: true),
           _tableCell(
             '${isIncome ? '+' : '−'}${appQty(move.quantity)} '
             '${product?.unit.shortLabel ?? ''}',
@@ -1058,7 +1622,11 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
           ),
           _tableCell(appMoney(move.unitPrice), flex: 1, small: true),
           _tableCell(appMoney(move.priceAmount), flex: 1, small: true),
-          _tableCell(move.orderId.isEmpty ? '—' : move.orderId, flex: 2, small: true),
+          _tableCell(
+            move.orderId.isEmpty ? '—' : move.orderId,
+            flex: 2,
+            small: true,
+          ),
           _tableCell(move.note.isEmpty ? '—' : move.note, flex: 3, small: true),
         ],
       ),
@@ -1079,7 +1647,8 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
           compact: true,
           icon: Icons.layers_outlined,
           title: 'Партий пока нет',
-          message: 'Партия создаётся автоматически при приходе, закупке, '
+          message:
+              'Партия создаётся автоматически при приходе, закупке, '
               'возврате и инвентаризации. Списание идёт по FIFO.',
         ),
       );
@@ -1166,10 +1735,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                     lastDate: DateTime.now().add(const Duration(days: 365)),
                     initialDateRange: _reportFrom == null || _reportTo == null
                         ? null
-                        : DateTimeRange(
-                            start: _reportFrom!,
-                            end: _reportTo!,
-                          ),
+                        : DateTimeRange(start: _reportFrom!, end: _reportTo!),
                   );
                   if (range == null) return;
                   setState(() {
@@ -1344,9 +1910,14 @@ class _TabButton extends StatelessWidget {
               if (badge != null) ...[
                 const SizedBox(width: 7),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
+                  ),
                   decoration: BoxDecoration(
-                    color: selected ? AppTokens.copperSoft : AppTokens.graphiteSoft,
+                    color: selected
+                        ? AppTokens.copperSoft
+                        : AppTokens.graphiteSoft,
                     borderRadius: BorderRadius.circular(7),
                   ),
                   child: Text(
@@ -1644,8 +2215,12 @@ class _ProductDetailsDialogState extends State<_ProductDetailsDialog> {
                                 ),
                                 child: Row(
                                   children: [
-                                    Expanded(child: Text(appDate(batch.receivedAt))),
-                                    Expanded(child: Text(appQty(batch.quantity))),
+                                    Expanded(
+                                      child: Text(appDate(batch.receivedAt)),
+                                    ),
+                                    Expanded(
+                                      child: Text(appQty(batch.quantity)),
+                                    ),
                                     Expanded(
                                       child: Text(
                                         appQty(batch.remaining),
@@ -1657,8 +2232,12 @@ class _ProductDetailsDialogState extends State<_ProductDetailsDialog> {
                                         ),
                                       ),
                                     ),
-                                    Expanded(child: Text(appMoney(batch.unitCost))),
-                                    Expanded(child: Text(appMoney(batch.value))),
+                                    Expanded(
+                                      child: Text(appMoney(batch.unitCost)),
+                                    ),
+                                    Expanded(
+                                      child: Text(appMoney(batch.value)),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -1694,9 +2273,7 @@ class _ProductDetailsDialogState extends State<_ProductDetailsDialog> {
                         ],
                       ),
                     const SizedBox(height: 16),
-                    const AppSectionTitle(
-                      title: 'Последние движения',
-                    ),
+                    const AppSectionTitle(title: 'Последние движения'),
                     const SizedBox(height: 8),
                     if (_loading)
                       const Center(child: CircularProgressIndicator())
@@ -1789,7 +2366,10 @@ class _ProductDetailsDialogState extends State<_ProductDetailsDialog> {
       ('Категория', product.category.isEmpty ? '—' : product.category),
       ('Материал', product.material.isEmpty ? '—' : product.material),
       ('Цвет', product.color.isEmpty ? '—' : product.color),
-      ('Толщина', product.thicknessMm <= 0 ? '—' : '${appQty(product.thicknessMm)} мм'),
+      (
+        'Толщина',
+        product.thicknessMm <= 0 ? '—' : '${appQty(product.thicknessMm)} мм',
+      ),
       ('Размер', product.dimensionsLabel),
       ('Вес', product.weightKg <= 0 ? '—' : '${appQty(product.weightKg)} кг'),
       ('Мин. остаток', appQty(product.minQuantity)),

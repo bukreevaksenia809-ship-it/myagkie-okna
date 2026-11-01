@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import '../data/warehouse_repository.dart';
 import '../models/order_project.dart';
 import '../models/window_params.dart';
@@ -51,12 +49,21 @@ class OrderMaterialsService {
     final materialHint = project.materialsInOrder.length == 1
         ? project.materialsInOrder.first
         : null;
-    for (final line in estimate.lines) {
+    // В смете есть работы (сварка, раскрой, установка). Это не материал:
+    // если их не отфильтровать, площадь работ прибавляется к плёнке и
+    // потребность завышается в разы.
+    for (final line in estimate.lines.where(
+      (line) =>
+          line.group != EstimateGroup.work &&
+          line.itemKey != PriceItemKeys.cutout &&
+          line.quantity > 0,
+    )) {
       final product = _match(
         line.title,
         line.unit,
         products,
         materialHint: materialHint,
+        itemKey: line.itemKey,
       );
       if (product == null) {
         unmatched.add('${line.title} — ${line.quantityLabel}');
@@ -110,8 +117,22 @@ class OrderMaterialsService {
     String unit,
     List<WarehouseProduct> products, {
     FilmMaterial? materialHint,
+    String? itemKey,
   }) {
     final lower = title.toLowerCase();
+    // В заказе с несколькими материалами смета подписывает полотно:
+    // «Полотно: Скрин», «Полотно: Тонированный ПВХ». Подсказка нужна,
+    // чтобы не выбрать первый попавшийся рулон.
+    var hint = materialHint;
+    if (lower.contains('скрин')) {
+      hint = FilmMaterial.screen;
+    } else if (lower.contains('тонир')) {
+      hint = FilmMaterial.tintedPvc;
+    } else if (lower.contains('сетк')) {
+      hint = FilmMaterial.mosquitoNet;
+    } else if (lower.contains('обычн') || lower.contains('прозрач')) {
+      hint = FilmMaterial.clearPvc;
+    }
     final scored = <(WarehouseProduct, int)>[];
     for (final product in products) {
       if (product.archived) continue;
@@ -119,7 +140,16 @@ class OrderMaterialsService {
       final name = product.name.toLowerCase();
       final category = product.category.toLowerCase();
       final material = product.material.toLowerCase();
-      final haystack = '$name $category $material ${product.color.toLowerCase()}';
+      final haystack =
+          '$name $category $material ${product.color.toLowerCase()}';
+
+      // Позиция прайса — самый точный признак: плёнка, окантовка и
+      // фурнитура получают ровно тот товар, который заведён из прайса.
+      if (itemKey != null &&
+          itemKey.isNotEmpty &&
+          product.priceKey == itemKey) {
+        score += 80;
+      }
 
       // Материал в строке сметы должен совпасть с товаром. Иначе «скрин»
       // цепляется за ПВХ и заказ резервирует не то полотно.
@@ -136,9 +166,10 @@ class OrderMaterialsService {
         continue;
       }
 
-      if (materialHint != null &&
+      if (hint != null &&
           (lower.contains('полотно') || lower.contains('плёнка'))) {
-        final isFilmLine = category.contains('полотно') ||
+        final isFilmLine =
+            category.contains('полотно') ||
             material.contains('пвх') ||
             material.contains('скрин') ||
             material.contains('сетк') ||
@@ -148,7 +179,8 @@ class OrderMaterialsService {
         if (isFilmLine) {
           var matchesHint = false;
           if (materialHint == FilmMaterial.clearPvc) {
-            matchesHint = haystack.contains('прозрач') ||
+            matchesHint =
+                haystack.contains('прозрач') ||
                 haystack.contains('обычный пвх');
           } else if (materialHint == FilmMaterial.tintedPvc) {
             matchesHint = haystack.contains('тонир');
@@ -207,7 +239,8 @@ class OrderMaterialsService {
               name.contains('скрин'))) {
         score += 28;
       }
-      if (lower.contains('скрин') && (material.contains('скрин') || name.contains('скрин'))) {
+      if (lower.contains('скрин') &&
+          (material.contains('скрин') || name.contains('скрин'))) {
         score += 30;
       }
       if (lower.contains('тонир') &&
@@ -222,6 +255,26 @@ class OrderMaterialsService {
       if (lower.contains('ремен') && name.contains('ремен')) score += 20;
       if (lower.contains('груз') && name.contains('груз')) score += 20;
 
+      // Ширина окантовки: «Тент 100 мм» должен попасть в товар 100 мм,
+      // а не в первый попавшийся 80/120 мм. Без этого заказ резервировал
+      // не тот рулон, а количество считалось по чужой ширине.
+      final isEdgeProduct =
+          category.contains('окант') ||
+          name.contains('окант') ||
+          (name.contains('тент') && product.widthMm > 0);
+      if (isEdgeProduct) {
+        final titleWidths = _numbers(lower);
+        final productWidth = product.widthMm > 0
+            ? product.widthMm
+            : _firstNumber(name);
+        if (productWidth != null && titleWidths.isNotEmpty) {
+          final matches = titleWidths.any(
+            (value) => (value - productWidth).abs() < 0.5,
+          );
+          score += matches ? 48 : -35;
+        }
+      }
+
       // Точное вхождение названия товара в строку сметы — сильный признак.
       if (name.length >= 4 && lower.contains(name)) score += 18;
       // Общие слова длиннее трёх букв.
@@ -233,11 +286,14 @@ class OrderMaterialsService {
         if (haystack.contains(word)) score += 3;
       }
 
-      // Единица совпадает — приоритет.
+      // Единица совпадает — приоритет, но только если уже есть смысловое
+      // совпадение. Иначе любой товар в метрах «цепляет» любую строку в
+      // метрах (например, плёнка — окантовку).
+      final hasSemanticMatch = score > 0;
       if (product.unit.label == unit) score += 8;
       if (product.unit == StockUnit.roll && unit == 'м²') score += 4;
 
-      if (score > 0) scored.add((product, score));
+      if (hasSemanticMatch) scored.add((product, score));
     }
     if (scored.isEmpty) return null;
     scored.sort((a, b) {
@@ -250,8 +306,10 @@ class OrderMaterialsService {
 
   double? _convert(double quantity, String unit, WarehouseProduct product) {
     if (quantity <= 0) return 0;
-    if (unit == product.unit.label) return quantity;
-    if (unit == 'м²') {
+    final lineUnit = _normalizeUnit(unit);
+    final productUnit = _normalizeUnit(product.unit.label);
+    if (lineUnit == productUnit) return quantity;
+    if (lineUnit == 'м²') {
       if (product.unit == StockUnit.roll && product.unitAreaM2 > 0) {
         return quantity / product.unitAreaM2;
       }
@@ -259,14 +317,44 @@ class OrderMaterialsService {
         return quantity / (product.widthMm / 1000);
       }
     }
-    if (unit == 'м') {
+    if (lineUnit == 'м') {
       if (product.unit == StockUnit.roll && product.lengthMm > 0) {
         return quantity / (product.lengthMm / 1000);
       }
+      if (product.unit == StockUnit.squareMeter && product.widthMm > 0) {
+        return quantity * (product.widthMm / 1000);
+      }
     }
-    if (unit == 'шт' && product.unit == StockUnit.piece) return quantity;
-    if (unit == 'рулон' && product.unit == StockUnit.roll) return quantity;
-    // Несовместимые единицы: показываем как есть, но помечаем в примечании.
-    return math.max(0.0, quantity);
+    if (lineUnit == 'шт' && product.unit == StockUnit.piece) return quantity;
+    if (lineUnit == 'рулон' && product.unit == StockUnit.roll) return quantity;
+    // Несовместимые единицы нельзя молча считать «как есть»: иначе
+    // площадь превращается в метры, а потребность получается неверной.
+    return null;
+  }
+
+  static String _normalizeUnit(String raw) {
+    final value = raw.toLowerCase().replaceAll(' ', '').replaceAll('.', '');
+    if (value.contains('м²') || value.contains('м2') || value.contains('квм')) {
+      return 'м²';
+    }
+    if (value.contains('погм') || value == 'м' || value.contains('метр')) {
+      return 'м';
+    }
+    if (value.contains('рул')) return 'рулон';
+    if (value.contains('шт')) return 'шт';
+    return value;
+  }
+
+  static List<double> _numbers(String text) => RegExp(r'\d+(?:[.,]\d+)?')
+      .allMatches(text)
+      .map((match) {
+        return double.tryParse(match.group(0)!.replaceAll(',', '.')) ?? 0;
+      })
+      .where((value) => value > 0)
+      .toList();
+
+  static double? _firstNumber(String text) {
+    final values = _numbers(text);
+    return values.isEmpty ? null : values.first;
   }
 }

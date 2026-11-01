@@ -820,6 +820,30 @@ class WarehouseRepository {
     return [for (final row in rows) OrderMaterial.fromDb(row)];
   }
 
+  /// Уже зарезервировано и списано по конкретным заказам, по товарам.
+  ///
+  /// Нужно для суммарной потребности: свободный остаток не учитывает
+  /// резервы этих же заказов, поэтому без вычета получался завышенный
+  /// дефицит.
+  Future<Map<String, double>> allocatedForOrders(
+    Iterable<String> orderIds,
+  ) async {
+    final ids = orderIds.toSet().toList();
+    if (ids.isEmpty) return const {};
+    final db = await _database.database;
+    final placeholders = List.filled(ids.length, '?').join(', ');
+    final rows = await db.rawQuery(
+      'SELECT product_id, SUM(reserved_qty + issued_qty) AS allocated '
+      'FROM order_materials WHERE order_id IN ($placeholders) '
+      'GROUP BY product_id',
+      ids,
+    );
+    return {
+      for (final row in rows)
+        '${row['product_id']}': (row['allocated'] as num?)?.toDouble() ?? 0,
+    };
+  }
+
   /// Проверка остатков под потребности заказа.
   Future<List<OrderMaterialNeed>> checkNeeds(
     List<OrderMaterialNeed> needs,

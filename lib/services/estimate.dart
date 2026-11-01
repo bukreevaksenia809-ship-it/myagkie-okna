@@ -123,15 +123,15 @@ class Estimate {
     // Пользователь видит одну позицию «Полотно» на материал: площадь
     // заготовки плюс отход косой формы. Отдельной строки «Отход» больше нет.
     final wasteByMaterial = _obliqueWasteByMaterial(summary.specs);
-    final materials = <FilmMaterial>{
-      ...summary.filmAreaByMaterialWithShrinkage.keys,
-      ...wasteByMaterial.keys,
-    }.toList()
-      ..sort((a, b) {
-        final left = summary.filmAreaByMaterialWithShrinkage[a] ?? 0;
-        final right = summary.filmAreaByMaterialWithShrinkage[b] ?? 0;
-        return right.compareTo(left);
-      });
+    final materials =
+        <FilmMaterial>{
+          ...summary.filmAreaByMaterialWithShrinkage.keys,
+          ...wasteByMaterial.keys,
+        }.toList()..sort((a, b) {
+          final left = summary.filmAreaByMaterialWithShrinkage[a] ?? 0;
+          final right = summary.filmAreaByMaterialWithShrinkage[b] ?? 0;
+          return right.compareTo(left);
+        });
     for (final material in materials) {
       final filmArea = summary.filmAreaByMaterialWithShrinkage[material] ?? 0;
       final waste = wasteByMaterial[material];
@@ -246,7 +246,9 @@ class Estimate {
       lines.add(
         EstimateLine(
           title: entry.key.itemTitle,
-          note: (entry.key == FastenerType.metalFrenchLock || entry.key == FastenerType.frenchLocks)
+          note:
+              (entry.key == FastenerType.metalFrenchLock ||
+                  entry.key == FastenerType.frenchLocks)
               ? 'по чертежу: в каждой точке подвижных сторон; люверс под '
                     'замком отдельной строкой не считается'
               : '${entry.value} шт × ${_unitPriceLabel(unitPrice)} ₽/шт — '
@@ -366,19 +368,26 @@ class Estimate {
 
     // Окантовка и люверсы вырезов — только если мастер их включил. Старые
     // заказы без этих полей дают ноль и смета не меняется.
-    final cutoutEdgingMm = <double>[
-      for (final spec in summary.specs)
-        for (final cutout in spec.params.cutouts)
-          if (cutout.edgingMm > 0) cutout.perimeterMm,
-    ].fold<double>(0, (sum, value) => sum + value);
-    if (cutoutEdgingMm > 0) {
+    final cutoutEdgingByWidth = <double, double>{};
+    for (final spec in summary.specs) {
+      for (final cutout in spec.params.cutouts) {
+        if (cutout.edgingMm <= 0) continue;
+        cutoutEdgingByWidth[cutout.edgingMm] =
+            (cutoutEdgingByWidth[cutout.edgingMm] ?? 0) + cutout.perimeterMm;
+      }
+    }
+    for (final entry
+        in cutoutEdgingByWidth.entries.toList()
+          ..sort((a, b) => a.key.compareTo(b.key))) {
       lines.add(
         EstimateLine(
-          title: 'Окантовка вырезов',
-          note: 'полоса по контуру выреза, ширина — из карточки выреза',
-          quantity: cutoutEdgingMm / 1000,
+          title: 'Окантовка вырезов ${edgeBandLabel(entry.key)}',
+          note:
+              'полоса по контуру выреза, ширина ${formatMm(entry.key)} '
+              '${unitSuffix()}',
+          quantity: entry.value / 1000,
           unit: 'м',
-          unitPrice: prices.edge100PerM,
+          unitPrice: prices.edgePerMeterForWidth(entry.key),
           group: EstimateGroup.hardware,
         ),
       );
@@ -453,7 +462,8 @@ class Estimate {
         lines.add(
           EstimateLine(
             title: 'Спайка составного окна',
-            note: 'ПВХ-полотно и второй материал свариваются по общему шву; '
+            note:
+                'ПВХ-полотно и второй материал свариваются по общему шву; '
                 'окантовки на шве нет',
             quantity: compositeSeamMm / 1000,
             unit: 'м',
@@ -570,7 +580,8 @@ class Estimate {
           final meters = lengthMm / 1000 * 2;
           lines.add(
             EstimateLine(
-              title: 'Перемычка ${crossbar.axis == CrossbarAxis.horizontal ? 'горизонтальная' : 'вертикальная'}',
+              title:
+                  'Перемычка ${crossbar.axis == CrossbarAxis.horizontal ? 'горизонтальная' : 'вертикальная'}',
               note:
                   'полоса ${formatMm(crossbar.widthMm)} ${unitSuffix()}, '
                   'напайка ${formatMm(crossbar.weldMm)} ${unitSuffix()} на каждое '
@@ -590,10 +601,10 @@ class Estimate {
     // обязан попасть в смету.
     final crossbarFasteners = [
       for (final spec in summary.specs)
-        for (final crossbar in spec.params.crossbars) crossbar.totalFastenerCount,
+        for (final crossbar in spec.params.crossbars)
+          crossbar.totalFastenerCount,
     ].fold<int>(0, (sum, value) => sum + value);
-    if (crossbarFasteners > 0 &&
-        prices.isEnabled(PriceItemKeys.eyeletRound)) {
+    if (crossbarFasteners > 0 && prices.isEnabled(PriceItemKeys.eyeletRound)) {
       lines.add(
         EstimateLine(
           title: 'Крепления на перемычках',
@@ -615,7 +626,8 @@ class Estimate {
       lines.add(
         EstimateLine(
           title: 'Дополнительно: ${PriceList.extraItemLabel(key)}',
-          note: '${_unitPriceLabel(quantity)} $unit × '
+          note:
+              '${_unitPriceLabel(quantity)} $unit × '
               '${_unitPriceLabel(unitPrice)} ₽/$unit — ручной ввод в заказе',
           quantity: quantity,
           unit: unit,

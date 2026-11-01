@@ -3,10 +3,10 @@ import 'package:soft_window_drawer/data/app_database.dart';
 import 'package:soft_window_drawer/data/order_repository.dart';
 import 'package:soft_window_drawer/data/warehouse_repository.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
-import 'package:soft_window_drawer/models/price_list.dart';
 import 'package:soft_window_drawer/models/warehouse.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/bulk_materials.dart';
+import 'package:soft_window_drawer/services/estimate.dart';
 import 'package:soft_window_drawer/services/order_materials.dart';
 import 'package:soft_window_drawer/services/price_warehouse_sync.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -84,6 +84,34 @@ void main() {
         .where((item) => item.productId == line.productId)
         .fold<double>(0, (sum, item) => sum + item.quantity);
     expect(line.quantity, closeTo(oneQty + twoQty, 0.001));
+    expect(line.orders, 2);
+  });
+
+  test('работы и раскрой не прибавляются к материалам', () async {
+    final order = await orders.create(title: 'Только материал');
+    final project = orders.projectOf(order);
+    final estimate = Estimate.of(project, const PriceList.defaults());
+    final filmLine = estimate.lines.firstWhere(
+      (line) =>
+          line.group == EstimateGroup.materials &&
+          line.title.toLowerCase().contains('полотно'),
+    );
+    final plan = await OrderMaterialsService(
+      warehouse: warehouse,
+    ).plan(project);
+    final film = plan.needs.firstWhere(
+      (need) => need.productId == 'price-filmClear',
+    );
+    expect(film.quantity, closeTo(filmLine.quantity, 0.001));
+    expect(
+      plan.needs.any(
+        (need) =>
+            need.source.contains('Сварка') ||
+            need.source.contains('Раскрой') ||
+            need.source.contains('Спайка'),
+      ),
+      isFalse,
+    );
   });
 
   test('остаток и дефицит считаются по складу', () async {
@@ -106,6 +134,36 @@ void main() {
     expect(eyelets.available, 10);
     expect(eyelets.shortage, greaterThan(0));
     expect(eyelets.quantity, eyelets.available + eyelets.shortage);
+  });
+
+  test('резерв по заказу не завышает дефицит', () async {
+    await warehouse.perform(
+      const StockOperation(
+        type: StockMoveType.receipt,
+        productId: 'price-filmClear',
+        quantity: 100,
+        unitCost: 500,
+      ),
+    );
+    final order = await orders.create(title: 'С резервом');
+    final plan = await OrderMaterialsService(
+      warehouse: warehouse,
+    ).plan(orders.projectOf(order));
+    final filmNeed = plan.needs.firstWhere(
+      (need) => need.productId == 'price-filmClear',
+    );
+    final reserved = await warehouse.reserveOrder(order.id, [filmNeed]);
+    expect(reserved.ok, isTrue, reason: reserved.message);
+    final result = await BulkMaterialsCalculator(
+      orders: orders,
+      warehouse: warehouse,
+    ).calculate([order]);
+    final film = result.lines.firstWhere(
+      (line) => line.productId == 'price-filmClear',
+    );
+    expect(film.allocated, greaterThan(0));
+    expect(film.shortage, 0);
+    expect(film.available, greaterThan(0));
   });
 
   test('пустая выборка даёт пустой результат', () async {

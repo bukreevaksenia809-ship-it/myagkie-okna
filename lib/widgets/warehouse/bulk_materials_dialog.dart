@@ -138,6 +138,7 @@ class _BulkMaterialsDialogState extends State<_BulkMaterialsDialog> {
               source: line.source,
             ),
             orders: line.orders,
+            allocated: line.allocated,
           ),
       ];
       _unmatched = result.unmatched;
@@ -246,7 +247,7 @@ class _BulkMaterialsDialogState extends State<_BulkMaterialsDialog> {
       buffer.writeln(
         '${_csv(item.need.name)};${item.need.unit.label};'
         '${appQty(item.need.quantity)};${appQty(item.need.available)};'
-        '${appQty(item.need.shortage)}',
+        '${appQty(item.shortage)}',
       );
     }
     if (_unmatched.isNotEmpty) {
@@ -269,8 +270,7 @@ class _BulkMaterialsDialogState extends State<_BulkMaterialsDialog> {
   String _csv(String value) =>
       value.contains(';') ? '"${value.replaceAll('"', '""')}"' : value;
 
-  int get _shortageCount =>
-      _needs.where((item) => item.need.shortage > 0).length;
+  int get _shortageCount => _needs.where((item) => item.shortage > 0).length;
 
   @override
   Widget build(BuildContext context) {
@@ -687,13 +687,13 @@ class _BulkMaterialsDialogState extends State<_BulkMaterialsDialog> {
                                   ),
                                   Expanded(
                                     child: Text(
-                                      item.need.shortage <= 0
+                                      item.shortage <= 0
                                           ? '—'
-                                          : appQty(item.need.shortage),
+                                          : appQty(item.shortage),
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w800,
-                                        color: item.need.shortage <= 0
+                                        color: item.shortage <= 0
                                             ? AppTokens.green
                                             : AppTokens.red,
                                       ),
@@ -750,8 +750,18 @@ class _BulkMaterialsDialogState extends State<_BulkMaterialsDialog> {
 }
 
 class _BulkNeed {
-  const _BulkNeed({required this.need, required this.orders});
+  const _BulkNeed({
+    required this.need,
+    required this.orders,
+    this.allocated = 0,
+  });
 
   final OrderMaterialNeed need;
   final int orders;
+  final double allocated;
+
+  double get shortage {
+    final left = need.quantity - need.available - allocated;
+    return left <= 0 ? 0 : left;
+  }
 }

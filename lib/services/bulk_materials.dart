@@ -16,6 +16,7 @@ class BulkMaterialLine {
     required this.reserved,
     required this.orders,
     this.source = '',
+    this.allocated = 0,
   });
 
   final String productId;
@@ -27,7 +28,13 @@ class BulkMaterialLine {
   final int orders;
   final String source;
 
-  double get shortage => quantity <= available ? 0 : quantity - available;
+  /// Уже зарезервировано/списано по выбранным заказам.
+  final double allocated;
+
+  double get shortage {
+    final left = quantity - available - allocated;
+    return left <= 0 ? 0 : left;
+  }
 
   bool get enough => shortage <= 0.0001;
 }
@@ -71,6 +78,7 @@ class BulkMaterialsCalculator {
     PriceList prices = const PriceList.defaults(),
   }) async {
     final totals = <String, BulkMaterialLine>{};
+    final perOrderProducts = <String, Set<String>>{};
     final unmatched = <String>[];
     var windows = 0;
     var amount = 0.0;
@@ -80,8 +88,10 @@ class BulkMaterialsCalculator {
       windows += project.windowCount;
       final plan = await service.plan(project, prices: prices);
       amount += plan.estimateTotal;
+      final seen = perOrderProducts.putIfAbsent(order.id, () => <String>{});
       for (final need in plan.needs) {
         final previous = totals[need.productId];
+        final firstInOrder = seen.add(need.productId);
         totals[need.productId] = BulkMaterialLine(
           productId: need.productId,
           name: need.name,
@@ -89,7 +99,7 @@ class BulkMaterialsCalculator {
           quantity: (previous?.quantity ?? 0) + need.quantity,
           available: need.available,
           reserved: need.reserved,
-          orders: previous?.orders ?? 1,
+          orders: (previous?.orders ?? 0) + (firstInOrder ? 1 : 0),
           source: previous?.source ?? need.source,
         );
       }
@@ -97,6 +107,9 @@ class BulkMaterialsCalculator {
         unmatched.add('${order.number}: $line');
       }
     }
+    final allocated = await _warehouse.allocatedForOrders(
+      selected.map((order) => order.id),
+    );
     final checked = await _warehouse.checkNeeds([
       for (final line in totals.values)
         OrderMaterialNeed(
@@ -120,6 +133,7 @@ class BulkMaterialsCalculator {
           reserved: need.reserved,
           orders: totals[need.productId]?.orders ?? 1,
           source: totals[need.productId]?.source ?? need.source,
+          allocated: allocated[need.productId] ?? 0,
         ),
     ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return BulkMaterialsResult(
