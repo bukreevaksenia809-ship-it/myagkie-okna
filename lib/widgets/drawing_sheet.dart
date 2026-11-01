@@ -67,7 +67,7 @@ class DrawingSheet extends StatelessWidget {
   /// Высота компактной легенды внизу листа (точек).
   static const double compactLegendHeight = 58;
 
-  /// Внутренний отступ ячейки раскладки 2–3 окон.
+  /// Внутренний отступ ячейки раскладки 2–4 окон.
   static const double _cellMargin = 2;
 
   /// Размер листа в рабочей области: сам лист A4 плюс поля рабочей области.
@@ -89,6 +89,11 @@ class DrawingSheet extends StatelessWidget {
   /// по странице на ряд окон: ряд не разрезается между страницами.
   static int a4PageCount(OrderProject project) {
     if (!project.isMultiWindow || project.sheetMode != SheetMode.grid) return 1;
+    if (project.gridColumns == 0 && project.windowCount <= 4) {
+      // Авто-режим для 3–4 окон — одна страница A4: раскладку подбирает
+      // optimizedGridPlan, а не фиксированное «2 в ряд».
+      return 1;
+    }
     final columns = project.gridColumns == 0
         ? _columnsFor(project.windowCount)
         : project.gridColumns;
@@ -99,7 +104,7 @@ class DrawingSheet extends StatelessWidget {
   bool get _showGrid =>
       project.sheetMode == SheetMode.grid && project.isMultiWindow;
 
-  /// Свободное поле страницы A4 под оптимизированную раскладку 2–3 окон.
+  /// Свободное поле страницы A4 под оптимизированную раскладку 2–4 окон.
   ///
   /// Формула повторяет колонку страницы в [build]: страница A4 минус
   /// компактная легенда, при необходимости фартук и штамп. Отдельный метод
@@ -109,7 +114,7 @@ class DrawingSheet extends StatelessWidget {
     a4Height - titleBlockHeight - compactLegendHeight - apronHeight,
   );
 
-  /// Включать ли автоматический перебор раскладки для 2–3 окон.
+  /// Включать ли автоматический перебор раскладки для 2–4 окон.
   ///
   /// Только режим «Авто, окон в ряду» ([OrderProject.gridColumns] == 0):
   /// явные 1–4 колонки остаются осмысленными и работают как раньше.
@@ -117,7 +122,7 @@ class DrawingSheet extends StatelessWidget {
       _showGrid &&
       project.gridColumns == 0 &&
       project.windowCount >= 2 &&
-      project.windowCount <= 3;
+      project.windowCount <= 4;
 
   /// Высота плашки «фартук» на странице, точек.
   double get _apronHeight =>
@@ -256,7 +261,7 @@ class DrawingSheet extends StatelessWidget {
   /// окна на 52–75 точек, и при меньшем поле их обрежет рамка.
   static const double _cellPad = 88;
 
-  /// Поля автоматической раскладки 2–3 окон.
+  /// Поля автоматической раскладки 2–4 окон.
   ///
   /// 100 точек — как у прежних «2 в ряд»: размерная подпись встаёт в 62
   /// точки от контура плюс запас на крупный кегль из настроек (до 85 точек),
@@ -514,7 +519,7 @@ class DrawingSheet extends StatelessWidget {
         ? _columnsFor(project.windowCount)
         : project.gridColumns;
 
-    // 2–3 окна в режиме «Авто»: раскладку и повороты выбирает перебор
+    // 2–4 окна в режиме «Авто»: раскладку и повороты выбирает перебор
     // ([optimizedGridPlan]), а не фиксированное число колонок. Лист из 2–3
     // окон всегда занимает ровно одну страницу A4.
     final plan = _useOptimizedGrid && pages == 1
@@ -524,7 +529,7 @@ class DrawingSheet extends StatelessWidget {
           )
         : null;
     final optimized = plan != null;
-    // 2–3 окна на листе отдают площадь чертежам: боковой панели нет, её
+    // 2–4 окна на листе отдают площадь чертежам: боковой панели нет, её
     // заменяет компактная легенда внизу. У прежних «2 в ряд» (в том числе
     // для 4+ окон) панели не было изначально — сохраняем это. Исключение —
     // явное «1 в ряд (подробно)»: подробному листу одного окна панель нужна.
@@ -554,7 +559,7 @@ class DrawingSheet extends StatelessWidget {
                                 fastenerImage,
                               ),
                             ),
-                            // В автоматической раскладке и для 2–3 окон
+                            // В автоматической раскладке и для 2–4 окон
                             // боковой панели нет: всё поле страницы отдано
                             // чертежам, обозначения — полосой внизу.
                             if (!compactPage && columns != 2) ...[
@@ -705,7 +710,7 @@ class DrawingSheet extends StatelessWidget {
 
   // ------------------------------------------- автоматическая раскладка
   //
-  // Задача: для 2–3 окон на одном A4 выбрать самую крупную раскладку.
+  // Задача: для 2–4 окон на одном A4 выбрать самую крупную раскладку.
   // Перебор явный и конечный:
   //
   //  2 окна: «2 в ряд», «2 в столбец»                — 2 раскладки;
@@ -726,17 +731,17 @@ class DrawingSheet extends StatelessWidget {
   // Так «магии» нет: видно, какие варианты перебраны и по какому правилу
   // выбран победитель.
 
-  /// Перебирает раскладки 2–3 окон и возвращает самую крупную.
+  /// Перебирает раскладки 2–4 окон и возвращает самую крупную.
   ///
   /// [pageArea] — поле страницы A4 под чертежи (без легенды, фартука и
-  /// штампа). Для 2–3 окон авто-режима это [optimizedGridArea].
+  /// штампа). Для 2–4 окон авто-режима это [optimizedGridArea].
   static DrawingGridPlan? optimizedGridPlan(
     OrderProject project,
     Size pageArea, {
     double pad = _optimizedGridPad,
   }) {
     final count = project.windowCount;
-    if (count < 2 || count > 3) return null;
+    if (count < 2 || count > 4) return null;
     if (pageArea.width <= 0 || pageArea.height <= 0) return null;
     final area = Rect.fromLTWH(0, 0, pageArea.width, pageArea.height);
     final specs = [for (final params in project.windows) WindowSpec.of(params)];
@@ -782,6 +787,30 @@ class DrawingSheet extends StatelessWidget {
           [
             [0],
             [1],
+          ],
+        ],
+        _ => const [],
+      };
+    }
+    if (count == 4) {
+      return switch (arrangement) {
+        DrawingGridArrangement.fourInRow => const [
+          [
+            [0, 1, 2, 3],
+          ],
+        ],
+        DrawingGridArrangement.twoByTwo => const [
+          [
+            [0, 1],
+            [2, 3],
+          ],
+          [
+            [0, 2],
+            [1, 3],
+          ],
+          [
+            [0, 3],
+            [1, 2],
           ],
         ],
         _ => const [],
@@ -1069,14 +1098,16 @@ class DrawingSheet extends StatelessWidget {
   }
 }
 
-/// Взаимное расположение 2–3 окон на одном A4.
+/// Взаимное расположение 2–4 окон на одном A4.
 enum DrawingGridArrangement {
   twoInRow('2 в ряд'),
   twoInColumn('2 в столбец'),
   threeInRow('3 в ряд'),
   threeInColumn('3 в столбец'),
   twoPlusOne('2 + 1'),
-  onePlusTwo('1 + 2');
+  onePlusTwo('1 + 2'),
+  fourInRow('4 в ряд'),
+  twoByTwo('2 × 2');
 
   const DrawingGridArrangement(this.label);
 
@@ -1686,9 +1717,7 @@ class _SidePanel extends StatelessWidget {
             const SizedBox(height: 10),
             const _SideTitle('Расстояния между креплениями'),
             const SizedBox(height: 6),
-            _FastenerSpacingList(
-              spec: WindowSpec.of(project.windows.first),
-            ),
+            _FastenerSpacingList(spec: WindowSpec.of(project.windows.first)),
           ],
           const SizedBox(height: 10),
           const _SideTitle('Масштаб листа'),
@@ -1911,8 +1940,9 @@ class _FastenerSpacingList extends StatelessWidget {
     final eyelets = spec.layers.eyelets;
     final rows = <(WindowSide, String)>[];
     for (final side in WindowSide.values) {
-      final sideEyelets = eyelets.where((eyelet) => eyelet.side == side).toList()
-        ..sort((a, b) => a.positionInEdge.compareTo(b.positionInEdge));
+      final sideEyelets =
+          eyelets.where((eyelet) => eyelet.side == side).toList()
+            ..sort((a, b) => a.positionInEdge.compareTo(b.positionInEdge));
       if (sideEyelets.length < 2) continue;
       final gaps = <double>[
         for (var i = 1; i < sideEyelets.length; i++)
@@ -2423,7 +2453,6 @@ class DrawingSheetMetrics {
       'fill=${(frameFill * 100).toStringAsFixed(1)}%)';
 }
 
-
 /// Перетаскивание люверсов по линии окантовки прямо на чертеже.
 ///
 /// Жест включается только если палец/мышь нажали рядом с люверсом: иначе
@@ -2550,8 +2579,7 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
         direction.dx * direction.dx + direction.dy * direction.dy;
     if (lengthSquared < 1e-9) return 0;
     final t =
-        ((point.dx - a.dx) * direction.dx +
-            (point.dy - a.dy) * direction.dy) /
+        ((point.dx - a.dx) * direction.dx + (point.dy - a.dy) * direction.dy) /
         lengthSquared;
     return t.clamp(0.0, 1.0);
   }
@@ -2596,8 +2624,7 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
       return;
     }
     final point = _points[index];
-    final center =
-        _edgeStart + (_edgeEnd - _edgeStart) * point.fraction;
+    final center = _edgeStart + (_edgeEnd - _edgeStart) * point.fraction;
     final box = context.findRenderObject() as RenderBox?;
     if (box == null) {
       _reset();
@@ -2667,8 +2694,9 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
     final left = global.dx
         .clamp(8.0, math.max(8.0, size.width - _menuWidth - 8))
         .toDouble();
-    final top =
-        global.dy.clamp(8.0, math.max(8.0, size.height - 250)).toDouble();
+    final top = global.dy
+        .clamp(8.0, math.max(8.0, size.height - 250))
+        .toDouble();
     _menuEntry = OverlayEntry(
       builder: (context) => Positioned(
         left: left,
@@ -2771,10 +2799,7 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
             Icon(icon, size: 17, color: color ?? const Color(0xFF41506A)),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                label,
-                style: TextStyle(fontSize: 12, color: color),
-              ),
+              child: Text(label, style: TextStyle(fontSize: 12, color: color)),
             ),
           ],
         ),
@@ -2794,15 +2819,15 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
       gestures: {
         _EyeletPanRecognizer:
             GestureRecognizerFactoryWithHandlers<_EyeletPanRecognizer>(
-          () => _EyeletPanRecognizer(canStart: _canStart),
-          (recognizer) {
-            recognizer
-              ..onStart = _onStart
-              ..onUpdate = _onUpdate
-              ..onEnd = _onEnd
-              ..onCancel = _reset;
-          },
-        ),
+              () => _EyeletPanRecognizer(canStart: _canStart),
+              (recognizer) {
+                recognizer
+                  ..onStart = _onStart
+                  ..onUpdate = _onUpdate
+                  ..onEnd = _onEnd
+                  ..onCancel = _reset;
+              },
+            ),
       },
       child: widget.child,
     );

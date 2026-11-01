@@ -642,11 +642,7 @@ class WindowDrawingPainter extends CustomPainter {
         final right = center + half - weld;
         for (final x in [left, right]) {
           final dx = layout.toPxPoint(Offset(x, 0)).dx;
-          canvas.drawLine(
-            Offset(dx, px.top),
-            Offset(dx, px.bottom),
-            weldPaint,
-          );
+          canvas.drawLine(Offset(dx, px.top), Offset(dx, px.bottom), weldPaint);
         }
       }
       // Крепления на перемычке: два по концам и промежуточные равномерно.
@@ -708,11 +704,11 @@ class WindowDrawingPainter extends CustomPainter {
       canvas.drawPath(outerPath, Paint()..color = _edgeColor);
       // Светлая подложка: градиент плёнки полупрозрачный, иначе сквозь него
       // просвечивает коричневая окантовка.
+      canvas.drawPath(innerPath, Paint()..color = const Color(0xFFEAF2FB));
       canvas.drawPath(
         innerPath,
-        Paint()..color = const Color(0xFFEAF2FB),
+        Paint()..shader = _filmGradient(innerPath.getBounds()),
       );
-      canvas.drawPath(innerPath, Paint()..shader = _filmGradient(innerPath.getBounds()));
       canvas.drawPath(
         innerPath,
         Paint()
@@ -757,7 +753,8 @@ class WindowDrawingPainter extends CustomPainter {
         formatMm(layout.geometry.overallHeight),
       );
       if (params.isHouse) {
-        final wallTop = bounds.top + (layout.geometry.overallHeight - params.roofHeightMm);
+        final wallTop =
+            bounds.top + (layout.geometry.overallHeight - params.roofHeightMm);
         _label(
           canvas,
           'крыша ${formatMm(params.roofHeightMm)}',
@@ -769,10 +766,12 @@ class WindowDrawingPainter extends CustomPainter {
         _label(
           canvas,
           'вершина ${formatSignedMm(params.apexOffsetMm)}',
-          layout.toPxPoint(Offset(
-                bounds.center.dx + params.apexOffsetMm,
-                bounds.top + layout.geometry.overallHeight,
-              )) +
+          layout.toPxPoint(
+                Offset(
+                  bounds.center.dx + params.apexOffsetMm,
+                  bounds.top + layout.geometry.overallHeight,
+                ),
+              ) +
               const Offset(-18, -18),
           small: true,
         );
@@ -1087,15 +1086,10 @@ class WindowDrawingPainter extends CustomPainter {
 
   /// Примечания составного окна: материалы и площадь (общие подписи окантовки
   /// рассчитаны на четырёхугольник и здесь не подходят).
-  void _paintCompositeCallouts(
-    Canvas canvas,
-    CompositeLayout composite,
-  ) {
+  void _paintCompositeCallouts(Canvas canvas, CompositeLayout composite) {
     final bounds = boundsOf(composite.outline);
     if (bounds.width <= 0 || bounds.height <= 0) return;
-    final anchor = layout.toPxPoint(
-      Offset(bounds.left, bounds.top - 36),
-    );
+    final anchor = layout.toPxPoint(Offset(bounds.left, bounds.top - 36));
     _label(
       canvas,
       'основное полотно — ПВХ; второй сегмент — '
@@ -1120,7 +1114,8 @@ class WindowDrawingPainter extends CustomPainter {
     for (var i = 0; i < part.length; i++) {
       final a = part[i];
       final b = part[(i + 1) % part.length];
-      final seam = ((a - composite.seamStart).distance < 1e-6 &&
+      final seam =
+          ((a - composite.seamStart).distance < 1e-6 &&
               (b - composite.seamEnd).distance < 1e-6) ||
           ((a - composite.seamEnd).distance < 1e-6 &&
               (b - composite.seamStart).distance < 1e-6);
@@ -1143,8 +1138,11 @@ class WindowDrawingPainter extends CustomPainter {
         ..isAntiAlias = true
         ..color = screen
             ? const Color(0xFF8C9298).withValues(alpha: 0.16)
-            : Color.lerp(_edgeColor, const Color(0xFFF3F6FA), 0.25)!
-                .withValues(alpha: 0.9),
+            : Color.lerp(
+                _edgeColor,
+                const Color(0xFFF3F6FA),
+                0.25,
+              )!.withValues(alpha: 0.9),
     );
     canvas.drawPath(
       _polygonPath(inner),
@@ -3480,6 +3478,7 @@ class WindowDrawingPainter extends CustomPainter {
       const Offset(62, 0),
       'Высота право ${formatMm(geometry.rightHeight)}',
     );
+    _paintPocketDimensions(canvas);
 
     final extension = _extensionPaint();
     // Выносные линии ширины верха — от actual верхних углов к горизонтальной
@@ -3488,7 +3487,47 @@ class WindowDrawingPainter extends CustomPainter {
     canvas.drawLine(topRight, topWidthRight, extension);
     canvas.drawLine(topLeft, leftHeightTop, extension);
     canvas.drawLine(topRight, rightHeightTop, extension);
+  }
 
+  /// Высота фартука отдельной размерной линией: полная высота окна уже
+  /// включает фартук, но мастеру нужен именно размер подворота.
+  void _paintPocketDimensions(Canvas canvas) {
+    if (!params.pocket && !params.pocketTop) return;
+    final label = 'высота фартука ${formatMm(params.pocketWidth)}';
+    if (params.pocket && !layers.pocketRect.isEmpty) {
+      final rect = layers.pocketRect;
+      _label(
+        canvas,
+        'фартук ${formatMm(params.pocketWidth)} · высота',
+        layout.toPxPoint(rect.center),
+        small: true,
+        color: const Color(0xFF6B4A2F),
+      );
+      _dimension(
+        canvas,
+        Offset(rect.left, rect.top),
+        Offset(rect.left, rect.bottom),
+        const Offset(-24, 0),
+        label,
+      );
+    }
+    if (params.pocketTop && !layers.pocketTopRect.isEmpty) {
+      final rect = layers.pocketTopRect;
+      _label(
+        canvas,
+        'фартук ${formatMm(params.pocketWidth)} · высота',
+        layout.toPxPoint(rect.center),
+        small: true,
+        color: const Color(0xFF6B4A2F),
+      );
+      _dimension(
+        canvas,
+        Offset(rect.left, rect.top),
+        Offset(rect.left, rect.bottom),
+        const Offset(-24, 0),
+        label,
+      );
+    }
   }
 
   void _dimension(

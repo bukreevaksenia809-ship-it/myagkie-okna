@@ -288,11 +288,41 @@ const _fiveZippers = WindowParams(
   rightHeight: 2200,
   zipperSegments: true,
   zippers: [
-    ZipperSpec(centered: false, offsetMm: 500, zipWidthMm: 10, tentWidthMm: 60, weldMm: 10),
-    ZipperSpec(centered: false, offsetMm: 1000, zipWidthMm: 10, tentWidthMm: 60, weldMm: 10),
-    ZipperSpec(centered: false, offsetMm: 1500, zipWidthMm: 10, tentWidthMm: 60, weldMm: 10),
-    ZipperSpec(centered: false, offsetMm: 2000, zipWidthMm: 10, tentWidthMm: 60, weldMm: 10),
-    ZipperSpec(centered: false, offsetMm: 2500, zipWidthMm: 10, tentWidthMm: 60, weldMm: 10),
+    ZipperSpec(
+      centered: false,
+      offsetMm: 500,
+      zipWidthMm: 10,
+      tentWidthMm: 60,
+      weldMm: 10,
+    ),
+    ZipperSpec(
+      centered: false,
+      offsetMm: 1000,
+      zipWidthMm: 10,
+      tentWidthMm: 60,
+      weldMm: 10,
+    ),
+    ZipperSpec(
+      centered: false,
+      offsetMm: 1500,
+      zipWidthMm: 10,
+      tentWidthMm: 60,
+      weldMm: 10,
+    ),
+    ZipperSpec(
+      centered: false,
+      offsetMm: 2000,
+      zipWidthMm: 10,
+      tentWidthMm: 60,
+      weldMm: 10,
+    ),
+    ZipperSpec(
+      centered: false,
+      offsetMm: 2500,
+      zipWidthMm: 10,
+      tentWidthMm: 60,
+      weldMm: 10,
+    ),
   ],
 );
 
@@ -361,6 +391,18 @@ void main() {
         build: (key) => DrawingSheet(
           project: const OrderProject(
             windows: [_fixed, _lifting],
+            sheetMode: SheetMode.grid,
+            gridColumns: 0,
+          ),
+          captureKey: key,
+          labelFontFamily: testFontFamily,
+        ),
+      ),
+      'avto-4-okna': (
+        viewport: a4Viewport,
+        build: (key) => DrawingSheet(
+          project: const OrderProject(
+            windows: [_fixed, _lifting, _mesh, _screen],
             sheetMode: SheetMode.grid,
             gridColumns: 0,
           ),

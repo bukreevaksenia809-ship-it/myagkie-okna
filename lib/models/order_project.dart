@@ -9,9 +9,9 @@ enum SheetMode {
   grid;
 
   String get label => switch (this) {
-        SheetMode.single => 'Одно окно',
-        SheetMode.grid => 'Все окна',
-      };
+    SheetMode.single => 'Одно окно',
+    SheetMode.grid => 'Все окна',
+  };
 }
 
 /// Заказ: одно или несколько окон, параметры раскладки на рулоне, вид листа.
@@ -42,7 +42,7 @@ class OrderProject {
     this.rollGap = 20,
     this.options = const DrawingOptions(),
     this.sheetMode = SheetMode.single,
-    // 0 — «Авто, окон в ряду»: для 2–3 окон программа сама перебирает
+    // 0 — «Авто, окон в ряду»: для 2–4 окон программа сама перебирает
     // раскладки с поворотом и выбирает самую крупную.
     this.gridColumns = 0,
     this.extraQuantities = const {},
@@ -159,9 +159,12 @@ class OrderProject {
   }
 
   OrderProject addWindow() => copyWith(
-        windows: [...windows, selected.copyWith(drawingNumber: '')],
-        selectedIndex: windows.length,
-      );
+    windows: [
+      ...windows,
+      selected.copyWith(drawingNumber: ''),
+    ],
+    selectedIndex: windows.length,
+  );
 
   OrderProject removeSelected() {
     if (windows.length <= 1) return this;
