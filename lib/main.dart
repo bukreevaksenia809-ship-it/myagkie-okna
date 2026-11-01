@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -58,7 +59,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.2.1';
+const String kAppVersion = '2.2.2';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -132,7 +133,6 @@ class SoftWindowApp extends StatelessWidget {
 /// Что показано на листе.
 enum SheetTab { drawing, cut, roll, costs, docs, estimate, techCard }
 
-
 /// «1 лист», «2 листа», «5 листов» — для имени задания печати.
 String _sheetsWord(int count) {
   final mod10 = count % 10;
@@ -152,12 +152,15 @@ class _OrderDraft {
   /// Связь с записью на доске (SQLite). У нового черновика — null.
   final String? orderId;
 
-  _OrderDraft copyWith({String? name, OrderProject? project, String? orderId}) =>
-      _OrderDraft(
-        name: name ?? this.name,
-        project: project ?? this.project,
-        orderId: orderId ?? this.orderId,
-      );
+  _OrderDraft copyWith({
+    String? name,
+    OrderProject? project,
+    String? orderId,
+  }) => _OrderDraft(
+    name: name ?? this.name,
+    project: project ?? this.project,
+    orderId: orderId ?? this.orderId,
+  );
 }
 
 class BuilderScreen extends StatefulWidget {
@@ -193,6 +196,7 @@ class _BuilderScreenState extends State<BuilderScreen>
   Timer? _sessionSaveTimer;
   AppUpdate? _pendingUpdate;
   bool _updateDialogOpen = false;
+  final Set<String> _promptedUpdateVersions = {};
   bool _licenseDialogOpen = false;
 
   /// Горизонтальная прокрутка панели листов: стрелки слева и справа.
@@ -356,17 +360,31 @@ class _BuilderScreenState extends State<BuilderScreen>
     if (kStoreBuild) return;
     final update = await Telemetry.checkUpdate();
     if (!mounted) return;
-    final newer = update != null && _isNewerVersion(update.version, kAppVersion);
+    final newer =
+        update != null && _isNewerVersion(update.version, kAppVersion);
     setState(() => _pendingUpdate = newer ? update : null);
     if (!newer) {
       if (show) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('У вас последняя версия')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('У вас последняя версия')));
       }
       return;
     }
-    if (show) await _showUpdate(update);
+    if (show) {
+      await _showUpdate(update);
+      return;
+    }
+    // На Windows не ждём, пока пользователь заметит бейдж: при запуске и
+    // раз в 30 минут показываем запрос «Обновить сейчас / Позже». Для
+    // каждой версии — один раз за сеанс, «Позже» оставляет бейдж.
+    if (!kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.windows &&
+        _promptedUpdateVersions.add(update.version)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showUpdate(update);
+      });
+    }
   }
 
   bool _isNewerVersion(String remote, String local) {
@@ -389,12 +407,17 @@ class _BuilderScreenState extends State<BuilderScreen>
     _updateDialogOpen = true;
     final download = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: Text('Доступна версия ${update.version}'),
-        content: Text(
-          update.notes.trim().isEmpty
-              ? 'Скачайте установщик и установите обновление.'
-              : '${update.notes}\n\nСкачайте установщик и установите обновление.',
+        content: SingleChildScrollView(
+          child: Text(
+            update.notes.trim().isEmpty
+                ? 'Обновить приложение сейчас? Оно скачает обновление, '
+                      'проверит контрольную сумму и перезапустится.'
+                : '${update.notes}\n\nОбновить приложение сейчас? Оно скачает '
+                      'обновление, проверит контрольную сумму и перезапустится.',
+          ),
         ),
         actions: [
           TextButton(
@@ -403,14 +426,28 @@ class _BuilderScreenState extends State<BuilderScreen>
           ),
           FilledButton.icon(
             onPressed: () => Navigator.of(context).pop(true),
-            icon: const Icon(Icons.download, size: 18),
-            label: const Text('Скачать'),
+            icon: const Icon(Icons.system_update_alt, size: 18),
+            label: const Text('Обновить сейчас'),
           ),
         ],
       ),
     );
     _updateDialogOpen = false;
     if (download != true) return;
+
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+      final applied = await _applyWindowsUpdate(update);
+      if (applied || !mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Автообновление не удалось. Открываю архив — распакуйте его '
+            'поверх папки программы.',
+          ),
+        ),
+      );
+    }
+
     final opened = await launchUrl(
       Uri.parse(update.url),
       mode: LaunchMode.externalApplication,
@@ -421,6 +458,44 @@ class _BuilderScreenState extends State<BuilderScreen>
         SnackBar(content: Text('Не удалось открыть ссылку: ${update.url}')),
       );
     }
+  }
+
+  /// Скачивает и применяет Windows-обновление. При успехе приложение
+  /// перезапускается и этот Future не возвращается.
+  Future<bool> _applyWindowsUpdate(AppUpdate update) async {
+    if (!mounted) return false;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+              SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  'Скачиваю и проверяю обновление…\n'
+                  'Приложение перезапустится автоматически.',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    // Даём маршруту прогресса встать в очередь до возможного выхода
+    // процесса: иначе при быстрой ошибке pop() закроет чужой экран.
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    final ok = await Telemetry.applyUpdate(update);
+    if (!mounted) return ok;
+    if (navigator.canPop()) navigator.pop();
+    return ok;
   }
 
   /// Переключатель мм/см перерисовывает всё приложение: подписи на панели,
@@ -499,9 +574,7 @@ class _BuilderScreenState extends State<BuilderScreen>
     final saved = await SessionStore.load();
     if (!mounted || saved == null) return;
     setState(() {
-      _drafts = [
-        _OrderDraft(name: 'Восстановленный заказ', project: saved),
-      ];
+      _drafts = [_OrderDraft(name: 'Восстановленный заказ', project: saved)];
       _orderIndex = 0;
     });
   }
@@ -698,11 +771,7 @@ class _BuilderScreenState extends State<BuilderScreen>
       setState(() {
         _drafts = [
           ..._drafts,
-          _OrderDraft(
-            name: order.title,
-            project: project,
-            orderId: record?.id,
-          ),
+          _OrderDraft(name: order.title, project: project, orderId: record?.id),
         ];
         _orderIndex = _drafts.length - 1;
         _ordersBusy = false;
@@ -818,8 +887,7 @@ class _BuilderScreenState extends State<BuilderScreen>
     SheetTab.cut => 'Раскрой',
     SheetTab.costs => 'Расходы',
     SheetTab.docs => 'Документация',
-    SheetTab.estimate =>
-      _dealerEstimate ? 'Смета дилер' : 'Смета',
+    SheetTab.estimate => _dealerEstimate ? 'Смета дилер' : 'Смета',
     SheetTab.techCard => 'Техкарта',
   };
 
@@ -1210,10 +1278,7 @@ class _BuilderScreenState extends State<BuilderScreen>
         PopupMenuItem(value: 'warehouse', child: Text('Склад материалов')),
         PopupMenuItem(value: 'board', child: Text('Доска заказов')),
         PopupMenuItem(value: 'watermark', child: Text('Водяной знак')),
-        PopupMenuItem(
-          value: 'pairing',
-          child: Text('Связь с замерщиком'),
-        ),
+        PopupMenuItem(value: 'pairing', child: Text('Связь с замерщиком')),
         if (!kStoreBuild)
           PopupMenuItem(value: 'license', child: Text('Лицензия')),
         PopupMenuItem(value: 'company', child: Text('Компания на листах')),
@@ -1224,42 +1289,42 @@ class _BuilderScreenState extends State<BuilderScreen>
 
   /// Панель параметров: на широком экране слева, на телефоне — в шторке.
   Widget _buildParamsPanel(List<ParamIssue> issues) => ParamsPanel(
-        project: _project,
-        issues: issues,
-        onChanged: _updateProject,
-        onReset: _reset,
-        prices: _prices,
-        orderOverviews: [
-          for (var i = 0; i < _drafts.length; i++)
-            OrderOverview(
-              name: _drafts[i].name,
-              windowCount: _drafts[i].project.windowCount,
-            ),
-        ],
-        selectedOrderIndex: _orderIndex,
-        onSelectOrder: _selectOrderDraft,
-        onCreateOrder: _createOrderDraft,
-        onRenameOrder: _renameOrderDraft,
-        onDeleteOrder: _deleteOrderDraft,
-        pricesSection: PricebookSwitcher(
-          client: _prices,
-          dealer: _dealerPrices,
-          materials: _project.materialsInOrder,
-          onClientChanged: (prices) => setState(() => _prices = prices),
-          onDealerChanged: (prices) => setState(() => _dealerPrices = prices),
+    project: _project,
+    issues: issues,
+    onChanged: _updateProject,
+    onReset: _reset,
+    prices: _prices,
+    orderOverviews: [
+      for (var i = 0; i < _drafts.length; i++)
+        OrderOverview(
+          name: _drafts[i].name,
+          windowCount: _drafts[i].project.windowCount,
         ),
-        techSection: _techSection(),
-        ordersSection: OrdersPanel(
-          orders: _orders,
-          folderPath: ordersFolderDescription(),
-          busy: _ordersBusy,
-          onSave: _saveOrder,
-          onRefresh: _refreshOrders,
-          onOpen: _openOrder,
-          onDelete: _deleteOrder,
-          onBackup: _backupOrders,
-        ),
-      );
+    ],
+    selectedOrderIndex: _orderIndex,
+    onSelectOrder: _selectOrderDraft,
+    onCreateOrder: _createOrderDraft,
+    onRenameOrder: _renameOrderDraft,
+    onDeleteOrder: _deleteOrderDraft,
+    pricesSection: PricebookSwitcher(
+      client: _prices,
+      dealer: _dealerPrices,
+      materials: _project.materialsInOrder,
+      onClientChanged: (prices) => setState(() => _prices = prices),
+      onDealerChanged: (prices) => setState(() => _dealerPrices = prices),
+    ),
+    techSection: _techSection(),
+    ordersSection: OrdersPanel(
+      orders: _orders,
+      folderPath: ordersFolderDescription(),
+      busy: _ordersBusy,
+      onSave: _saveOrder,
+      onRefresh: _refreshOrders,
+      onOpen: _openOrder,
+      onDelete: _deleteOrder,
+      onBackup: _backupOrders,
+    ),
+  );
 
   Future<void> _loadLayoutPrefs() async {
     try {
@@ -1388,8 +1453,7 @@ class _BuilderScreenState extends State<BuilderScreen>
     final selectedSpec = WindowSpec.of(_project.selected);
     final issues = validateParams(_project.selected);
     final rollPlans = buildRollPlans(_project);
-    final width =
-        MediaQuery.sizeOf(context).width - (useRail ? railWidth : 0);
+    final width = MediaQuery.sizeOf(context).width - (useRail ? railWidth : 0);
     final narrow = width < 1000;
     final phone = width < 700;
     // Действия шапки не должны распирать её на планшете: при 1000–1300 px
@@ -1412,138 +1476,139 @@ class _BuilderScreenState extends State<BuilderScreen>
         actions: phone
             ? _phoneActions(context)
             : [
-          if (!kStoreBuild)
-            IconButton(
-              key: const Key('update-appbar'),
-              tooltip: _pendingUpdate == null
-                  ? 'Проверить обновления'
-                  : 'Доступна версия ${_pendingUpdate!.version}',
-              onPressed: () => _checkUpdate(show: true),
-              icon: Badge(
-                isLabelVisible: _pendingUpdate != null,
-                child: const Icon(Icons.system_update_alt),
-              ),
-            ),
-          IconButton(
-            key: const Key('board-appbar'),
-            tooltip: 'Доска заказов',
-            onPressed: () => setState(() => _section = AppSection.orders),
-            icon: const Icon(Icons.view_kanban_outlined),
-          ),
-          IconButton(
-            key: const Key('warehouse-appbar'),
-            tooltip: 'Склад материалов',
-            onPressed: () => setState(() => _section = AppSection.warehouse),
-            icon: const Icon(Icons.inventory_2_outlined),
-          ),
-          IconButton(
-            key: const Key('planner-appbar'),
-            tooltip: 'Ежедневник и сроки',
-            onPressed: () => showOrderPlannerDialog(context, _orders),
-            icon: const Icon(Icons.event_note_outlined),
-          ),
-          IconButton(
-            key: const Key('watermark-appbar'),
-            tooltip: 'Водяной знак на документах',
-            onPressed: () => showWatermarkDialog(context),
-            icon: const Icon(Icons.branding_watermark_outlined),
-          ),
-          IconButton(
-            key: const Key('pairing-appbar'),
-            tooltip: 'Связь с замерщиком',
-            onPressed: _openPairing,
-            icon: const Icon(Icons.phone_iphone),
-          ),
-          if (!kStoreBuild)
-            IconButton(
-              key: const Key('license-appbar'),
-            tooltip: _license?.active == false
-                ? 'Лицензия не активирована'
-                : 'Лицензия',
-            onPressed: _openLicense,
-            icon: Icon(
-              _license?.active == false
-                  ? Icons.key_off_outlined
-                  : Icons.verified_user_outlined,
-            ),
-          ),
-          // Компания на листах — всегда под рукой: настройка глобальная, и
-          // искать её внизу длинной панели неудобно.
-          IconButton(
-            key: const Key('company-appbar'),
-            tooltip: 'Компания на листах: реквизиты и логотип',
-            onPressed: () => showCompanyDialog(context),
-            icon: const Icon(Icons.business_outlined),
-          ),
-          if (_tab == SheetTab.docs)
-            // У документации свои кнопки PDF/печати и своего набора листов:
-            // снимать её как лист чертежа нельзя.
-            const SizedBox.shrink()
-          else if (_exporting)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                if (!kStoreBuild)
+                  IconButton(
+                    key: const Key('update-appbar'),
+                    tooltip: _pendingUpdate == null
+                        ? 'Проверить обновления'
+                        : 'Доступна версия ${_pendingUpdate!.version}',
+                    onPressed: () => _checkUpdate(show: true),
+                    icon: Badge(
+                      isLabelVisible: _pendingUpdate != null,
+                      child: const Icon(Icons.system_update_alt),
+                    ),
+                  ),
+                IconButton(
+                  key: const Key('board-appbar'),
+                  tooltip: 'Доска заказов',
+                  onPressed: () => setState(() => _section = AppSection.orders),
+                  icon: const Icon(Icons.view_kanban_outlined),
                 ),
-              ),
-            )
-          else if (compactActions) ...[
-            IconButton(
-              key: const Key('client-report-narrow'),
-              tooltip: 'Отчёт для клиента',
-              onPressed: _exportClientReport,
-              icon: const Icon(Icons.badge_outlined),
-            ),
-            IconButton(
-              tooltip: 'Сохранить PDF',
-              onPressed: _exportPdf,
-              icon: const Icon(Icons.picture_as_pdf),
-            ),
-            IconButton(
-              tooltip: 'Печать',
-              onPressed: _printSheet,
-              icon: const Icon(Icons.print_outlined),
-            ),
-            IconButton(
-              tooltip: 'Сбросить',
-              onPressed: _reset,
-              icon: const Icon(Icons.restart_alt),
-            ),
-          ] else ...[
-            OutlinedButton.icon(
-              key: const Key('client-report'),
-              onPressed: _exportClientReport,
-              icon: const Icon(Icons.badge_outlined, size: 18),
-              label: const Text('Отчёт клиенту'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: _exportPdf,
-              icon: const Icon(Icons.picture_as_pdf, size: 18),
-              label: Text(
-                _tab == SheetTab.drawing
-                    ? 'Чертёж для производства'
-                    : 'Сохранить ${_sheetPrefix.toLowerCase()}',
-              ),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: _printSheet,
-              icon: const Icon(Icons.print_outlined, size: 18),
-              label: const Text('Печать'),
-            ),
-            const SizedBox(width: 8),
-            TextButton.icon(
-              onPressed: _reset,
-              icon: const Icon(Icons.restart_alt, size: 18),
-              label: const Text('Сбросить'),
-            ),
-          ],
-          const SizedBox(width: 12),
-        ],
+                IconButton(
+                  key: const Key('warehouse-appbar'),
+                  tooltip: 'Склад материалов',
+                  onPressed: () =>
+                      setState(() => _section = AppSection.warehouse),
+                  icon: const Icon(Icons.inventory_2_outlined),
+                ),
+                IconButton(
+                  key: const Key('planner-appbar'),
+                  tooltip: 'Ежедневник и сроки',
+                  onPressed: () => showOrderPlannerDialog(context, _orders),
+                  icon: const Icon(Icons.event_note_outlined),
+                ),
+                IconButton(
+                  key: const Key('watermark-appbar'),
+                  tooltip: 'Водяной знак на документах',
+                  onPressed: () => showWatermarkDialog(context),
+                  icon: const Icon(Icons.branding_watermark_outlined),
+                ),
+                IconButton(
+                  key: const Key('pairing-appbar'),
+                  tooltip: 'Связь с замерщиком',
+                  onPressed: _openPairing,
+                  icon: const Icon(Icons.phone_iphone),
+                ),
+                if (!kStoreBuild)
+                  IconButton(
+                    key: const Key('license-appbar'),
+                    tooltip: _license?.active == false
+                        ? 'Лицензия не активирована'
+                        : 'Лицензия',
+                    onPressed: _openLicense,
+                    icon: Icon(
+                      _license?.active == false
+                          ? Icons.key_off_outlined
+                          : Icons.verified_user_outlined,
+                    ),
+                  ),
+                // Компания на листах — всегда под рукой: настройка глобальная, и
+                // искать её внизу длинной панели неудобно.
+                IconButton(
+                  key: const Key('company-appbar'),
+                  tooltip: 'Компания на листах: реквизиты и логотип',
+                  onPressed: () => showCompanyDialog(context),
+                  icon: const Icon(Icons.business_outlined),
+                ),
+                if (_tab == SheetTab.docs)
+                  // У документации свои кнопки PDF/печати и своего набора листов:
+                  // снимать её как лист чертежа нельзя.
+                  const SizedBox.shrink()
+                else if (_exporting)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  )
+                else if (compactActions) ...[
+                  IconButton(
+                    key: const Key('client-report-narrow'),
+                    tooltip: 'Отчёт для клиента',
+                    onPressed: _exportClientReport,
+                    icon: const Icon(Icons.badge_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Сохранить PDF',
+                    onPressed: _exportPdf,
+                    icon: const Icon(Icons.picture_as_pdf),
+                  ),
+                  IconButton(
+                    tooltip: 'Печать',
+                    onPressed: _printSheet,
+                    icon: const Icon(Icons.print_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Сбросить',
+                    onPressed: _reset,
+                    icon: const Icon(Icons.restart_alt),
+                  ),
+                ] else ...[
+                  OutlinedButton.icon(
+                    key: const Key('client-report'),
+                    onPressed: _exportClientReport,
+                    icon: const Icon(Icons.badge_outlined, size: 18),
+                    label: const Text('Отчёт клиенту'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: _exportPdf,
+                    icon: const Icon(Icons.picture_as_pdf, size: 18),
+                    label: Text(
+                      _tab == SheetTab.drawing
+                          ? 'Чертёж для производства'
+                          : 'Сохранить ${_sheetPrefix.toLowerCase()}',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _printSheet,
+                    icon: const Icon(Icons.print_outlined, size: 18),
+                    label: const Text('Печать'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: _reset,
+                    icon: const Icon(Icons.restart_alt, size: 18),
+                    label: const Text('Сбросить'),
+                  ),
+                ],
+                const SizedBox(width: 12),
+              ],
       ),
       body: Stack(
         fit: StackFit.expand,
@@ -1669,7 +1734,9 @@ class _BuilderScreenState extends State<BuilderScreen>
                   'Всё сохраняется автоматически.',
             ),
           ),
-          Expanded(child: DocsTab(project: _project, prices: _prices)),
+          Expanded(
+            child: DocsTab(project: _project, prices: _prices),
+          ),
         ],
       ),
     );
@@ -1714,10 +1781,9 @@ class _BuilderScreenState extends State<BuilderScreen>
   /// Открывает заказ с доски в конструкторе.
   void _openBoardOrder(OrderRecord order) {
     final repo = OrderRepository.instance;
-    final project = repo.projectOf(order).copyWith(
-      status: order.status,
-      deadline: order.deadline,
-    );
+    final project = repo
+        .projectOf(order)
+        .copyWith(status: order.status, deadline: order.deadline);
     setState(() {
       _drafts.add(
         _OrderDraft(
@@ -1828,143 +1894,157 @@ class _BuilderScreenState extends State<BuilderScreen>
               controller: _toolbarScroll,
               scrollDirection: Axis.horizontal,
               child: Row(
-          children: [
-            SegmentedButton<SheetTab>(
-              segments: const [
-                ButtonSegment(
-                  value: SheetTab.drawing,
-                  icon: Icon(Icons.architecture, size: 18),
-                  label: Text('Чертёж'),
-                ),
-                ButtonSegment(
-                  value: SheetTab.cut,
-                  icon: Icon(Icons.crop_square_outlined, size: 18),
-                  label: Text('Раскрой'),
-                ),
-                ButtonSegment(
-                  value: SheetTab.roll,
-                  icon: Icon(Icons.view_week_outlined, size: 18),
-                  label: Text('Рулон'),
-                ),
-                ButtonSegment(
-                  value: SheetTab.costs,
-                  icon: Icon(Icons.receipt_long_outlined, size: 18),
-                  label: Text('Расходы'),
-                ),
-                ButtonSegment(
-                  value: SheetTab.docs,
-                  icon: Icon(Icons.description_outlined, size: 18),
-                  label: Text('Документация'),
-                ),
-                ButtonSegment(
-                  value: SheetTab.estimate,
-                  icon: Icon(Icons.request_quote_outlined, size: 18),
-                  label: Text('Смета'),
-                ),
-                ButtonSegment(
-                  value: SheetTab.techCard,
-                  icon: Icon(Icons.assignment_outlined, size: 18),
-                  label: Text('Техкарта'),
-                ),
-              ],
-              selected: {_tab},
-              showSelectedIcon: false,
-              onSelectionChanged: (selection) {
-                setState(() => _tab = selection.first);
-                _resetZoom();
-              },
-            ),
-            const SizedBox(width: 12),
-            SegmentedButton<SheetMode>(
-              segments: const [
-                ButtonSegment(
-                  value: SheetMode.single,
-                  label: Text('Одно окно'),
-                ),
-                ButtonSegment(value: SheetMode.grid, label: Text('Все окна')),
-              ],
-              selected: {_project.sheetMode},
-              showSelectedIcon: false,
-              onSelectionChanged: (selection) =>
-                  _updateProject(_project.setSheetMode(selection.first)),
-            ),
-            if (_tab == SheetTab.estimate) ...[
-              const SizedBox(width: 12),
-              SegmentedButton<bool>(
-                showSelectedIcon: false,
-                style: const ButtonStyle(visualDensity: VisualDensity.compact),
-                segments: const [
-                  ButtonSegment(value: false, label: Text('Клиент')),
-                  ButtonSegment(value: true, label: Text('Дилер')),
+                children: [
+                  SegmentedButton<SheetTab>(
+                    segments: const [
+                      ButtonSegment(
+                        value: SheetTab.drawing,
+                        icon: Icon(Icons.architecture, size: 18),
+                        label: Text('Чертёж'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.cut,
+                        icon: Icon(Icons.crop_square_outlined, size: 18),
+                        label: Text('Раскрой'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.roll,
+                        icon: Icon(Icons.view_week_outlined, size: 18),
+                        label: Text('Рулон'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.costs,
+                        icon: Icon(Icons.receipt_long_outlined, size: 18),
+                        label: Text('Расходы'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.docs,
+                        icon: Icon(Icons.description_outlined, size: 18),
+                        label: Text('Документация'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.estimate,
+                        icon: Icon(Icons.request_quote_outlined, size: 18),
+                        label: Text('Смета'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.techCard,
+                        icon: Icon(Icons.assignment_outlined, size: 18),
+                        label: Text('Техкарта'),
+                      ),
+                    ],
+                    selected: {_tab},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (selection) {
+                      setState(() => _tab = selection.first);
+                      _resetZoom();
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  SegmentedButton<SheetMode>(
+                    segments: const [
+                      ButtonSegment(
+                        value: SheetMode.single,
+                        label: Text('Одно окно'),
+                      ),
+                      ButtonSegment(
+                        value: SheetMode.grid,
+                        label: Text('Все окна'),
+                      ),
+                    ],
+                    selected: {_project.sheetMode},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (selection) =>
+                        _updateProject(_project.setSheetMode(selection.first)),
+                  ),
+                  if (_tab == SheetTab.estimate) ...[
+                    const SizedBox(width: 12),
+                    SegmentedButton<bool>(
+                      showSelectedIcon: false,
+                      style: const ButtonStyle(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      segments: const [
+                        ButtonSegment(value: false, label: Text('Клиент')),
+                        ButtonSegment(value: true, label: Text('Дилер')),
+                      ],
+                      selected: {_dealerEstimate},
+                      onSelectionChanged: (selection) =>
+                          setState(() => _dealerEstimate = selection.first),
+                    ),
+                  ],
+                  if (_tab == SheetTab.drawing &&
+                      _project.sheetMode == SheetMode.grid &&
+                      _project.isMultiWindow) ...[
+                    const SizedBox(width: 12),
+                    DropdownButton<int>(
+                      value: _project.gridColumns,
+                      isDense: true,
+                      items: const [
+                        DropdownMenuItem(
+                          value: 0,
+                          child: Text('Авто, окон в ряду'),
+                        ),
+                        DropdownMenuItem(
+                          value: 1,
+                          child: Text('1 в ряд (подробно)'),
+                        ),
+                        DropdownMenuItem(value: 2, child: Text('2 в ряд')),
+                        DropdownMenuItem(value: 3, child: Text('3 в ряд')),
+                        DropdownMenuItem(value: 4, child: Text('4 в ряд')),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          _updateProject(_project.setGridColumns(value));
+                        }
+                      },
+                    ),
+                  ],
+                  const SizedBox(width: 24),
+                  IconButton(
+                    tooltip: 'Отдалить',
+                    onPressed: () => _zoomBy(1 / 1.25),
+                    icon: const Icon(Icons.zoom_out),
+                  ),
+                  Text(
+                    '${(_zoomLevel * 100).round()} %',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF41506A),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Приблизить',
+                    onPressed: () => _zoomBy(1.25),
+                    icon: const Icon(Icons.zoom_in),
+                  ),
+                  IconButton(
+                    tooltip: 'Показать лист целиком',
+                    onPressed: _resetZoom,
+                    icon: const Icon(Icons.fit_screen, size: 20),
+                  ),
+                  const SizedBox(width: 8),
+                  const Tooltip(
+                    message:
+                        'Колесо мыши или трекпад — масштаб, '
+                        'перетаскивание — сдвиг листа. Люверс можно перетащить '
+                        'мышкой вдоль линии окантовки',
+                    child: Icon(
+                      Icons.help_outline,
+                      size: 18,
+                      color: Color(0xFF7C8798),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'v$kAppVersion',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF8A93A0),
+                    ),
+                  ),
                 ],
-                selected: {_dealerEstimate},
-                onSelectionChanged: (selection) =>
-                    setState(() => _dealerEstimate = selection.first),
-              ),
-            ],
-            if (_tab == SheetTab.drawing &&
-                _project.sheetMode == SheetMode.grid &&
-                _project.isMultiWindow) ...[
-              const SizedBox(width: 12),
-              DropdownButton<int>(
-                value: _project.gridColumns,
-                isDense: true,
-                items: const [
-                  DropdownMenuItem(value: 0, child: Text('Авто, окон в ряду')),
-                  DropdownMenuItem(value: 1, child: Text('1 в ряд (подробно)')),
-                  DropdownMenuItem(value: 2, child: Text('2 в ряд')),
-                  DropdownMenuItem(value: 3, child: Text('3 в ряд')),
-                  DropdownMenuItem(value: 4, child: Text('4 в ряд')),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    _updateProject(_project.setGridColumns(value));
-                  }
-                },
-              ),
-            ],
-            const SizedBox(width: 24),
-            IconButton(
-              tooltip: 'Отдалить',
-              onPressed: () => _zoomBy(1 / 1.25),
-              icon: const Icon(Icons.zoom_out),
-            ),
-            Text(
-              '${(_zoomLevel * 100).round()} %',
-              style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF41506A),
-              ),
-            ),
-            IconButton(
-              tooltip: 'Приблизить',
-              onPressed: () => _zoomBy(1.25),
-              icon: const Icon(Icons.zoom_in),
-            ),
-            IconButton(
-              tooltip: 'Показать лист целиком',
-              onPressed: _resetZoom,
-              icon: const Icon(Icons.fit_screen, size: 20),
-            ),
-            const SizedBox(width: 8),
-            const Tooltip(
-              message:
-                  'Колесо мыши или трекпад — масштаб, '
-                  'перетаскивание — сдвиг листа. Люверс можно перетащить '
-                  'мышкой вдоль линии окантовки',
-              child: Icon(
-                Icons.help_outline,
-                size: 18,
-                color: Color(0xFF7C8798),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              'v$kAppVersion',
-              style: const TextStyle(fontSize: 11, color: Color(0xFF8A93A0)),
-            ),
-          ],
               ),
             ),
           ),
@@ -2060,37 +2140,40 @@ class _StatusBar extends StatelessWidget {
               ],
             )
           : Row(
-        children: [
-          _stat('Окон в заказе', '${project.windowCount} шт'),
-          _stat(
-            'Выбранное окно',
-            '№${project.selectedIndex + 1} · '
-                '${formatMm(selectedSpec.geometry.spanX)}×'
-                '${formatMm(selectedSpec.geometry.overallHeight)} ${unitSuffix()}',
-          ),
-          _stat('Площадь изделий', '${formatMeters(totalProductArea)} м²'),
-          _stat('Плёнка: заготовки', '${formatMeters(totalFilmArea)} м²'),
-          _stat('Люверсы', 'всего $totalEyelets шт'),
-          _stat('Шаг крепежа', selectedSpec.eyeletStepLabel),
-          _stat('Расход окантовки', consumptionText),
-          _stat(
-            'Рулоны (материал)',
-            rollPlans.isEmpty
-                ? '—'
-                : rollPlans
-                      .map(
-                        (plan) =>
-                            '${plan.material.label.split(' ').first} '
-                            '${formatMm(plan.rollWidth)}×'
-                            '${formatMm(plan.layout.requiredLength)}',
-                      )
-                      .join(' · '),
-          ),
-          const SizedBox(width: 200, child: _UnitsSwitch()),
-          const SizedBox(width: 8),
-          const _LabelSettingsButton(),
-        ],
-      ),
+              children: [
+                _stat('Окон в заказе', '${project.windowCount} шт'),
+                _stat(
+                  'Выбранное окно',
+                  '№${project.selectedIndex + 1} · '
+                      '${formatMm(selectedSpec.geometry.spanX)}×'
+                      '${formatMm(selectedSpec.geometry.overallHeight)} ${unitSuffix()}',
+                ),
+                _stat(
+                  'Площадь изделий',
+                  '${formatMeters(totalProductArea)} м²',
+                ),
+                _stat('Плёнка: заготовки', '${formatMeters(totalFilmArea)} м²'),
+                _stat('Люверсы', 'всего $totalEyelets шт'),
+                _stat('Шаг крепежа', selectedSpec.eyeletStepLabel),
+                _stat('Расход окантовки', consumptionText),
+                _stat(
+                  'Рулоны (материал)',
+                  rollPlans.isEmpty
+                      ? '—'
+                      : rollPlans
+                            .map(
+                              (plan) =>
+                                  '${plan.material.label.split(' ').first} '
+                                  '${formatMm(plan.rollWidth)}×'
+                                  '${formatMm(plan.layout.requiredLength)}',
+                            )
+                            .join(' · '),
+                ),
+                const SizedBox(width: 200, child: _UnitsSwitch()),
+                const SizedBox(width: 8),
+                const _LabelSettingsButton(),
+              ],
+            ),
     );
   }
 
