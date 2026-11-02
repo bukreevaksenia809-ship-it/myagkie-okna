@@ -486,6 +486,7 @@ class WindowDrawingPainter extends CustomPainter {
     _paintDrains(canvas);
     if (options.showDimensions) _paintDimensions(canvas);
     if (options.showCallouts) _paintCallouts(canvas);
+    _paintLevelArrows(canvas);
     if (options.showCallouts &&
         (params.isScreen || layers.zipperBandTotalMm > 0)) {
       _paintBlankNote(canvas, size);
@@ -2580,7 +2581,9 @@ class WindowDrawingPainter extends CustomPainter {
   }
 
   void _paintEyelets(Canvas canvas) {
-    final eyelets = layers.eyelets;
+    // Люверсы рисуем только там, где нет скобы/замка/ремня: каждое
+    // отверстие — один вид крепежа, а не люверс + замок одновременно.
+    final eyelets = layers.standaloneEyelets;
     if (eyelets.isEmpty) return;
 
     // Расстояние до ближайшего соседнего люверса на листе: по нему решаем,
@@ -2739,7 +2742,7 @@ class WindowDrawingPainter extends CustomPainter {
   void _paintFasteners(Canvas canvas) {
     // Скрин крепится по подвороту так же, как ПВХ по окантовке: тип крепежа
     // действует, по низу и бокам рисуем выбранные скобы/замки/ремни.
-    final eyelets = layers.movableSideEyelets;
+    final eyelets = layers.autoFastenerEyelets;
     if (eyelets.isEmpty) return;
     if (params.fastenerType == FastenerType.eyeletsOnly) return;
 
@@ -3479,6 +3482,7 @@ class WindowDrawingPainter extends CustomPainter {
       'Высота право ${formatMm(geometry.rightHeight)}',
     );
     _paintPocketDimensions(canvas);
+    _paintInnerPvcDimensions(canvas);
 
     final extension = _extensionPaint();
     // Выносные линии ширины верха — от actual верхних углов к горизонтальной
@@ -3489,8 +3493,83 @@ class WindowDrawingPainter extends CustomPainter {
     canvas.drawLine(topRight, rightHeightTop, extension);
   }
 
+  /// Внутренний размер ПВХ с запайкой: внешний габарит минус готовая
+  /// окантовка плюс напайка под неё. Рисуем маленькими стрелками внутри
+  /// полотна, чтобы мастер видел и внешний, и внутренний размер.
+  void _paintInnerPvcDimensions(Canvas canvas) {
+    final visible = layers.filmVisibleBounds;
+    if (visible.width <= 0 || visible.height <= 0) return;
+    final weld = params.isScreen ? 0.0 : params.weldOverlapMm * 2;
+    final width = visible.width + weld;
+    final height = visible.height + weld;
+    final topLeft = layout.toPxPoint(Offset(visible.left, visible.top));
+    final bottomRight = layout.toPxPoint(Offset(visible.right, visible.bottom));
+    final top = math.min(topLeft.dy, bottomRight.dy);
+    final bottom = math.max(topLeft.dy, bottomRight.dy);
+    final left = math.min(topLeft.dx, bottomRight.dx);
+    final right = math.max(topLeft.dx, bottomRight.dx);
+    _dimension(
+      canvas,
+      Offset(left, top),
+      Offset(right, top),
+      const Offset(0, 26),
+      'внутр. ${formatMm(width)}',
+      fontSize: 8.8,
+      arrowScale: 0.72,
+    );
+    _dimension(
+      canvas,
+      Offset(left, bottom),
+      Offset(left, top),
+      const Offset(18, 0),
+      'внутр. ${formatMm(height)}',
+      fontSize: 8.8,
+      arrowScale: 0.72,
+    );
+  }
+
   /// Высота фартука отдельной размерной линией: полная высота окна уже
   /// включает фартук, но мастеру нужен именно размер подворота.
+  /// Стрелка «Ровно лево/право»: показывает, какая вертикальная кромка
+  /// выпрямлена. Направление стрелки совпадает с выбранной стороной.
+  void _paintLevelArrows(Canvas canvas) {
+    if (!params.levelLeft && !params.levelRight) return;
+    final bounds = layers.filmVisibleBounds;
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    final topLeft = layout.toPxPoint(Offset(bounds.left, bounds.top));
+    final topRight = layout.toPxPoint(Offset(bounds.right, bounds.top));
+    final y = topLeft.dy - 18;
+    if (y < 8) return;
+    void arrow(bool left) {
+      final edge = left ? topLeft.dx : topRight.dx;
+      // Стрелка стоит внутри полотна и смотрит на выпрямленную кромку:
+      // влево — левая кромка, вправо — правая.
+      final tip = edge + (left ? 42.0 : -42.0);
+      final start = edge + (left ? 8.0 : -8.0);
+      final paint = Paint()
+        ..color = const Color(0xFF0B62C4)
+        ..strokeWidth = 1.6
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(Offset(start, y), Offset(tip, y), paint);
+      _arrowHead(
+        canvas,
+        Offset(tip, y),
+        left ? const Offset(-1, 0) : const Offset(1, 0),
+        color: const Color(0xFF0B62C4),
+      );
+      _label(
+        canvas,
+        left ? 'Ровно лево' : 'Ровно право',
+        Offset((start + tip) / 2, y - 10),
+        small: true,
+        color: const Color(0xFF0B62C4),
+      );
+    }
+
+    if (params.levelLeft) arrow(true);
+    if (params.levelRight) arrow(false);
+  }
+
   void _paintPocketDimensions(Canvas canvas) {
     if (!params.pocket && !params.pocketTop) return;
     final label = 'высота фартука ${formatMm(params.pocketWidth)}';
@@ -3535,8 +3614,10 @@ class WindowDrawingPainter extends CustomPainter {
     Offset a,
     Offset b,
     Offset offset,
-    String text,
-  ) {
+    String text, {
+    double? fontSize,
+    double arrowScale = 1,
+  }) {
     final distance = offset.distance;
     if (distance < 1) return;
     final outward = offset / distance;
@@ -3555,11 +3636,11 @@ class WindowDrawingPainter extends CustomPainter {
       ..color = _ink
       ..strokeWidth = 1.3;
     canvas.drawLine(a2, b2, dimensionPaint);
-    _arrowHead(canvas, a2, -unit);
-    _arrowHead(canvas, b2, unit);
+    _arrowHead(canvas, a2, -unit, scale: arrowScale);
+    _arrowHead(canvas, b2, unit, scale: arrowScale);
 
     final middle = (a2 + b2) / 2;
-    final dimensionPx = _labelPx(LabelKind.dimensionChain);
+    final dimensionPx = fontSize ?? _labelPx(LabelKind.dimensionChain);
     _label(
       canvas,
       text,
@@ -3569,9 +3650,15 @@ class WindowDrawingPainter extends CustomPainter {
     );
   }
 
-  void _arrowHead(Canvas canvas, Offset tip, Offset direction) {
-    const length = 13.5;
-    const halfWidth = 5.0;
+  void _arrowHead(
+    Canvas canvas,
+    Offset tip,
+    Offset direction, {
+    Color color = _ink,
+    double scale = 1,
+  }) {
+    final length = 13.5 * scale;
+    final halfWidth = 5.0 * scale;
     final back = tip - direction * length;
     final normal = Offset(-direction.dy, direction.dx) * halfWidth;
     final path = Path()
@@ -3579,7 +3666,7 @@ class WindowDrawingPainter extends CustomPainter {
       ..lineTo(back.dx + normal.dx, back.dy + normal.dy)
       ..lineTo(back.dx - normal.dx, back.dy - normal.dy)
       ..close();
-    canvas.drawPath(path, Paint()..color = _ink);
+    canvas.drawPath(path, Paint()..color = color);
   }
 
   // -------------------------------------------------------------- выноски

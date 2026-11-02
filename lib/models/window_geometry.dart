@@ -940,8 +940,10 @@ class CompositeLayout {
     if (!spec.isDiagonal) {
       // Шов параллелен стороне и смещён внутрь на вынос: второй сегмент —
       // полоса ВНУТРИ введённых габаритов, поэтому размер окна не меняется.
-      final room = math.max((centroid - middle).dx * inward.dx +
-          (centroid - middle).dy * inward.dy, 1.0);
+      final room = math.max(
+        (centroid - middle).dx * inward.dx + (centroid - middle).dy * inward.dy,
+        1.0,
+      );
       final rawDepth = spec.depth.isFinite ? spec.depth : 0.0;
       final depth = rawDepth.clamp(1.0, room * 1.8);
       final clamped = (rawDepth - depth).abs() > 1e-6;
@@ -985,8 +987,11 @@ class CompositeLayout {
         ? spec.seamOffset.clamp(0.05, 0.95)
         : 0.5;
     final pivot = a + u * (length * fraction);
-    final angle = (spec.seamAngleDeg.isFinite ? spec.seamAngleDeg.abs() : 25.0)
-        .clamp(5.0, 80.0) *
+    final angle =
+        (spec.seamAngleDeg.isFinite ? spec.seamAngleDeg.abs() : 25.0).clamp(
+          5.0,
+          80.0,
+        ) *
         math.pi /
         180;
     final dir = u * math.cos(angle) + inward * math.sin(angle);
@@ -1131,7 +1136,6 @@ class CompositeLayout {
   }
 
   static double _cross(Offset a, Offset b) => a.dx * b.dy - a.dy * b.dx;
-
 
   /// Параметры t пересечения прямой `origin + dir * t` с рёбрами контура.
   static List<double> _lineHits(
@@ -1628,7 +1632,8 @@ class WindowLayers {
       final a = polygon[i];
       final b = polygon[(i + 1) % polygon.length];
       // Сторона шва: припуск/подворот там не нужен — это стык двух деталей.
-      final seam = ((a - composite.seamStart).distance < 1e-6 &&
+      final seam =
+          ((a - composite.seamStart).distance < 1e-6 &&
               (b - composite.seamEnd).distance < 1e-6) ||
           ((a - composite.seamEnd).distance < 1e-6 &&
               (b - composite.seamStart).distance < 1e-6);
@@ -1671,10 +1676,7 @@ class WindowLayers {
     ];
   }
 
-  List<Offset> _edgeInnerForPart(
-    List<Offset> polygon,
-    FilmMaterial material,
-  ) {
+  List<Offset> _edgeInnerForPart(List<Offset> polygon, FilmMaterial material) {
     if (material == FilmMaterial.screen) return polygon;
     return insetPolygonPerSide(polygon, _partEdgeAmounts(polygon, material, 1));
   }
@@ -1711,10 +1713,9 @@ class WindowLayers {
             polygon,
             (side) =>
                 finishedWidthFor(side) -
-                params.fastenerOffsetMmFor(edgeSideOf(side)).clamp(
-                  0.0,
-                  finishedWidthFor(side),
-                ),
+                params
+                    .fastenerOffsetMmFor(edgeSideOf(side))
+                    .clamp(0.0, finishedWidthFor(side)),
           ),
         ),
     ];
@@ -1727,7 +1728,10 @@ class WindowLayers {
     FilmMaterial material,
   ) {
     if (material == FilmMaterial.screen) return polygon;
-    return insetPolygonPerSide(polygon, _partEdgeAmounts(polygon, material, 0.5));
+    return insetPolygonPerSide(
+      polygon,
+      _partEdgeAmounts(polygon, material, 0.5),
+    );
   }
 
   /// Отступы по рёбрам части составного окна: на шве — 0, на свободных
@@ -1833,7 +1837,8 @@ class WindowLayers {
                 visible.left + width / 2,
                 visible.right - width / 2,
               );
-        final edge = x - width / 2 <= visible.left + 0.5 ||
+        final edge =
+            x - width / 2 <= visible.left + 0.5 ||
             x + width / 2 >= visible.right - 0.5;
         if (!edge) continue;
         // Полоса у края целиком вычитается из ширины заготовки: её размер
@@ -1865,8 +1870,8 @@ class WindowLayers {
         () {
           final half = line.bandWidth / 2;
           final x = line.start.dx;
-          final edge = x - half <= visible.left + 0.5 ||
-              x + half >= visible.right - 0.5;
+          final edge =
+              x - half <= visible.left + 0.5 || x + half >= visible.right - 0.5;
           final gap = line.bandWidth;
           return (
             center: x,
@@ -1921,6 +1926,24 @@ class WindowLayers {
     return eyelets
         .where((eyelet) => eyelet.side != WindowSide.top && !eyelet.isCorner)
         .toList(growable: false);
+  }
+
+  /// Точки, в которых крепёж ставится АВТОМАТИЧЕСКИ по выбранному типу.
+  ///
+  /// Если сторону расставили вручную, её точки — это уже выбранные мастером
+  /// люверсы/замки; автоматический тип к ним не применяется. Без этого
+  /// 19 ручных люверсов превращались в 19 замков, а строка люверсов
+  /// исчезала из сметы.
+  List<EyeletPlacement> get autoFastenerEyelets {
+    if (params.fastenerType == FastenerType.eyeletsOnly) return const [];
+    return movableSideEyelets
+        .where((eyelet) => !_sideHasManualEyelets(eyelet.side))
+        .toList(growable: false);
+  }
+
+  bool _sideHasManualEyelets(WindowSide side) {
+    if (isTShape || isComposite) return false;
+    return params.hasManualEyelets(edgeSideOf(side));
   }
 
   List<EyeletPlacement> get topEyelets =>
@@ -1982,8 +2005,7 @@ class WindowLayers {
   /// точке. Именно они идут строкой «Люверс» в расходе и смете: замок на
   /// чертеже заменяет люверс, а не добавляется к нему.
   List<EyeletPlacement> get standaloneEyelets {
-    if (params.fastenerType == FastenerType.eyeletsOnly) return eyelets;
-    final fasteners = movableSideEyelets;
+    final fasteners = autoFastenerEyelets;
     return [
       for (final eyelet in eyelets)
         if (!fasteners.any(
@@ -1995,10 +2017,7 @@ class WindowLayers {
 
   /// Все точки крепежа: автомат по типу окна + добавленные вручную.
   int get fastenerPointsCount =>
-      (params.fastenerType == FastenerType.eyeletsOnly
-          ? 0
-          : movableSideEyelets.length) +
-      manualFasteners.length;
+      autoFastenerEyelets.length + manualFasteners.length;
 
   /// Тип люверса, который ставится по сторонам окна.
   EyeletType get eyeletType => params.effectiveEyeletType;
@@ -2291,8 +2310,7 @@ class WindowLayers {
   ///
   /// Спайка с соседним окном удалена; шов составного окна считается отдельно
   /// ([WindowSpec.compositeSeamLength]).
-  double get weldLengthMm =>
-      isTShape ? tLayout!.weldedSeamLength : 0;
+  double get weldLengthMm => isTShape ? tLayout!.weldedSeamLength : 0;
 
   /// Готовые подписи расхода окантовки: «Тент 100 мм — 654 см».
   List<String> get edgeConsumptionLabels {
@@ -2356,21 +2374,21 @@ class WindowLayers {
     final bounds = filmVisibleBounds;
     // У края сторона задаётся явно: так две молнии могут стоять и слева,
     // и справа, не перекрывая друг друга.
-    final onLeft = spec.atEdge ? !spec.edgeRight : () {
-      final requested = spec.centered
-          ? bounds.center.dx
-          : bounds.left + spec.offsetMm;
-      return requested < bounds.center.dx;
-    }();
+    final onLeft = spec.atEdge
+        ? !spec.edgeRight
+        : () {
+            final requested = spec.centered
+                ? bounds.center.dx
+                : bounds.left + spec.offsetMm;
+            return requested < bounds.center.dx;
+          }();
     // У края в полосу входит готовая окантовка этой стороны.
     final edgeFinished = onLeft ? finishedWidths[3] : finishedWidths[1];
     final band = spec.bandWidthFor(edgeFinished);
     final half = math.max(band, 20) / 2;
     final x = spec.atEdge
         ? (onLeft ? bounds.left + half : bounds.right - half)
-        : (spec.centered
-              ? bounds.center.dx
-              : bounds.left + spec.offsetMm)
+        : (spec.centered ? bounds.center.dx : bounds.left + spec.offsetMm)
               .clamp(bounds.left + half, bounds.right - half);
     return (
       start: Offset(x, bounds.top),
@@ -2570,10 +2588,13 @@ class WindowLayers {
         // (включая пустой список — «на этой стороне люверсов нет»).
         final manualSide = params.hasManualEyelets(edgeSideOf(side));
         if (manualSide && !isTShape && !isComposite) {
-          final points = params.eyeletPositions
-              .where((position) => position.side == edgeSideOf(side))
-              .toList()
-            ..sort((left, right) => left.fraction.compareTo(right.fraction));
+          final points =
+              params.eyeletPositions
+                  .where((position) => position.side == edgeSideOf(side))
+                  .toList()
+                ..sort(
+                  (left, right) => left.fraction.compareTo(right.fraction),
+                );
           for (final point in points) {
             final fraction = point.fraction.clamp(0.0, 1.0);
             final center = a + unit * (length * fraction);
@@ -2583,15 +2604,19 @@ class WindowLayers {
             // нему: иначе в смете остаётся строка круглых люверсов, которых
             // на изделии нет.
             if (point.kind == MarkerKind.frenchLock ||
+                point.kind == MarkerKind.metalFrenchLock ||
                 point.kind == MarkerKind.turnBuckle) {
               manualFasteners.add(
                 ManualFastener(
                   center: center,
                   side: side,
                   angle: angle,
-                  type: point.kind == MarkerKind.frenchLock
-                      ? FastenerType.frenchLocks
-                      : FastenerType.turnBuckles,
+                  type: switch (point.kind) {
+                    MarkerKind.frenchLock => FastenerType.frenchLocks,
+                    MarkerKind.metalFrenchLock => FastenerType.metalFrenchLock,
+                    MarkerKind.turnBuckle => FastenerType.turnBuckles,
+                    _ => FastenerType.frenchLocks,
+                  },
                 ),
               );
               continue;
@@ -2664,8 +2689,7 @@ class WindowLayers {
 
         if (placements.length > 6000) break;
         for (var k = 0; k <= intervals; k++) {
-          var distance = offset +
-              (exact ? exactDistances[k] : actual * k);
+          var distance = offset + (exact ? exactDistances[k] : actual * k);
           final isCornerIndex = offset < 0.5 && (k == 0 || k == intervals);
 
           if (!params.roundEyeletsEnabled && isCornerIndex && offset < 0.5) {
@@ -2829,10 +2853,7 @@ class WindowSpec {
     if (polygons.length < 2) return const [];
     final cutouts = layers.cutoutAreaMm2 / 1000000;
     final main = polygonArea(polygons[0]).abs() / 1000000 - cutouts;
-    return [
-      main < 0 ? 0 : main,
-      polygonArea(polygons[1]).abs() / 1000000,
-    ];
+    return [main < 0 ? 0 : main, polygonArea(polygons[1]).abs() / 1000000];
   }
 
   /// Геометрия Т-окна (null у обычного).
@@ -3193,9 +3214,7 @@ class WindowSpec {
     if (isComposite || params.zippers.isEmpty) {
       return pieces;
     }
-    final gaps = layers.zipperSegmentLayout
-        .where((gap) => !gap.edge)
-        .toList()
+    final gaps = layers.zipperSegmentLayout.where((gap) => !gap.edge).toList()
       ..sort((a, b) => a.center.compareTo(b.center));
     if (gaps.isEmpty) return pieces;
 
@@ -3340,6 +3359,9 @@ class WindowSpec {
 
   int get eyeletCount => layers.eyeletCount;
 
+  /// Люверсы без скоб/замков — столько ставится именно люверсов.
+  int get standaloneEyeletCount => layers.standaloneEyelets.length;
+
   double? get eyeletStepMin =>
       layers.eyeletSteps.isEmpty ? null : layers.eyeletSteps.reduce(math.min);
   double? get eyeletStepMax =>
@@ -3369,7 +3391,12 @@ class WindowSpec {
     ];
     final groups = <String, List<String>>{};
     for (final (name, width) in sides) {
-      groups.putIfAbsent(edgeBandLabel(width, short: true), () => []).add(name);
+      groups
+          .putIfAbsent(
+            'готовая ${formatMm(WindowParams.finishedEdgeWidth(width))} ${unitSuffix()}',
+            () => [],
+          )
+          .add(name);
     }
     return groups.entries
         .map((entry) => '${entry.key}: ${entry.value.join(', ')}')
@@ -4464,9 +4491,7 @@ List<Offset> insetPolygonPerSide(List<Offset> polygon, List<double> distances) {
     final raw = i < distances.length ? distances[i] : distances.last;
     // Отрицательное расстояние — расширение контура наружу (заготовка скрина
     // с подворотом). Ограничиваем и его, чтобы контур не вывернулся.
-    final distance = !raw.isFinite
-        ? 0.0
-        : raw.clamp(-limit * 0.9, limit);
+    final distance = !raw.isFinite ? 0.0 : raw.clamp(-limit * 0.9, limit);
     shifted.add((a + inward * distance, b + inward * distance));
   }
 

@@ -165,17 +165,18 @@ void main() {
     // Все пять пресетов — на каждой из четырёх сторон.
     for (final preset in WindowParams.edgePresets) {
       expect(
-        find.text(edgeBandLabel(preset, short: true)),
-        findsNWidgets(EdgeSide.values.length),
-        reason: 'пресет ${formatMm(preset)} мм на каждую сторону',
+        find.text('${formatMm(WindowParams.finishedEdgeWidth(preset))} мм'),
+        findsAtLeastNWidgets(EdgeSide.values.length),
+        reason:
+            'готовый пресет ${formatMm(WindowParams.finishedEdgeWidth(preset))} мм',
       );
     }
 
-    // Низ — 80 мм, верх — 120 мм: кнопки пишут ширину рулона в модель.
-    await tester.ensureVisible(find.text('80 мм').first);
-    await tester.tap(find.text('80 мм').first);
+    // Готовые 40 и 60 мм соответствуют рулонам 80 и 120 мм.
+    await tester.ensureVisible(find.text('40 мм').first);
+    await tester.tap(find.text('40 мм').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('120 мм').last);
+    await tester.tap(find.text('60 мм').last);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
@@ -812,7 +813,14 @@ void _screenZipperBlankRules() {
           hemRightMm: 40,
           hemTopMm: 40,
           hemLeftMm: 40,
-          zippers: [ZipperSpec(centered: true, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)],
+          zippers: [
+            ZipperSpec(
+              centered: true,
+              zipWidthMm: 10,
+              tentWidthMm: 40,
+              weldMm: 20,
+            ),
+          ],
         ),
       ],
     );
@@ -855,7 +863,14 @@ void _screenZipperBlankRules() {
           topWidth: 2000,
           leftHeight: 2000,
           rightHeight: 2000,
-          zippers: [ZipperSpec(centered: true, zipWidthMm: 10, tentWidthMm: 40, weldMm: 20)],
+          zippers: [
+            ZipperSpec(
+              centered: true,
+              zipWidthMm: 10,
+              tentWidthMm: 40,
+              weldMm: 20,
+            ),
+          ],
         ),
       ],
     );

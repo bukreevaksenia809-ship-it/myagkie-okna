@@ -157,9 +157,9 @@ class CostsSheet extends StatelessWidget {
         if (spec.strapCount > 0) 'ремни ${spec.strapCount}',
         // Крепёж подвижных сторон — по числу точек низа и боков (без углов).
         if (spec.params.fastenerType != FastenerType.eyeletsOnly &&
-            spec.layers.movableSideEyelets.isNotEmpty)
+            spec.layers.autoFastenerEyelets.isNotEmpty)
           '${spec.params.fastenerType.itemTitle.toLowerCase()} '
-              '${spec.layers.movableSideEyelets.length}',
+              '${spec.layers.autoFastenerEyelets.length}',
         if ((spec.params.isLifting || spec.params.isScreen) &&
             spec.layers.topEyelets.isNotEmpty)
           'саморезы ${spec.layers.topEyelets.length}',
@@ -191,7 +191,7 @@ class CostsSheet extends StatelessWidget {
         formatMeters(spec.productAreaM2),
         // Заготовка по контуру к раскрою, с усадкой.
         formatMeters(spec.filmCutAreaWithShrinkageM2),
-        '${spec.eyeletCount}',
+        '${spec.standaloneEyeletCount}',
         spec.params.isScreen
             ? 'подворот ${spec.params.hemBySideShortLabel}'
             : spec.edgeConsumptionLabels.join('; '),

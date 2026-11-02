@@ -176,7 +176,7 @@ class TechCard {
             '(низ/право/верх/лево), шов ${formatMm(screenSeamMm)} ${unitSuffix()} · заготовка '
             '${formatMm(spec.filmCutWidthWithAllowance)} × '
             '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()} · '
-            'люверсы: ${spec.eyeletCount} шт, интервал '
+            'люверсы: ${spec.standaloneEyeletCount} шт, интервал '
             '${formatMm(params.eyeletStep)} ${unitSuffix()} (факт. '
             '${spec.eyeletStepLabel}) · '
             'крепёж: ${spec.fastenerSummary.toLowerCase()}'
@@ -186,7 +186,7 @@ class TechCard {
             '${params.hasShrinkage ? ' и усадкой' : ''}: '
             '${formatMm(spec.filmCutWidthWithShrinkage)} × '
             '${formatMm(spec.filmCutHeightWithShrinkage)} ${unitSuffix()} · '
-            'люверсы: ${spec.eyeletCount} шт, интервал '
+            'люверсы: ${spec.standaloneEyeletCount} шт, интервал '
             '${formatMm(params.eyeletStep)} ${unitSuffix()} (факт. ${spec.eyeletStepLabel}) · '
             'крепёж: ${spec.fastenerSummary.toLowerCase()}';
 
@@ -433,11 +433,11 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
             size:
                 '${formatMm(spec.filmPartBounds[0].width)} × '
                 '${formatMm(spec.filmPartBounds[0].height)} ${unitSuffix()}',
-            note: 'ПВХ, окантовка по свободным кромкам, сторона шва без окантовки',
+            note:
+                'ПВХ, окантовка по свободным кромкам, сторона шва без окантовки',
           ),
           TechMaterial(
-            name:
-                'Второй сегмент: ${params.composite.material.label}',
+            name: 'Второй сегмент: ${params.composite.material.label}',
             size:
                 '${formatMm(spec.filmPartBounds[1].width)} × '
                 '${formatMm(spec.filmPartBounds[1].height)} ${unitSuffix()}',
@@ -519,7 +519,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
       control:
           'Линия стыка ровная, без складок и расхождений; шов герметичен, '
           'нахлёст 20 ${unitSuffix()}, полотно не поведено.',
-      source: 'WindowParams.spliceStripMm / spliceSide; '
+      source:
+          'WindowParams.spliceStripMm / spliceSide; '
           'WindowSpec.filmCutWidthWithAllowance',
     );
   }
@@ -657,8 +658,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     }
     add(
       kind: TechOperationKind.weldNeighbor,
-      title: compositeSeam > 0 &&
-              !(params.isTShape && spec.tWeldedSeamLength > 0)
+      title:
+          compositeSeam > 0 && !(params.isTShape && spec.tWeldedSeamLength > 0)
           ? 'Спайка составного окна'
           : params.isTShape && spec.tWeldedSeamLength > 0
           ? 'Спайка полотен по общим сторонам'
@@ -754,10 +755,11 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
 
   // ---------------------------------------------------------- 5. люверсы
   final eyeletType = spec.eyeletType;
-  final roundCount = layers.eyelets
+  final standaloneEyelets = layers.standaloneEyelets;
+  final roundCount = standaloneEyelets
       .where((eyelet) => layers.typeFor(eyelet).isRound)
       .length;
-  final ovalCount = spec.eyeletCount - roundCount;
+  final ovalCount = standaloneEyelets.length - roundCount;
   // Крепёж подвижных сторон. У скрина он ставится по подвороту, у ПВХ — по
   // окантовке, но правило сторон одно: низ и бока, сверху саморезы или
   // люверсы. Тип крепежа у скрина больше не игнорируется.
@@ -767,15 +769,15 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
   // Французские замки стоят по вертикали: на окно — сумма левой и правой
   // высот ÷ шаг, вверх до чётного. Плюс 2 шт — запас на весь заказ, поэтому
   // в техкарте окна он показан отдельной пометкой, а не в количестве.
-  final frenchLockCount = isFrenchLock
-      ? layers.movableSideEyelets.length
-      : 0;
-  final movableFastenerCount =
-      isFrenchLock ? frenchLockCount : layers.movableSideEyelets.length;
+  final frenchLockCount = isFrenchLock ? layers.autoFastenerEyelets.length : 0;
+  final movableFastenerCount = isFrenchLock
+      ? frenchLockCount
+      : layers.autoFastenerEyelets.length;
   final topScrewCount = layers.topEyelets.length;
   final String fastenerNote;
   if (isFrenchLock) {
-    fastenerNote = 'Крепёж: пластиковая скоба — по чертежу: '
+    fastenerNote =
+        'Крепёж: пластиковая скоба — по чертежу: '
         '(${formatMm(params.leftHeight)} + ${formatMm(params.rightHeight)}) '
         '${unitSuffix()} ÷ шаг ${formatMm(params.eyeletStep)} ${unitSuffix()} '
         '= $frenchLockCount шт на окно (вверх до чётного); '
@@ -805,7 +807,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
     title: 'Люверсы',
     description:
         'Установить люверсы ${eyeletType.displayLabel.toLowerCase()} — всего '
-        '${spec.eyeletCount} шт, интервал задан '
+        '${standaloneEyelets.length} шт, интервал задан '
         '${formatMm(params.eyeletStep)} ${unitSuffix()}, фактически '
         '${spec.eyeletStepLabel} по сторонам (число интервалов округляется '
         'вверх, поэтому факт не больше заданного), отступ от угла '
@@ -851,7 +853,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
         // Строка крепежа есть только у реального крепежа: у «только люверсы»
         // её нет ни на ПВХ, ни на скрине — иначе техкарта разошлась бы с
         // расходом (там fastenerCount для этого типа равен нулю).
-        if ((isFrenchLock || layers.movableSideEyelets.isNotEmpty) &&
+        if ((isFrenchLock || layers.autoFastenerEyelets.isNotEmpty) &&
             params.fastenerType != FastenerType.eyeletsOnly &&
             (params.isLifting || isScreen || isFrenchLock))
           TechMaterial(
@@ -979,7 +981,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           'Вырезать ${params.cutouts.length} шт по разметке: '
           '${spec.cutoutsSummary}. Кромку обработать окантовкой по всему '
           'контуру${params.cutouts.any((cutout) => cutout.eyeletCount > 0) ? ', '
-                'поставить люверсы по контуру вырезов' : ''}.',
+                    'поставить люверсы по контуру вырезов' : ''}.',
       materials: cutoutMaterials,
       tool: 'Нож, шаблон или циркуль, маркер, фен-сварочник',
       control:
@@ -1130,5 +1132,3 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
 
   return operations;
 }
-
-

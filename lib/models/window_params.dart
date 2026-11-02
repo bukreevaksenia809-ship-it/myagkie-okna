@@ -214,17 +214,16 @@ class CompositeSpec {
     CompositeSeam? seam,
     double? seamOffset,
     double? seamAngleDeg,
-  }) =>
-      CompositeSpec(
-        side: side ?? this.side,
-        material: material ?? this.material,
-        width: width ?? this.width,
-        depth: depth ?? this.depth,
-        offset: offset ?? this.offset,
-        seam: seam ?? this.seam,
-        seamOffset: seamOffset ?? this.seamOffset,
-        seamAngleDeg: seamAngleDeg ?? this.seamAngleDeg,
-      );
+  }) => CompositeSpec(
+    side: side ?? this.side,
+    material: material ?? this.material,
+    width: width ?? this.width,
+    depth: depth ?? this.depth,
+    offset: offset ?? this.offset,
+    seam: seam ?? this.seam,
+    seamOffset: seamOffset ?? this.seamOffset,
+    seamAngleDeg: seamAngleDeg ?? this.seamAngleDeg,
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -240,15 +239,15 @@ class CompositeSpec {
 
   @override
   int get hashCode => Object.hash(
-        side,
-        material,
-        width,
-        depth,
-        offset,
-        seam,
-        seamOffset,
-        seamAngleDeg,
-      );
+    side,
+    material,
+    width,
+    depth,
+    offset,
+    seam,
+    seamOffset,
+    seamAngleDeg,
+  );
 }
 
 /// Технология изделия. Отдельного поля у окна нет: технология выводится из
@@ -274,14 +273,7 @@ enum WindowTech {
 /// без коричневого тента-окантовки, а крепится только люверсами по подвороту
 /// (см. [WindowParams.isScreen], [WindowParams.hemWidths], [screenSeamMm]).
 enum FilmMaterial {
-  clearPvc('Обычный ПВХ', 'ПВХ 700 мкм', [
-    1400,
-    1800,
-    2000,
-    2400,
-    2600,
-    3000,
-  ]),
+  clearPvc('Обычный ПВХ', 'ПВХ 700 мкм', [1400, 1800, 2000, 2400, 2600, 3000]),
   tintedPvc('Тонированный ПВХ', 'ПВХ 700 мкм, тонировка', [
     1400,
     1800,
@@ -379,7 +371,8 @@ enum EdgeRoll {
   /// Готовая ширина окантовки после складывания пополам, мм.
   double get finishedWidth => rawWidth / 2;
 
-  String get shortLabel => 'Тент ${rawWidth.toStringAsFixed(0)} ${unitSuffix()}';
+  String get shortLabel =>
+      'Тент ${rawWidth.toStringAsFixed(0)} ${unitSuffix()}';
 
   /// Ширина рулона по имени пресета («roll200» → 200) или null, если имя
   /// не распознано. Нужна для чтения старых заказов с шириной-строкой.
@@ -486,7 +479,8 @@ enum EyeletType {
       : '${formatMm(42)}×${formatMm(22)} ${unitSuffix()}';
 
   /// Полное название для подписей: «Круглый Ø10 мм», «Овальный 42×22 мм».
-  String get displayLabel => isRound ? 'Круглый $sizeLabel' : 'Овальный $sizeLabel';
+  String get displayLabel =>
+      isRound ? 'Круглый $sizeLabel' : 'Овальный $sizeLabel';
 }
 
 /// Крепёж подвижных сторон (низ и бока подъёмного окна).
@@ -898,7 +892,10 @@ enum MarkerKind {
   frenchLock('Пластиковая скоба'),
 
   /// Поворотная скоба в этой точке.
-  turnBuckle('Поворотная скоба');
+  turnBuckle('Поворотная скоба'),
+
+  /// Французский замок (металлический) в этой точке.
+  metalFrenchLock('Французский замок');
 
   const MarkerKind(this.label);
 
@@ -929,12 +926,11 @@ class EyeletPosition {
     EdgeSide? side,
     double? fraction,
     MarkerKind? kind,
-  }) =>
-      EyeletPosition(
-        side: side ?? this.side,
-        fraction: fraction ?? this.fraction,
-        kind: kind ?? this.kind,
-      );
+  }) => EyeletPosition(
+    side: side ?? this.side,
+    fraction: fraction ?? this.fraction,
+    kind: kind ?? this.kind,
+  );
 
   Map<String, dynamic> toJson() => {
     'side': side.name,
@@ -1077,9 +1073,8 @@ class WindowParams {
   final Map<EdgeSide, double> fastenerOffsetsMm;
 
   /// Ширина полосы, в которой стоит крепёж, мм.
-  double fastenerBandFor(EdgeSide side) => isScreen
-      ? hemForSide(side)
-      : finishedEdgeWidth(rollForSide(side));
+  double fastenerBandFor(EdgeSide side) =>
+      isScreen ? hemForSide(side) : finishedEdgeWidth(rollForSide(side));
 
   /// Отступ крепежа от внутреннего края полосы, мм.
   double fastenerOffsetMmFor(EdgeSide side) {
@@ -1800,13 +1795,13 @@ class WindowParams {
       projectName: projectName ?? this.projectName,
       customer: customer ?? this.customer,
       drawingNumber: drawingNumber ?? this.drawingNumber,
-    screenColor: screenColor ?? this.screenColor,
-    apexOffsetMm: apexOffsetMm ?? this.apexOffsetMm,
-    roofHeightMm: roofHeightMm ?? this.roofHeightMm,
-    roofOverhangMm: roofOverhangMm ?? this.roofOverhangMm,
-    wallHeightMm: wallHeightMm ?? this.wallHeightMm,
-    crossbars: crossbars ?? this.crossbars,
-    fastenerOffsetsMm: fastenerOffsetsMm ?? this.fastenerOffsetsMm,
+      screenColor: screenColor ?? this.screenColor,
+      apexOffsetMm: apexOffsetMm ?? this.apexOffsetMm,
+      roofHeightMm: roofHeightMm ?? this.roofHeightMm,
+      roofOverhangMm: roofOverhangMm ?? this.roofOverhangMm,
+      wallHeightMm: wallHeightMm ?? this.wallHeightMm,
+      crossbars: crossbars ?? this.crossbars,
+      fastenerOffsetsMm: fastenerOffsetsMm ?? this.fastenerOffsetsMm,
       windowType: windowType ?? this.windowType,
       bottomWidth: bottomWidth ?? this.bottomWidth,
       topWidth: topWidth ?? this.topWidth,
@@ -1855,8 +1850,7 @@ class WindowParams {
       zipperSegments: zipperSegments ?? this.zipperSegments,
       zipperTentOverlap: zipperTentOverlap ?? this.zipperTentOverlap,
       liftStrapOffsets: liftStrapOffsets ?? this.liftStrapOffsets,
-      liftStrapOrientation:
-          liftStrapOrientation ?? this.liftStrapOrientation,
+      liftStrapOrientation: liftStrapOrientation ?? this.liftStrapOrientation,
       cutouts: cutouts ?? this.cutouts,
       eyeletPositions: eyeletPositions ?? this.eyeletPositions,
       manualEyeletSides: manualEyeletSides ?? this.manualEyeletSides,
@@ -1876,38 +1870,31 @@ class WindowParams {
   }
 
   /// Поставить ручные точки одной стороны, сохранив остальные стороны.
-  WindowParams withManualPoints(
-    EdgeSide side,
-    List<EyeletPosition> points,
-  ) => copyWith(
-    eyeletPositions: [
-      for (final position in eyeletPositions)
-        if (position.side != side) position,
-      for (final point in points)
-        EyeletPosition(
-          side: side,
-          fraction: point.fraction.clamp(0.0, 1.0),
-          kind: point.kind,
-        ),
-    ],
-    manualEyeletSides: [
-      for (final manual in manualEyeletSides)
-        if (manual != side) manual,
-      side,
-    ],
-  );
+  WindowParams withManualPoints(EdgeSide side, List<EyeletPosition> points) =>
+      copyWith(
+        eyeletPositions: [
+          for (final position in eyeletPositions)
+            if (position.side != side) position,
+          for (final point in points)
+            EyeletPosition(
+              side: side,
+              fraction: point.fraction.clamp(0.0, 1.0),
+              kind: point.kind,
+            ),
+        ],
+        manualEyeletSides: [
+          for (final manual in manualEyeletSides)
+            if (manual != side) manual,
+          side,
+        ],
+      );
 
   /// Короткая запись: поставить доли одной стороны (тип — обычный люверс).
-  WindowParams withEyeletPositions(
-    EdgeSide side,
-    List<double> fractions,
-  ) => withManualPoints(
-    side,
-    [for (final fraction in fractions) EyeletPosition(
-      side: side,
-      fraction: fraction,
-    )],
-  );
+  WindowParams withEyeletPositions(EdgeSide side, List<double> fractions) =>
+      withManualPoints(side, [
+        for (final fraction in fractions)
+          EyeletPosition(side: side, fraction: fraction),
+      ]);
 
   /// Вернуть автоматическую расстановку люверсов на всех сторонах.
   WindowParams clearEyeletPositions() =>
@@ -1917,9 +1904,8 @@ class WindowParams {
   bool hasManualEyelets(EdgeSide side) => manualEyeletSides.contains(side);
 
   /// Добавить подъёмный ремешок с центром [offsetMm] от левого края.
-  WindowParams addLiftStrap(double offsetMm) => copyWith(
-    liftStrapOffsets: [...liftStrapOffsets, offsetMm],
-  );
+  WindowParams addLiftStrap(double offsetMm) =>
+      copyWith(liftStrapOffsets: [...liftStrapOffsets, offsetMm]);
 
   WindowParams removeLiftStrap(int index) {
     if (index < 0 || index >= liftStrapOffsets.length) return this;
@@ -1948,11 +1934,7 @@ class WindowParams {
   WindowParams addZipper() {
     if (zippers.length >= maxZippers) return this;
     if (zippers.isEmpty) {
-      return copyWith(
-        zippers: [
-          const ZipperSpec(centered: true),
-        ],
-      );
+      return copyWith(zippers: [const ZipperSpec(centered: true)]);
     }
     // До 5 молний: каждая следующая встаёт в самый широкий свободный
     // промежуток, существующие положения не сдвигаются.
@@ -2040,14 +2022,18 @@ class WindowParams {
     ParamField.t2Width => copyWith(t2Width: value),
     ParamField.t2Height => copyWith(t2Height: value),
     ParamField.t2Offset => copyWith(t2Offset: value),
-    ParamField.compositeWidth =>
-      copyWith(composite: composite.copyWith(width: value)),
-    ParamField.compositeDepth =>
-      copyWith(composite: composite.copyWith(depth: value)),
-    ParamField.compositeOffset =>
-      copyWith(composite: composite.copyWith(offset: value)),
-    ParamField.compositeAngle =>
-      copyWith(composite: composite.copyWith(seamAngleDeg: value)),
+    ParamField.compositeWidth => copyWith(
+      composite: composite.copyWith(width: value),
+    ),
+    ParamField.compositeDepth => copyWith(
+      composite: composite.copyWith(depth: value),
+    ),
+    ParamField.compositeOffset => copyWith(
+      composite: composite.copyWith(offset: value),
+    ),
+    ParamField.compositeAngle => copyWith(
+      composite: composite.copyWith(seamAngleDeg: value),
+    ),
     ParamField.zipperTentOverlap => copyWith(zipperTentOverlap: value),
     ParamField.eyeletStep => copyWith(eyeletStep: value),
     ParamField.eyeletCornerOffset => copyWith(eyeletCornerOffset: value),
@@ -2123,9 +2109,11 @@ class WindowParams {
     roofHeightMm,
     roofOverhangMm,
     wallHeightMm,
-    [for (final crossbar in crossbars)
-      '${crossbar.axis.name}:${crossbar.positionMm}:${crossbar.widthMm}:'
-          '${crossbar.weldMm}:${crossbar.fullSpan}:${crossbar.lengthMm}'],
+    [
+      for (final crossbar in crossbars)
+        '${crossbar.axis.name}:${crossbar.positionMm}:${crossbar.widthMm}:'
+            '${crossbar.weldMm}:${crossbar.fullSpan}:${crossbar.lengthMm}',
+    ],
     allowanceWidthMm,
     allowanceHeightMm,
     topAlign.name,

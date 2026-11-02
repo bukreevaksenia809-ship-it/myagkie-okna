@@ -116,7 +116,7 @@ class CostsSummary {
       // Крепёж считается по чертежу: сколько символов нарисовано, столько и
       // в смете. «Только люверсы» отдельного крепежа не имеет.
       if (fastenerType != FastenerType.eyeletsOnly) {
-        final count = spec.layers.movableSideEyelets.length;
+        final count = spec.layers.autoFastenerEyelets.length;
         if (count > 0) {
           fastenerCount.update(
             fastenerType,
@@ -198,7 +198,6 @@ class CostsSummary {
         tShapeSeamMm += spec.tWeldedSeamLength;
       }
     }
-
   }
 
   final OrderProject project;

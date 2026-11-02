@@ -193,7 +193,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
     for (final side in EdgeSide.values) {
       _edgeControllers[side] = TextEditingController(
-        text: _textFor(_params.rollForSide(side)),
+        text: _textFor(
+          WindowParams.finishedEdgeWidth(_params.rollForSide(side)),
+        ),
       );
     }
     for (final field in _AllowanceField.values) {
@@ -431,17 +433,19 @@ class _ParamsPanelState extends State<ParamsPanel> {
       _syncController(
         _edgeControllers.putIfAbsent(
           side,
-          () => TextEditingController(text: _textFor(params.rollForSide(side))),
+          () => TextEditingController(
+            text: _textFor(
+              WindowParams.finishedEdgeWidth(params.rollForSide(side)),
+            ),
+          ),
         ),
-        params.rollForSide(side),
+        WindowParams.finishedEdgeWidth(params.rollForSide(side)),
         force: force,
       );
       if (force) _edgeErrors[side] = null;
       final offsetController = _fastenerOffsetControllers[side];
       if (offsetController != null) {
-        offsetController.text = _textFor(
-          params.fastenerOffsetMmFor(side),
-        );
+        offsetController.text = _textFor(params.fastenerOffsetMmFor(side));
       }
     }
   }
@@ -516,10 +520,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
   String _textFor(double value) {
     if (!value.isFinite) return '';
     final whole = value == value.roundToDouble();
-    return DisplayUnits.formatNumber(
-      value,
-      decimals: whole ? 0 : 1,
-    );
+    return DisplayUnits.formatNumber(value, decimals: whole ? 0 : 1);
   }
 
   /// Не-длины (проценты, штуки, градусы) не пересчитываем.
@@ -549,17 +550,20 @@ class _ParamsPanelState extends State<ParamsPanel> {
         final controller = _controllers[field];
         controller?.text = _textForField(field, _params.valueOf(field));
       }
-      _controllers[ParamField.rollGap]?.text =
-          _textFor(widget.project.rollGap);
+      _controllers[ParamField.rollGap]?.text = _textFor(widget.project.rollGap);
       for (final side in EdgeSide.values) {
-        _edgeControllers[side]?.text = _textFor(_params.rollForSide(side));
-        _fastenerOffsetControllers[side]?.text =
-            _textFor(_params.fastenerOffsetMmFor(side));
+        _edgeControllers[side]?.text = _textFor(
+          WindowParams.finishedEdgeWidth(_params.rollForSide(side)),
+        );
+        _fastenerOffsetControllers[side]?.text = _textFor(
+          _params.fastenerOffsetMmFor(side),
+        );
       }
       _spliceController.text = _textFor(_params.spliceStripMm);
       for (final field in _AllowanceField.values) {
-        _allowanceControllers[field]?.text =
-            _textFor(_allowanceValue(_params, field));
+        _allowanceControllers[field]?.text = _textFor(
+          _allowanceValue(_params, field),
+        );
       }
       for (var i = 0; i < _params.zippers.length; i++) {
         final z = _params.zippers[i];
@@ -574,8 +578,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
       for (var i = 0; i < _params.cutouts.length; i++) {
         final c = _params.cutouts[i];
         for (final field in _CutoutField.values) {
-          _cutoutControllers[(i, field)]?.text =
-              _textFor(_cutoutValue(c, field));
+          _cutoutControllers[(i, field)]?.text = _textFor(
+            _cutoutValue(c, field),
+          );
         }
       }
     });
@@ -688,29 +693,31 @@ class _ParamsPanelState extends State<ParamsPanel> {
     EdgeSide.left => params.copyWith(rollLeft: value),
   };
 
-  /// Быстрый пресет ширины окантовки.
+  /// Быстрый пресет готовой ширины окантовки.
   void _applyEdgeWidth(EdgeSide side, double value) {
     setState(() => _edgeErrors[side] = null);
-    _updateWindow(_withEdgeWidth(_params, side, value));
+    _updateWindow(_withEdgeWidth(_params, side, value * 2));
   }
 
-  /// Ввод своей ширины рулона окантовки: 40…400 мм.
+  /// Ввод готовой (сложенной) ширины окантовки: 20…200 мм.
   void _onEdgeWidthChanged(EdgeSide side, String raw) {
     final value = parseMm(raw);
     if (value == null) {
       setState(() => _edgeErrors[side] = 'Введите число, например 150');
       return;
     }
-    if (value < minEdgeRollWidth || value > maxEdgeRollWidth) {
+    final minFinished = minEdgeRollWidth / 2;
+    final maxFinished = maxEdgeRollWidth / 2;
+    if (value < minFinished || value > maxFinished) {
       setState(
         () => _edgeErrors[side] =
-            'Ширина от '
-            '${formatMm(minEdgeRollWidth)} до ${formatMm(maxEdgeRollWidth)} ${unitSuffix()}',
+            'Готовая ширина от '
+            '${formatMm(minFinished)} до ${formatMm(maxFinished)} ${unitSuffix()}',
       );
       return;
     }
     setState(() => _edgeErrors[side] = null);
-    _updateWindow(_withEdgeWidth(_params, side, value));
+    _updateWindow(_withEdgeWidth(_params, side, value * 2));
   }
 
   /// Ввод припуска на раскрой: 0…500 мм.
@@ -960,9 +967,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
                   ),
                   selected: params.levelLeft,
                   onSelected: enabled
-                      ? (value) => _updateWindow(
-                          params.copyWith(levelLeft: value),
-                        )
+                      ? (value) =>
+                            _updateWindow(params.copyWith(levelLeft: value))
                       : null,
                   visualDensity: VisualDensity.compact,
                 ),
@@ -977,9 +983,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
                   ),
                   selected: params.levelRight,
                   onSelected: enabled
-                      ? (value) => _updateWindow(
-                          params.copyWith(levelRight: value),
-                        )
+                      ? (value) =>
+                            _updateWindow(params.copyWith(levelRight: value))
                       : null,
                   visualDensity: VisualDensity.compact,
                 ),
@@ -1353,7 +1358,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   /// Первый экран панели: короткий «фасад» приложения, а не сразу форма.
   Widget _brandHeader(List<OrderOverview> orders, OrderProject project) {
-    final windows = orders.fold<int>(0, (sum, order) => sum + order.windowCount);
+    final windows = orders.fold<int>(
+      0,
+      (sum, order) => sum + order.windowCount,
+    );
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 11),
@@ -1448,16 +1456,16 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 if (status != OrderStatus.values.first)
                   const SizedBox(width: 6),
                 ChoiceChip(
-                key: Key('order-status-${status.name}'),
-                label: Text(status.label),
-                selected: project.status == status,
-                onSelected: (_) => widget.onChanged(
-                  project.copyWith(
-                    status: status,
-                    statusChangedAt: DateTime.now(),
+                  key: Key('order-status-${status.name}'),
+                  label: Text(status.label),
+                  selected: project.status == status,
+                  onSelected: (_) => widget.onChanged(
+                    project.copyWith(
+                      status: status,
+                      statusChangedAt: DateTime.now(),
+                    ),
                   ),
                 ),
-              ),
               ],
               const SizedBox(width: 4),
               IconButton(
@@ -1702,8 +1710,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 const SizedBox(height: 6),
                 OutlinedButton.icon(
                   key: const Key('reset-eyelet-positions'),
-                  onPressed: () =>
-                      _updateWindow(params.clearEyeletPositions()),
+                  onPressed: () => _updateWindow(params.clearEyeletPositions()),
                   icon: const Icon(Icons.restart_alt, size: 18),
                   label: const Text('Вернуть автоматическую расстановку'),
                 ),
@@ -2035,9 +2042,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
             selected: composite.side,
             labelOf: (side) => side.label,
             keyOf: (side) => 'composite-side-${side.name}',
-            onSelected: (side) => _updateWindow(
-              withComposite(composite.copyWith(side: side)),
-            ),
+            onSelected: (side) =>
+                _updateWindow(withComposite(composite.copyWith(side: side))),
           ),
           const SizedBox(height: 8),
           const Text(
@@ -2062,10 +2068,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           const SizedBox(height: 8),
           // Ширина второго сегмента — вся выбранная сторона: размер окна
           // остаётся ровно тем, что ввели. Меняется только вынос шва внутрь.
-          SizedBox(
-            width: 200,
-            child: _numberField(ParamField.compositeDepth),
-          ),
+          SizedBox(width: 200, child: _numberField(ParamField.compositeDepth)),
           const SizedBox(height: 4),
           Slider(
             key: const Key('composite-depth-slider'),
@@ -2074,9 +2077,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
             max: 2000,
             divisions: 39,
             label: '${formatMm(composite.depth)} ${unitSuffix()}',
-            onChanged: (value) => _updateWindow(
-              withComposite(composite.copyWith(depth: value)),
-            ),
+            onChanged: (value) =>
+                _updateWindow(withComposite(composite.copyWith(depth: value))),
           ),
           const Text(
             'Второй сегмент режется ВНУТРИ введённых габаритов: ширина — вся '
@@ -2116,9 +2118,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
             selected: composite.seam,
             labelOf: (seam) => seam.label,
             keyOf: (seam) => 'composite-seam-${seam.name}',
-            onSelected: (seam) => _updateWindow(
-              withComposite(composite.copyWith(seam: seam)),
-            ),
+            onSelected: (seam) =>
+                _updateWindow(withComposite(composite.copyWith(seam: seam))),
           ),
           if (composite.isDiagonal) ...[
             const SizedBox(height: 8),
@@ -2204,8 +2205,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
               border: OutlineInputBorder(),
               isDense: true,
             ),
-            keyboardType:
-                const TextInputType.numberWithOptions(signed: true, decimal: true),
+            keyboardType: const TextInputType.numberWithOptions(
+              signed: true,
+              decimal: true,
+            ),
             onChanged: (value) =>
                 _updateWindow(params.copyWith(apexOffsetMm: parse(value))),
           ),
@@ -2219,8 +2222,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               onChanged: (value) =>
                   _updateWindow(params.copyWith(roofHeightMm: parse(value))),
             ),
@@ -2234,8 +2238,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               onChanged: (value) =>
                   _updateWindow(params.copyWith(wallHeightMm: parse(value))),
             ),
@@ -2248,8 +2253,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               onChanged: (value) =>
                   _updateWindow(params.copyWith(roofOverhangMm: parse(value))),
             ),
@@ -2351,15 +2357,16 @@ class _ParamsPanelState extends State<ParamsPanel> {
                       label: Text(four ? '2 размера' : '4 размера'),
                     ),
                     const SizedBox(height: 6),
-                    for (final pair in four
-                        ? const [
-                            ['top', 'bottom'],
-                            ['left', 'right'],
-                          ]
-                        : const [
-                            ['top'],
-                            ['left'],
-                          ]) ...[
+                    for (final pair
+                        in four
+                            ? const [
+                                ['top', 'bottom'],
+                                ['left', 'right'],
+                              ]
+                            : const [
+                                ['top'],
+                                ['left'],
+                              ]) ...[
                       Row(
                         children: [
                           for (final key in pair) ...[
@@ -2482,17 +2489,11 @@ class _ParamsPanelState extends State<ParamsPanel> {
           Row(
             children: [
               Expanded(
-                child: _numberField(
-                  ParamField.bottomWidth,
-                  label: 'Ширина',
-                ),
+                child: _numberField(ParamField.bottomWidth, label: 'Ширина'),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _numberField(
-                  ParamField.leftHeight,
-                  label: 'Высота',
-                ),
+                child: _numberField(ParamField.leftHeight, label: 'Высота'),
               ),
             ],
           ),
@@ -2564,9 +2565,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           OutlinedButton.icon(
             key: const Key('add-crossbar'),
             onPressed: () => _updateWindow(
-              params.addCrossbar(
-                CrossbarSpec(positionMm: visible.height / 2),
-              ),
+              params.addCrossbar(CrossbarSpec(positionMm: visible.height / 2)),
             ),
             icon: const Icon(Icons.add, size: 18),
             label: const Text('Добавить перемычку'),
@@ -2575,14 +2574,13 @@ class _ParamsPanelState extends State<ParamsPanel> {
           OutlinedButton.icon(
             key: const Key('add-crossbar'),
             onPressed: () => _updateWindow(
-              params.addCrossbar(
-                CrossbarSpec(positionMm: visible.height / 2),
-              ),
+              params.addCrossbar(CrossbarSpec(positionMm: visible.height / 2)),
             ),
             icon: const Icon(Icons.add, size: 18),
             label: const Text('Ещё перемычка'),
           ),
-        if (maxPosition == 0 && params.crossbars.isEmpty) const SizedBox.shrink(),
+        if (maxPosition == 0 && params.crossbars.isEmpty)
+          const SizedBox.shrink(),
       ],
     );
   }
@@ -2689,7 +2687,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
                       ),
                     ),
                   ),
-                  helper: 'от ${horizontal ? 'низа' : 'левого'} края, '
+                  helper:
+                      'от ${horizontal ? 'низа' : 'левого'} края, '
                       'до ${formatMm(available)}',
                 ),
               ),
@@ -2748,7 +2747,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
                   key: Key('crossbar-full-$index'),
                   contentPadding: EdgeInsets.zero,
                   dense: true,
-                  title: const Text('Во всю длину', style: TextStyle(fontSize: 12)),
+                  title: const Text(
+                    'Во всю длину',
+                    style: TextStyle(fontSize: 12),
+                  ),
                   value: crossbar.fullSpan,
                   onChanged: (value) => _updateWindow(
                     params.updateCrossbar(
@@ -2788,9 +2790,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     (value) => _updateWindow(
                       params.updateCrossbar(
                         index,
-                        crossbar.copyWith(
-                          alongMm: value.clamp(0.0, available),
-                        ),
+                        crossbar.copyWith(alongMm: value.clamp(0.0, available)),
                       ),
                     ),
                   ),
@@ -2865,8 +2865,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
       subtitle: '${spec.edgeBySideSummary} · ${params.edgeColor.label}',
       children: [
         const Text(
-          'Ширина рулона на каждую сторону, мм — пресеты или своё '
-          'значение (складывается пополам)',
+          'Готовая ширина окантовки на каждую сторону, мм — пресеты '
+          'или своё значение. Кант 50 мм = рулон 100 мм, сложенный пополам.',
           style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
         ),
         const SizedBox(height: 8),
@@ -2899,8 +2899,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
         ),
         const SizedBox(height: 10),
         Text(
-          'Готовая полоса — половина рулона. Своя ширина 40…400 мм; '
-          'если ширина меньше 100 мм, запайке 2 × '
+          'Своя готовая ширина 20…200 мм (рулон 40…400 мм). '
+          'Если готовая полоса меньше 50 мм, запайке 2 × '
           '${formatMm(params.weldOverlapMm)} ${unitSuffix()} может не хватить ленты.',
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
@@ -2954,10 +2954,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
               children: [
                 SizedBox(
                   width: 48,
-                  child: Text(
-                    side.label,
-                    style: const TextStyle(fontSize: 11),
-                  ),
+                  child: Text(side.label, style: const TextStyle(fontSize: 11)),
                 ),
                 Expanded(
                   child: TextField(
@@ -2965,9 +2962,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     controller: _fastenerOffsetControllers.putIfAbsent(
                       side,
                       () => TextEditingController(
-                        text: _textFor(
-                          params.fastenerOffsetMmFor(side),
-                        ),
+                        text: _textFor(params.fastenerOffsetMmFor(side)),
                       ),
                     ),
                     keyboardType: const TextInputType.numberWithOptions(
@@ -3041,13 +3036,15 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 selected: roll == width,
                 visualDensity: VisualDensity.compact,
                 onSelected: (_) => _updateProject(
-                  project.setRollWidth(params.material, width).updateSelected(
-                    params.copyWith(
-                      spliceStripMm: width >= needed - 0.5
-                          ? 0
-                          : params.spliceStripMm,
-                    ),
-                  ),
+                  project
+                      .setRollWidth(params.material, width)
+                      .updateSelected(
+                        params.copyWith(
+                          spliceStripMm: width >= needed - 0.5
+                              ? 0
+                              : params.spliceStripMm,
+                        ),
+                      ),
                 ),
               ),
           ],
@@ -3120,7 +3117,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     ),
                   ),
                   icon: const Icon(Icons.content_cut, size: 16),
-                  label: Text('Добавить полосу ${formatMm(suggested)} и спаять'),
+                  label: Text(
+                    'Добавить полосу ${formatMm(suggested)} и спаять',
+                  ),
                 ),
               ],
             ),
@@ -3141,11 +3140,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
               children: [
                 Row(
                   children: [
-                    const Icon(
-                      Icons.link,
-                      size: 17,
-                      color: Color(0xFF8E4E2A),
-                    ),
+                    const Icon(Icons.link, size: 17, color: Color(0xFF8E4E2A)),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -3164,9 +3159,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     IconButton(
                       tooltip: 'Убрать стык',
                       visualDensity: VisualDensity.compact,
-                      onPressed: () => _updateWindow(
-                        params.copyWith(spliceStripMm: 0),
-                      ),
+                      onPressed: () =>
+                          _updateWindow(params.copyWith(spliceStripMm: 0)),
                       icon: const Icon(Icons.close, size: 16),
                     ),
                   ],
@@ -3189,9 +3183,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                         onChanged: (raw) {
                           final value = parseMm(raw);
                           if (value == null || value < 0) return;
-                          _updateWindow(
-                            params.copyWith(spliceStripMm: value),
-                          );
+                          _updateWindow(params.copyWith(spliceStripMm: value));
                         },
                       ),
                     ),
@@ -3241,7 +3233,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
     );
     return _expansion(
       title: 'Дополнительно',
-      subtitle: total > 0 ? 'позиции в смете: ${total.toStringAsFixed(0)}' : 'доставка, парус, брус, zip…',
+      subtitle: total > 0
+          ? 'позиции в смете: ${total.toStringAsFixed(0)}'
+          : 'доставка, парус, брус, zip…',
       children: [
         for (final key in PriceList.extraItemKeys)
           Padding(
@@ -3249,8 +3243,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
             child: TextFormField(
               key: Key('extra-$key'),
               initialValue: _textFor(project.extraQuantities[key] ?? 0),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: InputDecoration(
                 labelText:
                     '${PriceList.extraItemLabel(key)}, '
@@ -3263,10 +3258,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 if (parsed == null || parsed < 0) return;
                 widget.onChanged(
                   project.copyWith(
-                    extraQuantities: {
-                      ...project.extraQuantities,
-                      key: parsed,
-                    },
+                    extraQuantities: {...project.extraQuantities, key: parsed},
                   ),
                 );
               },
@@ -3800,9 +3792,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
   String _specElementsSummary(WindowParams params) {
     final zipperPart = switch (params.zippers.length) {
       0 => null,
-      1 => 'молния '
-          '${formatMm(WindowSpec.of(params).layers.zipperWidthFor(params.zippers.first))} '
-          '${unitSuffix()}',
+      1 =>
+        'молния '
+            '${formatMm(WindowSpec.of(params).layers.zipperWidthFor(params.zippers.first))} '
+            '${unitSuffix()}',
       _ => 'молний ${params.zippers.length}',
     };
     final parts = <String>[
@@ -4249,20 +4242,20 @@ class _ParamsPanelState extends State<ParamsPanel> {
       title: 'Подъёмные ремни',
       subtitle: offsets.isEmpty
           ? (params.isLifting
-              ? 'авто: ${params.liftStrapCount} шт'
-              : 'вручную: 0 шт')
+                ? 'авто: ${params.liftStrapCount} шт'
+                : 'вручную: 0 шт')
           : 'вручную: ${offsets.length} шт',
       children: [
         Text(
           offsets.isEmpty
               ? (params.isLifting
-                  ? 'Ремни расставлены автоматически (2 шт до 2 м, далее +1 на '
-                        'метр). Нажмите «+ ремешок», чтобы поставить их вручную — '
-                        'каждый привяжется к линии тента, в том числе на косой '
-                        'кромке.'
-                  : 'У скрина ремни ставятся вручную: нажмите «+ ремешок» и '
-                        'задайте положение. Каждый ремень привяжется к верхней '
-                        'кромке полотна.')
+                    ? 'Ремни расставлены автоматически (2 шт до 2 м, далее +1 на '
+                          'метр). Нажмите «+ ремешок», чтобы поставить их вручную — '
+                          'каждый привяжется к линии тента, в том числе на косой '
+                          'кромке.'
+                    : 'У скрина ремни ставятся вручную: нажмите «+ ремешок» и '
+                          'задайте положение. Каждый ремень привяжется к верхней '
+                          'кромке полотна.')
               : 'Ремни стоят вручную и начинаются на линии тента: на косом '
                     'окне кромка наклонена, ремень идёт от неё, а не висит за '
                     'окантовкой.',
@@ -4298,10 +4291,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     key: Key('lift-strap-$index'),
                     controller: _strapControllers.putIfAbsent(
                       index,
-                      () => TextEditingController(text: _textFor(offsets[index])),
+                      () =>
+                          TextEditingController(text: _textFor(offsets[index])),
                     ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: InputDecoration(
                       labelText: 'Ремень ${index + 1}: центр от левого края',
                       suffixText: unitSuffix(),
@@ -4323,8 +4318,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 IconButton(
                   tooltip: 'Удалить ремень',
                   icon: const Icon(Icons.delete_outline, size: 18),
-                  onPressed: () =>
-                      _updateWindow(params.removeLiftStrap(index)),
+                  onPressed: () => _updateWindow(params.removeLiftStrap(index)),
                 ),
               ],
             ),
@@ -4354,8 +4348,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           children: [
             OutlinedButton.icon(
               key: const Key('add-lift-strap'),
-              onPressed: () =>
-                  _updateWindow(params.addLiftStrap(nextOffset())),
+              onPressed: () => _updateWindow(params.addLiftStrap(nextOffset())),
               icon: const Icon(Icons.add, size: 18),
               label: const Text('+ ремешок'),
             ),
@@ -4522,8 +4515,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                   max: 100,
                   controllers: _zipperZipControllers,
                   errors: _zipperZipErrors,
-                  apply: (zipper, value) =>
-                      zipper.copyWith(zipWidthMm: value),
+                  apply: (zipper, value) => zipper.copyWith(zipWidthMm: value),
                 ),
               ),
               const SizedBox(width: 8),
@@ -4537,8 +4529,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                   max: 300,
                   controllers: _zipperTentControllers,
                   errors: _zipperTentErrors,
-                  apply: (zipper, value) =>
-                      zipper.copyWith(tentWidthMm: value),
+                  apply: (zipper, value) => zipper.copyWith(tentWidthMm: value),
                 ),
               ),
               const SizedBox(width: 8),
@@ -4983,8 +4974,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
     }
     final isCenter =
         field == _CutoutField.centerX || field == _CutoutField.centerY;
-    final isOptional = field == _CutoutField.edging ||
-        field == _CutoutField.eyelets;
+    final isOptional =
+        field == _CutoutField.edging || field == _CutoutField.eyelets;
     if (isCenter && value < 0) {
       setState(
         () => _cutoutErrors[key] = 'Смещение не может быть отрицательным',
@@ -4992,7 +4983,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
       return;
     }
     if (isOptional && value < 0) {
-      setState(() => _cutoutErrors[key] = 'Значение не может быть отрицательным');
+      setState(
+        () => _cutoutErrors[key] = 'Значение не может быть отрицательным',
+      );
       return;
     }
     if (!isCenter && !isOptional && value <= 0) {
@@ -5005,9 +4998,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     }
     if (field == _CutoutField.eyelets &&
         (value > 48 || value != value.roundToDouble())) {
-      setState(
-        () => _cutoutErrors[key] = 'Люверсов — целое число от 0 до 48',
-      );
+      setState(() => _cutoutErrors[key] = 'Люверсов — целое число от 0 до 48');
       return;
     }
     setState(() => _cutoutErrors[key] = null);
@@ -5085,12 +5076,18 @@ class _ParamsPanelState extends State<ParamsPanel> {
             for (final preset in WindowParams.edgePresets)
               ChoiceChip(
                 label: Text(
-                  edgeBandLabel(preset, short: true),
+                  '${formatMm(WindowParams.finishedEdgeWidth(preset))} '
+                  '${unitSuffix()}',
                   style: const TextStyle(fontSize: 12),
                 ),
-                selected: (raw - preset).abs() < 1e-9,
+                selected:
+                    (finished - WindowParams.finishedEdgeWidth(preset)).abs() <
+                    1e-9,
                 visualDensity: VisualDensity.compact,
-                onSelected: (_) => _applyEdgeWidth(side, preset),
+                onSelected: (_) => _applyEdgeWidth(
+                  side,
+                  WindowParams.finishedEdgeWidth(preset),
+                ),
               ),
           ],
         ),
@@ -5099,14 +5096,14 @@ class _ParamsPanelState extends State<ParamsPanel> {
           controller: _edgeControllers[side],
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(
-            labelText: 'Своя ширина, мм',
+            labelText: 'Готовая ширина, мм',
             border: const OutlineInputBorder(),
             isDense: true,
             errorText: _edgeErrors[side],
             errorMaxLines: 2,
             helperText:
-                'готовая полоса ${formatMm(finished)} ${unitSuffix()} '
-                '(складывается пополам)',
+                'из рулона ${formatMm(raw)} ${unitSuffix()} складывается '
+                'пополам',
             helperMaxLines: 2,
           ),
           onChanged: (value) => _onEdgeWidthChanged(side, value),
@@ -5295,10 +5292,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
   Widget _fastenerDistancesBlock(WindowSpec spec) {
     final rows = <(String, String)>[];
     for (final side in WindowSide.values) {
-      final points = spec.layers.eyelets
-          .where((eyelet) => eyelet.side == side)
-          .toList()
-        ..sort((a, b) => a.positionInEdge.compareTo(b.positionInEdge));
+      final points =
+          spec.layers.eyelets.where((eyelet) => eyelet.side == side).toList()
+            ..sort((a, b) => a.positionInEdge.compareTo(b.positionInEdge));
       if (points.length < 2) continue;
       final gaps = <double>[
         for (var i = 1; i < points.length; i++)
@@ -5335,11 +5331,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
         children: [
           const Row(
             children: [
-              Icon(
-                Icons.straighten,
-                size: 15,
-                color: Color(0xFF0B62C4),
-              ),
+              Icon(Icons.straighten, size: 15, color: Color(0xFF0B62C4)),
               SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -5508,7 +5500,7 @@ class _CuttingCard extends StatelessWidget {
         ),
       for (final label in spec.edgeConsumptionLabels)
         ('Окантовка ${label.split(' — ').first}', label.split(' — ').last),
-      ('Люверсов', '${spec.eyeletCount} шт, ${spec.eyeletStepLabel}'),
+      ('Люверсов', '${spec.standaloneEyeletCount} шт, ${spec.eyeletStepLabel}'),
     ];
 
     return Container(

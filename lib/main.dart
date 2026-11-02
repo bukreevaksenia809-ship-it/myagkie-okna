@@ -61,7 +61,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.4.2';
+const String kAppVersion = '2.4.3';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -2123,7 +2123,7 @@ class _StatusBar extends StatelessWidget {
     );
     final totalEyelets = specs.fold<int>(
       0,
-      (sum, spec) => sum + spec.eyeletCount,
+      (sum, spec) => sum + spec.standaloneEyeletCount,
     );
     final consumption = <double, double>{};
     for (final spec in specs) {

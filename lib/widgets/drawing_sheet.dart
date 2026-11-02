@@ -1443,7 +1443,7 @@ class _Caption extends StatelessWidget {
                 child: Text(
                   '${formatMm(spec.geometry.spanX)}×${formatMm(spec.geometry.overallHeight)} ${unitSuffix()} · '
                   '${formatMeters(spec.productAreaM2)} м² · '
-                  '${params.windowType.label.toLowerCase()} · люверсов ${spec.eyeletCount}',
+                  '${params.windowType.label.toLowerCase()} · люверсов ${spec.standaloneEyeletCount}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -1862,7 +1862,7 @@ class _SidePanel extends StatelessWidget {
       ..sort((a, b) => a.key.compareTo(b.key));
     final totalEyelets = specs.fold<int>(
       0,
-      (sum, spec) => sum + spec.eyeletCount,
+      (sum, spec) => sum + spec.standaloneEyeletCount,
     );
     final first = project.windows.first;
     final materials = <FilmMaterial>{
@@ -2717,7 +2717,7 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
                     children: [
                       const Expanded(
                         child: Text(
-                          'Люверс',
+                          'Крепёж в точке',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -2749,6 +2749,14 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
                   label: 'Пластиковая скоба',
                   onTap: () => _apply(
                     (point) => point.copyWith(kind: MarkerKind.frenchLock),
+                  ),
+                ),
+                _menuItem(
+                  key: 'eyelet-menu-metal-lock',
+                  icon: Icons.lock_person_outlined,
+                  label: 'Французский замок',
+                  onTap: () => _apply(
+                    (point) => point.copyWith(kind: MarkerKind.metalFrenchLock),
                   ),
                 ),
                 _menuItem(

@@ -114,23 +114,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    // По полю на каждую сторону и по пять пресетов в каждой — включая
-    // новые 80 и 120 мм.
-    expect(find.text('Своя ширина, мм'), findsNWidgets(4));
-    expect(find.text('80 мм'), findsNWidgets(4));
-    expect(find.text('100 мм'), findsNWidgets(4));
-    expect(find.text('120 мм'), findsNWidgets(4));
-    expect(find.text('200 мм'), findsNWidgets(4));
-    expect(find.text('240 мм'), findsNWidgets(4));
+    // По полю на каждую сторону и по пять ГОТОВЫХ пресетов в каждой:
+    // 40/50/60/100/120 мм (рулоны 80/100/120/200/240).
+    expect(find.text('Готовая ширина, мм'), findsNWidgets(4));
+    for (final finished in [40, 50, 60, 100, 120]) {
+      expect(find.text('$finished мм'), findsAtLeastNWidgets(4));
+    }
 
-    // Первое поле — низ: своя ширина 150 мм уходит в модель.
+    // Первое поле — низ: готовая 75 мм = рулон 150 мм уходит в модель.
     final bottomField = find
         .ancestor(
-          of: find.text('Своя ширина, мм').first,
+          of: find.text('Готовая ширина, мм').first,
           matching: find.byType(TextField),
         )
         .first;
-    await tester.enterText(bottomField, '150');
+    await tester.enterText(bottomField, '75');
     await tester.pumpAndSettle();
 
     expect(project.selected.rollBottom, 150);

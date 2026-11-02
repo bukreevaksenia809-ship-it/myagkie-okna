@@ -85,15 +85,20 @@ class ClientReportBuilder {
   Future<Uint8List> build() async {
     await _ensureDrawingFont();
     final regular =
-        fontRegular ?? pw.Font.ttf(await rootBundle.load('assets/fonts/PTSans-Regular.ttf'));
+        fontRegular ??
+        pw.Font.ttf(await rootBundle.load('assets/fonts/PTSans-Regular.ttf'));
     final bold =
-        fontBold ?? pw.Font.ttf(await rootBundle.load('assets/fonts/PTSans-Bold.ttf'));
+        fontBold ??
+        pw.Font.ttf(await rootBundle.load('assets/fonts/PTSans-Bold.ttf'));
     pw.Font serif = regular;
     pw.Font serifBold = bold;
     try {
-      serif = pw.Font.ttf(await rootBundle.load('assets/fonts/PTSerif-Regular.ttf'));
-      serifBold =
-          pw.Font.ttf(await rootBundle.load('assets/fonts/PTSerif-Bold.ttf'));
+      serif = pw.Font.ttf(
+        await rootBundle.load('assets/fonts/PTSerif-Regular.ttf'),
+      );
+      serifBold = pw.Font.ttf(
+        await rootBundle.load('assets/fonts/PTSerif-Bold.ttf'),
+      );
     } catch (_) {
       // Если серифного шрифта нет — заголовки останутся PT Sans.
     }
@@ -116,11 +121,8 @@ class ClientReportBuilder {
       pw.Page(
         pageFormat: format,
         theme: theme,
-        build: (context) => PdfWatermark.apply(
-          context,
-          _coverPage(),
-          font: watermarkFont,
-        ),
+        build: (context) =>
+            PdfWatermark.apply(context, _coverPage(), font: watermarkFont),
       ),
     );
 
@@ -139,13 +141,7 @@ class ClientReportBuilder {
           theme: theme,
           build: (context) => PdfWatermark.apply(
             context,
-            _windowPage(
-              spec,
-              index,
-              windows.length,
-              context,
-              drawings[index],
-            ),
+            _windowPage(spec, index, windows.length, context, drawings[index]),
             font: watermarkFont,
           ),
         ),
@@ -232,18 +228,13 @@ class ClientReportBuilder {
 
     return pw.Stack(
       children: [
-        pw.Positioned.fill(
-          child: pw.Container(color: ivory),
-        ),
+        pw.Positioned.fill(child: pw.Container(color: ivory)),
         // Тёмная «книжная» панель справа.
         pw.Positioned(
           top: 0,
           bottom: 0,
           right: 0,
-          child: pw.SizedBox(
-            width: 300,
-            child: pw.Container(color: charcoal),
-          ),
+          child: pw.SizedBox(width: 300, child: pw.Container(color: charcoal)),
         ),
         pw.Positioned.fill(
           child: pw.Padding(
@@ -291,19 +282,11 @@ class ClientReportBuilder {
           children: [
             pw.Text(
               'Заказ ',
-              style: pw.TextStyle(
-                font: _serif,
-                fontSize: 30,
-                color: ink,
-              ),
+              style: pw.TextStyle(font: _serif, fontSize: 30, color: ink),
             ),
             pw.Text(
               '№ $_orderNumber',
-              style: pw.TextStyle(
-                font: _serifBold,
-                fontSize: 30,
-                color: ink,
-              ),
+              style: pw.TextStyle(font: _serifBold, fontSize: 30, color: ink),
             ),
           ],
         ),
@@ -337,16 +320,18 @@ class ClientReportBuilder {
               ? 'Адрес доставки не указан'
               : info.address.trim(),
         ),
-        if (_clientComment.isNotEmpty)
-          _contactLine(_clientComment),
+        if (_clientComment.isNotEmpty) _contactLine(_clientComment),
         pw.SizedBox(height: 14),
         _softDivider(),
         pw.SizedBox(height: 12),
         pw.Row(
           children: [
-            _executor('МЕНЕДЖЕР', info.manager.trim().isEmpty
-                ? (details.signer.trim().isEmpty ? '—' : details.signer)
-                : info.manager),
+            _executor(
+              'МЕНЕДЖЕР',
+              info.manager.trim().isEmpty
+                  ? (details.signer.trim().isEmpty ? '—' : details.signer)
+                  : info.manager,
+            ),
             _executor('ЗАМЕРЩИК', info.surveyor),
             _executor('МОНТАЖНИК', info.installer),
           ],
@@ -399,10 +384,7 @@ class ClientReportBuilder {
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        if (showLogo && !logoRight) ...[
-          logo(),
-          pw.SizedBox(width: 16),
-        ],
+        if (showLogo && !logoRight) ...[logo(), pw.SizedBox(width: 16)],
         pw.Expanded(
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -425,10 +407,7 @@ class ClientReportBuilder {
             ],
           ),
         ),
-        if (showLogo && logoRight) ...[
-          pw.SizedBox(width: 14),
-          logo(),
-        ],
+        if (showLogo && logoRight) ...[pw.SizedBox(width: 14), logo()],
         pw.SizedBox(width: 14),
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.end,
@@ -502,8 +481,7 @@ class ClientReportBuilder {
         for (final entry in summary.filmAreaByMaterialWithShrinkage.entries)
           if (entry.value > 0)
             _darkRow(_materialLabel(entry.key), '${_m2(entry.value)} м²'),
-        if (_screenColor.isNotEmpty)
-          _darkRow('Цвет скрина', _screenColor),
+        if (_screenColor.isNotEmpty) _darkRow('Цвет скрина', _screenColor),
         pw.SizedBox(height: 10),
         _darkLabel('ФУРНИТУРА'),
         for (final entry in summary.eyeletsByType.entries)
@@ -567,16 +545,8 @@ class ClientReportBuilder {
     );
   }
 
-  pw.TextStyle _s(
-    double size, {
-    bool bold = false,
-    PdfColor? color,
-  }) =>
-      pw.TextStyle(
-        font: bold ? _bold : _font,
-        fontSize: size,
-        color: color,
-      );
+  pw.TextStyle _s(double size, {bool bold = false, PdfColor? color}) =>
+      pw.TextStyle(font: bold ? _bold : _font, fontSize: size, color: color);
 
   pw.Widget _darkLabel(String text) => pw.Padding(
     padding: const pw.EdgeInsets.only(bottom: 6),
@@ -609,20 +579,14 @@ class ClientReportBuilder {
         pw.SizedBox(width: 8),
         pw.Text(
           value,
-          style: pw.TextStyle(
-            font: _font,
-            fontSize: 9,
-            color: PdfColors.white,
-          ),
+          style: pw.TextStyle(font: _font, fontSize: 9, color: PdfColors.white),
         ),
       ],
     ),
   );
 
-  pw.Widget _darkDivider() => pw.Container(
-    height: 0.5,
-    color: const PdfColor.fromInt(0x33FFFFFF),
-  );
+  pw.Widget _darkDivider() =>
+      pw.Container(height: 0.5, color: const PdfColor.fromInt(0x33FFFFFF));
 
   pw.Widget _softDivider() => pw.Container(height: 0.6, color: warmLine);
 
@@ -745,7 +709,8 @@ class ClientReportBuilder {
           )
         : pw.CustomPaint(
             size: const PdfPoint(500, 600),
-            painter: (canvas, size) => _paintWindow(canvas, size, spec, pdfFont),
+            painter: (canvas, size) =>
+                _paintWindow(canvas, size, spec, pdfFont),
           );
     final page = index + 2;
     return pw.Container(
@@ -795,11 +760,7 @@ class ClientReportBuilder {
                 pw.Text(
                   '${_cm(spec.geometry.spanX)} × '
                   '${_cm(spec.geometry.overallHeight)} см',
-                  style: pw.TextStyle(
-                    font: _serif,
-                    fontSize: 14,
-                    color: ink,
-                  ),
+                  style: pw.TextStyle(font: _serif, fontSize: 14, color: ink),
                 ),
               ],
             ),
@@ -837,20 +798,12 @@ class ClientReportBuilder {
                 pw.Text(
                   'Чертёж с производства · '
                   '${_materialLabel(spec.params.material)}',
-                  style: pw.TextStyle(
-                    font: _font,
-                    fontSize: 7,
-                    color: warmDim,
-                  ),
+                  style: pw.TextStyle(font: _font, fontSize: 7, color: warmDim),
                 ),
                 pw.Spacer(),
                 pw.Text(
                   '$page / ${total + 1}',
-                  style: pw.TextStyle(
-                    font: _font,
-                    fontSize: 7,
-                    color: warmDim,
-                  ),
+                  style: pw.TextStyle(font: _font, fontSize: 7, color: warmDim),
                 ),
               ],
             ),
@@ -863,10 +816,9 @@ class ClientReportBuilder {
   Map<String, String> _eyeletSpacings(WindowSpec spec) {
     final result = <String, String>{};
     for (final side in WindowSide.values) {
-      final points = spec.layers.eyelets
-          .where((eyelet) => eyelet.side == side)
-          .toList()
-        ..sort((a, b) => a.positionInEdge.compareTo(b.positionInEdge));
+      final points =
+          spec.layers.eyelets.where((eyelet) => eyelet.side == side).toList()
+            ..sort((a, b) => a.positionInEdge.compareTo(b.positionInEdge));
       if (points.length < 2) continue;
       final gaps = <double>[
         for (var i = 1; i < points.length; i++)
@@ -920,9 +872,12 @@ class ClientReportBuilder {
           if (spec.params.isScreen && spec.params.screenColor.trim().isNotEmpty)
             _darkSpec('Цвет', spec.params.screenColor.trim()),
           _darkSpec('Окантовка', edgeText),
-          _darkSpec('Крепёж', spec.params.fastenerType == FastenerType.eyeletsOnly
-              ? 'люверсы'
-              : spec.params.fastenerType.itemTitle),
+          _darkSpec(
+            'Крепёж',
+            spec.params.fastenerType == FastenerType.eyeletsOnly
+                ? 'люверсы'
+                : spec.params.fastenerType.itemTitle,
+          ),
           _darkSpec('Шаг', '${_trim(step / 10)} см'),
           if (spec.layers.zipperBands.isNotEmpty)
             _darkSpec('Молнии', '${spec.layers.zipperBands.length} шт.'),
@@ -991,13 +946,16 @@ class ClientReportBuilder {
           for (var index = 0; index < pieces.length; index++)
             _pieceRow(
               pieces[index],
-              index < materials.length ? materials[index] : spec.params.material,
+              index < materials.length
+                  ? materials[index]
+                  : spec.params.material,
               index == 1 && spec.isComposite,
             ),
           if (spec.edgeConsumption.isNotEmpty) ...[
             pw.SizedBox(height: 3),
-            for (final entry in (spec.edgeConsumption.entries.toList()
-              ..sort((a, b) => a.key.compareTo(b.key))))
+            for (final entry
+                in (spec.edgeConsumption.entries.toList()
+                  ..sort((a, b) => a.key.compareTo(b.key))))
               pw.Padding(
                 padding: const pw.EdgeInsets.only(bottom: 2),
                 child: pw.Row(
@@ -1060,11 +1018,7 @@ class ClientReportBuilder {
               children: [
                 pw.Text(
                   _materialLabel(material),
-                  style: pw.TextStyle(
-                    font: _bold,
-                    fontSize: 7.8,
-                    color: ink,
-                  ),
+                  style: pw.TextStyle(font: _bold, fontSize: 7.8, color: ink),
                 ),
                 pw.Text(
                   '${_m2(bounds.width * bounds.height / 1000000)} м²',
@@ -1093,7 +1047,7 @@ class ClientReportBuilder {
 
   pw.Widget _hardwareCard(WindowSpec spec) {
     final eyelets = <String, int>{};
-    for (final eyelet in spec.layers.eyelets) {
+    for (final eyelet in spec.layers.standaloneEyelets) {
       final type = spec.layers.typeFor(eyelet);
       eyelets[type.displayLabel] = (eyelets[type.displayLabel] ?? 0) + 1;
     }
@@ -1103,7 +1057,7 @@ class ClientReportBuilder {
       fasteners[title] = (fasteners[title] ?? 0) + 1;
     }
     if (spec.params.fastenerType != FastenerType.eyeletsOnly) {
-      final movable = spec.layers.movableSideEyelets.length;
+      final movable = spec.layers.autoFastenerEyelets.length;
       if (movable > 0) {
         final title = spec.params.fastenerType.itemTitle;
         fasteners[title] = (fasteners[title] ?? 0) + movable;
@@ -1153,11 +1107,7 @@ class ClientReportBuilder {
         pw.Expanded(
           child: pw.Text(
             label,
-            style: pw.TextStyle(
-              font: _font,
-              fontSize: 7.8,
-              color: warmDim,
-            ),
+            style: pw.TextStyle(font: _font, fontSize: 7.8, color: warmDim),
           ),
         ),
         pw.Text(
@@ -1345,7 +1295,7 @@ class ClientReportBuilder {
 
     final autoType = spec.params.fastenerType;
     if (autoType != FastenerType.eyeletsOnly) {
-      for (final eyelet in spec.layers.movableSideEyelets) {
+      for (final eyelet in spec.layers.autoFastenerEyelets) {
         _drawFastener(canvas, map(eyelet.center), autoType);
       }
     }
@@ -1412,14 +1362,9 @@ class ClientReportBuilder {
         point.y + offset.y - 2,
       );
     }
-
   }
 
-  void _drawFastener(
-    PdfGraphics canvas,
-    PdfPoint center,
-    FastenerType type,
-  ) {
+  void _drawFastener(PdfGraphics canvas, PdfPoint center, FastenerType type) {
     switch (type) {
       case FastenerType.frenchLocks:
       case FastenerType.metalFrenchLock:
@@ -1485,13 +1430,9 @@ class ClientReportBuilder {
       11,
       text,
       vertical
-          ? (offset.x > 0
-                ? middle.x + 6
-                : middle.x - textWidth - 6)
+          ? (offset.x > 0 ? middle.x + 6 : middle.x - textWidth - 6)
           : middle.x - textWidth / 2,
-      vertical
-          ? middle.y - 3
-          : middle.y + (offset.y > 0 ? -14 : 5),
+      vertical ? middle.y - 3 : middle.y + (offset.y > 0 ? -14 : 5),
     );
   }
 
@@ -1555,7 +1496,11 @@ class ClientReportBuilder {
     );
   }
 
-  static void _fillPolygon(PdfGraphics canvas, List<PdfPoint> points, PdfColor color) {
+  static void _fillPolygon(
+    PdfGraphics canvas,
+    List<PdfPoint> points,
+    PdfColor color,
+  ) {
     if (points.length < 3) return;
     canvas
       ..setFillColor(color)
@@ -1589,7 +1534,8 @@ class ClientReportBuilder {
 
   String _m2(double value) => value.toStringAsFixed(2).replaceAll('.', ',');
 
-  String _meters(double mm) => (mm / 1000).toStringAsFixed(2).replaceAll('.', ',');
+  String _meters(double mm) =>
+      (mm / 1000).toStringAsFixed(2).replaceAll('.', ',');
 
   String _rub(double value) => formatRubles(value);
 }
@@ -1621,7 +1567,6 @@ Future<SavedFile> saveClientReport({
   final name = 'Отчёт клиенту${number.isEmpty ? '' : ' $number'}.pdf';
   return saveBytes(bytes, name);
 }
-
 
 /// Данные заказчика для клиентского отчёта: заполняются в диалоге перед
 /// сохранением и подставляются на обложку.
