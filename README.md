@@ -77,12 +77,12 @@ git-тег `myagkie-okna-1`, архивы исходников и веб-сбо�
 | Платформа | Где скачать |
 |---|---|
 | **Web** (рабочая версия) | https://myagkie-okna-excl.web.app |
-| **Страница обновления** | https://myagkie-okna-excl.web.app/updates/ |
+| **Скачать** | https://myagkie-okna-excl.web.app/updates/ |
 | **Админка** | https://myagkie-okna-excl.web.app/admin/ |
-| **Windows** | [MyagkieOknaExcl-windows.zip](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.4.6/MyagkieOknaExcl-windows.zip) |
-| **macOS** | [MyagkieOknaExcl-macos.dmg](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.4.6/MyagkieOknaExcl-macos.dmg) |
-| **Android** | [MyagkieOknaExcl-android.apk](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.4.6/MyagkieOknaExcl-android.apk) |
-| **Все файлы** | [GitHub Releases v2.4.6](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/tag/v2.4.6) |
+| **Windows** | [MyagkieOknaExcl-windows.zip](https://myagkie-okna-excl.web.app/releases/v2.4.6/MyagkieOknaExcl-windows.zip) |
+| **macOS** | [MyagkieOknaExcl-macos.dmg](https://myagkie-okna-excl.web.app/releases/v2.4.6/MyagkieOknaExcl-macos.zip) |
+| **Android** | [MyagkieOknaExcl-android.apk](https://myagkie-okna-excl.web.app/releases/v2.4.6/MyagkieOknaExcl-android.apk.zip) |
+
 
 Windows-сборка сделана на Windows-раннере GitHub Actions; macOS DMG, Android
 APK/AAB и Web ZIP — там же. Метаданные обновления (версия, ссылки, SHA-256)
@@ -91,16 +91,14 @@ APK/AAB и Web ZIP — там же. Метаданные обновления (�
 
 ### Источник сборок
 
-Сборки 2.4.6 опубликованы в GitHub Releases:
-`https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/tag/v2.4.6`.
-R2-зеркало 2.1.0 остаётся доступным; для 2.4.6 основной источник — GitHub Releases.
+Все сборки и обновления — только на основном сайте
+`https://myagkie-okna-excl.web.app/`. Старые ссылки отключены.
 
 ## Веб-версии (демо-ссылки)
 
 | Версия | Ссылка | Живёт до |
 |---|---|---|
 | **Мягкие окна Excl** (текущая) | https://myagkie-okna-excl.web.app | постоянно |
-| **Мягкие окна 1** (зафиксирована) | https://okna-7dbf8.web.app | постоянно |
 
 Боевые адреса Firebase Hosting обновляются скриптом `deploy-web.sh`.
 Временные preview-каналы и их сроки — в [WEB-DEMO.md](WEB-DEMO.md).

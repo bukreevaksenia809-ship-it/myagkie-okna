@@ -143,9 +143,8 @@ FB=/Users/davidovjr7/.dsh/firebase-tools/node_modules/.bin/firebase
 
 Эти ссылки относятся к зафиксированной версии «Мягкие окна 1»:
 
-- Релиз: https://github.com/kurwaHomik-cyber/myagkie-okna/releases/tag/v1.0.2
+- Релиз: только https://myagkie-okna-excl.web.app/
 - Прямая ссылка на Windows-сборку:
-  https://github.com/kurwaHomik-cyber/myagkie-okna/releases/download/v1.0.2/MyagkieOkna-windows.zip
 - Репозиторий приватный, поэтому ссылки открываются под вашим аккаунтом:
   скачайте zip и передайте заказчику файлом (15 МБ).
 - В релизе также лежат `MyagkieOkna-macos.dmg` и `MyagkieOkna-macos.zip`.
