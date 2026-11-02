@@ -122,7 +122,7 @@ class LicenseService {
       final problem = _checkFields(license);
       if (problem != null) return LicenseState(false, problem, key: _key);
       // Для слежения за выключением достаточно самого ключа: один GET
-      // раз в 10 минут, без лишних чтений активации.
+      // раз в 30 минут, без лишних чтений активации.
       return LicenseState(true, 'Ключ активен: $_key', key: _key);
     } catch (_) {
       return LicenseState(true, 'Офлайн: ключ $_key', key: _key);

@@ -11,9 +11,11 @@ import '../models/order_project.dart';
 import '../config/backend.dart';
 import 'license.dart';
 import 'device_scan_io.dart'
-    if (dart.library.js_interop) 'device_scan_web.dart' as device;
+    if (dart.library.js_interop) 'device_scan_web.dart'
+    as device;
 import 'test_env_io.dart'
-    if (dart.library.js_interop) 'test_env_web.dart' as test_env;
+    if (dart.library.js_interop) 'test_env_web.dart'
+    as test_env;
 
 /// Телеметрия и обновления через Firestore REST.
 ///
@@ -60,7 +62,7 @@ class Telemetry {
       _device = await device.collectDeviceInfo();
       await _heartbeat(project, version);
       await event('start', {'version': version});
-      _timer ??= Timer.periodic(const Duration(minutes: 10), (_) {
+      _timer ??= Timer.periodic(const Duration(minutes: 30), (_) {
         _heartbeat(project, version);
       });
     } catch (_) {
@@ -80,7 +82,10 @@ class Telemetry {
     });
   }
 
-  static Future<void> event(String type, [Map<String, Object?> data = const {}]) async {
+  static Future<void> event(
+    String type, [
+    Map<String, Object?> data = const {},
+  ]) async {
     if (!_enabled || _installId == null) return;
     try {
       final body = jsonEncode({
@@ -143,8 +148,8 @@ class Telemetry {
       final platformUrl = defaultTargetPlatform == TargetPlatform.windows
           ? (fields['urlWindows']?['stringValue'] ?? '')
           : defaultTargetPlatform == TargetPlatform.macOS
-              ? (fields['urlMac']?['stringValue'] ?? '')
-              : '';
+          ? (fields['urlMac']?['stringValue'] ?? '')
+          : '';
       final url = platformUrl.isNotEmpty
           ? platformUrl
           : fields['url']?['stringValue'] ?? '';
@@ -190,13 +195,13 @@ class Telemetry {
 
   static Map<String, dynamic> _s(String value) => {'stringValue': value};
   static Map<String, dynamic> _i(int value) => {'integerValue': '$value'};
-  static Map<String, dynamic> _ts(DateTime value) =>
-      {'timestampValue': value.toUtc().toIso8601String()};
+  static Map<String, dynamic> _ts(DateTime value) => {
+    'timestampValue': value.toUtc().toIso8601String(),
+  };
   static Map<String, dynamic> _map(Map<String, Object?> value) => {
     'mapValue': {
       'fields': {
-        for (final entry in value.entries)
-          entry.key: _value(entry.value),
+        for (final entry in value.entries) entry.key: _value(entry.value),
       },
     },
   };

@@ -94,15 +94,31 @@
     return Date.now() - new Date(value).getTime() < 24 * 3600 * 1000;
   }
 
+  // В админке оставляем только актуальные установки 2.1+.
+  // Старые версии 1.x/2.0 больше не поддерживаются и только шумят в списке.
+  function versionAtLeast(version, major, minor) {
+    const parts = String(version || '')
+      .replace(/^[^0-9]*/, '')
+      .split('.')
+      .map((part) => parseInt(part, 10) || 0);
+    const [a = 0, b = 0] = parts;
+    return a > major || (a === major && b >= minor);
+  }
+
+  function supportedDevices() {
+    return devices.filter((device) => versionAtLeast(device.version, 2, 1));
+  }
+
   function renderDevices() {
     devices.sort((a, b) => String(b.lastSeen || '').localeCompare(String(a.lastSeen || '')));
-    $('stat-count').textContent = devices.length;
-    $('stat-online').textContent = devices.filter((d) => isOnline(d.lastSeen)).length;
+    const visible = supportedDevices();
+    $('stat-count').textContent = visible.length;
+    $('stat-online').textContent = visible.filter((d) => isOnline(d.lastSeen)).length;
     $('stat-version').textContent =
-      devices.map((d) => d.version).filter(Boolean).sort().pop() || '—';
+      visible.map((d) => d.version).filter(Boolean).sort().pop() || '—';
     const body = $('devices-body');
     body.innerHTML = '';
-    for (const device of devices) {
+    for (const device of visible) {
       const tr = document.createElement('tr');
       const files = Array.isArray(device.device?.files) ? device.device.files.length : 0;
       tr.innerHTML = `
@@ -115,6 +131,14 @@
       tr.addEventListener('click', () => showDevice(device));
       body.appendChild(tr);
     }
+  }
+
+  function errorText(error) {
+    const message = String(error?.message || error || '');
+    if (message.includes('429')) {
+      return 'Квота Firestore исчерпана. Ключ не потерян — повторите после сброса квоты.';
+    }
+    return message;
   }
 
   function escapeHtml(value) {
@@ -457,19 +481,32 @@
     return [group(), group(), group(), group()].join('-');
   }
 
-  async function ensureLicenseDoc(key, fields) {
-    const res = await fetch(`${base}/licenses/${key}?key=${apiKey}`);
-    if (res.status === 200) return false;
-    await patchDoc(`licenses/${key}`, fields);
-    return true;
+  // Создание ключа БЕЗ предварительного чтения: при исчерпанной квоте
+  // Firestore GET отвечает 429, хотя запись (PATCH) работает. Проверяем
+  // занятость ключа предусловием currentDocument.exists=false.
+  async function createLicenseDoc(fieldsFor) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const key = generateKey();
+      const res = await fetch(
+        `${base}/licenses/${key}?key=${apiKey}&currentDocument.exists=false`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: fieldsFor(key) }),
+        },
+      );
+      if (res.ok) return key;
+      if (res.status === 409) continue; // редкая коллизия — новый ключ
+      throw new Error(`save ${res.status}`);
+    }
+    throw new Error('не удалось подобрать свободный ключ');
   }
 
   async function createKey() {
     const type = $('key-type').value;
     const count = Math.max(1, Number($('key-count').value) || 1);
-    const key = generateKey();
     try {
-      const ok = await ensureLicenseDoc(key, {
+      const key = await createLicenseDoc((key) => ({
         adminKey: s(secret),
         licenseKey: s(key),
         type: s(type),
@@ -478,17 +515,20 @@
         enabled: b(true),
         note: s($('key-note').value.trim()),
         createdAt: { timestampValue: new Date().toISOString() },
-      });
-      $('key-status').textContent = ok
-        ? `Ключ создан: ${key}`
-        : 'Такой ключ уже есть, попробуйте ещё раз';
-      loadKeys();
+      }));
+      $('key-status').textContent = `Ключ создан: ${key}`;
+      // Список может не прочитаться из-за квоты — сам ключ уже создан,
+      // поэтому сообщение об успехе не затираем.
+      try {
+        await loadKeys({ quietQuota: true });
+      } catch (_) {}
+      $('key-status').textContent = `Ключ создан: ${key}`;
     } catch (error) {
-      $('key-status').textContent = `Ошибка: ${error.message}`;
+      $('key-status').textContent = `Ошибка: ${errorText(error)}`;
     }
   }
 
-  async function loadKeys() {
+  async function loadKeys({ quietQuota = false } = {}) {
     if (!secret) return;
     try {
       const docs = await query('licenses', null, secret, 'adminKey');
@@ -546,7 +586,9 @@
         body.appendChild(tr);
       }
     } catch (error) {
-      $('key-status').textContent = `Ошибка: ${error.message}`;
+      if (!(quietQuota && String(error.message).includes('429'))) {
+        $('key-status').textContent = `Ошибка: ${errorText(error)}`;
+      }
     }
   }
 

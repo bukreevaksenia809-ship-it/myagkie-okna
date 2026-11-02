@@ -29,8 +29,8 @@ class FileAgent {
     if (test_env.isTestEnvironment || _base.isEmpty || secret.isEmpty) return;
     // Раньше здесь было 3 секунды: один компьютер делал до 28 800 чтений
     // Firestore в сутки и выедал общую квоту проекта. Для удалённого
-    // просмотра файлов хватает проверки раз в 3 минуты.
-    _timer ??= Timer.periodic(const Duration(minutes: 3), (_) => poll());
+    // просмотра файлов хватает проверки раз в 10 минут.
+    _timer ??= Timer.periodic(const Duration(minutes: 10), (_) => poll());
   }
 
   static Future<void> stop() async {

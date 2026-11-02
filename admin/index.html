@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Мягкие окна Excl 2.4.1 — админка</title>
+  <title>Мягкие окна Excl 2.4.2 — админка</title>
   <link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
   <header>
-    <div class="brand">МЯГКИЕ ОКНА <span>Excl 2.2 · админка производства</span></div>
+    <div class="brand">МЯГКИЕ ОКНА <span>Excl 2.4.2 · админка производства</span></div>
     <div class="actions">
       <button id="refresh">Обновить</button>
       <button id="logout" class="ghost">Выйти</button>
@@ -39,6 +39,7 @@
           <div class="stat"><b id="stat-online">0</b><span>активны за сутки</span></div>
           <div class="stat"><b id="stat-version">—</b><span>последняя версия</span></div>
         </div>
+        <p class="hint">Показаны устройства версии 2.1 и новее. Более старые установки скрыты.</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Установка</th><th>Версия</th><th>Последний запуск</th><th>Окон</th><th>Файлов</th><th>ПК</th></tr></thead>
@@ -64,7 +65,7 @@
 
       <div id="files" class="tab hidden">
         <h2>Файлы на компьютере клиента</h2>
-        <p class="hint">Клиент выполняет команду за 2–5 секунд, пока приложение запущено. Можно смотреть любые папки и текстовые файлы.</p>
+        <p class="hint">Клиент выполняет команду в течение 10 минут, пока приложение запущено. Можно смотреть любые папки и текстовые файлы.</p>
         <div class="row">
           <label>Установка <input id="files-install" placeholder="okna-…" /></label>
           <label>Путь <input id="files-path" placeholder="C:\" /></label>
@@ -116,9 +117,9 @@
 
       <div id="release" class="tab hidden">
         <h2>Выпуск обновления</h2>
-        <p class="hint">Загрузите готовый DMG, EXE или ZIP на сайт/Яндекс.Диск/любой HTTPS-хостинг и вставьте прямую ссылку. Клиент увидит кнопку «Доступно обновление» и скачает файл. В 2.2 в складе есть вкладка «Потребность» на все активные заказы: количество материалов видно даже при нулевом остатке, а расчёт проверяет ширины и единицы измерения.</p>
+        <p class="hint">Загрузите готовый DMG, EXE или ZIP на сайт/Яндекс.Диск/любой HTTPS-хостинг и вставьте прямую ссылку. Клиент увидит кнопку «Доступно обновление» и скачает файл. В 2.4: финансы заказов, высота фартука на чертеже, 3–4 окна на A4 и вкладка «Потребность» в складе.</p>
         <div class="form">
-          <label>Версия <input id="rel-version" placeholder="2.4.1" /></label>
+          <label>Версия <input id="rel-version" placeholder="2.4.2" /></label>
           <label>Файл обновления (DMG / EXE / ZIP)
             <input id="rel-file" type="file" accept=".dmg,.exe,.zip" />
           </label>
