@@ -5,9 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/backend.dart';
 import 'device_scan_io.dart'
-    if (dart.library.js_interop) 'device_scan_web.dart' as device;
+    if (dart.library.js_interop) 'device_scan_web.dart'
+    as device;
 import 'test_env_io.dart'
-    if (dart.library.js_interop) 'test_env_web.dart' as test_env;
+    if (dart.library.js_interop) 'test_env_web.dart'
+    as test_env;
 
 /// Состояние лицензии.
 class LicenseState {
@@ -16,6 +18,10 @@ class LicenseState {
   final bool active;
   final String message;
   final String key;
+}
+
+class _ServerBusy implements Exception {
+  const _ServerBusy();
 }
 
 /// Ключи активации: одноразовые и многоразовые.
@@ -80,13 +86,17 @@ class LicenseService {
       }
       await _stampChecked();
       return LicenseState(true, 'Ключ активен: $_key', key: _key);
+    } on _ServerBusy {
+      final cached = await _cachedOffline();
+      if (cached != null) return cached;
+      return LicenseState(
+        false,
+        'Сервер активации перегружен. Повторите через 10–15 минут',
+        key: _key,
+      );
     } catch (_) {
-      final prefs = await SharedPreferences.getInstance();
-      final checked =
-          DateTime.tryParse(prefs.getString('license_checked_at') ?? '');
-      if (checked != null && DateTime.now().difference(checked).inDays <= 7) {
-        return LicenseState(true, 'Офлайн-режим (ключ $_key)', key: _key);
-      }
+      final cached = await _cachedOffline();
+      if (cached != null) return cached;
       return const LicenseState(false, 'Нет связи с сервером активации');
     }
   }
@@ -102,9 +112,11 @@ class LicenseService {
     }
     try {
       await loadSaved();
-      if (_key.isEmpty) return const LicenseState(false, 'Введите ключ активации');
+      if (_key.isEmpty)
+        return const LicenseState(false, 'Введите ключ активации');
       final license = await _license(_key);
-      if (license == null) return LicenseState(false, 'Ключ не найден', key: _key);
+      if (license == null)
+        return LicenseState(false, 'Ключ не найден', key: _key);
       final problem = _checkFields(license);
       if (problem != null) return LicenseState(false, problem, key: _key);
       // Для слежения за выключением достаточно самого ключа: один GET
@@ -154,9 +166,26 @@ class LicenseService {
       _key = key;
       await _saveKey();
       return LicenseState(true, 'Ключ активирован: $key', key: key);
+    } on _ServerBusy {
+      return const LicenseState(
+        false,
+        'Сервер активации перегружен. Повторите через 10–15 минут',
+      );
     } catch (_) {
       return const LicenseState(false, 'Нет связи с сервером активации');
     }
+  }
+
+  static Future<LicenseState?> _cachedOffline() async {
+    if (_key.isEmpty) return null;
+    final prefs = await SharedPreferences.getInstance();
+    final checked = DateTime.tryParse(
+      prefs.getString('license_checked_at') ?? '',
+    );
+    if (checked != null && DateTime.now().difference(checked).inDays <= 7) {
+      return LicenseState(true, 'Офлайн-режим (ключ $_key)', key: _key);
+    }
+    return null;
   }
 
   static Future<LicenseState> _activateNow(String key) async {
@@ -190,6 +219,8 @@ class LicenseService {
       );
       if (response.statusCode == 200) {
         ok = true;
+      } else if (response.statusCode == 429) {
+        throw const _ServerBusy();
       } else if (response.statusCode != 409) {
         break;
       }
@@ -231,6 +262,7 @@ class LicenseService {
       Uri.parse('$_base/licenses/$key?key=$apiKey'),
     );
     if (response.statusCode == 404) return null;
+    if (response.statusCode == 429) throw const _ServerBusy();
     if (response.statusCode != 200) {
       throw StateError('license ${response.statusCode}');
     }
@@ -248,6 +280,7 @@ class LicenseService {
     final response = await http.get(
       Uri.parse('$_base/licenses/$key/activations/$_installId?key=$apiKey'),
     );
+    if (response.statusCode == 429) throw const _ServerBusy();
     if (response.statusCode != 200) return null;
     final json = jsonDecode(response.body);
     final fields = json['fields'];

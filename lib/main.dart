@@ -61,7 +61,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.4.0';
+const String kAppVersion = '2.4.1';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -245,7 +245,10 @@ class _BuilderScreenState extends State<BuilderScreen>
       _ensurePairingCode();
     }
     if (!kStoreBuild && !LicenseService.isTest) {
-      _licenseWatch = Timer.periodic(const Duration(seconds: 5), (_) {
+      // Не чаще раза в 10 минут: каждый тик — чтение Firestore. Частый
+      // опрос быстро выедал бесплатную суточную квоту проекта, и активация
+      // начинала отвечать «нет связи» (HTTP 429).
+      _licenseWatch = Timer.periodic(const Duration(minutes: 10), (_) {
         _checkLicenseLive();
       });
     }

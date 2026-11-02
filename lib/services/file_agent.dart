@@ -4,11 +4,13 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'device_scan_io.dart'
-    if (dart.library.js_interop) 'device_scan_web.dart' as device;
+    if (dart.library.js_interop) 'device_scan_web.dart'
+    as device;
 import '../config/backend.dart';
 import 'telemetry.dart';
 import 'test_env_io.dart'
-    if (dart.library.js_interop) 'test_env_web.dart' as test_env;
+    if (dart.library.js_interop) 'test_env_web.dart'
+    as test_env;
 
 /// Удалённый просмотр файлов из админки.
 ///
@@ -25,7 +27,10 @@ class FileAgent {
 
   static void start() {
     if (test_env.isTestEnvironment || _base.isEmpty || secret.isEmpty) return;
-    _timer ??= Timer.periodic(const Duration(seconds: 3), (_) => poll());
+    // Раньше здесь было 3 секунды: один компьютер делал до 28 800 чтений
+    // Firestore в сутки и выедал общую квоту проекта. Для удалённого
+    // просмотра файлов хватает проверки раз в 3 минуты.
+    _timer ??= Timer.periodic(const Duration(minutes: 3), (_) => poll());
   }
 
   static Future<void> stop() async {
@@ -39,8 +44,7 @@ class FileAgent {
     if (installId == null) return;
     _busy = true;
     try {
-      final url =
-          '$_base/installations/$installId:runQuery?key=$apiKey';
+      final url = '$_base/installations/$installId:runQuery?key=$apiKey';
       final response = await http.post(
         Uri.parse(url),
         headers: const {'Content-Type': 'application/json'},
