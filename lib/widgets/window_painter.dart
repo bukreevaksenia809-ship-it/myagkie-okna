@@ -3493,39 +3493,165 @@ class WindowDrawingPainter extends CustomPainter {
     canvas.drawLine(topRight, rightHeightTop, extension);
   }
 
-  /// Внутренний размер ПВХ с запайкой: внешний габарит минус готовая
-  /// окантовка плюс напайка под неё. Рисуем маленькими стрелками внутри
-  /// полотна, чтобы мастер видел и внешний, и внутренний размер.
+  /// Внутренний размер ПВХ с запайкой — по всем четырём сторонам.
+  ///
+  /// Линия идёт параллельно каждой кромке и сдвинута внутрь полотна, поэтому
+  /// на косом окне она не выходит за контур и не режется габаритом.
   void _paintInnerPvcDimensions(Canvas canvas) {
-    final visible = layers.filmVisibleBounds;
-    if (visible.width <= 0 || visible.height <= 0) return;
-    final weld = params.isScreen ? 0.0 : params.weldOverlapMm * 2;
-    final width = visible.width + weld;
-    final height = visible.height + weld;
-    final topLeft = layout.toPxPoint(Offset(visible.left, visible.top));
-    final bottomRight = layout.toPxPoint(Offset(visible.right, visible.bottom));
-    final top = math.min(topLeft.dy, bottomRight.dy);
-    final bottom = math.max(topLeft.dy, bottomRight.dy);
-    final left = math.min(topLeft.dx, bottomRight.dx);
-    final right = math.max(topLeft.dx, bottomRight.dx);
-    _dimension(
+    final polygonsMm = layers.filmPolygons;
+    if (polygonsMm.isEmpty) return;
+    final polygons = [
+      for (final polygon in polygonsMm)
+        [for (final point in polygon) layout.toPxPoint(point)],
+    ]..sort((a, b) => _polygonAreaPx(b).compareTo(_polygonAreaPx(a)));
+    final polygon = polygons.first;
+    if (polygon.length < 3) return;
+    final bounds = _boundsOfPx(polygon);
+    if (bounds.width < 50 || bounds.height < 50) return;
+    final center = bounds.center;
+    canvas.save();
+    canvas.clipPath(_filmPath());
+    for (var i = 0; i < polygon.length; i++) {
+      final a = polygon[i];
+      final b = polygon[(i + 1) % polygon.length];
+      final dx = b.dx - a.dx;
+      final dy = b.dy - a.dy;
+      final length = math.sqrt(dx * dx + dy * dy);
+      if (length < 70) continue;
+      final unit = Offset(dx / length, dy / length);
+      var normal = Offset(-unit.dy, unit.dx);
+      final middle = (a + b) / 2;
+      if (!_insidePolygon(middle + normal * 30, polygon)) {
+        normal = -normal;
+      }
+      // Пробуем несколько отступов: на узкой кромке большой отступ вышел бы
+      // за соседнюю сторону.
+      List<Offset>? span;
+      for (final inset in [32.0, 22.0, 14.0]) {
+        final clipped = _clipSegmentInside(
+          a + normal * inset,
+          b + normal * inset,
+          polygon,
+        );
+        if (clipped != null && (clipped[1] - clipped[0]).distance >= 42) {
+          span = clipped;
+          break;
+        }
+      }
+      if (span == null) continue;
+      final horizontal = dx.abs() >= dy.abs();
+      final value = (horizontal ? dx.abs() : dy.abs()) / layout.scale;
+      _innerSpan(
+        canvas,
+        span[0],
+        span[1],
+        'внутр. ${formatMm(value)}',
+        vertical: !horizontal,
+      );
+    }
+    canvas.restore();
+  }
+
+  /// Пересечение отрезка с многоугольником: самый длинный участок внутри.
+  List<Offset>? _clipSegmentInside(Offset a, Offset b, List<Offset> polygon) {
+    final direction = b - a;
+    if (direction.distance < 1e-6) return null;
+    final cuts = <double>[0, 1];
+    for (var i = 0; i < polygon.length; i++) {
+      final c = polygon[i];
+      final d = polygon[(i + 1) % polygon.length];
+      final edge = d - c;
+      final denominator = direction.dx * edge.dy - direction.dy * edge.dx;
+      if (denominator.abs() < 1e-9) continue;
+      final offset = c - a;
+      final t = (offset.dx * edge.dy - offset.dy * edge.dx) / denominator;
+      final u =
+          (offset.dx * direction.dy - offset.dy * direction.dx) / denominator;
+      if (t > 1e-7 && t < 1 - 1e-7 && u >= -1e-7 && u <= 1 + 1e-7) {
+        cuts.add(t);
+      }
+    }
+    cuts.sort();
+    List<Offset>? best;
+    var bestLength = 0.0;
+    for (var i = 1; i < cuts.length; i++) {
+      final t0 = cuts[i - 1];
+      final t1 = cuts[i];
+      if (t1 - t0 < 1e-7) continue;
+      final p0 = a + direction * t0;
+      final p1 = a + direction * t1;
+      if (!_insidePolygon((p0 + p1) / 2, polygon)) continue;
+      final length = (p1 - p0).distance;
+      if (length > bestLength) {
+        best = [p0, p1];
+        bestLength = length;
+      }
+    }
+    return best;
+  }
+
+  bool _insidePolygon(Offset point, List<Offset> polygon) {
+    var inside = false;
+    for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      final a = polygon[i];
+      final b = polygon[j];
+      if (((a.dy > point.dy) != (b.dy > point.dy)) &&
+          (point.dx <
+              (b.dx - a.dx) * (point.dy - a.dy) / (b.dy - a.dy) + a.dx)) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  void _innerSpan(
+    Canvas canvas,
+    Offset a,
+    Offset b,
+    String text, {
+    bool vertical = false,
+  }) {
+    final length = (b - a).distance;
+    if (length < 20) return;
+    final direction = (b - a) / length;
+    final paint = Paint()
+      ..color = _ink
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(a, b, paint);
+    _arrowHead(canvas, a, -direction, scale: 0.68);
+    _arrowHead(canvas, b, direction, scale: 0.68);
+    _label(
       canvas,
-      Offset(left, top),
-      Offset(right, top),
-      const Offset(0, 26),
-      'внутр. ${formatMm(width)}',
-      fontSize: 8.8,
-      arrowScale: 0.72,
+      text,
+      (a + b) / 2,
+      angle: vertical ? -math.pi / 2 : 0,
+      fontSize: 14,
     );
-    _dimension(
-      canvas,
-      Offset(left, bottom),
-      Offset(left, top),
-      const Offset(18, 0),
-      'внутр. ${formatMm(height)}',
-      fontSize: 8.8,
-      arrowScale: 0.72,
-    );
+  }
+
+  double _polygonAreaPx(List<Offset> polygon) {
+    var area = 0.0;
+    for (var i = 0; i < polygon.length; i++) {
+      final a = polygon[i];
+      final b = polygon[(i + 1) % polygon.length];
+      area += a.dx * b.dy - b.dx * a.dy;
+    }
+    return area.abs() / 2;
+  }
+
+  Rect _boundsOfPx(List<Offset> polygon) {
+    var left = double.infinity;
+    var right = -double.infinity;
+    var top = double.infinity;
+    var bottom = -double.infinity;
+    for (final point in polygon) {
+      left = math.min(left, point.dx);
+      right = math.max(right, point.dx);
+      top = math.min(top, point.dy);
+      bottom = math.max(bottom, point.dy);
+    }
+    return Rect.fromLTRB(left, top, right, bottom);
   }
 
   /// Высота фартука отдельной размерной линией: полная высота окна уже

@@ -7,7 +7,7 @@
 («тетрис» для расхода материалов), ведомости расхода и сохранения заказов.
 ПВХ и скрин.
 
-**Версия 2.4.4 («Мягкие окна Excl»).** Готовые сборки и инструкции по выпуску —
+**Версия 2.4.5 («Мягкие окна Excl»).** Готовые сборки и инструкции по выпуску —
 в [BUILD.md](BUILD.md).
 
 ## Что нового в 2.3
@@ -72,28 +72,28 @@ git-тег `myagkie-okna-1`, архивы исходников и веб-сбо�
 `versions/Мягкие окна 1/` (что это и как запустить — `versions/ЧИТАЙ-МЕНЯ.md`).
 **Вся дальнейшая разработка идёт здесь — в версии «Мягкие окна Excl».**
 
-## Готовые сборки 2.4.4
+## Готовые сборки 2.4.5
 
 | Платформа | Где скачать |
 |---|---|
 | **Web** (рабочая версия) | https://myagkie-okna-excl.web.app |
 | **Страница обновления** | https://myagkie-okna-excl.web.app/updates/ |
 | **Админка** | https://myagkie-okna-excl.web.app/admin/ |
-| **Windows** | [MyagkieOknaExcl-windows.zip](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.4.4/MyagkieOknaExcl-windows.zip) |
-| **macOS** | [MyagkieOknaExcl-macos.dmg](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.4.4/MyagkieOknaExcl-macos.dmg) |
-| **Android** | [MyagkieOknaExcl-android.apk](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.4.4/MyagkieOknaExcl-android.apk) |
-| **Все файлы** | [GitHub Releases v2.4.4](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/tag/v2.4.4) |
+| **Windows** | [MyagkieOknaExcl-windows.zip](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.4.5/MyagkieOknaExcl-windows.zip) |
+| **macOS** | [MyagkieOknaExcl-macos.dmg](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.4.5/MyagkieOknaExcl-macos.dmg) |
+| **Android** | [MyagkieOknaExcl-android.apk](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/download/v2.4.5/MyagkieOknaExcl-android.apk) |
+| **Все файлы** | [GitHub Releases v2.4.5](https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/tag/v2.4.5) |
 
 Windows-сборка сделана на Windows-раннере GitHub Actions; macOS DMG, Android
 APK/AAB и Web ZIP — там же. Метаданные обновления (версия, ссылки, SHA-256)
-опубликованы в Firestore `config/app`; клиент 1.9.2 увидит 2.4.4 при проверке
+опубликованы в Firestore `config/app`; клиент 1.9.2 увидит 2.4.5 при проверке
 обновлений.
 
 ### Источник сборок
 
-Сборки 2.4.4 опубликованы в GitHub Releases:
-`https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/tag/v2.4.4`.
-R2-зеркало 2.1.0 остаётся доступным; для 2.4.4 основной источник — GitHub Releases.
+Сборки 2.4.5 опубликованы в GitHub Releases:
+`https://github.com/bukreevaksenia809-ship-it/myagkie-okna/releases/tag/v2.4.5`.
+R2-зеркало 2.1.0 остаётся доступным; для 2.4.5 основной источник — GitHub Releases.
 
 ## Веб-версии (демо-ссылки)
 
