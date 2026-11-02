@@ -3508,7 +3508,6 @@ class WindowDrawingPainter extends CustomPainter {
     if (polygon.length < 3) return;
     final bounds = _boundsOfPx(polygon);
     if (bounds.width < 50 || bounds.height < 50) return;
-    final center = bounds.center;
     canvas.save();
     canvas.clipPath(_filmPath());
     for (var i = 0; i < polygon.length; i++) {
