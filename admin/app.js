@@ -339,10 +339,16 @@
 
   async function saveRelease() {
     const ids = $('rel-ids').value.split(',').map((x) => x.trim()).filter(Boolean);
+    const version = $('rel-version').value.trim();
+    if (!versionAtLeast(version, 2, 1)) {
+      $('release-status').textContent =
+        'Версии ниже 2.1 больше не поддерживаются — укажите 2.1 или новее';
+      return;
+    }
     try {
       await patchDoc('config/app', {
         adminKey: s(secret),
-        latestVersion: s($('rel-version').value.trim()),
+        latestVersion: s(version),
         url: s($('rel-url').value.trim()),
         sha256: s($('rel-sha').value.trim()),
         urlWindows: s($('rel-url-windows').value.trim()),
