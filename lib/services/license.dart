@@ -112,15 +112,17 @@ class LicenseService {
     }
     try {
       await loadSaved();
-      if (_key.isEmpty)
+      if (_key.isEmpty) {
         return const LicenseState(false, 'Введите ключ активации');
+      }
       final license = await _license(_key);
-      if (license == null)
+      if (license == null) {
         return LicenseState(false, 'Ключ не найден', key: _key);
+      }
       final problem = _checkFields(license);
       if (problem != null) return LicenseState(false, problem, key: _key);
       // Для слежения за выключением достаточно самого ключа: один GET
-      // каждые несколько секунд, без лишних чтений активации.
+      // раз в 10 минут, без лишних чтений активации.
       return LicenseState(true, 'Ключ активен: $_key', key: _key);
     } catch (_) {
       return LicenseState(true, 'Офлайн: ключ $_key', key: _key);
