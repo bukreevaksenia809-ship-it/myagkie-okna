@@ -22,6 +22,7 @@ class DrawingSheet extends StatelessWidget {
     this.labelFontFamily,
     this.company,
     this.onParamsChanged,
+    this.onSelectWindow,
   });
 
   final OrderProject project;
@@ -37,6 +38,9 @@ class DrawingSheet extends StatelessWidget {
 
   /// Правка параметров прямо на чертеже (перетаскивание люверсов).
   final ValueChanged<WindowParams>? onParamsChanged;
+
+  /// Нажатие на конкретное окно в сетке: выбрать его в панели справа.
+  final ValueChanged<int>? onSelectWindow;
 
   /// Ширина листа A4 в логических точках: 210 мм при 150 dpi.
   static const double a4Width = 1240;
@@ -637,36 +641,46 @@ class DrawingSheet extends StatelessWidget {
       labelScale: cell.labelScale,
       fastenerImage: fastenerImage,
     );
-    return Container(
-      margin: const EdgeInsets.all(_cellMargin),
-      decoration: BoxDecoration(
-        color: isSelected ? const Color(0x0F0B62C4) : null,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Column(
-        children: [
-          Expanded(
-            child: Center(
-              // Поворачиваем весь чертёж целиком: RotatedBox меняет местами
-              // оси, поэтому размерные линии и подписи поворачиваются вместе
-              // с контуром и остаются в системе самого painter.
-              child: cell.quarterTurns == 0
-                  ? drawing
-                  : RotatedBox(quarterTurns: cell.quarterTurns, child: drawing),
+    return GestureDetector(
+      key: Key('drawing-cell-${cell.windowIndex + 1}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: onSelectWindow == null
+          ? null
+          : () => onSelectWindow!(cell.windowIndex),
+      child: Container(
+        margin: const EdgeInsets.all(_cellMargin),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0x0F0B62C4) : null,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: Center(
+                // Поворачиваем весь чертёж целиком: RotatedBox меняет местами
+                // оси, поэтому размерные линии и подписи поворачиваются вместе
+                // с контуром и остаются в системе самого painter.
+                child: cell.quarterTurns == 0
+                    ? drawing
+                    : RotatedBox(
+                        quarterTurns: cell.quarterTurns,
+                        child: drawing,
+                      ),
+              ),
             ),
-          ),
-          SizedBox(
-            height: _captionHeight,
-            child: _Caption(
-              number: cell.windowIndex + 1,
-              params: params,
-              spec: spec,
-              highlighted: isSelected,
-              scaleLabel: formatExactScaleLabel(cell.scale),
-              quarterTurns: cell.quarterTurns,
+            SizedBox(
+              height: _captionHeight,
+              child: _Caption(
+                number: cell.windowIndex + 1,
+                params: params,
+                spec: spec,
+                highlighted: isSelected,
+                scaleLabel: formatExactScaleLabel(cell.scale),
+                quarterTurns: cell.quarterTurns,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1061,38 +1075,43 @@ class DrawingSheet extends StatelessWidget {
       fitExactly: fitExactly,
     );
 
-    return Container(
-      margin: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: isSelected ? const Color(0x0F0B62C4) : null,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Column(
-        children: [
-          Expanded(
-            child: Center(
-              child: _drawingBox(
-                frame: frame,
-                layout: layout,
-                params: params,
-                spec: spec,
-                paintScale: 1,
-                // Подробный режим: подписи крупные, в ячейке они чуть мельче.
-                labelScale: labelScale,
-                fastenerImage: fastenerImage,
+    return GestureDetector(
+      key: Key('drawing-cell-${index + 1}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: onSelectWindow == null ? null : () => onSelectWindow!(index),
+      child: Container(
+        margin: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0x0F0B62C4) : null,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: Center(
+                child: _drawingBox(
+                  frame: frame,
+                  layout: layout,
+                  params: params,
+                  spec: spec,
+                  paintScale: 1,
+                  // Подробный режим: подписи крупные, в ячейке они чуть мельче.
+                  labelScale: labelScale,
+                  fastenerImage: fastenerImage,
+                ),
               ),
             ),
-          ),
-          SizedBox(
-            height: _captionHeight,
-            child: _Caption(
-              number: index + 1,
-              params: params,
-              spec: spec,
-              highlighted: isSelected,
+            SizedBox(
+              height: _captionHeight,
+              child: _Caption(
+                number: index + 1,
+                params: params,
+                spec: spec,
+                highlighted: isSelected,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

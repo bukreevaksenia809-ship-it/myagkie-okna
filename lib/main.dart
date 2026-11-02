@@ -61,7 +61,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.4.5';
+const String kAppVersion = '2.4.6';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -555,6 +555,13 @@ class _BuilderScreenState extends State<BuilderScreen>
     if ((scale - _zoomLevel).abs() > 0.01) {
       setState(() => _zoomLevel = scale);
     }
+  }
+
+  /// Нажатие на окно в сетке A4: выбрать его и открыть в панели.
+  void _selectDrawingWindow(int index) {
+    if (index < 0 || index >= _project.windowCount) return;
+    if (index == _project.selectedIndex) return;
+    _updateProject(_project.copyWith(selectedIndex: index));
   }
 
   void _updateProject(OrderProject project) {
@@ -1838,6 +1845,7 @@ class _BuilderScreenState extends State<BuilderScreen>
               // Люверсы можно перетаскивать мышкой прямо по чертежу.
               onParamsChanged: (params) =>
                   _updateProject(_project.updateSelected(params)),
+              onSelectWindow: _selectDrawingWindow,
             ),
             SheetTab.roll => RollSheet(
               project: _project,
