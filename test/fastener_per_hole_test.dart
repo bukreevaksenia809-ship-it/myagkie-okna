@@ -7,15 +7,15 @@ import 'package:soft_window_drawer/services/estimate.dart';
 
 WindowParams _manualBottom() {
   final positions = <EyeletPosition>[
-    for (var i = 0; i < 10; i++)
+    for (var i = 0; i < 19; i++)
       EyeletPosition(
         side: EdgeSide.bottom,
-        fraction: 0.1 + i * 0.08,
+        fraction: 0.04 + i * 0.045,
         kind: MarkerKind.roundEyelet,
       ),
     const EyeletPosition(
       side: EdgeSide.bottom,
-      fraction: 0.92,
+      fraction: 0.94,
       kind: MarkerKind.metalFrenchLock,
     ),
   ];
@@ -37,7 +37,7 @@ void main() {
     final bottomEyelets = spec.layers.standaloneEyelets
         .where((eyelet) => eyelet.side == WindowSide.bottom)
         .toList();
-    expect(bottomEyelets, hasLength(10));
+    expect(bottomEyelets, hasLength(19));
     expect(
       spec.layers.manualFasteners
           .where((fastener) => fastener.type == FastenerType.metalFrenchLock)
