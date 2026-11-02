@@ -268,6 +268,7 @@ class CutPiece {
       materials: compositeMaterials,
     );
   }
+
   /// Заготовки окна с учётом перемычек во всю ширину/высоту.
   static List<CutPiece> piecesOfSpec(WindowSpec spec, {int windowIndex = 0}) {
     final base = CutPiece.ofSpec(spec);
@@ -321,8 +322,14 @@ class CutPiece {
     if (strip <= 0.5 || strip >= total - 0.5) return null;
     final main = total - strip;
     final intervals = spec.params.spliceSide == FilmSpliceSide.right
-        ? [(start: 0.0, end: main, label: 'основа'), (start: main, end: total, label: 'полоса')]
-        : [(start: 0.0, end: strip, label: 'полоса'), (start: strip, end: total, label: 'основа')];
+        ? [
+            (start: 0.0, end: main, label: 'основа'),
+            (start: main, end: total, label: 'полоса'),
+          ]
+        : [
+            (start: 0.0, end: strip, label: 'полоса'),
+            (start: strip, end: total, label: 'основа'),
+          ];
     final result = <CutPiece>[];
     for (final interval in intervals) {
       final contours = <List<Offset>>[];
@@ -353,9 +360,10 @@ class CutPiece {
           heightMm: bounds.height,
           outline: local.first,
           contours: local,
-          areaM2: [
-            for (final contour in local) polygonArea(contour).abs(),
-          ].fold<double>(0, (sum, value) => sum + value) /
+          areaM2:
+              [
+                for (final contour in local) polygonArea(contour).abs(),
+              ].fold<double>(0, (sum, value) => sum + value) /
               1000000,
           materials: base.materials,
           partLabel: interval.label,
@@ -428,9 +436,10 @@ class CutPiece {
           heightMm: bounds.height,
           outline: local.first,
           contours: local,
-          areaM2: [
-            for (final contour in local) polygonArea(contour).abs(),
-          ].fold<double>(0, (sum, value) => sum + value) /
+          areaM2:
+              [
+                for (final contour in local) polygonArea(contour).abs(),
+              ].fold<double>(0, (sum, value) => sum + value) /
               1000000,
           materials: piece.materials,
         ),
@@ -456,12 +465,16 @@ class CutPiece {
       for (var i = 0; i < input.length; i++) {
         final current = input[i];
         final previous = input[(i - 1 + input.length) % input.length];
-        final currentIn = keepAbove ? value(current) >= limit : value(current) <= limit;
-        final previousIn = keepAbove ? value(previous) >= limit : value(previous) <= limit;
+        final currentIn = keepAbove
+            ? value(current) >= limit
+            : value(current) <= limit;
+        final previousIn = keepAbove
+            ? value(previous) >= limit
+            : value(previous) <= limit;
         if (currentIn) {
           if (!previousIn) {
-            final t = (limit - value(previous)) /
-                (value(current) - value(previous));
+            final t =
+                (limit - value(previous)) / (value(current) - value(previous));
             output.add(Offset.lerp(previous, current, t)!);
           }
           output.add(current);
@@ -485,10 +498,7 @@ class CutPiece {
 
   CutPiece withWindow(int index) => copyWith(windowIndex: index);
 
-  CutPiece copyWith({
-    int? windowIndex,
-    String? partLabel,
-  }) => CutPiece(
+  CutPiece copyWith({int? windowIndex, String? partLabel}) => CutPiece(
     widthMm: widthMm,
     heightMm: heightMm,
     outline: outline,
@@ -631,8 +641,7 @@ List<List<Offset>> cutSheetContours(
   for (var i = 0; i < order.length; i++) {
     contentWidth += boxes[order[i]].width;
     if (i + 1 < order.length) {
-      final realGap =
-          boxes[order[i + 1]].left - boxes[order[i]].right;
+      final realGap = boxes[order[i + 1]].left - boxes[order[i]].right;
       gaps.add(math.max(realGap, gap));
     }
   }
@@ -1033,8 +1042,7 @@ class CutSheetPainter extends CustomPainter {
         if (points.isEmpty) continue;
         final material = piece.materialFor(index) ?? spec.params.material;
         final palette = CutPalette.of(material);
-        final path = Path()
-          ..moveTo(points.first.dx, points.first.dy);
+        final path = Path()..moveTo(points.first.dx, points.first.dy);
         for (final point in points.skip(1)) {
           path.lineTo(point.dx, point.dy);
         }
@@ -1053,6 +1061,7 @@ class CutSheetPainter extends CustomPainter {
 
     _paintArea(canvas, rect, placement.piece, spec);
     _paintDimensions(canvas, rect, placement);
+    _paintLevelArrows(canvas, rect, spec);
     _paintCaption(
       canvas,
       rect,
@@ -1265,6 +1274,42 @@ class CutSheetPainter extends CustomPainter {
   }
 
   /// Размерная линия со стрелками и подписью для фигур.
+  /// Стрелки «Ровно лево/право» на раскрое: показывают, какая вертикальная
+  /// кромка выпрямлена, и смотрят в её сторону.
+  void _paintLevelArrows(Canvas canvas, Rect rect, WindowSpec spec) {
+    final params = spec.params;
+    if (!params.levelLeft && !params.levelRight) return;
+    if (rect.width < 110) return;
+    const blue = Color(0xFF0B62C4);
+    final paint = Paint()
+      ..color = blue
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+    final y = rect.top + 22;
+    void arrow(bool left) {
+      final edge = left ? rect.left : rect.right;
+      final start = edge + (left ? 8.0 : -8.0);
+      final tip = edge + (left ? 38.0 : -38.0);
+      canvas.drawLine(Offset(start, y), Offset(tip, y), paint);
+      _arrow(
+        canvas,
+        Offset(tip, y),
+        left ? const Offset(-1, 0) : const Offset(1, 0),
+        color: blue,
+      );
+      _label(
+        canvas,
+        left ? 'Ровно лево' : 'Ровно право',
+        Offset((start + tip) / 2, y + 11),
+        small: true,
+        color: blue,
+      );
+    }
+
+    if (params.levelLeft) arrow(true);
+    if (params.levelRight) arrow(false);
+  }
+
   void _arrowedDimension(
     Canvas canvas,
     Offset a,
@@ -1301,7 +1346,12 @@ class CutSheetPainter extends CustomPainter {
     return angle;
   }
 
-  void _arrow(Canvas canvas, Offset tip, Offset direction) {
+  void _arrow(
+    Canvas canvas,
+    Offset tip,
+    Offset direction, {
+    Color color = _ink,
+  }) {
     const length = 9.0;
     const halfWidth = 3.0;
     final back = tip - direction * length;
@@ -1312,7 +1362,7 @@ class CutSheetPainter extends CustomPainter {
         ..lineTo(back.dx + normal.dx, back.dy + normal.dy)
         ..lineTo(back.dx - normal.dx, back.dy - normal.dy)
         ..close(),
-      Paint()..color = _ink,
+      Paint()..color = color,
     );
   }
 
@@ -1326,9 +1376,10 @@ class CutSheetPainter extends CustomPainter {
   ) {
     final params = spec.params;
     final materials = <String>[
-      for (final material in spec.isComposite
-          ? [params.material, params.composite.material]
-          : [params.material])
+      for (final material
+          in spec.isComposite
+              ? [params.material, params.composite.material]
+              : [params.material])
         material.label,
     ];
     final material = materials.toSet().join(' + ');
@@ -1377,7 +1428,10 @@ class CutSheetPainter extends CustomPainter {
       _label(
         canvas,
         parts.join(' · '),
-        Offset(rect.center.dx, rect.bottom + (spec.zipperSegmentWidths.length > 1 ? 120 : 96)),
+        Offset(
+          rect.center.dx,
+          rect.bottom + (spec.zipperSegmentWidths.length > 1 ? 120 : 96),
+        ),
         small: true,
         color: _dim,
       );
