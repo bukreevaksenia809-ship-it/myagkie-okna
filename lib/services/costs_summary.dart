@@ -327,6 +327,26 @@ class CostsSummary {
       ? ((rollArea - rollPiecesArea) / rollArea * 100).clamp(0.0, 100.0)
       : 0;
 
+  /// Площадь материала канта по заказу, м².
+  double get edgeAreaM2 => specs.fold(0, (sum, spec) => sum + spec.edgeAreaM2);
+
+  /// Тип, цвет и площадь канта одной строкой для примечаний.
+  String get edgeMaterialNote {
+    if (!(edgeAreaM2 > 0)) {
+      return 'Кант: нет — у скрина подворот, отдельная ткань не расходуется';
+    }
+    final groups = <String>{};
+    for (final spec in specs) {
+      if (!(spec.edgeAreaM2 > 0)) continue;
+      groups.add(
+        '${spec.params.edgeMaterial.label}, '
+        '${spec.params.edgeColor.label.toLowerCase()}',
+      );
+    }
+    return 'Кант: ${groups.join('; ')} — всего '
+        '${formatMeters(edgeAreaM2)} м²';
+  }
+
   /// Подписи расхода окантовки: «Тент 100 мм — 654 см».
   List<String> get edgeConsumptionLabels {
     final entries = edgeByRoll.entries.toList()

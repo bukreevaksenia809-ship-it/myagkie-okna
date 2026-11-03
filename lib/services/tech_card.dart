@@ -180,7 +180,7 @@ class TechCard {
             '${formatMm(params.eyeletStep)} ${unitSuffix()} (факт. '
             '${spec.eyeletStepLabel}) · '
             'крепёж: ${spec.fastenerSummary.toLowerCase()}'
-      : 'Окантовка: ${spec.edgeBySideSummary} · '
+      : 'Окантовка: ${spec.edgeBySideSummary} · ${spec.edgeMaterialNote} · '
             'плёнка в раскрое'
             '${params.hasAllowance ? ' с припуском' : ''}'
             '${params.hasShrinkage ? ' и усадкой' : ''}: '
@@ -196,6 +196,9 @@ class TechCard {
   /// Всего окантовки, мм.
   double get edgeTotalMm =>
       edgeTotals.values.fold(0, (sum, value) => sum + value);
+
+  /// Площадь материала канта, м².
+  double get edgeAreaM2 => spec.edgeAreaM2;
 
   int get eyeletCount => spec.eyeletCount;
 
@@ -592,7 +595,7 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           ? 'Напайка: сварка с окантовкой'
           : 'Напайка: шитьё окантовки',
       description:
-          'Плёнку завести под окантовку на запайку '
+          '${params.edgeMaterial.needsWeldOverlap ? 'Плёнку завести под окантовку на запайку' : 'Плёнку завести под кант на припуск под шов'} '
           '${formatMm(params.weldOverlapMm)} ${unitSuffix()} по всему периметру '
           '(${formatMm(spec.edgePerimeterMm)} ${unitSuffix()}). '
           'Соединение: ${params.edgeMaterial.joining}. '
@@ -737,8 +740,8 @@ List<TechOperation> _buildOperations(WindowSpec spec, int index) {
           '240 → 120 мм; свою ширину на каждую сторону мастер берёт из карты). '
           'Полосу наложить на плёнку с запайкой '
           '${formatMm(params.weldOverlapMm)} ${unitSuffix()} и '
-          '${isWeldedEdge ? 'приварить' : 'пришить'}. Итого по ширинам: '
-          '$totalsText.',
+          '${isWeldedEdge ? 'приварить' : 'пришить'}. '
+          '${spec.edgeMaterialNote}. Итого по ширинам: $totalsText.',
       materials: edgeMaterials,
       tool: isWeldedEdge
           ? 'Раскроечный стол, нож, линейка; фен-сварочник, прижимной ролик'

@@ -842,7 +842,9 @@ class ClientReportBuilder {
         .toList();
     final edgeText = edge.isEmpty
         ? 'подворот'
-        : '${_trim(edge.reduce((a, b) => a > b ? a : b) / 10)} см';
+        : '${_trim(edge.reduce((a, b) => a > b ? a : b) / 10)} см · '
+              '${spec.params.edgeMaterial.shortLabel} · ${spec.params.edgeColor.label.toLowerCase()} · '
+              '${_m2(spec.edgeAreaM2)} м²';
     final step = spec.params.eyeletStep;
     return pw.Container(
       padding: const pw.EdgeInsets.fromLTRB(12, 10, 12, 9),

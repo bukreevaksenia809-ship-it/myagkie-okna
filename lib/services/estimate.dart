@@ -194,7 +194,8 @@ class Estimate {
           title: 'Окантовка ${edgeBandLabel(rawWidth)}',
           note:
               'готовая полоса '
-              '${formatMm(WindowParams.finishedEdgeWidth(rawWidth))} ${unitSuffix()}',
+              '${formatMm(WindowParams.finishedEdgeWidth(rawWidth))} ${unitSuffix()} · '
+              '${summary.edgeMaterialNote}',
           quantity: meters,
           unit: 'м',
           unitPrice: prices.edgePerMeterForWidth(rawWidth),

@@ -2878,14 +2878,35 @@ class _ParamsPanelState extends State<ParamsPanel> {
     }
     return _expansion(
       title: 'Окантовка',
-      subtitle: '${spec.edgeBySideSummary} · ${params.edgeColor.label}',
+      subtitle:
+          '${spec.edgeBySideSummary} · ${params.edgeMaterial.shortLabel}, '
+          '${params.edgeColor.label.toLowerCase()}',
       children: [
         const Text(
           'Готовая ширина окантовки на каждую сторону, мм — пресеты '
           'или своё значение. Кант 50 мм = рулон 100 мм, сложенный пополам.',
           style: TextStyle(fontSize: 12, color: Color(0xFF5B6B80)),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
+        const Text(
+          'Материал канта',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        _chips<EdgeMaterial>(
+          values: EdgeMaterial.values,
+          selected: params.edgeMaterial,
+          labelOf: (material) => material.label,
+          keyOf: (material) => 'edge-material-${material.name}',
+          onSelected: (material) =>
+              _updateWindow(params.copyWith(edgeMaterial: material)),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          spec.edgeMaterialNote,
+          style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+        ),
+        const SizedBox(height: 10),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

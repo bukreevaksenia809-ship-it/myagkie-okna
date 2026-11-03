@@ -392,21 +392,35 @@ String edgeBandLabel(double rawWidth, {bool short = false}) {
   return short ? width : 'Тент $width';
 }
 
-/// Материал окантовки: только ПВХ-тент. Других тканей в проекте нет —
-/// заказчик работает на ПВХ-тенте, поэтому и шов всегда сварной.
+/// Материал окантовки (канта).
+///
+/// ПВХ-тент сваривается горячим воздухом; Оксфорд и ткань скрин — обычные
+/// ткани, их стачивают нитками. Ширина рулона остаётся общей: мастер выбирает
+/// материал, цвет и ширину полосы, а программа считает длину и площадь.
 enum EdgeMaterial {
-  pvcTent630;
+  pvcTent630('ПВХ-тент 630–650 г/м²', 'Тент'),
+  oxford600('Ткань Оксфорд 600D', 'Оксфорд'),
+  screenFabric('Ткань скрин', 'Скрин');
 
-  String get label => switch (this) {
-    EdgeMaterial.pvcTent630 => 'ПВХ-тент 630–650 г/м²',
-  };
+  const EdgeMaterial(this.label, this.shortLabel);
 
-  /// Способ соединения: ПВХ-тент сваривают горячим воздухом.
+  final String label;
+
+  /// Короткое имя для примечаний и строк раскроя.
+  final String shortLabel;
+
+  /// Способ соединения.
   String get joining => switch (this) {
     EdgeMaterial.pvcTent630 => 'Сварка горячим воздухом 400–500 °C',
+    EdgeMaterial.oxford600 ||
+    EdgeMaterial.screenFabric => 'Стачивание нитками, шов вподгибку',
   };
 
+  /// Только ПВХ-тент сваривается; ткани стачиваются.
   bool get isWelded => this == EdgeMaterial.pvcTent630;
+
+  /// Нужна ли запайка плёнки под кант (у тканей — припуск под шов).
+  bool get needsWeldOverlap => this == EdgeMaterial.pvcTent630;
 }
 
 /// Цвет окантовки. Значение — цвет для чертежа.

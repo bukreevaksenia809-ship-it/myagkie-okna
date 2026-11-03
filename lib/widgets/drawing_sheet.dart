@@ -93,14 +93,13 @@ class DrawingSheet extends StatelessWidget {
   /// по странице на ряд окон: ряд не разрезается между страницами.
   static int a4PageCount(OrderProject project) {
     if (!project.isMultiWindow || project.sheetMode != SheetMode.grid) return 1;
-    if (project.gridColumns == 0 && project.windowCount <= 4) {
-      // Авто-режим для 3–4 окон — одна страница A4: раскладку подбирает
-      // optimizedGridPlan, а не фиксированное «2 в ряд».
-      return 1;
+    if (project.gridColumns == 0) {
+      // Авто: до 4 окон — одна страница, дальше — по 4 окна на страницу.
+      // Пятое окно открывает вторую страницу, а не сжимает первые четыре
+      // в ряд по три.
+      return (project.windowCount / 4).ceil();
     }
-    final columns = project.gridColumns == 0
-        ? _columnsFor(project.windowCount)
-        : project.gridColumns;
+    final columns = project.gridColumns;
     return (project.windowCount / math.max(columns, 1)).ceil();
   }
 
@@ -117,16 +116,6 @@ class DrawingSheet extends StatelessWidget {
     a4Width,
     a4Height - titleBlockHeight - compactLegendHeight - apronHeight,
   );
-
-  /// Включать ли автоматический перебор раскладки для 2–4 окон.
-  ///
-  /// Только режим «Авто, окон в ряду» ([OrderProject.gridColumns] == 0):
-  /// явные 1–4 колонки остаются осмысленными и работают как раньше.
-  bool get _useOptimizedGrid =>
-      _showGrid &&
-      project.gridColumns == 0 &&
-      project.windowCount >= 2 &&
-      project.windowCount <= 4;
 
   /// Высота плашки «фартук» на странице, точек.
   double get _apronHeight =>
@@ -519,30 +508,18 @@ class DrawingSheet extends StatelessWidget {
   /// поэтому её можно напечатать отдельно, а PDF режется ровно по границам
   /// страниц ([safeBreakFractions]).
   Widget _buildGridPages(int pages, ui.Image? fastenerImage) {
-    final columns = project.gridColumns == 0
-        ? _columnsFor(project.windowCount)
-        : project.gridColumns;
+    final auto = project.gridColumns == 0;
+    final columns = project.gridColumns;
 
-    // 2–4 окна в режиме «Авто»: раскладку и повороты выбирает перебор
-    // ([optimizedGridPlan]), а не фиксированное число колонок. Лист из 2–3
-    // окон всегда занимает ровно одну страницу A4.
-    final plan = _useOptimizedGrid && pages == 1
-        ? optimizedGridPlan(
-            project,
-            optimizedGridArea(apronHeight: _apronHeight),
-          )
-        : null;
-    final optimized = plan != null;
-    // 2–4 окна на листе отдают площадь чертежам: боковой панели нет, её
-    // заменяет компактная легенда внизу. У прежних «2 в ряд» (в том числе
-    // для 4+ окон) панели не было изначально — сохраняем это. Исключение —
-    // явное «1 в ряд (подробно)»: подробному листу одного окна панель нужна.
+    // Явные колонки работают как раньше. Авто: каждая страница получает
+    // свой кусок до 4 окон, чтобы первые четыре остались 2×2, а пятое
+    // открывало вторую страницу, а не сжимало первый лист.
+    final perPage = auto ? 4 : math.max(columns, 1);
+    // В авторежиме и у явных «2 в ряд» боковой панели нет: всё поле отдано
+    // чертежам, обозначения — полосой внизу. Подробному одному окну панель
+    // нужна.
     final compactPage =
-        optimized || columns == 2 || (columns >= 2 && project.windowCount <= 3);
-
-    // Для двух окон на листе отдаём максимум ширины чертежам: боковая
-    // панель уже, поля ячеек меньше. Иначе окна стоят узкими столбиками.
-    final gridSideWidth = columns == 2 ? 160.0 : sidePanelWidth;
+        auto || columns == 2 || (columns >= 2 && project.windowCount <= 3);
     return Column(
       children: [
         for (var page = 0; page < pages; page++)
@@ -551,42 +528,14 @@ class DrawingSheet extends StatelessWidget {
             child: Column(
               children: [
                 Expanded(
-                  child: optimized && page == 0
-                      ? _buildOptimizedPage(plan, fastenerImage)
-                      : Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Expanded(
-                              child: _buildGridRow(
-                                page,
-                                columns,
-                                fastenerImage,
-                              ),
-                            ),
-                            // В автоматической раскладке и для 2–4 окон
-                            // боковой панели нет: всё поле страницы отдано
-                            // чертежам, обозначения — полосой внизу.
-                            if (!compactPage && columns != 2) ...[
-                              const VerticalDivider(
-                                width: 1,
-                                thickness: 1,
-                                color: Color(0xFFC3CCDA),
-                              ),
-                              SizedBox(
-                                width: gridSideWidth,
-                                child: _SidePanel(
-                                  project: project,
-                                  labelFontFamily: labelFontFamily,
-                                  scaleLabel: 'по окнам',
-                                  // У набора окон масштаб у каждого свой —
-                                  // линейку показывает только лист одного
-                                  // окна.
-                                  scaleDenominator: 0,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
+                  child: _buildPageContent(
+                    page: page,
+                    perPage: perPage,
+                    columns: columns,
+                    auto: auto,
+                    compactPage: compactPage,
+                    fastenerImage: fastenerImage,
+                  ),
                 ),
                 if (compactPage) const _CompactLegend(),
                 _apronBanner(
@@ -608,18 +557,82 @@ class DrawingSheet extends StatelessWidget {
     );
   }
 
+  /// Содержимое страницы: для авто — кусок до 4 окон с оптимизированной
+  /// раскладкой; для явных колонок — прежний ряд.
+  Widget _buildPageContent({
+    required int page,
+    required int perPage,
+    required int columns,
+    required bool auto,
+    required bool compactPage,
+    required ui.Image? fastenerImage,
+  }) {
+    final start = page * perPage;
+    final count = math.min(perPage, project.windowCount - start);
+    if (count <= 0) return const SizedBox.shrink();
+    if (auto) {
+      if (count == 1) {
+        // Последняя страница с одним окном: один крупный чертёж на весь
+        // лист, без искусственного ряда.
+        return _buildGridRow(start, 1, fastenerImage);
+      }
+      final chunk = project.copyWith(
+        windows: project.windows.sublist(start, start + count),
+        selectedIndex: 0,
+      );
+      final plan = optimizedGridPlan(
+        chunk,
+        optimizedGridArea(apronHeight: _apronHeight),
+      );
+      if (plan != null) {
+        return _buildOptimizedPage(plan, fastenerImage, windowOffset: start);
+      }
+      return _buildGridRow(start, count, fastenerImage);
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(child: _buildGridRow(start, columns, fastenerImage)),
+        if (!compactPage && columns != 2) ...[
+          const VerticalDivider(
+            width: 1,
+            thickness: 1,
+            color: Color(0xFFC3CCDA),
+          ),
+          SizedBox(
+            width: sidePanelWidth,
+            child: _SidePanel(
+              project: project,
+              labelFontFamily: labelFontFamily,
+              scaleLabel: 'по окнам',
+              scaleDenominator: 0,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   /// Страница с автоматически выбранной раскладкой и поворотами.
   ///
   /// Ячейки ставим абсолютно по координатам плана: тогда геометрия, которую
   /// проверили тесты, совпадает с тем, что нарисовано на листе.
-  Widget _buildOptimizedPage(DrawingGridPlan plan, ui.Image? fastenerImage) {
+  Widget _buildOptimizedPage(
+    DrawingGridPlan plan,
+    ui.Image? fastenerImage, {
+    int windowOffset = 0,
+  }) {
     return SizedBox.expand(
       child: Stack(
         children: [
           for (final cell in plan.cells)
             Positioned.fromRect(
               rect: cell.rect,
-              child: _buildPlanCell(cell, fastenerImage),
+              child: _buildPlanCell(
+                cell,
+                fastenerImage,
+                windowOffset: windowOffset,
+              ),
             ),
         ],
       ),
@@ -628,10 +641,15 @@ class DrawingSheet extends StatelessWidget {
 
   /// Ячейка автоматической раскладки: чертёж (при необходимости повёрнутый)
   /// и горизонтальная подпись окна под ним.
-  Widget _buildPlanCell(DrawingGridCellPlan cell, ui.Image? fastenerImage) {
-    final params = project.windows[cell.windowIndex];
+  Widget _buildPlanCell(
+    DrawingGridCellPlan cell,
+    ui.Image? fastenerImage, {
+    int windowOffset = 0,
+  }) {
+    final globalIndex = cell.windowIndex + windowOffset;
+    final params = project.windows[globalIndex];
     final spec = WindowSpec.of(params);
-    final isSelected = cell.windowIndex == project.selectedIndex;
+    final isSelected = globalIndex == project.selectedIndex;
     final drawing = _drawingBox(
       frame: cell.frame,
       layout: cell.layout,
@@ -642,11 +660,9 @@ class DrawingSheet extends StatelessWidget {
       fastenerImage: fastenerImage,
     );
     return GestureDetector(
-      key: Key('drawing-cell-${cell.windowIndex + 1}'),
+      key: Key('drawing-cell-${globalIndex + 1}'),
       behavior: HitTestBehavior.opaque,
-      onTap: onSelectWindow == null
-          ? null
-          : () => onSelectWindow!(cell.windowIndex),
+      onTap: onSelectWindow == null ? null : () => onSelectWindow!(globalIndex),
       child: Container(
         margin: const EdgeInsets.all(_cellMargin),
         decoration: BoxDecoration(
@@ -671,7 +687,7 @@ class DrawingSheet extends StatelessWidget {
             SizedBox(
               height: _captionHeight,
               child: _Caption(
-                number: cell.windowIndex + 1,
+                number: globalIndex + 1,
                 params: params,
                 spec: spec,
                 highlighted: isSelected,
@@ -686,7 +702,7 @@ class DrawingSheet extends StatelessWidget {
   }
 
   /// Ряд окон одной страницы A4.
-  Widget _buildGridRow(int page, int columns, ui.Image? fastenerImage) {
+  Widget _buildGridRow(int start, int columns, ui.Image? fastenerImage) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 2, 2, 2),
       child: LayoutBuilder(
@@ -699,7 +715,7 @@ class DrawingSheet extends StatelessWidget {
               for (var column = 0; column < columns; column++)
                 Expanded(
                   child: _buildCell(
-                    page * columns + column,
+                    start + column,
                     Size(cellWidth, cellHeight),
                     fastenerImage,
                     pad: columns == 2 ? 100 : _cellPad,
@@ -712,14 +728,6 @@ class DrawingSheet extends StatelessWidget {
         },
       ),
     );
-  }
-
-  /// Число колонок: до трёх окон — в ряд, четыре — 2×2, далее по три.
-  static int _columnsFor(int count) {
-    if (count <= 3) return math.max(count, 1);
-    if (count == 4) return 2;
-    if (count <= 9) return 3;
-    return 4;
   }
 
   // ------------------------------------------- автоматическая раскладка
@@ -1913,6 +1921,16 @@ class _SidePanel extends StatelessWidget {
           '№${i + 1}: ${specs[i].zipperWidthReductionLabel}',
     ];
 
+    final edgeGroups = <String>{
+      for (final spec in specs)
+        if (!spec.params.isScreen)
+          '${spec.params.edgeMaterial.label}, '
+              '${spec.params.edgeColor.label.toLowerCase()}',
+    };
+    final edgeArea = specs.fold<double>(
+      0,
+      (sum, spec) => sum + spec.edgeAreaM2,
+    );
     return [
       'Окон в заказе: ${project.windows.length}; номера окон указаны под каждым чертежом',
       if (first.isScreen)
@@ -1935,6 +1953,9 @@ class _SidePanel extends StatelessWidget {
       if (!first.isScreen)
         'Расход окантовки: '
             '${labels.map((entry) => '${edgeBandLabel(entry.key)} — ${formatMm(entry.value)} ${unitSuffix()}').join(', ')}',
+      if (!first.isScreen)
+        'Кант: ${edgeGroups.join('; ')} — всего '
+            '${formatMeters(edgeArea)} м²',
       'Люверсы: всего $totalEyelets шт, шаг ${specs.first.eyeletStepLabel}',
       'Крепёж: ${specs.first.fastenerSummary.toLowerCase()}',
       first.hasShrinkage

@@ -3365,6 +3365,33 @@ class WindowSpec {
 
   List<String> get edgeConsumptionLabels => layers.edgeConsumptionLabels;
 
+  /// Площадь материала канта в квадратных метрах (по ширине рулона).
+  ///
+  /// Считается по фактическому расходу: длина каждой полосы × ширина рулона.
+  /// Для тканей это площадь раскроя ткани, для ПВХ-тента — площадь тента.
+  double get edgeAreaM2 {
+    var areaMm2 = 0.0;
+    for (final entry in edgeConsumption.entries) {
+      areaMm2 += entry.key * entry.value;
+    }
+    return areaMm2 / 1000000;
+  }
+
+  /// Единая подпись канта для примечаний:
+  /// «Кант: Ткань Оксфорд 600D, цвет коричневый — всего 1,24 м²».
+  String get edgeMaterialNote {
+    if (params.isScreen) {
+      return 'Кант: нет — скрин подворачивается без отдельной ткани';
+    }
+    return 'Кант: ${params.edgeMaterial.label}, цвет '
+        '${params.edgeColor.label.toLowerCase()} — всего '
+        '${formatMeters(edgeAreaM2)} м²';
+  }
+
+  /// Короткая подпись материала и цвета для строк раскроя.
+  String get edgeMaterialShort =>
+      '${params.edgeMaterial.shortLabel}, ${params.edgeColor.label.toLowerCase()}';
+
   int get eyeletCount => layers.eyeletCount;
 
   /// Люверсы без скоб/замков — столько ставится именно люверсов.
@@ -3414,7 +3441,8 @@ class WindowSpec {
   String get edgeSummary => params.isScreen
       ? 'без окантовки: подворот ${params.hemBySideShortLabel} '
             '(низ/право/верх/лево), шов ${formatMm(screenSeamMm)} ${unitSuffix()}'
-      : '${params.edgeColor.label.toLowerCase()}, ${params.edgeMaterial.label}';
+      : '${params.edgeMaterial.label}, ${params.edgeColor.label.toLowerCase()} — '
+            '${formatMeters(edgeAreaM2)} м²';
 
   /// Название выбранного крепежа подвижных сторон строчными: «поворотные
   /// скобы». У скрина крепёж ставится по подвороту, у ПВХ — по окантовке.
@@ -3622,6 +3650,7 @@ class WindowSpec {
         'Окантовка складывается пополам; запайка плёнки под окантовку '
             '${formatMm(params.weldOverlapMm)} ${unitSuffix()} по всему периметру',
         'Окантовка по сторонам — ${edgeBySideSummary.lowercaseFirst}',
+        edgeMaterialNote,
         'Расход окантовки: ${edgeConsumptionLabels.join(', ')}',
       ],
       if (params.isTShape) tShapeSummary,

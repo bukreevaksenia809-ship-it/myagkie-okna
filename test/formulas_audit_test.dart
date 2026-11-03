@@ -10,7 +10,6 @@
 // точными числами в reason. Все такие случаи собраны в отчёте.
 //
 // Запуск: flutter test test/formulas_audit_test.dart
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -325,8 +324,6 @@ void _edgeConsumptionAudit() {
       );
     });
 
-
-
     test('вырез 300 × 300 добавляет контур 1200: 9000 + 1200 = 10200', () {
       final params = _rect2000x2500.copyWith(
         cutouts: const [Cutout(width: 300, height: 300, centerXMm: 1000)],
@@ -363,7 +360,6 @@ void _edgeConsumptionAudit() {
         '9000 + π×300',
       );
     });
-
   });
 }
 
@@ -1101,11 +1097,16 @@ void _materialsAudit() {
         }
       });
 
-      test('EdgeMaterial: только ПВХ-тент', () {
+      test('EdgeMaterial: ПВХ-тент, Оксфорд и ткань скрин', () {
         expect(EdgeMaterial.values, [
           EdgeMaterial.pvcTent630,
-        ], reason: 'в проекте один материал окантовки');
-        expect(EdgeMaterial.pvcTent630.label.trim(), isNotEmpty);
+          EdgeMaterial.oxford600,
+          EdgeMaterial.screenFabric,
+        ], reason: 'мастер выбирает материал канта');
+        for (final material in EdgeMaterial.values) {
+          expect(material.label.trim(), isNotEmpty);
+          expect(material.joining.trim(), isNotEmpty);
+        }
         expect(
           EdgeMaterial.pvcTent630.isWelded,
           isTrue,
@@ -1116,6 +1117,10 @@ void _materialsAudit() {
           contains('400'),
           reason: 'режим сварки 400–500 °C',
         );
+        expect(EdgeMaterial.oxford600.isWelded, isFalse);
+        expect(EdgeMaterial.screenFabric.isWelded, isFalse);
+        expect(EdgeMaterial.oxford600.joining, contains('Стачивание'));
+        expect(EdgeMaterial.screenFabric.joining, contains('Стачивание'));
       });
 
       test('EdgeRoll: каждому пресету соответствует цена', () {
@@ -1155,42 +1160,9 @@ void _materialsAudit() {
         }
       });
 
-      test('в lib/ не осталось функциональных упоминаний оксфорда', () {
-        final pattern = RegExp('oxford|оксфорд', caseSensitive: false);
-        final codeHits = <String>[];
-        final commentHits = <String>[];
-
-        for (final entity in Directory('lib').listSync(recursive: true)) {
-          if (entity is! File || !entity.path.endsWith('.dart')) continue;
-          final lines = entity.readAsLinesSync();
-          for (var i = 0; i < lines.length; i++) {
-            if (!pattern.hasMatch(lines[i])) continue;
-            final trimmed = lines[i].trimLeft();
-            final isComment =
-                trimmed.startsWith('//') ||
-                trimmed.startsWith('*') ||
-                trimmed.startsWith('/*');
-            final hit = '${entity.path}:${i + 1}: ${lines[i].trim()}';
-            if (isComment) {
-              commentHits.add(hit);
-            } else {
-              codeHits.add(hit);
-            }
-          }
-        }
-
-        expect(
-          codeHits,
-          isEmpty,
-          reason: 'РАСХОЖДЕНИЕ (если не пусто): оксфорд в коде: $codeHits',
-        );
-        // Информационно: допустимо единственное упоминание — комментарий о том,
-        // что ткани Oxford в проекте больше нет.
-        expect(
-          commentHits.length,
-          lessThanOrEqualTo(1),
-          reason: 'упоминания оксфорда в комментариях: $commentHits',
-        );
+      test('Оксфорд поддержан как материал канта', () {
+        expect(EdgeMaterial.values, contains(EdgeMaterial.oxford600));
+        expect(EdgeMaterial.oxford600.isWelded, isFalse);
       });
     },
   );
