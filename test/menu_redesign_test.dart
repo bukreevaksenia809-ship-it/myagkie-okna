@@ -123,7 +123,7 @@ void main() {
     // Старые блоки кромок убраны полностью.
     expect(find.text('Верхняя кромка'), findsNothing);
     expect(find.text('Длины боковых кромок'), findsNothing);
-    expect(find.textContaining('ПВХ-тент'), findsNothing);
+    expect(find.textContaining('Кант:'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
