@@ -3,8 +3,8 @@ name: Сборка и релиз
 # Что делает:
 #   • запускает анализ и тесты;
 #   • собирает приложение под Windows (.exe) и macOS (.app/DMG);
-#   • на тег v* (или при ручном запуске с версией) публикует GitHub Release
-#     с готовыми архивами — их скачивает любой человек, Flutter ему не нужен.
+#   • выкладывает готовые архивы как артефакты Actions. Публичный релиз
+#     собирается ТОЛЬКО на myagkie-okna-excl.web.app, без GitHub Releases.
 #
 # Как выпустить версию:
 #   1) поднять версию в pubspec.yaml;
@@ -24,7 +24,7 @@ on:
         default: ''
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   # Та же версия, что сгенерировала папку windows/ и на которой писалась программа.
@@ -94,22 +94,6 @@ jobs:
             build/app/outputs/bundle/release/app-release.aab
           if-no-files-found: error
 
-      - name: Релиз
-        if: startsWith(github.ref, 'refs/tags/') || inputs.version != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then TAG="${{ github.ref_name }}"; else TAG="v${{ inputs.version }}"; fi
-          gh release view "$TAG" --repo ${{ github.repository }} >/dev/null 2>&1 || \
-            gh release create "$TAG" --repo ${{ github.repository }} \
-              --title "Мягкие окна Excl $TAG" \
-              --notes "Сборка приложения «Мягкие окна Excl»: чертежи, раскрой, склад, заказы."
-          mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/MyagkieOknaExcl-android.apk
-          cp build/app/outputs/bundle/release/app-release.aab dist/MyagkieOknaExcl-android.aab
-          gh release upload "$TAG" dist/MyagkieOknaExcl-android.apk dist/MyagkieOknaExcl-android.aab \
-            --repo ${{ github.repository }} --clobber
-
   web:
     name: Web (ZIP)
     needs: test
@@ -141,19 +125,6 @@ jobs:
           name: MyagkieOknaExcl-web
           path: dist/MyagkieOknaExcl-web.zip
           if-no-files-found: error
-      - name: Релиз
-        if: startsWith(github.ref, 'refs/tags/') || inputs.version != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then TAG="${{ github.ref_name }}"; else TAG="v${{ inputs.version }}"; fi
-          gh release view "$TAG" --repo ${{ github.repository }} >/dev/null 2>&1 || \
-            gh release create "$TAG" --repo ${{ github.repository }} \
-              --title "Мягкие окна Excl $TAG" \
-              --notes "Сборка приложения «Мягкие окна Excl»: чертежи, раскрой, склад, заказы."
-          gh release upload "$TAG" dist/MyagkieOknaExcl-web.zip \
-            --repo ${{ github.repository }} --clobber
-
   windows:
     name: Windows (.exe)
     needs: test
@@ -202,24 +173,6 @@ jobs:
           path: dist/MyagkieOknaExcl-windows.zip
           if-no-files-found: error
 
-      - name: Релиз
-        if: startsWith(github.ref, 'refs/tags/') || inputs.version != ''
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if ("${{ github.ref_type }}" -eq "tag") { $tag = "${{ github.ref_name }}" }
-          else { $tag = "v${{ inputs.version }}" }
-          Write-Host "Публикую релиз $tag"
-          gh release view $tag --repo ${{ github.repository }} 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --repo ${{ github.repository }} `
-              --title "Мягкие окна Excl $tag" `
-              --notes "Сборка приложения «Мягкие окна Excl»: чертежи, раскрой, раскладка на рулонах и ведомость расхода.`n`n**Windows:** скачайте ``MyagkieOknaExcl-windows.zip``, распакуйте целиком и запустите ``MyagkieOknaExcl.exe``.`n**macOS:** скачайте DMG или zip."
-          }
-          gh release upload $tag dist/MyagkieOknaExcl-windows.zip `
-            --repo ${{ github.repository }} --clobber
-
   macos:
     name: macOS (.app, DMG)
     needs: test
@@ -261,23 +214,3 @@ jobs:
             dist/MyagkieOknaExcl-macos.dmg
             dist/MyagkieOknaExcl-macos.zip
           if-no-files-found: error
-
-      - name: Релиз
-        if: startsWith(github.ref, 'refs/tags/') || inputs.version != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            TAG="${{ github.ref_name }}"
-          else
-            TAG="v${{ inputs.version }}"
-          fi
-          echo "Публикую релиз $TAG"
-          gh release view "$TAG" --repo ${{ github.repository }} >/dev/null 2>&1 || \
-            gh release create "$TAG" --repo ${{ github.repository }} \
-              --title "Мягкие окна Excl $TAG" \
-              --notes "Сборка приложения «Мягкие окна Excl»: чертежи, раскрой, раскладка на рулонах и ведомость расхода."
-          gh release upload "$TAG" \
-            dist/MyagkieOknaExcl-macos.dmg dist/MyagkieOknaExcl-macos.zip \
-            --repo ${{ github.repository }} --clobber

@@ -71,8 +71,12 @@ void main() {
     // 1. Спецэлементы выбранного окна: молния и вырез.
     await tester.tap(find.text('Добавить молнию'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('extras-open')));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Добавить вырез'));
     await tester.tap(find.text('Добавить вырез'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('extras-back')));
     await tester.pumpAndSettle();
     expect(hostKey.currentState!.project.selected.zippers, hasLength(1));
     expect(hostKey.currentState!.project.selected.cutouts, hasLength(1));
@@ -401,10 +405,12 @@ void _screenAndWeldRules() {
 
     // --- Фартук сверху и снизу: явные кнопки-переключатели ---
     // Раздел переименован: старых подписей «карман» в панели нет.
-    expect(find.text('Молния и фартук'), findsOneWidget);
+    expect(find.text('Молния'), findsOneWidget);
     expect(find.textContaining('Карман'), findsNothing);
     expect(find.textContaining('карман'), findsNothing);
 
+    await tester.tap(find.byKey(const Key('extras-open')));
+    await tester.pumpAndSettle();
     final topApron = find.byKey(const Key('apron-top-toggle'));
     final bottomApron = find.byKey(const Key('apron-bottom-toggle'));
     await tester.ensureVisible(topApron);
@@ -455,6 +461,9 @@ void _screenAndWeldRules() {
     params = hostKey.currentState!.project.selected;
     expect(params.pocketWidth, 120);
     expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(const Key('extras-back')));
+    await tester.pumpAndSettle();
 
     // --- Запайка под окантовку: возвращаемся на ПВХ и вводим 10 мм ---
     final pvcChip = find.byKey(const Key('material-pvc'));
@@ -556,21 +565,7 @@ void _rollWidthsAndEyeletsPanelRules() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    // --- Скрин: новые ширины рулонов появляются в списке ---
-    final screenChip = find.text('Скрин');
-    await tester.ensureVisible(screenChip);
-    await tester.tap(screenChip);
-    await tester.pumpAndSettle();
-
-    expect(find.text('2\u202F500 мм'), findsOneWidget);
-    expect(find.text('5\u202F000 мм'), findsOneWidget);
-    await tester.ensureVisible(find.text('5\u202F000 мм'));
-    await tester.tap(find.text('5\u202F000 мм'));
-    await tester.pumpAndSettle();
-    expect(
-      hostKey.currentState!.project.rollWidthFor(FilmMaterial.screen),
-      5000,
-    );
+    // Ширина рулона теперь настраивается в «Настройках».
 
     // --- Стороны без люверсов: два переключателя уходят в модель ---
     final topSwitch = find.byKey(const Key('no-eyelets-top'));
@@ -1048,6 +1043,8 @@ void _tShapePanelRules() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
 
+      await tester.tap(find.byKey(const Key('extras-open')));
+      await tester.pumpAndSettle();
       final makeT = find.byKey(const Key('make-t-shape'));
       await tester.ensureVisible(makeT);
       await tester.tap(makeT);
@@ -1115,6 +1112,8 @@ void _twoAnnexPanelRules() {
     expect(tester.takeException(), isNull);
 
     // Переводим окно в Т-форму: появляются два блока пристроек.
+    await tester.tap(find.byKey(const Key('extras-open')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('make-t-shape')));
     await tester.pumpAndSettle();
     var params = hostKey.currentState!.project.selected;

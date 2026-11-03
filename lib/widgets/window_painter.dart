@@ -1984,12 +1984,7 @@ class WindowDrawingPainter extends CustomPainter {
             ..color = _ink,
         );
         _paintCutoutEyelets(canvas, cutout, cutout.spec.edgingMm);
-        _label(
-          canvas,
-          _cutoutLabel(cutout),
-          layout.toPxPoint(cutout.center),
-          small: true,
-        );
+        _paintCutoutAnnotations(canvas, cutout, cutout.spec.edgingMm);
       }
       return;
     }
@@ -2044,11 +2039,53 @@ class WindowDrawingPainter extends CustomPainter {
       );
 
       _paintCutoutEyelets(canvas, cutout, width);
-      _label(
+      _paintCutoutAnnotations(canvas, cutout, width);
+    }
+  }
+
+  /// Аккуратная выноска и размеры выреза: подпись не лежит на отверстии,
+  /// а стоит рядом на выносной линии; ширина и высота — маленькими стрелками.
+  void _paintCutoutAnnotations(
+    Canvas canvas,
+    CutoutGeometry cutout,
+    double bandMm,
+  ) {
+    final outer = _cutoutBounds(cutout, bandMm);
+    final label = _cutoutLabel(cutout);
+    final toRight = outer.right < layout.size.width - 140;
+    final anchor = toRight
+        ? Offset(outer.right + 4, outer.top)
+        : Offset(outer.left - 4, outer.top);
+    final labelPos = Offset(
+      (toRight ? outer.right + 12 : outer.left - 12).clamp(
+        10.0,
+        layout.size.width - 10,
+      ),
+      (outer.top - 14).clamp(12.0, layout.size.height - 12),
+    );
+    canvas.drawLine(anchor, labelPos, _extensionPaint());
+    _label(canvas, label, labelPos, small: true, fontSize: 9);
+
+    final width = cutout.isCircle ? cutout.spec.width : cutout.spec.width;
+    final height = cutout.isCircle ? cutout.spec.height : cutout.spec.height;
+    _dimension(
+      canvas,
+      outer.bottomLeft,
+      outer.bottomRight,
+      const Offset(0, 18),
+      formatMm(width),
+      fontSize: 9,
+      arrowScale: 0.62,
+    );
+    if (!cutout.isCircle) {
+      _dimension(
         canvas,
-        _cutoutLabel(cutout),
-        layout.toPxPoint(cutout.center),
-        small: true,
+        outer.bottomLeft,
+        outer.topLeft,
+        const Offset(-18, 0),
+        formatMm(height),
+        fontSize: 9,
+        arrowScale: 0.62,
       );
     }
   }

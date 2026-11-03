@@ -53,6 +53,8 @@ void main() {
         ),
       ),
     );
+    await tester.tap(find.byKey(const Key('extras-open')));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('make-composite')));
     await tester.tap(find.byKey(const Key('make-composite')));
     await tester.pumpAndSettle();

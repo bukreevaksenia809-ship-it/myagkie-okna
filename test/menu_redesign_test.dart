@@ -39,7 +39,6 @@ Widget _panel({
   ValueChanged<int>? onDelete,
   ValueChanged<OrderProject>? onChanged,
   Widget? ordersSection,
-  Widget? pricesSection,
   Widget? techSection,
 }) {
   return MaterialApp(
@@ -58,7 +57,6 @@ Widget _panel({
           onChanged: onChanged ?? (_) {},
           onReset: () {},
           ordersSection: ordersSection,
-          pricesSection: pricesSection,
           techSection: techSection,
         ),
       ),
@@ -88,7 +86,6 @@ void main() {
         ],
         ordersSection: const Text('СОХРАНЁННЫЕ ФАЙЛЫ'),
         techSection: const Text('ТЕХНОЛОГ'),
-        pricesSection: const Text('ПРАЙС-ЛИСТ'),
       ),
     );
     await tester.pumpAndSettle();
@@ -101,8 +98,7 @@ void main() {
       'РАЗМЕРЫ, ММ',
       'Крепёж',
       'Окантовка',
-      'Молния и фартук',
-      'Ширина рулона',
+      'Молния',
       'ЦВЕТА',
     ];
     for (var i = 1; i < order.length; i++) {
@@ -123,7 +119,6 @@ void main() {
       greaterThan(_top(tester, 'ЦВЕТА')),
     );
     expect(_top(tester, 'ТЕХНОЛОГ'), greaterThan(_top(tester, 'ЦВЕТА')));
-    expect(_top(tester, 'ПРАЙС-ЛИСТ'), greaterThan(_top(tester, 'ТЕХНОЛОГ')));
 
     // Старые блоки кромок убраны полностью.
     expect(find.text('Верхняя кромка'), findsNothing);

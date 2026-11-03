@@ -65,6 +65,9 @@ void main() {
     final hostKey = GlobalKey<_PanelHostState>();
     await tester.pumpWidget(_PanelHost(key: hostKey, initial: order));
     await tester.pumpAndSettle();
+    // «Ровно» доступно только в режиме четырёх размеров.
+    await tester.tap(find.byKey(const Key('four-sizes-toggle')));
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
     Future<void> tapMode(String name) async {

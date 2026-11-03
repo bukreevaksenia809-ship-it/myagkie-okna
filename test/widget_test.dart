@@ -39,7 +39,8 @@ void main() {
 
     // Молния и фартук — отдельные кнопки-пресеты.
     expect(find.text('Добавить молнию'), findsOneWidget);
-    expect(find.text('Добавить фартук'), findsOneWidget);
+    // Фартук убран в «Дополнительно».
+    expect(find.text('Добавить фартук'), findsNothing);
 
     // Раздел «Материал окна»: ПВХ с видами и скрин.
     expect(find.text('ПВХ'), findsWidgets);
@@ -75,8 +76,10 @@ void main() {
     expect(find.text('Ведомость расхода материалов'), findsOneWidget);
     expect(find.text('ИТОГИ ПО ЗАКАЗУ'), findsOneWidget);
 
-    // Вкладка раскладки на рулоне (тапаем по иконке — текст есть и в панели).
-    await tester.tap(find.byIcon(Icons.view_week_outlined));
+    // Вкладка раскладки на рулоне (вкладка уехала в конец панели).
+    final rollTab = find.byIcon(Icons.view_week_outlined);
+    await tester.ensureVisible(rollTab);
+    await tester.tap(rollTab);
     await tester.pumpAndSettle();
     expect(find.text('РАСКЛАДКА НА РУЛОНЕ'), findsOneWidget);
 

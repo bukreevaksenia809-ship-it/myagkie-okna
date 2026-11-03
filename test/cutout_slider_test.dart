@@ -61,6 +61,8 @@ void main() {
     final hostKey = GlobalKey<_PanelHostState>();
     await tester.pumpWidget(_PanelHost(key: hostKey));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('extras-open')));
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
     const xSliderKey = Key('cutout-0-x-slider');

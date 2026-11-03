@@ -635,6 +635,15 @@ void main() {
         closeTo(layers.filmVisibleBounds.bottom, 0.01),
       );
       expect(straps.first.width, liftStrapWidth);
+      // Стандарт: два ремня по 250 мм от боковых кромок.
+      expect(
+        straps.first.center.dx,
+        closeTo(layers.filmVisibleBounds.left + 250, 0.01),
+      );
+      expect(
+        straps.last.center.dx,
+        closeTo(layers.filmVisibleBounds.right - 250, 0.01),
+      );
     });
 
     test('рулон и крепёж подвижных сторон', () {

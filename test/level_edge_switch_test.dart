@@ -289,6 +289,9 @@ void main() {
           log: log,
         ),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('four-sizes-toggle')));
+      await tester.pumpAndSettle();
       final host = hostKey.currentState!;
       expect(host.current.selected.levelEdge, LevelEdge.bottom);
 
@@ -342,6 +345,9 @@ void main() {
           log: log,
         ),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('four-sizes-toggle')));
+      await tester.pumpAndSettle();
       final host = hostKey.currentState!;
       expect(host.current.selected.levelEdge, LevelEdge.top);
 
@@ -385,6 +391,8 @@ void main() {
             log: log,
           ),
         );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('four-sizes-toggle')));
         await tester.pumpAndSettle();
         final host = key.currentState!;
         expect(host.current.selected.levelEdge, pair.$1);

@@ -1566,6 +1566,15 @@ class WindowParams {
     return 2 + ((width - 2000) / 1000).ceil();
   }
 
+  /// Стандартные положения двух подъёмных ремней: по 250 мм от боковых
+  /// кромок. Мастер может сразу поправить их вручную.
+  static List<double> defaultLiftStrapOffsets(double width) {
+    if (!width.isFinite || width <= 0) return const [];
+    const edge = 250.0;
+    if (width <= edge * 2) return [width / 2];
+    return [edge, width - edge];
+  }
+
   bool get isLifting => windowType == WindowType.lifting;
 
   /// Т-образное окно: основное полотно плюс приставка.

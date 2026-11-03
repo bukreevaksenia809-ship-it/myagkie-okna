@@ -51,6 +51,8 @@ Future<void> _pumpPanel(
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(_PanelHost(key: hostKey));
   await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('extras-open')));
+  await tester.pumpAndSettle();
 }
 
 /// Цвет заливки кнопки-переключателя: подсветка выбранного состояния.
@@ -66,7 +68,7 @@ void main() {
     final hostKey = GlobalKey<_PanelHostState>();
     await _pumpPanel(tester, hostKey);
 
-    expect(find.text('Молния и фартук'), findsOneWidget);
+    expect(find.text('Фартук'), findsWidgets);
     expect(find.text('Добавить фартук'), findsOneWidget);
     expect(find.text('Фартук снизу'), findsOneWidget);
     expect(find.text('Фартук сверху'), findsOneWidget);

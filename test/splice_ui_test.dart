@@ -52,17 +52,7 @@ void main() {
     await tester.pumpWidget(_Host(key: key, initial: project));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    final scrollable = find
-        .descendant(
-          of: find.byType(ParamsPanel),
-          matching: find.byType(Scrollable),
-        )
-        .first;
-    await tester.scrollUntilVisible(
-      find.text('Ширина рулона'),
-      600,
-      scrollable: scrollable,
-    );
+    await tester.ensureVisible(find.text('Ширина рулона'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('roll-width-warning')), findsOneWidget);
     expect(find.textContaining('шире рулона'), findsOneWidget);

@@ -28,9 +28,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Настройки подписей'), findsWidgets);
+    final dialog = find.byType(AlertDialog);
     for (final kind in LabelKind.values) {
       expect(
-        find.text(kind.label),
+        find.descendant(of: dialog, matching: find.text(kind.label)),
         findsOneWidget,
         reason: 'в диалоге есть тип «${kind.label}»',
       );

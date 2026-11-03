@@ -24,7 +24,6 @@ import 'services/app_bootstrap.dart';
 import 'services/database_backup.dart';
 import 'services/client_report_pdf.dart';
 import 'widgets/client_report_dialog.dart';
-import 'widgets/pricebook_switcher.dart';
 import 'services/company_branding.dart';
 import 'theme/app_theme.dart';
 import 'services/file_agent.dart';
@@ -61,7 +60,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.4.6';
+const String kAppVersion = '2.4.7';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1293,7 +1292,6 @@ class _BuilderScreenState extends State<BuilderScreen>
         PopupMenuItem(value: 'pairing', child: Text('Связь с замерщиком')),
         if (!kStoreBuild)
           PopupMenuItem(value: 'license', child: Text('Лицензия')),
-        PopupMenuItem(value: 'company', child: Text('Компания на листах')),
         PopupMenuItem(value: 'reset', child: Text('Сбросить окно')),
       ],
     ),
@@ -1318,13 +1316,6 @@ class _BuilderScreenState extends State<BuilderScreen>
     onCreateOrder: _createOrderDraft,
     onRenameOrder: _renameOrderDraft,
     onDeleteOrder: _deleteOrderDraft,
-    pricesSection: PricebookSwitcher(
-      client: _prices,
-      dealer: _dealerPrices,
-      materials: _project.materialsInOrder,
-      onClientChanged: (prices) => setState(() => _prices = prices),
-      onDealerChanged: (prices) => setState(() => _dealerPrices = prices),
-    ),
     techSection: _techSection(),
     ordersSection: OrdersPanel(
       orders: _orders,
@@ -1789,6 +1780,9 @@ class _BuilderScreenState extends State<BuilderScreen>
       clientPrices: _prices,
       dealerPrices: _dealerPrices,
       materials: _project.materialsInOrder,
+      rollWidths: _project.rollWidths,
+      onRollWidth: (material, width) =>
+          _updateProject(_project.setRollWidth(material, width)),
       onClientPrices: (prices) => setState(() => _prices = prices),
       onDealerPrices: (prices) => setState(() => _dealerPrices = prices),
       onCompany: () => showCompanyDialog(context),
@@ -1932,16 +1926,6 @@ class _BuilderScreenState extends State<BuilderScreen>
                         label: Text('Чертёж'),
                       ),
                       ButtonSegment(
-                        value: SheetTab.cut,
-                        icon: Icon(Icons.crop_square_outlined, size: 18),
-                        label: Text('Раскрой'),
-                      ),
-                      ButtonSegment(
-                        value: SheetTab.roll,
-                        icon: Icon(Icons.view_week_outlined, size: 18),
-                        label: Text('Рулон'),
-                      ),
-                      ButtonSegment(
                         value: SheetTab.costs,
                         icon: Icon(Icons.receipt_long_outlined, size: 18),
                         label: Text('Расходы'),
@@ -1960,6 +1944,16 @@ class _BuilderScreenState extends State<BuilderScreen>
                         value: SheetTab.techCard,
                         icon: Icon(Icons.assignment_outlined, size: 18),
                         label: Text('Техкарта'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.cut,
+                        icon: Icon(Icons.crop_square_outlined, size: 18),
+                        label: Text('Раскрой'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.roll,
+                        icon: Icon(Icons.view_week_outlined, size: 18),
+                        label: Text('Рулон'),
                       ),
                     ],
                     selected: {_tab},

@@ -7,12 +7,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:soft_window_drawer/models/document.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
 import 'package:soft_window_drawer/models/price_list.dart';
+import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/company_branding.dart';
 import 'package:soft_window_drawer/services/document_store.dart';
 import 'package:soft_window_drawer/widgets/drawing_sheet.dart';
 import 'package:soft_window_drawer/widgets/estimate_sheet.dart';
 import 'package:soft_window_drawer/main.dart' as app;
 import 'package:soft_window_drawer/widgets/params_panel.dart';
+import 'package:soft_window_drawer/widgets/settings_screen.dart';
 
 /// Компания на листах: тумблер, реквизиты, логотип, отрисовка на смете и
 /// чертеже.
@@ -148,10 +150,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: DrawingSheet(
-            project: const OrderProject(),
-            company: branding,
-          ),
+          body: DrawingSheet(project: const OrderProject(), company: branding),
         ),
       ),
     );
@@ -174,36 +173,36 @@ void main() {
     expect(find.byKey(const Key('company-logo-load')), findsOneWidget);
   });
 
-  testWidgets('панель: тумблер включает показ компании', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(420, 6000));
+  testWidgets('настройки: компания на листах на своём месте', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: SizedBox(
-            width: 420,
-            child: ParamsPanel(
-              project: const OrderProject(),
-              issues: const [],
-              onChanged: (_) {},
-              onReset: () {},
-            ),
+          body: SettingsScreen(
+            clientPrices: const PriceList.defaults(),
+            dealerPrices: const PriceList.defaults(),
+            materials: const [FilmMaterial.clearPvc],
+            rollWidths: const {},
+            onRollWidth: (_, __) {},
+            onClientPrices: (_) {},
+            onDealerPrices: (_) {},
+            onCompany: () {},
+            onWatermark: () {},
+            onPairing: () {},
+            onBackup: () {},
+            onBackupDatabase: () {},
+            onRefresh: () {},
+            orderCount: 0,
+            ordersFolder: '',
+            databaseReady: true,
+            version: 'тест',
           ),
         ),
       ),
     );
-    final toggle = find.byKey(const Key('company-on-sheets-toggle'));
-    await tester.scrollUntilVisible(
-      toggle,
-      600,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 60,
-    );
-    await tester.ensureVisible(toggle);
     await tester.pumpAndSettle();
-    await tester.tap(toggle);
-    await tester.pumpAndSettle();
-    expect(CompanyBranding.current.value.showOnSheets, isTrue);
-    expect(find.byKey(const Key('company-settings')), findsOneWidget);
+    expect(find.text('Компания на листах'), findsOneWidget);
+    expect(find.text('Ширина рулона'), findsOneWidget);
   });
 }

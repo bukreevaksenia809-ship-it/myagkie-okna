@@ -133,11 +133,11 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('add-lift-strap')));
     await tester.tap(find.byKey(const Key('add-lift-strap')));
     await tester.pumpAndSettle();
-    expect(project.selected.liftStrapOffsets, hasLength(1));
+    expect(project.selected.liftStrapOffsets, hasLength(3));
 
     await tester.tap(find.byKey(const Key('add-lift-strap')));
     await tester.pumpAndSettle();
-    expect(project.selected.liftStrapOffsets, hasLength(2));
+    expect(project.selected.liftStrapOffsets, hasLength(4));
 
     await tester.enterText(find.byKey(const Key('lift-strap-0')), '300');
     await tester.pumpAndSettle();

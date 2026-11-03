@@ -2045,6 +2045,13 @@ class WindowLayers {
             for (final offset in manual)
               (bounds.left + offset).clamp(minCenter, maxCenter).toDouble(),
           ]
+        : autoCount == 2
+        ? [
+            for (final offset in WindowParams.defaultLiftStrapOffsets(
+              bounds.width,
+            ))
+              (bounds.left + offset).clamp(minCenter, maxCenter).toDouble(),
+          ]
         : [
             for (var i = 1; i <= autoCount; i++)
               bounds.left + bounds.width * i / (autoCount + 1),

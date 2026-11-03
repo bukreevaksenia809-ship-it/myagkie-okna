@@ -14,6 +14,8 @@ class SettingsScreen extends StatelessWidget {
     required this.clientPrices,
     required this.dealerPrices,
     required this.materials,
+    required this.rollWidths,
+    required this.onRollWidth,
     required this.onClientPrices,
     required this.onDealerPrices,
     required this.onCompany,
@@ -33,6 +35,8 @@ class SettingsScreen extends StatelessWidget {
   final PriceList clientPrices;
   final PriceList dealerPrices;
   final List<FilmMaterial> materials;
+  final Map<FilmMaterial, double> rollWidths;
+  final void Function(FilmMaterial material, double width) onRollWidth;
   final ValueChanged<PriceList> onClientPrices;
   final ValueChanged<PriceList> onDealerPrices;
   final VoidCallback onCompany;
@@ -67,6 +71,8 @@ class SettingsScreen extends StatelessWidget {
                       'резервные копии. Настройки общие для всех заказов.',
                 ),
                 const SizedBox(height: 18),
+                _rollWidthCard(),
+                const SizedBox(height: 14),
                 _companyCard(),
                 const SizedBox(height: 14),
                 AppSurface(
@@ -114,7 +120,10 @@ class SettingsScreen extends StatelessWidget {
                         ),
                         OutlinedButton.icon(
                           onPressed: onWatermark,
-                          icon: const Icon(Icons.branding_watermark_outlined, size: 17),
+                          icon: const Icon(
+                            Icons.branding_watermark_outlined,
+                            size: 17,
+                          ),
                           label: const Text('Водяной знак'),
                         ),
                       ],
@@ -176,7 +185,10 @@ class SettingsScreen extends StatelessWidget {
                         ),
                         OutlinedButton.icon(
                           onPressed: onBackup,
-                          icon: const Icon(Icons.inventory_2_outlined, size: 17),
+                          icon: const Icon(
+                            Icons.inventory_2_outlined,
+                            size: 17,
+                          ),
                           label: const Text('Копия заказов'),
                         ),
                         OutlinedButton.icon(
@@ -195,6 +207,53 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _rollWidthCard() {
+    return AppSurface(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const AppSectionTitle(
+            title: 'Ширина рулона',
+            subtitle:
+                'Для раскроя и раскладки. Выбор сохраняется в заказе по '
+                'каждому материалу.',
+          ),
+          const SizedBox(height: 14),
+          for (final material in materials) ...[
+            Text(
+              '${material.label} · доступно ${material.rollWidthsLabel} мм',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF33465E),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final width in material.rollWidths)
+                  ChoiceChip(
+                    label: Text(
+                      '${formatMm(width)} мм',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    selected:
+                        (rollWidths[material] ?? material.defaultRollWidth) ==
+                        width,
+                    onSelected: (_) => onRollWidth(material, width),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
+        ],
       ),
     );
   }
@@ -287,8 +346,7 @@ class SettingsScreen extends StatelessWidget {
           spacing: 14,
           runSpacing: 14,
           children: [
-            for (final child in children)
-              SizedBox(width: width, child: child),
+            for (final child in children) SizedBox(width: width, child: child),
           ],
         );
       },

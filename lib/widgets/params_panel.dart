@@ -8,9 +8,8 @@ import '../models/fastener_spans.dart';
 import '../models/window_geometry.dart';
 import '../models/crossbar.dart';
 import '../models/window_params.dart';
-import '../services/company_branding.dart';
 import '../services/inner_size.dart';
-import 'company_dialog.dart';
+import '../services/window_presets.dart';
 import 'composite_preview.dart';
 
 /// Краткая карточка заказа для верхнего списка.
@@ -30,7 +29,6 @@ class ParamsPanel extends StatefulWidget {
     required this.onChanged,
     required this.onReset,
     this.ordersSection,
-    this.pricesSection,
     this.techSection,
     this.orderOverviews = const [],
     this.selectedOrderIndex = 0,
@@ -59,9 +57,6 @@ class ParamsPanel extends StatefulWidget {
 
   /// Раздел «Сохранённые заказы» (файлы/отчётность) — вставляется снизу.
   final Widget? ordersSection;
-
-  /// Раздел «Прайс-лист» — цены для сметы.
-  final Widget? pricesSection;
 
   /// Раздел «Технолог» — производственные проверки.
   final Widget? techSection;
@@ -171,6 +166,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// Раскрыт ли блок припусков на раскрой.
   bool _allowanceExpanded = false;
   bool _fourSizes = false;
+  bool _extrasOpen = false;
+  final WindowPresetStore _presetStore = WindowPresetStore();
+  List<WindowPreset> _savedPresets = const [];
 
   late final TextEditingController _nameController;
   late final TextEditingController _customerController;
@@ -206,6 +204,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _nameController = TextEditingController(text: _params.projectName);
     _customerController = TextEditingController(text: _params.customer);
     _drawingController = TextEditingController(text: _params.drawingNumber);
+    _presetStore.load().then((presets) {
+      if (mounted) setState(() => _savedPresets = presets);
+    });
   }
 
   @override
@@ -336,8 +337,17 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _pruneErrors(_zipperWeldErrors, params.zippers.length);
   }
 
+  /// Положения ремней для показа: ручные, а без них — стандартные 250 мм
+  /// от боковых кромок. Поле можно сразу поправить, и оно станет ручным.
+  List<double> _effectiveStrapOffsets(WindowParams params) {
+    if (params.liftStrapOffsets.isNotEmpty) return params.liftStrapOffsets;
+    if (!params.isLifting || params.isScreen) return const [];
+    final width = WindowSpec.of(params).filmVisibleWidth;
+    return WindowParams.defaultLiftStrapOffsets(width);
+  }
+
   void _syncStrapFields(WindowParams params, {bool force = false}) {
-    final offsets = params.liftStrapOffsets;
+    final offsets = _effectiveStrapOffsets(params);
     for (var index = 0; index < offsets.length; index++) {
       _syncController(
         _strapControllers.putIfAbsent(
@@ -572,8 +582,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
         _zipperTentControllers[i]?.text = _textFor(z.tentWidthMm);
         _zipperWeldControllers[i]?.text = _textFor(z.weldMm);
       }
-      for (var i = 0; i < _params.liftStrapOffsets.length; i++) {
-        _strapControllers[i]?.text = _textFor(_params.liftStrapOffsets[i]);
+      final strapOffsets = _effectiveStrapOffsets(_params);
+      for (var i = 0; i < strapOffsets.length; i++) {
+        _strapControllers[i]?.text = _textFor(strapOffsets[i]);
       }
       for (var i = 0; i < _params.cutouts.length; i++) {
         final c = _params.cutouts[i];
@@ -907,8 +918,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// Для Т-образного окна основное полотно — прямоугольник по низу и левой
   /// высоте, поэтому режим на его контур не влияет: контрол заблокирован и
   /// это явно написано с замком, а не просто «серые кнопки».
-  Widget _levelEdgeSelector(WindowParams params) {
-    final enabled = !params.isTShape;
+  Widget _levelEdgeSelector(WindowParams params, {bool enabled = true}) {
+    final active = enabled && !params.isTShape;
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       decoration: BoxDecoration(
@@ -925,7 +936,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 'Ровно',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
               ),
-              if (!enabled) ...[
+              if (!active) ...[
                 const SizedBox(width: 6),
                 const Icon(
                   Icons.lock_outline,
@@ -935,7 +946,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 ),
               ],
               const Spacer(),
-              if (!enabled)
+              if (!active)
                 Text(
                   'недоступно',
                   key: const Key('level-edge-locked'),
@@ -951,7 +962,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
             children: [
               for (final edge in LevelEdge.values) ...[
                 if (edge != LevelEdge.values.first) const SizedBox(width: 6),
-                Expanded(child: _levelEdgeButton(params, edge, enabled)),
+                Expanded(child: _levelEdgeButton(params, edge, active)),
               ],
             ],
           ),
@@ -966,7 +977,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     style: TextStyle(fontSize: 11),
                   ),
                   selected: params.levelLeft,
-                  onSelected: enabled
+                  onSelected: active
                       ? (value) =>
                             _updateWindow(params.copyWith(levelLeft: value))
                       : null,
@@ -982,7 +993,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     style: TextStyle(fontSize: 11),
                   ),
                   selected: params.levelRight,
-                  onSelected: enabled
+                  onSelected: active
                       ? (value) =>
                             _updateWindow(params.copyWith(levelRight: value))
                       : null,
@@ -993,14 +1004,17 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
           const SizedBox(height: 6),
           Text(
-            enabled
+            active
                 ? 'При разных размерах одна кромка остаётся горизонтальной. '
                       'Нажатие на любой сегмент всегда применяется: «Низ» — низ '
                       'ровно, «Верх» — верх ровно, «Нет» — перепад делится '
                       'поровну.'
-                : 'Для Т-образного окна основное полотно прямоугольное — режим '
+                : params.isTShape
+                ? 'Для Т-образного окна основное полотно прямоугольное — режим '
                       '«Ровно» на контур не влияет, поэтому переключатель '
-                      'заблокирован.',
+                      'заблокирован.'
+                : 'Доступно после нажатия «4 размера»: при двух одинаковых '
+                      'размерах выравнивать нечего.',
             style: const TextStyle(fontSize: 10.5, color: Color(0xFF66748A)),
           ),
         ],
@@ -1946,7 +1960,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
         const _SectionTitle('Тип окна'),
         const SizedBox(height: 8),
         _chips<WindowType>(
-          values: WindowType.values,
+          values: const [
+            WindowType.fixed,
+            WindowType.lifting,
+            WindowType.triangle,
+            WindowType.house,
+          ],
           selected: params.windowType,
           labelOf: (value) => value.label,
           onSelected: (value) => _updateWindow(
@@ -1965,30 +1984,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
           params.windowType.hint,
           style: const TextStyle(fontSize: 11.5, color: Color(0xFF5B6B80)),
         ),
-        const SizedBox(height: 10),
-        _tShapeSection(params),
-        if (params.windowType == WindowType.composite) ...[
-          const SizedBox(height: 10),
-          _compositeSection(params),
-        ] else ...[
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              key: const Key('make-composite'),
-              onPressed: () => _updateWindow(
-                params.copyWith(
-                  windowType: WindowType.composite,
-                  material: params.isScreen
-                      ? FilmMaterial.clearPvc
-                      : params.material,
-                ),
-              ),
-              icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
-              label: const Text('Сделать составным'),
-            ),
-          ),
-        ],
+        const SizedBox(height: 8),
+        const Text(
+          'Т-образное и составное окно настраиваются в кнопке '
+          '«Дополнительно».',
+          style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+        ),
       ],
     );
   }
@@ -2471,6 +2472,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
           label: Text(_fourSizes ? '2 размера' : '4 размера'),
         ),
         const SizedBox(height: 4),
+        _levelEdgeSelector(params, enabled: _fourSizes),
+        const SizedBox(height: 10),
         if (params.isSpecialShape) ...[
           Row(
             children: [
@@ -2503,8 +2506,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
             '«4 размера».',
             style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
-          const SizedBox(height: 10),
-          _levelEdgeSelector(params),
         ] else ...[
           Row(
             children: [
@@ -2526,8 +2527,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
             'слева/справа.',
             style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
-          const SizedBox(height: 10),
-          _levelEdgeSelector(params),
         ],
         const SizedBox(height: 12),
         _allowanceSection(spec),
@@ -3009,223 +3008,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
   }
 
   /// «Ширина рулона» — в нижней части панели.
-  Widget _rollWidthSection(OrderProject project, WindowParams params) {
-    final spec = WindowSpec.of(params);
-    final roll = project.rollWidthFor(params.material);
-    final needed = spec.filmCutWidthWithShrinkage;
-    final shortage = needed - roll;
-    final suggested = shortage > 0
-        ? math.max(10.0, (shortage / 10).ceil() * 10.0)
-        : 0.0;
-    return _expansion(
-      title: 'Ширина рулона',
-      subtitle:
-          '${params.material.label} · '
-          '${formatMm(roll)} ${unitSuffix()}',
-      children: [
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final width in params.availableRollWidths)
-              ChoiceChip(
-                label: Text(
-                  '${formatMm(width)} ${unitSuffix()}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                selected: roll == width,
-                visualDensity: VisualDensity.compact,
-                onSelected: (_) => _updateProject(
-                  project
-                      .setRollWidth(params.material, width)
-                      .updateSelected(
-                        params.copyWith(
-                          spliceStripMm: width >= needed - 0.5
-                              ? 0
-                              : params.spliceStripMm,
-                        ),
-                      ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Доступные рулоны: ${params.material.rollWidthsLabel} '
-          '${unitSuffix()}. Раскладка — на отдельном листе.',
-          style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-        ),
-        if (shortage > 0.5 && !params.hasSplice) ...[
-          const SizedBox(height: 10),
-          Container(
-            key: const Key('roll-width-warning'),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF4E5),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFE8C38F)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.warning_amber_rounded,
-                      size: 18,
-                      color: Color(0xFFB7791F),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Заготовка ${formatMm(needed)} ${unitSuffix()} шире '
-                        'рулона ${formatMm(roll)} ${unitSuffix()}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF8A5200),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  'Выберите рулон шире или добавьте полосу '
-                  '${formatMm(suggested)} ${unitSuffix()} и спаяйте её с '
-                  'полотном. Стык будет показан на чертеже.',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    height: 1.45,
-                    color: Color(0xFF6F5A3A),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                FilledButton.icon(
-                  key: const Key('splice-add'),
-                  onPressed: () => _updateWindow(
-                    params.copyWith(
-                      spliceStripMm: suggested,
-                      spliceSide: FilmSpliceSide.right,
-                    ),
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFB7791F),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 9,
-                    ),
-                  ),
-                  icon: const Icon(Icons.content_cut, size: 16),
-                  label: Text(
-                    'Добавить полосу ${formatMm(suggested)} и спаять',
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-        if (params.hasSplice) ...[
-          const SizedBox(height: 10),
-          Container(
-            key: const Key('roll-width-splice'),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7EFE7),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFE0C6AF)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.link, size: 17, color: Color(0xFF8E4E2A)),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        roll < needed - 0.5
-                            ? 'Стык: ${formatMm(roll)} + '
-                                  '${formatMm(params.spliceStripMm)} '
-                                  '${unitSuffix()}'
-                            : 'Рулон уже покрывает заготовку',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF8E4E2A),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Убрать стык',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () =>
-                          _updateWindow(params.copyWith(spliceStripMm: 0)),
-                      icon: const Icon(Icons.close, size: 16),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        key: const Key('splice-strip-field'),
-                        controller: _spliceController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: 'Ширина полосы, ${unitSuffix()}',
-                          isDense: true,
-                          border: const OutlineInputBorder(),
-                        ),
-                        onChanged: (raw) {
-                          final value = parseMm(raw);
-                          if (value == null || value < 0) return;
-                          _updateWindow(params.copyWith(spliceStripMm: value));
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    SegmentedButton<FilmSpliceSide>(
-                      showSelectedIcon: false,
-                      style: const ButtonStyle(
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      segments: [
-                        for (final side in FilmSpliceSide.values)
-                          ButtonSegment(
-                            value: side,
-                            label: Text(
-                              side.label,
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                          ),
-                      ],
-                      selected: {params.spliceSide},
-                      onSelectionChanged: (selection) => _updateWindow(
-                        params.copyWith(spliceSide: selection.first),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'На чертеже линия стыка и подпись «стык: рулон + полоса»; '
-                  'в техкарте — операция спайки.',
-                  style: TextStyle(fontSize: 10.5, color: Color(0xFF7A6652)),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  /// Дополнительные позиции заказа: количество вводится здесь, цена — в
-  /// прайсе. В смету попадают только при количестве больше нуля.
   Widget _extraItemsSection(OrderProject project) {
     final total = PriceList.extraItemKeys.fold<double>(
       0,
@@ -3295,436 +3077,368 @@ class _ParamsPanelState extends State<ParamsPanel> {
         .where((issue) => !issue.isError)
         .toList(growable: false);
 
+    if (_extrasOpen) {
+      return Material(
+        color: const Color(0xFFF7F9FC),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  key: const Key('extras-back'),
+                  tooltip: 'Назад',
+                  onPressed: () => setState(() => _extrasOpen = false),
+                  icon: const Icon(Icons.arrow_back),
+                ),
+                const Expanded(child: _SectionTitle('Дополнительно')),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Перемычка, фартук, Т-образное и составное окно, вырезы. '
+              'Эти настройки убраны из основного списка, чтобы он оставался '
+              'коротким.',
+              style: TextStyle(fontSize: 11.5, color: Color(0xFF66748A)),
+            ),
+            const SizedBox(height: 12),
+            _apronSection(params),
+            const SizedBox(height: 12),
+            _crossbarsSection(spec),
+            const SizedBox(height: 12),
+            _tShapeSection(params),
+            const SizedBox(height: 12),
+            _compositeTool(params),
+            const SizedBox(height: 12),
+            _cutoutsSection(params),
+          ],
+        ),
+      );
+    }
+
     return Material(
       color: const Color(0xFFF7F9FC),
-      child: ListView(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-        children: [
-          // 1. Заказы — в самом верху: переключение, имя, удаление.
-          _ordersTopSection(project),
-          const SizedBox(height: 12),
-          // 2. Окна внутри выбранного заказа.
-          _windowSection(project),
-          const SizedBox(height: 18),
-          // 3. Материал окна: ПВХ (с видом) или скрин.
-          _materialSection(params),
-          const SizedBox(height: 12),
-          // 4. Тип окна.
-          _typeSection(params),
-          if (params.isSpecialShape) ...[
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 1. Заказы — в самом верху: переключение, имя, удаление.
+            _ordersTopSection(project),
             const SizedBox(height: 12),
-            _shapeSection(params),
-          ],
-          const SizedBox(height: 18),
-          // 5. Размеры, «Ровно» и припуски на раскрой.
-          _sizesSection(spec),
-          const SizedBox(height: 18),
-          // 6. Все крепежи с ценами.
-          _fastenerSection(spec, prices),
-          const SizedBox(height: 12),
-          // 7. Окантовка ПВХ или подвороты скрина.
-          _edgeOrHemSection(spec),
-          const SizedBox(height: 12),
-          _crossbarsSection(spec),
-          const SizedBox(height: 12),
-          if (params.isLifting || params.isScreen) ...[
+            // 2. Окна внутри выбранного заказа.
+            _windowSection(project),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const Key('extras-open'),
+                onPressed: () => setState(() => _extrasOpen = true),
+                icon: const Icon(Icons.tune, size: 18),
+                label: const Text('Дополнительно: перемычки, фартук, вырезы'),
+              ),
+            ),
+            const SizedBox(height: 14),
+            // 3. Материал окна: ПВХ (с видом) или скрин.
+            _materialSection(params),
             const SizedBox(height: 12),
-            _liftStrapsSection(params, spec),
-          ],
-          _expansion(
-            title: 'Молния и фартук',
-            subtitle: _specElementsSummary(params),
-            children: [
-              if (params.zippers.isEmpty)
-                OutlinedButton.icon(
-                  onPressed: () => _updateWindow(params.addZipper()),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Добавить молнию'),
-                )
-              else ...[
-                for (var index = 0; index < params.zippers.length; index++)
-                  _zipperCard(params, spec, index),
-                if (params.zippers.length < maxZippers)
+            // 4. Тип окна.
+            _typeSection(params),
+            if (params.isSpecialShape) ...[
+              const SizedBox(height: 12),
+              _shapeSection(params),
+            ],
+            const SizedBox(height: 18),
+            // 5. Размеры, «Ровно» и припуски на раскрой.
+            _sizesSection(spec),
+            const SizedBox(height: 18),
+            // 6. Все крепежи с ценами.
+            _fastenerSection(spec, prices),
+            const SizedBox(height: 12),
+            // 7. Окантовка ПВХ или подвороты скрина.
+            _edgeOrHemSection(spec),
+            const SizedBox(height: 12),
+            if (params.isLifting || params.isScreen) ...[
+              const SizedBox(height: 12),
+              _liftStrapsSection(params, spec),
+            ],
+            _expansion(
+              title: 'Молния',
+              subtitle: _specElementsSummary(params),
+              children: [
+                if (params.zippers.isEmpty)
                   OutlinedButton.icon(
-                    key: const Key('add-zipper'),
                     onPressed: () => _updateWindow(params.addZipper()),
                     icon: const Icon(Icons.add, size: 18),
-                    label: Text(
-                      'Добавить молнию (${params.zippers.length}/$maxZippers)',
+                    label: const Text('Добавить молнию'),
+                  )
+                else ...[
+                  for (var index = 0; index < params.zippers.length; index++)
+                    _zipperCard(params, spec, index),
+                  if (params.zippers.length < maxZippers)
+                    OutlinedButton.icon(
+                      key: const Key('add-zipper'),
+                      onPressed: () => _updateWindow(params.addZipper()),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: Text(
+                        'Добавить молнию (${params.zippers.length}/$maxZippers)',
+                      ),
                     ),
-                  ),
-                const SizedBox(height: 6),
-                Text(
-                  params.isScreen
-                      ? 'Полоса под молнию у скрина — подвёрнутая ткань (или '
-                            'накладная полоса из скрина): на чертеже полоса серая, '
-                            'как подворот, со швом '
-                            '${formatMm(screenSeamMm)} ${unitSuffix()} по краям. Молния не '
-                            'должна подходить к кромке подворота ближе '
-                            '${formatMm(minScreenZipperHemMm)} ${unitSuffix()}. Всего до '
-                            '$maxZippers молний.'
-                      : 'Молния впаивается в полосу тента: на чертеже показаны '
-                            'полоса спайки и расстояния до кромок плёнки. Всего '
-                            'до $maxZippers молний.',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF66748A),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 10),
-              // Две явные кнопки-переключателя: выбранная подсвечена, повторный
-              // тап выключает флаг. В модели по-прежнему pocket / pocketTop.
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _apronToggle(
-                    key: const Key('apron-bottom-toggle'),
-                    label: 'Фартук снизу',
-                    icon: Icons.vertical_align_bottom,
-                    selected: params.pocket,
-                    onPressed: () =>
-                        _updateWindow(params.copyWith(pocket: !params.pocket)),
-                  ),
-                  _apronToggle(
-                    key: const Key('apron-top-toggle'),
-                    label: 'Фартук сверху',
-                    icon: Icons.vertical_align_top,
-                    selected: params.pocketTop,
-                    onPressed: () => _updateWindow(
-                      params.copyWith(pocketTop: !params.pocketTop),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _apronStateLabel(params),
-                key: const Key('apron-state'),
-                style: const TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF0B62C4),
-                ),
-              ),
-              const SizedBox(height: 8),
-              _apronWidthField(),
-              const SizedBox(height: 6),
-              const Text(
-                'Фартук идёт от внутреннего края окантовки наружу и ниже кромки',
-                key: Key('apron-caption'),
-                style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-              ),
-              if (params.pocket || params.pocketTop) ...[
-                const SizedBox(height: 6),
-                Text(
-                  params.isScreen
-                      ? 'У скрина фартук образуется подворотом материала '
-                            '${formatMm(params.pocketWidth)} ${unitSuffix()}. Угловые люверсы со '
-                            'стороны фартука не ставятся, крайние боковые смещаются '
-                            'на ${formatMm(pocketCornerOffset)} ${unitSuffix()} — чтобы в полость '
-                            'фартука заводился утяжитель.'
-                      : 'Фартук делается из тента 200 мм, складывается пополам — '
-                            'получается ${formatMm(params.pocketWidth)} ${unitSuffix()}. Угловые '
-                            'люверсы со стороны фартука не ставятся: они смещаются на '
-                            '${formatMm(pocketCornerOffset)} ${unitSuffix()}, чтобы в полость '
-                            'фартука заводился утяжитель.',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF66748A),
-                  ),
-                ),
-              ],
-              if (!params.isScreen) ...[
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Дренажные отверстия внизу'),
-                  value: params.drainHoles,
-                  onChanged: (value) =>
-                      _updateWindow(params.copyWith(drainHoles: value)),
-                ),
-                if (params.drainHoles) _numberField(ParamField.drainCount),
-              ],
-            ],
-          ),
-          const SizedBox(height: 12),
-          _expansion(
-            title: 'Вырезы в полотне',
-            subtitle: _cutoutsSummary(params),
-            children: [
-              const Text(
-                'Отверстие под трубу, вентиляцию или стойку: контур выреза '
-                'обводится окантовкой, размеры идут на чертёж и в раскрой.',
-                style: TextStyle(fontSize: 11.5, color: Color(0xFF5B6B80)),
-              ),
-              const SizedBox(height: 10),
-              for (var index = 0; index < params.cutouts.length; index++)
-                _cutoutCard(params, index),
-              OutlinedButton.icon(
-                onPressed: params.cutouts.length < maxCutouts
-                    ? () => _updateWindow(params.addCutout())
-                    : null,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Добавить вырез'),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                params.cutouts.length >= maxCutouts
-                    ? 'Больше $maxCutouts вырезов на окно не ставится.'
-                    : 'На окно можно поставить до $maxCutouts вырезов.',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _expansion(
-            title: 'Раскрой',
-            subtitle:
-                'заготовка ${formatMm(spec.filmCutWidthWithAllowance)} × '
-                '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}',
-            children: [
-              if (params.isScreen) ...[
-                Text(
-                  'У скрина усадки нет: заготовка равна готовому размеру плюс '
-                  'половина подворота каждой стороны, к высоте добавляется '
-                  '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} на шов и запас. '
-                  'Нужен запас — добавьте припуск на раскрой.',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF66748A),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ] else ...[
-                SwitchListTile(
-                  key: const Key('shrinkage-toggle'),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text(
-                    'Учитывать усадку ПВХ',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                  subtitle: const Text(
-                    'включите, если партия плёнки даёт усадку',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-                  ),
-                  value: params.shrinkageEnabled,
-                  onChanged: _setShrinkageEnabled,
-                ),
-                if (params.shrinkageEnabled) ...[
+                  const SizedBox(height: 6),
                   Text(
-                    'Типовая усадка 1–2 %; поле принимает 0…'
-                    '${formatDecimal(maxShrinkageFieldPercent)} %.',
+                    params.isScreen
+                        ? 'Полоса под молнию у скрина — подвёрнутая ткань (или '
+                              'накладная полоса из скрина): на чертеже полоса серая, '
+                              'как подворот, со швом '
+                              '${formatMm(screenSeamMm)} ${unitSuffix()} по краям. Молния не '
+                              'должна подходить к кромке подворота ближе '
+                              '${formatMm(minScreenZipperHemMm)} ${unitSuffix()}. Всего до '
+                              '$maxZippers молний.'
+                        : 'Молния впаивается в полосу тента: на чертеже показаны '
+                              'полоса спайки и расстояния до кромок плёнки. Всего '
+                              'до $maxZippers молний.',
                     style: const TextStyle(
                       fontSize: 11,
                       color: Color(0xFF66748A),
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  _numberField(ParamField.shrinkagePercent),
                 ],
-                const SizedBox(height: 12),
               ],
-              _CuttingCard(spec: spec),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _expansion(
-            title: 'Раскладка на рулоне',
-            subtitle: _rollSummary(project),
-            children: [
-              _numberField(ParamField.rollGap),
-              const SizedBox(height: 6),
-              const Text(
-                'Ширина рулона выбирается для каждого материала в разделе '
-                '«Ширина рулона». Раскладка строится на вкладке '
-                '«Раскладка на рулоне».',
-                style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _expansion(
-            title: 'Отображение',
-            subtitle: 'сетка, размеры, подписи',
-            children: [
-              SwitchListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Размерные линии'),
-                value: project.options.showDimensions,
-                onChanged: (value) => _updateProject(
-                  project.updateOptions(
-                    project.options.copyWith(showDimensions: value),
-                  ),
-                ),
-              ),
-              SwitchListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Сетка'),
-                value: project.options.showGrid,
-                onChanged: (value) => _updateProject(
-                  project.updateOptions(
-                    project.options.copyWith(showGrid: value),
-                  ),
-                ),
-              ),
-              SwitchListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Подписи ширины окантовки'),
-                value: project.options.showCallouts,
-                onChanged: (value) => _updateProject(
-                  project.updateOptions(
-                    project.options.copyWith(showCallouts: value),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _companySection(),
-          if (warnings.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            const _SectionTitle('Проверьте параметры'),
-            const SizedBox(height: 8),
-            for (final issue in warnings)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.only(top: 2),
-                      child: Icon(
-                        Icons.info_outline,
-                        size: 16,
-                        color: Color(0xFFB26A00),
-                      ),
+            ),
+            const SizedBox(height: 12),
+            _expansion(
+              title: 'Отображение',
+              subtitle: 'сетка, размеры, подписи',
+              children: [
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Размерные линии'),
+                  value: project.options.showDimensions,
+                  onChanged: (value) => _updateProject(
+                    project.updateOptions(
+                      project.options.copyWith(showDimensions: value),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        issue.message,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF8A5200),
+                  ),
+                ),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Сетка'),
+                  value: project.options.showGrid,
+                  onChanged: (value) => _updateProject(
+                    project.updateOptions(
+                      project.options.copyWith(showGrid: value),
+                    ),
+                  ),
+                ),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Подписи ширины окантовки'),
+                  value: project.options.showCallouts,
+                  onChanged: (value) => _updateProject(
+                    project.updateOptions(
+                      project.options.copyWith(showCallouts: value),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (warnings.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              const _SectionTitle('Проверьте параметры'),
+              const SizedBox(height: 8),
+              for (final issue in warnings)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Color(0xFFB26A00),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-          const SizedBox(height: 20),
-          const _SectionTitle('Маркировка'),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _nameController,
-            decoration: const InputDecoration(
-              labelText: 'Изделие',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-            onChanged: (value) =>
-                _updateWindow(params.copyWith(projectName: value)),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _customerController,
-            decoration: const InputDecoration(
-              labelText: 'Заказчик',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-            onChanged: (value) =>
-                _updateWindow(params.copyWith(customer: value)),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _drawingController,
-            decoration: const InputDecoration(
-              labelText: 'Маркировка окна (номер заказа)',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-            onChanged: (value) =>
-                _updateWindow(params.copyWith(drawingNumber: value)),
-          ),
-          const SizedBox(height: 20),
-          const _SectionTitle('Пресеты'),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                onPressed: () => _updateWindow(
-                  params.copyWith(windowType: WindowType.fixed),
-                ),
-                icon: const Icon(Icons.crop_square, size: 18),
-                label: const Text('Глухое'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _updateWindow(
-                  params.copyWith(
-                    windowType: WindowType.lifting,
-                    fastenerType: FastenerType.turnBuckles,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          issue.message,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF8A5200),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                icon: const Icon(Icons.vertical_align_top, size: 18),
-                label: const Text('Подъёмное'),
-              ),
-              OutlinedButton.icon(
-                onPressed: params.zippers.length < maxZippers
-                    ? () => _updateWindow(params.addZipper())
-                    : null,
-                icon: const Icon(Icons.vertical_split, size: 18),
-                label: const Text('Молния по центру'),
-              ),
-              OutlinedButton.icon(
-                onPressed: params.cutouts.length < maxCutouts
-                    ? () => _updateWindow(params.addCutout())
-                    : null,
-                icon: const Icon(Icons.crop_free, size: 18),
-                label: const Text('Вырез по центру'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _updateWindow(params.copyWith(pocket: true)),
-                icon: const Icon(Icons.inbox_outlined, size: 18),
-                label: const Text('Добавить фартук'),
-              ),
-              TextButton.icon(
-                onPressed: widget.onReset,
-                icon: const Icon(Icons.restart_alt, size: 18),
-                label: const Text('Сбросить'),
-              ),
             ],
-          ),
-          const SizedBox(height: 20),
-          _rollWidthSection(project, params),
-          const SizedBox(height: 12),
-          _extraItemsSection(project),
-          const SizedBox(height: 12),
-          _colorsSection(params),
-          if (widget.ordersSection != null) ...[
-            const SizedBox(height: 16),
-            widget.ordersSection!,
-          ],
-          if (widget.techSection != null) ...[
+            const SizedBox(height: 20),
+            const _SectionTitle('Маркировка'),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _nameController,
+              decoration: const InputDecoration(
+                labelText: 'Изделие',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              onChanged: (value) =>
+                  _updateWindow(params.copyWith(projectName: value)),
+            ),
             const SizedBox(height: 12),
-            widget.techSection!,
-          ],
-          if (widget.pricesSection != null) ...[
+            TextField(
+              controller: _customerController,
+              decoration: const InputDecoration(
+                labelText: 'Заказчик',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              onChanged: (value) =>
+                  _updateWindow(params.copyWith(customer: value)),
+            ),
             const SizedBox(height: 12),
-            widget.pricesSection!,
+            TextField(
+              controller: _drawingController,
+              decoration: const InputDecoration(
+                labelText: 'Маркировка окна (номер заказа)',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              onChanged: (value) =>
+                  _updateWindow(params.copyWith(drawingNumber: value)),
+            ),
+            const SizedBox(height: 20),
+            const _SectionTitle('Пресеты'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _updateWindow(
+                    params.copyWith(windowType: WindowType.fixed),
+                  ),
+                  icon: const Icon(Icons.crop_square, size: 18),
+                  label: const Text('Глухое'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _updateWindow(
+                    params.copyWith(
+                      windowType: WindowType.lifting,
+                      fastenerType: FastenerType.turnBuckles,
+                    ),
+                  ),
+                  icon: const Icon(Icons.vertical_align_top, size: 18),
+                  label: const Text('Подъёмное'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: params.zippers.length < maxZippers
+                      ? () => _updateWindow(params.addZipper())
+                      : null,
+                  icon: const Icon(Icons.vertical_split, size: 18),
+                  label: const Text('Молния по центру'),
+                ),
+                TextButton.icon(
+                  onPressed: widget.onReset,
+                  icon: const Icon(Icons.restart_alt, size: 18),
+                  label: const Text('Сбросить'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _savedPresetsSection(params),
+            const SizedBox(height: 20),
+            const SizedBox(height: 12),
+            _extraItemsSection(project),
+            const SizedBox(height: 12),
+            _colorsSection(params),
+            const SizedBox(height: 12),
+            _rollWarningSection(project, params),
+            const SizedBox(height: 12),
+            _expansion(
+              title: 'Раскрой',
+              subtitle:
+                  'заготовка ${formatMm(spec.filmCutWidthWithAllowance)} × '
+                  '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}',
+              children: [
+                if (params.isScreen) ...[
+                  Text(
+                    'У скрина усадки нет: заготовка равна готовому размеру плюс '
+                    'половина подворота каждой стороны, к высоте добавляется '
+                    '${formatMm(screenHemAxisExtraMm)} ${unitSuffix()} на шов и запас. '
+                    'Нужен запас — добавьте припуск на раскрой.',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF66748A),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ] else ...[
+                  SwitchListTile(
+                    key: const Key('shrinkage-toggle'),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text(
+                      'Учитывать усадку ПВХ',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    subtitle: const Text(
+                      'включите, если партия плёнки даёт усадку',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                    ),
+                    value: params.shrinkageEnabled,
+                    onChanged: _setShrinkageEnabled,
+                  ),
+                  if (params.shrinkageEnabled) ...[
+                    Text(
+                      'Типовая усадка 1–2 %; поле принимает 0…'
+                      '${formatDecimal(maxShrinkageFieldPercent)} %.',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF66748A),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    _numberField(ParamField.shrinkagePercent),
+                  ],
+                  const SizedBox(height: 12),
+                ],
+                _CuttingCard(spec: spec),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _expansion(
+              title: 'Раскладка на рулоне',
+              subtitle: _rollSummary(project),
+              children: [
+                _numberField(ParamField.rollGap),
+                const SizedBox(height: 6),
+                const Text(
+                  'Ширина рулона выбирается для каждого материала в разделе '
+                  '«Ширина рулона». Раскладка строится на вкладке '
+                  '«Раскладка на рулоне».',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (widget.ordersSection != null) ...[
+              const SizedBox(height: 16),
+              widget.ordersSection!,
+            ],
+            if (widget.techSection != null) ...[
+              const SizedBox(height: 12),
+              widget.techSection!,
+            ],
+            const SizedBox(height: 12),
           ],
-          const SizedBox(height: 12),
-        ],
+        ),
       ),
     );
   }
@@ -4038,73 +3752,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// Карточка внутри раздела: подложка с рамкой. Прозрачный Material нужен,
   /// чтобы переключатели рисовали чернильные волны поверх заливки.
   /// «Компания на листах»: тумблер показа и настройка реквизитов с логотипом.
-  Widget _companySection() {
-    return ValueListenableBuilder<CompanyBrandingState>(
-      valueListenable: CompanyBranding.current,
-      builder: (context, branding, _) {
-        final name = branding.details.name.trim();
-        return _panelCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Компания на листах',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    branding.showOnSheets
-                        ? (name.isEmpty ? 'включено' : name)
-                        : 'выключено',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF66748A),
-                    ),
-                  ),
-                ],
-              ),
-              SwitchListTile(
-                key: const Key('company-on-sheets-toggle'),
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                value: branding.showOnSheets,
-                title: const Text(
-                  'Показывать данные компании и логотип',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                ),
-                subtitle: const Text(
-                  'Смета — логотип и строка реквизитов в синей шапке; чертёж — '
-                  'логотип с названием в штампе. Выключено — листы как сейчас.',
-                  style: TextStyle(fontSize: 11),
-                ),
-                onChanged: (value) => CompanyBranding.setShowOnSheets(value),
-              ),
-              OutlinedButton.icon(
-                key: const Key('company-settings'),
-                onPressed: () => showCompanyDialog(context),
-                icon: const Icon(Icons.business_outlined, size: 18),
-                label: const Text('Настроить компанию и логотип'),
-              ),
-              if (branding.showOnSheets && !branding.hasDetails) ...[
-                const SizedBox(height: 6),
-                const Text(
-                  'Заполните хотя бы название — иначе блок на листах не покажется.',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF8A5200)),
-                ),
-              ],
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   Widget _panelCard({required Widget child}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -4229,36 +3876,38 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// +1 на метр). Добавили вручную — ровно эти ремни, каждый начинается на
   /// линии тента; на косом окне линия наклонена, и ремень идёт от неё.
   Widget _liftStrapsSection(WindowParams params, WindowSpec spec) {
-    final offsets = params.liftStrapOffsets;
     final width = spec.filmVisibleWidth;
     final maxOffset = width.isFinite && width > 0 ? width : 1.0;
+    final display = _effectiveStrapOffsets(params);
+    final manual = params.liftStrapOffsets.isNotEmpty;
     double nextOffset() {
-      if (offsets.isEmpty) return maxOffset / 2;
-      final step = maxOffset / (offsets.length + 2);
-      return (offsets.last + step).clamp(0.0, maxOffset);
+      if (display.isEmpty) return maxOffset / 2;
+      final step = maxOffset / (display.length + 2);
+      return (display.last + step).clamp(0.0, maxOffset);
+    }
+
+    void setOffset(int index, double value) {
+      final base = display.toList();
+      base[index] = value.clamp(0.0, maxOffset);
+      _updateWindow(params.copyWith(liftStrapOffsets: base));
     }
 
     return _expansion(
       title: 'Подъёмные ремни',
-      subtitle: offsets.isEmpty
-          ? (params.isLifting
-                ? 'авто: ${params.liftStrapCount} шт'
-                : 'вручную: 0 шт')
-          : 'вручную: ${offsets.length} шт',
+      subtitle: display.isEmpty
+          ? 'нет'
+          : '${display.length} шт · ${manual ? 'вручную' : 'стандарт 25 см от краёв'}',
       children: [
         Text(
-          offsets.isEmpty
-              ? (params.isLifting
-                    ? 'Ремни расставлены автоматически (2 шт до 2 м, далее +1 на '
-                          'метр). Нажмите «+ ремешок», чтобы поставить их вручную — '
-                          'каждый привяжется к линии тента, в том числе на косой '
-                          'кромке.'
-                    : 'У скрина ремни ставятся вручную: нажмите «+ ремешок» и '
-                          'задайте положение. Каждый ремень привяжется к верхней '
-                          'кромке полотна.')
-              : 'Ремни стоят вручную и начинаются на линии тента: на косом '
-                    'окне кромка наклонена, ремень идёт от неё, а не висит за '
-                    'окантовкой.',
+          params.isScreen
+              ? 'У скрина ремни ставятся вручную: нажмите «+ ремешок» и '
+                    'задайте положение. Каждый ремень привяжется к верхней '
+                    'кромке полотна.'
+              : display.length == 2 && !manual
+              ? 'Стандарт: два ремня по 250 мм от внешних боковых кромок. '
+                    'Поправьте поле — положение сразу станет ручным.'
+              : 'Ремни начинаются на линии тента: на косом окне кромка '
+                    'наклонена, ремень идёт от неё, а не висит за окантовкой.',
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
         const SizedBox(height: 8),
@@ -4281,7 +3930,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
         ),
         const SizedBox(height: 6),
-        for (var index = 0; index < offsets.length; index++)
+        for (var index = 0; index < display.length; index++)
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Row(
@@ -4292,7 +3941,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     controller: _strapControllers.putIfAbsent(
                       index,
                       () =>
-                          TextEditingController(text: _textFor(offsets[index])),
+                          TextEditingController(text: _textFor(display[index])),
                     ),
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -4306,19 +3955,18 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     onChanged: (raw) {
                       final parsed = parseMm(raw);
                       if (parsed == null || !parsed.isFinite) return;
-                      _updateWindow(
-                        params.updateLiftStrap(
-                          index,
-                          parsed.clamp(0.0, maxOffset),
-                        ),
-                      );
+                      setOffset(index, parsed);
                     },
                   ),
                 ),
                 IconButton(
                   tooltip: 'Удалить ремень',
                   icon: const Icon(Icons.delete_outline, size: 18),
-                  onPressed: () => _updateWindow(params.removeLiftStrap(index)),
+                  onPressed: () {
+                    final base = display.toList();
+                    if (index >= 0 && index < base.length) base.removeAt(index);
+                    _updateWindow(params.copyWith(liftStrapOffsets: base));
+                  },
                 ),
               ],
             ),
@@ -4332,13 +3980,15 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 key: Key('lift-strap-even-$count'),
                 onPressed: () => _updateWindow(
                   params.copyWith(
-                    liftStrapOffsets: [
-                      for (var i = 1; i <= count; i++)
-                        maxOffset * i / (count + 1),
-                    ],
+                    liftStrapOffsets: count == 2
+                        ? WindowParams.defaultLiftStrapOffsets(maxOffset)
+                        : [
+                            for (var i = 1; i <= count; i++)
+                              maxOffset * i / (count + 1),
+                          ],
                   ),
                 ),
-                child: Text('Ровно $count'),
+                child: Text(count == 2 ? '2 по 25 см' : 'Ровно $count'),
               ),
           ],
         ),
@@ -4348,17 +3998,478 @@ class _ParamsPanelState extends State<ParamsPanel> {
           children: [
             OutlinedButton.icon(
               key: const Key('add-lift-strap'),
-              onPressed: () => _updateWindow(params.addLiftStrap(nextOffset())),
+              onPressed: () => _updateWindow(
+                params.copyWith(liftStrapOffsets: [...display, nextOffset()]),
+              ),
               icon: const Icon(Icons.add, size: 18),
               label: const Text('+ ремешок'),
             ),
-            if (offsets.isNotEmpty)
+            if (manual)
               TextButton(
                 key: const Key('reset-lift-straps'),
                 onPressed: () =>
                     _updateWindow(params.copyWith(liftStrapOffsets: const [])),
-                child: const Text('Сбросить к авто'),
+                child: const Text('Сбросить к стандарту'),
               ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Пользовательские пресеты: сохранить текущий вид окна под именем,
+  /// применить или удалить. Названия хранятся локально.
+  Widget _savedPresetsSection(WindowParams params) {
+    return _panelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Мои пресеты окна',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ),
+              TextButton.icon(
+                key: const Key('save-window-preset'),
+                onPressed: () => _saveWindowPreset(params),
+                icon: const Icon(Icons.bookmark_add_outlined, size: 16),
+                label: const Text('Сохранить'),
+              ),
+            ],
+          ),
+          const Text(
+            'Сохраняет тип, размеры, крепёж, окантовку и материалы текущего '
+            'окна. Маркировка заказа при применении остаётся своей.',
+            style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+          const SizedBox(height: 8),
+          if (_savedPresets.isEmpty)
+            const Text(
+              'Пока пусто. Настройте окно и нажмите «Сохранить».',
+              style: TextStyle(fontSize: 11.5, color: Color(0xFF8A97AA)),
+            )
+          else
+            for (final preset in _savedPresets)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        key: Key('preset-apply-${preset.name}'),
+                        style: OutlinedButton.styleFrom(
+                          alignment: Alignment.centerLeft,
+                        ),
+                        onPressed: () => _applyWindowPreset(preset),
+                        child: Text(
+                          preset.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      key: Key('preset-delete-${preset.name}'),
+                      tooltip: 'Удалить пресет',
+                      onPressed: () => _deleteWindowPreset(preset),
+                      icon: const Icon(Icons.close, size: 16),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveWindowPreset(WindowParams params) async {
+    final controller = TextEditingController(
+      text: 'Окно ${_savedPresets.length + 1}',
+    );
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Сохранить пресет окна'),
+        content: TextField(
+          key: const Key('window-preset-name'),
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Название',
+            hintText: 'Например: беседка 3×2, подъёмное',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            key: const Key('window-preset-save-confirm'),
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || name == null || name.trim().isEmpty) return;
+    final presets = await _presetStore.save(name, params);
+    if (!mounted) return;
+    setState(() => _savedPresets = presets);
+  }
+
+  void _applyWindowPreset(WindowPreset preset) {
+    final current = _params;
+    _updateWindow(
+      preset.params.copyWith(
+        projectName: current.projectName,
+        customer: current.customer,
+        drawingNumber: current.drawingNumber,
+      ),
+    );
+  }
+
+  Future<void> _deleteWindowPreset(WindowPreset preset) async {
+    final presets = await _presetStore.remove(preset.name);
+    if (!mounted) return;
+    setState(() => _savedPresets = presets);
+  }
+
+  /// Составное окно: кнопка включения либо полная настройка.
+  Widget _compositeTool(WindowParams params) {
+    if (params.windowType == WindowType.composite) {
+      return _compositeSection(params);
+    }
+    return _expansion(
+      title: 'Составное окно',
+      subtitle: 'ПВХ + скрин или второй ПВХ',
+      children: [
+        const Text(
+          'Основное полотно — ПВХ, второй материал пристраивается с любой '
+          'стороны и спаивается по общему шву.',
+          style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          key: const Key('make-composite'),
+          onPressed: () => _updateWindow(
+            params.copyWith(
+              windowType: WindowType.composite,
+              material: params.isScreen
+                  ? FilmMaterial.clearPvc
+                  : params.material,
+            ),
+          ),
+          icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
+          label: const Text('Сделать составным'),
+        ),
+      ],
+    );
+  }
+
+  /// Узкий рулон и спайка: выбор ширины теперь в «Настройках», но
+  /// предупреждение и кнопка полосы должны быть рядом с чертежом.
+  Widget _rollWarningSection(OrderProject project, WindowParams params) {
+    final spec = WindowSpec.of(params);
+    final roll = project.rollWidthFor(params.material);
+    final needed = spec.filmCutWidthWithShrinkage;
+    final shortage = needed - roll;
+    if (shortage <= 0.5 && !params.hasSplice) {
+      return const SizedBox.shrink();
+    }
+    final suggested = shortage > 0
+        ? math.max(10.0, (shortage / 10).ceil() * 10.0)
+        : 0.0;
+    return _expansion(
+      title: 'Ширина рулона',
+      subtitle: '${params.material.label} · ${formatMm(roll)} ${unitSuffix()}',
+      initiallyExpanded: true,
+      children: [
+        if (shortage > 0.5 && !params.hasSplice)
+          Container(
+            key: const Key('roll-width-warning'),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF4E5),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE8C38F)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: Color(0xFFB7791F),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Заготовка ${formatMm(needed)} ${unitSuffix()} шире '
+                        'рулона ${formatMm(roll)} ${unitSuffix()}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF8A5200),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Выберите рулон шире в «Настройках» или добавьте полосу '
+                  '${formatMm(suggested)} ${unitSuffix()} и спаяйте её с '
+                  'полотном.',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    height: 1.45,
+                    color: Color(0xFF6F5A3A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  key: const Key('splice-add'),
+                  onPressed: () => _updateWindow(
+                    params.copyWith(
+                      spliceStripMm: suggested,
+                      spliceSide: FilmSpliceSide.right,
+                    ),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFB7791F),
+                  ),
+                  icon: const Icon(Icons.content_cut, size: 16),
+                  label: Text(
+                    'Добавить полосу ${formatMm(suggested)} и спаять',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (params.hasSplice) ...[
+          const SizedBox(height: 10),
+          Container(
+            key: const Key('roll-width-splice'),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7EFE7),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE0C6AF)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.link, size: 17, color: Color(0xFF8E4E2A)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        roll < needed - 0.5
+                            ? 'Стык: ${formatMm(roll)} + '
+                                  '${formatMm(params.spliceStripMm)} '
+                                  '${unitSuffix()}'
+                            : 'Рулон уже покрывает заготовку',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF8E4E2A),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Убрать стык',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () =>
+                          _updateWindow(params.copyWith(spliceStripMm: 0)),
+                      icon: const Icon(Icons.close, size: 16),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        key: const Key('splice-strip-field'),
+                        controller: _spliceController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: 'Ширина полосы, ${unitSuffix()}',
+                          isDense: true,
+                          border: const OutlineInputBorder(),
+                        ),
+                        onChanged: (raw) {
+                          final value = parseMm(raw);
+                          if (value == null || value < 0) return;
+                          _updateWindow(params.copyWith(spliceStripMm: value));
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SegmentedButton<FilmSpliceSide>(
+                      showSelectedIcon: false,
+                      style: const ButtonStyle(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      segments: [
+                        for (final side in FilmSpliceSide.values)
+                          ButtonSegment(
+                            value: side,
+                            label: Text(
+                              side.label,
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                      ],
+                      selected: {params.spliceSide},
+                      onSelectionChanged: (selection) => _updateWindow(
+                        params.copyWith(spliceSide: selection.first),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Фартук: отдельный раздел в «Дополнительно».
+  Widget _apronSection(WindowParams params) {
+    return _expansion(
+      title: 'Фартук',
+      subtitle: 'настройки фартука',
+      children: [
+        const Text(
+          'Фартук идёт от внутреннего края окантовки наружу и ниже кромки.',
+          style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _apronToggle(
+              key: const Key('apron-bottom-toggle'),
+              label: 'Фартук снизу',
+              icon: Icons.vertical_align_bottom,
+              selected: params.pocket,
+              onPressed: () =>
+                  _updateWindow(params.copyWith(pocket: !params.pocket)),
+            ),
+            _apronToggle(
+              key: const Key('apron-top-toggle'),
+              label: 'Фартук сверху',
+              icon: Icons.vertical_align_top,
+              selected: params.pocketTop,
+              onPressed: () =>
+                  _updateWindow(params.copyWith(pocketTop: !params.pocketTop)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: params.pocket
+              ? null
+              : () => _updateWindow(params.copyWith(pocket: true)),
+          icon: const Icon(Icons.inbox_outlined, size: 18),
+          label: const Text('Добавить фартук'),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _apronStateLabel(params),
+          key: const Key('apron-state'),
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF0B62C4),
+          ),
+        ),
+        const SizedBox(height: 8),
+        _apronWidthField(),
+        const SizedBox(height: 6),
+        const Text(
+          'Фартук идёт от внутреннего края окантовки наружу и ниже кромки',
+          key: Key('apron-caption'),
+          style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+        ),
+        if (params.pocket || params.pocketTop) ...[
+          const SizedBox(height: 6),
+          Text(
+            params.isScreen
+                ? 'У скрина фартук образуется подворотом материала '
+                      '${formatMm(params.pocketWidth)} ${unitSuffix()}. Угловые люверсы со '
+                      'стороны фартука не ставятся, крайние боковые смещаются '
+                      'на ${formatMm(pocketCornerOffset)} ${unitSuffix()} — чтобы в полость '
+                      'фартука заводился утяжитель.'
+                : 'Фартук делается из тента 200 мм, складывается пополам — '
+                      'получается ${formatMm(params.pocketWidth)} ${unitSuffix()}. Угловые '
+                      'люверсы со стороны фартука не ставятся: они смещаются на '
+                      '${formatMm(pocketCornerOffset)} ${unitSuffix()}, чтобы в полость '
+                      'фартука заводился утяжитель.',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+        ],
+        if (!params.isScreen) ...[
+          const SizedBox(height: 8),
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Дренажные отверстия внизу'),
+            value: params.drainHoles,
+            onChanged: (value) =>
+                _updateWindow(params.copyWith(drainHoles: value)),
+          ),
+          if (params.drainHoles) _numberField(ParamField.drainCount),
+        ],
+      ],
+    );
+  }
+
+  /// Вырезы: отдельный раздел в «Дополнительно».
+  Widget _cutoutsSection(WindowParams params) {
+    return Column(
+      children: [
+        _expansion(
+          title: 'Вырезы в полотне',
+          subtitle: _cutoutsSummary(params),
+          children: [
+            const Text(
+              'Отверстие под трубу, вентиляцию или стойку: контур выреза '
+              'обводится окантовкой, размеры идут на чертёж и в раскрой.',
+              style: TextStyle(fontSize: 11.5, color: Color(0xFF5B6B80)),
+            ),
+            const SizedBox(height: 10),
+            for (var index = 0; index < params.cutouts.length; index++)
+              _cutoutCard(params, index),
+            OutlinedButton.icon(
+              onPressed: params.cutouts.length < maxCutouts
+                  ? () => _updateWindow(params.addCutout())
+                  : null,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Добавить вырез'),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              params.cutouts.length >= maxCutouts
+                  ? 'Больше $maxCutouts вырезов на окно не ставится.'
+                  : 'На окно можно поставить до $maxCutouts вырезов.',
+              style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+            ),
           ],
         ),
       ],
