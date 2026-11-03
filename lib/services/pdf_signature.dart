@@ -69,59 +69,65 @@ class SignatureSettings {
   bool get hasAnything => enabled && items.values.any((item) => item.ready);
 
   Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_storageKey);
-    if (raw == null || raw.isEmpty) return;
     try {
-      final json = jsonDecode(raw);
-      if (json is! Map) return;
-      enabled = json['enabled'] == true;
-      pageMode = SignaturePageMode.values.firstWhere(
-        (mode) => mode.name == json['pageMode'],
-        orElse: () => SignaturePageMode.last,
-      );
-      final savedItems = json['items'];
-      if (savedItems is Map) {
-        for (final role in SignatureRole.values) {
-          final rawItem = savedItems[role.name];
-          if (rawItem is! Map) continue;
-          final item = items[role]!;
-          final image = rawItem['image'];
-          item.image = image is String && image.isNotEmpty
-              ? base64Decode(image)
-              : null;
-          item.enabled = rawItem['enabled'] != false;
-          item.x = _double(rawItem['x'], item.x).clamp(0.0, 0.95);
-          item.y = _double(rawItem['y'], item.y).clamp(0.0, 0.95);
-          item.width = _double(rawItem['width'], item.width).clamp(0.05, 0.7);
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_storageKey);
+      if (raw == null || raw.isEmpty) return;
+      try {
+        final json = jsonDecode(raw);
+        if (json is! Map) return;
+        enabled = json['enabled'] == true;
+        pageMode = SignaturePageMode.values.firstWhere(
+          (mode) => mode.name == json['pageMode'],
+          orElse: () => SignaturePageMode.last,
+        );
+        final savedItems = json['items'];
+        if (savedItems is Map) {
+          for (final role in SignatureRole.values) {
+            final rawItem = savedItems[role.name];
+            if (rawItem is! Map) continue;
+            final item = items[role]!;
+            final image = rawItem['image'];
+            item.image = image is String && image.isNotEmpty
+                ? base64Decode(image)
+                : null;
+            item.enabled = rawItem['enabled'] != false;
+            item.x = _double(rawItem['x'], item.x).clamp(0.0, 0.95);
+            item.y = _double(rawItem['y'], item.y).clamp(0.0, 0.95);
+            item.width = _double(rawItem['width'], item.width).clamp(0.05, 0.7);
+          }
         }
+      } catch (_) {
+        // Повреждённые настройки не должны мешать сохранению документов.
       }
     } catch (_) {
-      // Повреждённые настройки не должны мешать сохранению документов.
+      // В тестах и на платформах без SharedPreferences просто нет подписей.
     }
   }
 
   Future<void> save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _storageKey,
-      jsonEncode({
-        'enabled': enabled,
-        'pageMode': pageMode.name,
-        'items': {
-          for (final entry in items.entries)
-            entry.key.name: {
-              'image': entry.value.image == null
-                  ? ''
-                  : base64Encode(entry.value.image!),
-              'enabled': entry.value.enabled,
-              'x': entry.value.x,
-              'y': entry.value.y,
-              'width': entry.value.width,
-            },
-        },
-      }),
-    );
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _storageKey,
+        jsonEncode({
+          'enabled': enabled,
+          'pageMode': pageMode.name,
+          'items': {
+            for (final entry in items.entries)
+              entry.key.name: {
+                'image': entry.value.image == null
+                    ? ''
+                    : base64Encode(entry.value.image!),
+                'enabled': entry.value.enabled,
+                'x': entry.value.x,
+                'y': entry.value.y,
+                'width': entry.value.width,
+              },
+          },
+        }),
+      );
+    } catch (_) {}
   }
 
   static double _double(Object? raw, double fallback) =>
