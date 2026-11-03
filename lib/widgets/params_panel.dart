@@ -3299,8 +3299,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
-              onChanged: (value) =>
-                  _updateWindow(params.copyWith(projectName: value)),
+              onChanged: (value) => _updateAllMarking(projectName: value),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -3310,8 +3309,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
-              onChanged: (value) =>
-                  _updateWindow(params.copyWith(customer: value)),
+              onChanged: (value) => _updateAllMarking(customer: value),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -3321,8 +3319,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
-              onChanged: (value) =>
-                  _updateWindow(params.copyWith(drawingNumber: value)),
+              onChanged: (value) => _updateAllMarking(drawingNumber: value),
             ),
             const SizedBox(height: 20),
             const _SectionTitle('Пресеты'),

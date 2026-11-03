@@ -260,8 +260,9 @@ class _NewOrderDialogState extends State<_NewOrderDialog> {
                                     .map((value) => value.trim())
                                     .where((value) => value.isNotEmpty)
                                     .toList();
-                                if (!current.contains(label))
+                                if (!current.contains(label)) {
                                   current.add(label);
+                                }
                                 _labels.text = current.join(', ');
                               },
                             ),
