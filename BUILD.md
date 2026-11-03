@@ -1,7 +1,7 @@
 # Сборка и выпуск приложения
 
 Приложение называется **«Мягкие окна Excl»** (`MyagkieOknaExcl`), текущая
-версия 2.4.9 (сборка 36). Иконка — мягкое окно: коричневая окантовка, плёнка, люверсы и
+версия 2.5.0 (сборка 37). Иконка — мягкое окно: коричневая окантовка, плёнка, люверсы и
 молния.
 
 > Предыдущая версия **«Мягкие окна 1»** (приложение `MyagkieOkna`, версия 1.1.0)
@@ -42,7 +42,7 @@ hdiutil create -volname "Мягкие окна Excl" -srcfolder dist/dmg -ov -fo
 - отображаемое имя «Мягкие окна Excl»: `macos/Runner/Info.plist`
   (`CFBundleName`, `CFBundleDisplayName`) и заголовок окна в
   `macos/Runner/MainFlutterWindow.swift`;
-- версия берётся из `pubspec.yaml` (`version: 2.4.9+36`);
+- версия берётся из `pubspec.yaml` (`version: 2.5.0+37`);
 - права: запись в `~/Downloads` и печать (`macos/Runner/*.entitlements`).
 
 ### Подпись и Gatekeeper
@@ -95,12 +95,12 @@ flutter build windows --release
 - имя бинарника и идентификатор: `windows/CMakeLists.txt`
   (`BINARY_NAME = MyagkieOknaExcl`, `APPLICATION_ID = ru.myagkieokna.excl`).
 
-## Выпуск 2.4.9
+## Выпуск 2.5.0
 
 - GitHub Actions собирает Windows ZIP, macOS DMG/ZIP, Android APK/AAB и Web ZIP
   как **артефакты Actions**; GitHub Releases больше не публикуются.
-- Файлы выкладываются только на https://myagkie-okna-excl.web.app/releases/2.4.9/.
-- Firestore `config/app` обновлён: `latestVersion = 2.4.9`, ссылки на основной
+- Файлы выкладываются только на https://myagkie-okna-excl.web.app/releases/2.5.0/.
+- Firestore `config/app` обновлён: `latestVersion = 2.5.0`, ссылки на основной
   сайт и SHA-256 Windows/macOS.
 - Боевой веб: https://myagkie-okna-excl.web.app (Firebase Hosting, target `excl`).
 - Админка кладётся в `build/web/admin` при `deploy-web.sh`; без этого шага на
@@ -149,7 +149,7 @@ FB=/Users/davidovjr7/.dsh/firebase-tools/node_modules/.bin/firebase
   скачайте zip и передайте заказчику файлом (15 МБ).
 - В релизе также лежат `MyagkieOkna-macos.dmg` и `MyagkieOkna-macos.zip`.
 
-Новые релизы версии Excl выходят отдельными тегами (например `v2.4.9`) и
+Новые релизы версии Excl выходят отдельными тегами (например `v2.5.0`) и
 содержат файлы с приставкой `Excl` — см. следующий раздел.
 
 Сделать репозиторий публичным (тогда ссылку можно отправлять кому угодно,
@@ -214,7 +214,7 @@ Windows-сборку делает сам GitHub — на виртуальной 
 
 ## Версия и имя в коде
 
-- `pubspec.yaml` → `version: 2.4.9+36`, `name: soft_window_drawer`
+- `pubspec.yaml` → `version: 2.5.0+37`, `name: soft_window_drawer`
   (имя Dart-пакета менять не нужно, оно не видно пользователю),
   `description: «Мягкие окна Excl: чертежи, раскрой и раскладка. ПВХ и скрин.»`;
 - заголовок в приложении и в окне: «Мягкие окна Excl».

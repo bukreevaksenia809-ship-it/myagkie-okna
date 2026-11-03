@@ -187,6 +187,7 @@ void main() {
             onDealerPrices: (_) {},
             onCompany: () {},
             onWatermark: () {},
+            onSignatures: () {},
             onPairing: () {},
             onBackup: () {},
             onBackupDatabase: () {},

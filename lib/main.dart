@@ -34,6 +34,8 @@ import 'services/watermark.dart';
 import 'widgets/license_dialog.dart';
 import 'widgets/pairing_dialog.dart';
 import 'widgets/watermark_dialog.dart';
+import 'widgets/signature_center_dialog.dart';
+import 'widgets/quick_measure_dialog.dart';
 import 'services/label_settings.dart';
 import 'services/tech_checks.dart';
 import 'services/pdf_export.dart';
@@ -60,7 +62,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.4.9';
+const String kAppVersion = '2.5.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -627,6 +629,29 @@ class _BuilderScreenState extends State<BuilderScreen>
     });
     _scheduleSessionSave(_project);
     _resetZoom();
+  }
+
+  Future<void> _openQuickMeasure() async {
+    final result = await showQuickMeasureDialog(
+      context,
+      base: _project.selected,
+    );
+    if (!mounted || result == null || result.windows.isEmpty) return;
+    final marking = result.windows.first.drawingNumber.trim();
+    final existing = marking.isEmpty
+        ? _project.windows
+        : [
+            for (final window in _project.windows)
+              window.copyWith(drawingNumber: marking),
+          ];
+    final project = _project.copyWith(
+      windows: [...existing, ...result.windows],
+      selectedIndex: _project.windows.length + result.windows.length - 1,
+    );
+    _updateProject(project);
+    if (result.makeReport) {
+      await _exportClientReport();
+    }
   }
 
   Future<void> _renameOrderDraft(int index) async {
@@ -1234,6 +1259,18 @@ class _BuilderScreenState extends State<BuilderScreen>
   /// Компактные действия для телефона: частые кнопки + меню.
   List<Widget> _phoneActions(BuildContext context) => [
     IconButton(
+      key: const Key('phone-quick-measure'),
+      tooltip: 'Быстрый замер',
+      onPressed: _openQuickMeasure,
+      icon: const Icon(Icons.bolt_outlined),
+    ),
+    IconButton(
+      key: const Key('phone-signatures-button'),
+      tooltip: 'Подписи и печать',
+      onPressed: () => showSignatureCenter(context),
+      icon: const Icon(Icons.draw_outlined),
+    ),
+    IconButton(
       key: const Key('phone-pairing-button'),
       tooltip: 'Связь с ПК / замерщиком',
       onPressed: _openPairing,
@@ -1274,6 +1311,10 @@ class _BuilderScreenState extends State<BuilderScreen>
             setState(() => _section = AppSection.orders);
           case 'watermark':
             showWatermarkDialog(context);
+          case 'signatures':
+            showSignatureCenter(context);
+          case 'quick':
+            _openQuickMeasure();
           case 'pairing':
             _openPairing();
           case 'license':
@@ -1292,6 +1333,8 @@ class _BuilderScreenState extends State<BuilderScreen>
         PopupMenuItem(value: 'warehouse', child: Text('Склад материалов')),
         PopupMenuItem(value: 'board', child: Text('Доска заказов')),
         PopupMenuItem(value: 'watermark', child: Text('Водяной знак')),
+        PopupMenuItem(value: 'signatures', child: Text('Подписи и печать')),
+        PopupMenuItem(value: 'quick', child: Text('Быстрый замер')),
         PopupMenuItem(value: 'pairing', child: Text('Связь с замерщиком')),
         if (!kStoreBuild)
           PopupMenuItem(value: 'license', child: Text('Лицензия')),
@@ -1519,6 +1562,12 @@ class _BuilderScreenState extends State<BuilderScreen>
                   tooltip: 'Водяной знак на документах',
                   onPressed: () => showWatermarkDialog(context),
                   icon: const Icon(Icons.branding_watermark_outlined),
+                ),
+                IconButton(
+                  key: const Key('signatures-appbar'),
+                  tooltip: 'Подписи и печать',
+                  onPressed: () => showSignatureCenter(context),
+                  icon: const Icon(Icons.draw_outlined),
                 ),
                 IconButton(
                   key: const Key('pairing-appbar'),
@@ -1784,6 +1833,7 @@ class _BuilderScreenState extends State<BuilderScreen>
       onDealerPrices: (prices) => setState(() => _dealerPrices = prices),
       onCompany: () => showCompanyDialog(context),
       onWatermark: () => showWatermarkDialog(context),
+      onSignatures: () => showSignatureCenter(context),
       onLicense: kStoreBuild ? null : _openLicense,
       onPairing: _openPairing,
       onBackup: _backupOrders,

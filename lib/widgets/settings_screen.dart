@@ -22,6 +22,7 @@ class SettingsScreen extends StatelessWidget {
     required this.onDealerPrices,
     required this.onCompany,
     required this.onWatermark,
+    required this.onSignatures,
     required this.onPairing,
     required this.onBackup,
     required this.onBackupDatabase,
@@ -45,6 +46,7 @@ class SettingsScreen extends StatelessWidget {
   final ValueChanged<PriceList> onDealerPrices;
   final VoidCallback onCompany;
   final VoidCallback onWatermark;
+  final VoidCallback onSignatures;
   final VoidCallback onPairing;
   final VoidCallback onBackup;
   final VoidCallback onBackupDatabase;
@@ -78,6 +80,8 @@ class SettingsScreen extends StatelessWidget {
                 _rollWidthCard(),
                 const SizedBox(height: 14),
                 _companyCard(),
+                const SizedBox(height: 14),
+                _signaturesCard(),
                 const SizedBox(height: 14),
                 AppSurface(
                   padding: const EdgeInsets.all(18),
@@ -272,6 +276,47 @@ class SettingsScreen extends StatelessWidget {
               final value = double.tryParse(raw.replaceAll(',', '.'));
               if (value != null && value >= 0) onRollGap(value);
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _signaturesCard() {
+    return AppSurface(
+      padding: const EdgeInsets.all(18),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF1FB),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: const Icon(Icons.draw_outlined, color: Color(0xFF0B62C4)),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Подписи и печать',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Подпись и печать подрядчика, подпись клиента на PDF.',
+                  style: TextStyle(fontSize: 11.5, color: AppTokens.muted),
+                ),
+              ],
+            ),
+          ),
+          OutlinedButton(
+            key: const Key('settings-signatures'),
+            onPressed: onSignatures,
+            child: const Text('Открыть'),
           ),
         ],
       ),

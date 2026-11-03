@@ -14,6 +14,7 @@ import 'package:printing/printing.dart';
 import '../models/window_params.dart';
 import 'fastener_artwork.dart';
 import 'file_saver.dart';
+import 'pdf_signature.dart';
 import 'image_slice.dart';
 import 'watermark.dart';
 
@@ -564,6 +565,7 @@ Future<bool> printPdfBytes({
   required Uint8List bytes,
   required String jobName,
 }) async {
+  bytes = await PdfSignatureService.applyIfEnabled(bytes);
   // На Android имя задания с кириллицей некоторые принт-сервисы обрабатывают
   // некорректно; для системы берём безопасное имя.
   final name = _isMobilePlatform ? 'MyagkieOkna' : jobName;

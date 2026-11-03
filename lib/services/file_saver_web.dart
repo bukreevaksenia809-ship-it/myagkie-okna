@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:printing/printing.dart';
 
+import 'pdf_signature.dart';
+
 /// Куда сохранён файл: в браузере файл скачивается.
 class SavedFile {
   const SavedFile({required this.destination, this.path});
@@ -18,6 +20,9 @@ Future<SavedFile> saveBytes(
   String fileName, {
   String? directoryPath,
 }) async {
+  if (fileName.toLowerCase().endsWith('.pdf')) {
+    bytes = await PdfSignatureService.applyIfEnabled(bytes);
+  }
   await Printing.sharePdf(bytes: bytes, filename: fileName);
   return SavedFile(destination: 'файл $fileName скачан браузером');
 }

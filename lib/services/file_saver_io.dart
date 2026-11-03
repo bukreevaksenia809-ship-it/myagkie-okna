@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:printing/printing.dart';
 
+import 'pdf_signature.dart';
+
 import 'storage_paths.dart';
 
 /// Куда сохранён файл: человекочитаемое место и путь на диске.
@@ -37,7 +39,11 @@ Future<SavedFile> saveBytes(
   Uint8List bytes,
   String fileName, {
   String? directoryPath,
-}) async {
+}
+) async {
+  if (fileName.toLowerCase().endsWith('.pdf')) {
+    bytes = await PdfSignatureService.applyIfEnabled(bytes);
+  }
   // На телефоне отдаём файл системному «Поделиться»: пользователь сам
   // выбирает «Загрузки», «Файлы» или отправляет в мессенджер. Это не требует
   // доступа ко всей памяти и работает на Android 8+.
