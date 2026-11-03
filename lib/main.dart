@@ -60,7 +60,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.4.7';
+const String kAppVersion = '2.4.8';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1536,14 +1536,6 @@ class _BuilderScreenState extends State<BuilderScreen>
                           : Icons.verified_user_outlined,
                     ),
                   ),
-                // Компания на листах — всегда под рукой: настройка глобальная, и
-                // искать её внизу длинной панели неудобно.
-                IconButton(
-                  key: const Key('company-appbar'),
-                  tooltip: 'Компания на листах: реквизиты и логотип',
-                  onPressed: () => showCompanyDialog(context),
-                  icon: const Icon(Icons.business_outlined),
-                ),
                 if (_tab == SheetTab.docs)
                   // У документации свои кнопки PDF/печати и своего набора листов:
                   // снимать её как лист чертежа нельзя.

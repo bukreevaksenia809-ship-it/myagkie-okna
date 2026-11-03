@@ -159,17 +159,14 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('кнопка «Компания» в шапке открывает настройки', (tester) async {
+  testWidgets('компания убрана из шапки — она теперь в настройках', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: app.BuilderScreen()));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('company-appbar')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('company-appbar')));
-    await tester.pumpAndSettle();
-    expect(find.text('Компания на листах'), findsWidgets);
-    expect(find.byKey(const Key('company-name')), findsOneWidget);
-    expect(find.byKey(const Key('company-logo-load')), findsOneWidget);
+    expect(find.byKey(const Key('company-appbar')), findsNothing);
   });
 
   testWidgets('настройки: компания на листах на своём месте', (tester) async {

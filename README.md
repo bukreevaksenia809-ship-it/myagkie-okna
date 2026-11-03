@@ -7,7 +7,7 @@
 («тетрис» для расхода материалов), ведомости расхода и сохранения заказов.
 ПВХ и скрин.
 
-**Версия 2.4.7 («Мягкие окна Excl»).** Готовые сборки и инструкции по выпуску —
+**Версия 2.4.8 («Мягкие окна Excl»).** Готовые сборки и инструкции по выпуску —
 в [BUILD.md](BUILD.md).
 
 ## Что нового в 2.3
@@ -72,21 +72,21 @@ git-тег `myagkie-okna-1`, архивы исходников и веб-сбо�
 `versions/Мягкие окна 1/` (что это и как запустить — `versions/ЧИТАЙ-МЕНЯ.md`).
 **Вся дальнейшая разработка идёт здесь — в версии «Мягкие окна Excl».**
 
-## Готовые сборки 2.4.7
+## Готовые сборки 2.4.8
 
 | Платформа | Где скачать |
 |---|---|
 | **Web** (рабочая версия) | https://myagkie-okna-excl.web.app |
 | **Скачать** | https://myagkie-okna-excl.web.app/updates/ |
 | **Админка** | https://myagkie-okna-excl.web.app/admin/ |
-| **Windows** | [MyagkieOknaExcl-windows.zip](https://myagkie-okna-excl.web.app/releases/v2.4.7/MyagkieOknaExcl-windows.zip) |
-| **macOS** | [MyagkieOknaExcl-macos.dmg](https://myagkie-okna-excl.web.app/releases/v2.4.7/MyagkieOknaExcl-macos.zip) |
-| **Android** | [MyagkieOknaExcl-android.apk](https://myagkie-okna-excl.web.app/releases/v2.4.7/MyagkieOknaExcl-android.apk.zip) |
+| **Windows** | [MyagkieOknaExcl-windows.zip](https://myagkie-okna-excl.web.app/releases/v2.4.8/MyagkieOknaExcl-windows.zip) |
+| **macOS** | [MyagkieOknaExcl-macos.dmg](https://myagkie-okna-excl.web.app/releases/v2.4.8/MyagkieOknaExcl-macos.zip) |
+| **Android** | [MyagkieOknaExcl-android.apk](https://myagkie-okna-excl.web.app/releases/v2.4.8/MyagkieOknaExcl-android.apk.zip) |
 
 
 Windows-сборка сделана на Windows-раннере GitHub Actions; macOS DMG, Android
 APK/AAB и Web ZIP — там же. Метаданные обновления (версия, ссылки, SHA-256)
-опубликованы в Firestore `config/app`; клиент 1.9.2 увидит 2.4.7 при проверке
+опубликованы в Firestore `config/app`; клиент 1.9.2 увидит 2.4.8 при проверке
 обновлений.
 
 ### Источник сборок
