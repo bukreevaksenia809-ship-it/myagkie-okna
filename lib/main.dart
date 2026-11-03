@@ -60,7 +60,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.4.8';
+const String kAppVersion = '2.4.9';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -618,7 +618,10 @@ class _BuilderScreenState extends State<BuilderScreen>
     setState(() {
       _drafts = [
         ..._drafts,
-        _OrderDraft(name: name, project: const OrderProject()),
+        _OrderDraft(
+          name: name,
+          project: OrderProject(windows: [WindowParams(projectName: name)]),
+        ),
       ];
       _orderIndex = _drafts.length - 1;
     });
@@ -1773,8 +1776,10 @@ class _BuilderScreenState extends State<BuilderScreen>
       dealerPrices: _dealerPrices,
       materials: _project.materialsInOrder,
       rollWidths: _project.rollWidths,
+      rollGap: _project.rollGap,
       onRollWidth: (material, width) =>
           _updateProject(_project.setRollWidth(material, width)),
+      onRollGap: (value) => _updateProject(_project.copyWith(rollGap: value)),
       onClientPrices: (prices) => setState(() => _prices = prices),
       onDealerPrices: (prices) => setState(() => _dealerPrices = prices),
       onCompany: () => showCompanyDialog(context),

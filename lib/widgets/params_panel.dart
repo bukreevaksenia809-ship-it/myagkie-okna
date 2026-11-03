@@ -599,6 +599,23 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   void _updateProject(OrderProject project) => widget.onChanged(project);
 
+  /// Маркировка — общая для всего заказа: меняем её сразу у всех окон.
+  void _updateAllMarking({
+    String? projectName,
+    String? customer,
+    String? drawingNumber,
+  }) {
+    final windows = [
+      for (final window in widget.project.windows)
+        window.copyWith(
+          projectName: projectName ?? window.projectName,
+          customer: customer ?? window.customer,
+          drawingNumber: drawingNumber ?? window.drawingNumber,
+        ),
+    ];
+    _updateProject(widget.project.copyWith(windows: windows));
+  }
+
   void _updateWindow(WindowParams params) {
     if (params.isPvcFilm) _lastPvcMaterial = params.material;
     _updateProject(widget.project.updateSelected(params));
@@ -3008,48 +3025,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
   }
 
   /// «Ширина рулона» — в нижней части панели.
-  Widget _extraItemsSection(OrderProject project) {
-    final total = PriceList.extraItemKeys.fold<double>(
-      0,
-      (sum, key) => sum + (project.extraQuantities[key] ?? 0),
-    );
-    return _expansion(
-      title: 'Дополнительно',
-      subtitle: total > 0
-          ? 'позиции в смете: ${total.toStringAsFixed(0)}'
-          : 'доставка, парус, брус, zip…',
-      children: [
-        for (final key in PriceList.extraItemKeys)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: TextFormField(
-              key: Key('extra-$key'),
-              initialValue: _textFor(project.extraQuantities[key] ?? 0),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: InputDecoration(
-                labelText:
-                    '${PriceList.extraItemLabel(key)}, '
-                    '${PriceList.extraItemUnit(key)}',
-                border: const OutlineInputBorder(),
-                isDense: true,
-              ),
-              onChanged: (raw) {
-                final parsed = double.tryParse(raw.replaceAll(',', '.'));
-                if (parsed == null || parsed < 0) return;
-                widget.onChanged(
-                  project.copyWith(
-                    extraQuantities: {...project.extraQuantities, key: parsed},
-                  ),
-                );
-              },
-            ),
-          ),
-      ],
-    );
-  }
-
   /// «Цвета» — в самом низу панели.
   Widget _colorsSection(WindowParams params) {
     return Column(
@@ -3391,7 +3366,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
             _savedPresetsSection(params),
             const SizedBox(height: 20),
             const SizedBox(height: 12),
-            _extraItemsSection(project),
             const SizedBox(height: 12),
             _colorsSection(params),
             const SizedBox(height: 12),
@@ -3448,22 +3422,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 _CuttingCard(spec: spec),
               ],
             ),
-            const SizedBox(height: 12),
-            _expansion(
-              title: 'Раскладка на рулоне',
-              subtitle: _rollSummary(project),
-              children: [
-                _numberField(ParamField.rollGap),
-                const SizedBox(height: 6),
-                const Text(
-                  'Ширина рулона выбирается для каждого материала в разделе '
-                  '«Ширина рулона». Раскладка строится на вкладке '
-                  '«Раскладка на рулоне».',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
             if (widget.ordersSection != null) ...[
               const SizedBox(height: 16),
               widget.ordersSection!,
@@ -5159,15 +5117,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
       _CutoutField.eyelets => cutout.copyWith(eyeletCount: value.round()),
     };
     _updateWindow(_params.updateCutout(index, updated));
-  }
-
-  /// Подпись раскладки: рулоны по материалам.
-  String _rollSummary(OrderProject project) {
-    final parts = [
-      for (final material in project.materialsInOrder)
-        '${material.label.toLowerCase()}: ${formatMm(project.rollWidthFor(material))} ${unitSuffix()}',
-    ];
-    return '${parts.join(' · ')} · зазор ${formatMm(project.rollGap)} ${unitSuffix()}';
   }
 
   Widget _sectionHeader(String title, String subtitle) {

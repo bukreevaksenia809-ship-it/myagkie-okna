@@ -15,7 +15,9 @@ class SettingsScreen extends StatelessWidget {
     required this.dealerPrices,
     required this.materials,
     required this.rollWidths,
+    required this.rollGap,
     required this.onRollWidth,
+    required this.onRollGap,
     required this.onClientPrices,
     required this.onDealerPrices,
     required this.onCompany,
@@ -36,7 +38,9 @@ class SettingsScreen extends StatelessWidget {
   final PriceList dealerPrices;
   final List<FilmMaterial> materials;
   final Map<FilmMaterial, double> rollWidths;
+  final double rollGap;
   final void Function(FilmMaterial material, double width) onRollWidth;
+  final ValueChanged<double> onRollGap;
   final ValueChanged<PriceList> onClientPrices;
   final ValueChanged<PriceList> onDealerPrices;
   final VoidCallback onCompany;
@@ -253,6 +257,22 @@ class SettingsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
           ],
+          const SizedBox(height: 4),
+          TextFormField(
+            key: const Key('roll-gap-settings'),
+            initialValue: rollGap.round().toString(),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Зазор между заготовками, мм',
+              helperText: 'отступ при раскладке на рулоне',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            onChanged: (raw) {
+              final value = double.tryParse(raw.replaceAll(',', '.'));
+              if (value != null && value >= 0) onRollGap(value);
+            },
+          ),
         ],
       ),
     );

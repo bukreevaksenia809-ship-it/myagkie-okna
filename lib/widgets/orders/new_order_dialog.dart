@@ -15,6 +15,7 @@ class NewOrderInput {
     required this.assignee,
     required this.labels,
     required this.comment,
+    this.marking = '',
     this.deadline,
     this.status,
   });
@@ -27,6 +28,7 @@ class NewOrderInput {
   final String assignee;
   final List<String> labels;
   final String comment;
+  final String marking;
   final DateTime? deadline;
   final OrderStatus? status;
 }
@@ -72,6 +74,7 @@ class _NewOrderDialogState extends State<_NewOrderDialog> {
   final _assignee = TextEditingController();
   final _labels = TextEditingController();
   final _comment = TextEditingController();
+  final _marking = TextEditingController();
   OrderPriority _priority = OrderPriority.normal;
   DateTime? _deadline;
   String? _error;
@@ -86,6 +89,7 @@ class _NewOrderDialogState extends State<_NewOrderDialog> {
       _assignee,
       _labels,
       _comment,
+      _marking,
     ]) {
       controller.dispose();
     }
@@ -122,6 +126,7 @@ class _NewOrderDialogState extends State<_NewOrderDialog> {
             .where((value) => value.isNotEmpty)
             .toList(),
         comment: _comment.text.trim(),
+        marking: _marking.text.trim(),
         deadline: _deadline,
         status: widget.initialStatus,
       ),
@@ -202,6 +207,12 @@ class _NewOrderDialogState extends State<_NewOrderDialog> {
                       autofocus: true,
                     ),
                     const SizedBox(height: 10),
+                    AppField(
+                      label: 'Маркировка окон',
+                      controller: _marking,
+                      hint: 'Например: МО-014 — на всех окнах заказа',
+                    ),
+                    const SizedBox(height: 10),
                     _two(
                       narrow,
                       AppField(
@@ -223,11 +234,7 @@ class _NewOrderDialogState extends State<_NewOrderDialog> {
                       hint: 'Город, улица, дом, объект',
                     ),
                     const SizedBox(height: 10),
-                    _two(
-                      narrow,
-                      _priorityField(),
-                      _deadlineField(),
-                    ),
+                    _two(narrow, _priorityField(), _deadlineField()),
                     const SizedBox(height: 10),
                     _two(
                       narrow,
@@ -253,7 +260,8 @@ class _NewOrderDialogState extends State<_NewOrderDialog> {
                                     .map((value) => value.trim())
                                     .where((value) => value.isNotEmpty)
                                     .toList();
-                                if (!current.contains(label)) current.add(label);
+                                if (!current.contains(label))
+                                  current.add(label);
                                 _labels.text = current.join(', ');
                               },
                             ),
@@ -345,8 +353,7 @@ class _NewOrderDialogState extends State<_NewOrderDialog> {
                 ),
               ),
           ],
-          onChanged: (value) =>
-              setState(() => _priority = value ?? _priority),
+          onChanged: (value) => setState(() => _priority = value ?? _priority),
         ),
       ],
     );
@@ -377,13 +384,15 @@ class _NewOrderDialogState extends State<_NewOrderDialog> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.event_outlined, size: 18, color: AppTokens.copper),
+                const Icon(
+                  Icons.event_outlined,
+                  size: 18,
+                  color: AppTokens.copper,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    _deadline == null
-                        ? 'Без срока'
-                        : appDate(_deadline),
+                    _deadline == null ? 'Без срока' : appDate(_deadline),
                     style: TextStyle(
                       fontSize: 13,
                       color: _deadline == null

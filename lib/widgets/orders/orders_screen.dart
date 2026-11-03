@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/order_repository.dart';
 import '../../data/warehouse_repository.dart';
 import '../../models/order_project.dart';
+import '../../models/window_params.dart';
 import '../../models/order_record.dart';
 import '../../models/price_list.dart';
 import '../../services/order_materials.dart';
@@ -141,6 +142,15 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
       labels: input.labels,
       deadline: input.deadline,
       comment: input.comment,
+      project: OrderProject(
+        windows: [
+          WindowParams(
+            projectName: input.title,
+            customer: input.customer,
+            drawingNumber: input.marking,
+          ),
+        ],
+      ),
       status: status ?? input.status ?? OrderStatus.newOrder,
     );
     await _load();
