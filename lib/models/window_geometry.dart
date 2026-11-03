@@ -1822,9 +1822,10 @@ class WindowLayers {
   }
 
   double get zipperBandTotalMm {
-    // Раскрой всегда делится на сегменты: из ширины вычитаются только
-    // молнии впритык к канту — остальные дают зазор и отдельные заготовки.
-    final segments = !isComposite;
+    // В режиме сегментов из ширины вычитаются только молнии впритык к
+    // канту — остальные дают зазор и отдельные заготовки. Без режима
+    // сегментов вычитается каждая полоса, а полотно остаётся целым.
+    final segments = params.zipperSegments && !isComposite;
     final visible = filmVisibleBounds;
     var total = 0.0;
     for (final zipper in params.zippers) {
@@ -3217,8 +3218,8 @@ class WindowSpec {
       ];
     }
 
-    // Раскрой всегда режется на сегменты по зазорам молний.
-    if (isComposite || params.zippers.isEmpty) {
+    // Раскрой режется на сегменты только при включённом тумблере.
+    if (isComposite || params.zippers.isEmpty || !params.zipperSegments) {
       return pieces;
     }
     final gaps = layers.zipperSegmentLayout.where((gap) => !gap.edge).toList()
@@ -3318,9 +3319,9 @@ class WindowSpec {
       filmCutPolygonsWithShrinkage.first;
 
   /// Ширины сегментов кроя при включённой «доп. настройке молнии», мм.
-  List<double> get zipperSegmentWidths => [
-    for (final polygon in filmCutPolygons) boundsOf(polygon).width,
-  ];
+  List<double> get zipperSegmentWidths => params.zipperSegments
+      ? [for (final polygon in filmCutPolygons) boundsOf(polygon).width]
+      : const [];
 
   /// Подпись сегментов для раскроя и техкарты: «сегментов 3: 700 + 700 + 700».
   String get zipperSegmentsLabel {

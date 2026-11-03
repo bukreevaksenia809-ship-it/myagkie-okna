@@ -2286,8 +2286,11 @@ class WindowDrawingPainter extends CustomPainter {
     Rect bandRect,
     int index,
   ) {
-    final start = layout.toPxPoint(zipper.start);
-    final end = layout.toPxPoint(zipper.end);
+    // Рисуем по уже подрезанной полосе: на косом окне сырые start/end
+    // уходили за наклонную окантовку, хотя расход считался правильно.
+    final x = bandRect.center.dx;
+    final start = layout.toPxPoint(Offset(x, bandRect.top));
+    final end = layout.toPxPoint(Offset(x, bandRect.bottom));
     final length = (end - start).distance;
     if (length < 4) return;
     final angle = math.atan2(end.dy - start.dy, end.dx - start.dx);
@@ -3519,7 +3522,7 @@ class WindowDrawingPainter extends CustomPainter {
       'Высота право ${formatMm(geometry.rightHeight)}',
     );
     _paintPocketDimensions(canvas);
-    _paintInnerPvcDimensions(canvas);
+    if (options.showInnerDimensions) _paintInnerPvcDimensions(canvas);
 
     final extension = _extensionPaint();
     // Выносные линии ширины верха — от actual верхних углов к горизонтальной

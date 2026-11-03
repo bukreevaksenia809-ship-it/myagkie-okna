@@ -6,25 +6,24 @@ import '../models/window_params.dart';
 
 /// Заказ → JSON.
 Map<String, dynamic> orderToJson(OrderProject project) => {
-      'sheetMode': project.sheetMode.name,
-      'gridColumns': project.gridColumns,
-      'rollGap': project.rollGap,
-      'rollWidths': {
-        for (final entry in project.rollWidths.entries)
-          entry.key.name: entry.value,
-      },
-      'options': {
-        'showDimensions': project.options.showDimensions,
-        'showGrid': project.options.showGrid,
-        'showEdgeLengths': project.options.showEdgeLengths,
-        'showCallouts': project.options.showCallouts,
-      },
-      'extraQuantities': project.extraQuantities,
-      'status': project.status.name,
-      'statusChangedAt': project.statusChangedAt?.toIso8601String(),
-      'deadline': project.deadline?.toIso8601String(),
-      'windows': [for (final window in project.windows) windowToJson(window)],
-    };
+  'sheetMode': project.sheetMode.name,
+  'gridColumns': project.gridColumns,
+  'rollGap': project.rollGap,
+  'rollWidths': {
+    for (final entry in project.rollWidths.entries) entry.key.name: entry.value,
+  },
+  'options': {
+    'showDimensions': project.options.showDimensions,
+    'showGrid': project.options.showGrid,
+    'showEdgeLengths': project.options.showEdgeLengths,
+    'showCallouts': project.options.showCallouts,
+  },
+  'extraQuantities': project.extraQuantities,
+  'status': project.status.name,
+  'statusChangedAt': project.statusChangedAt?.toIso8601String(),
+  'deadline': project.deadline?.toIso8601String(),
+  'windows': [for (final window in project.windows) windowToJson(window)],
+};
 
 /// Заказ ← JSON.
 OrderProject orderFromJson(Map<String, dynamic> json) {
@@ -46,6 +45,7 @@ OrderProject orderFromJson(Map<String, dynamic> json) {
           showGrid: _bool(optionsJson['showGrid'], true),
           showEdgeLengths: _bool(optionsJson['showEdgeLengths'], true),
           showCallouts: _bool(optionsJson['showCallouts'], true),
+          showInnerDimensions: _bool(optionsJson['showInnerDimensions'], true),
         )
       : const DrawingOptions();
 
@@ -63,13 +63,17 @@ OrderProject orderFromJson(Map<String, dynamic> json) {
     rollWidths: rollWidths,
     rollGap: _double(json['rollGap'], 20),
     options: options,
-    sheetMode: _enumByName(SheetMode.values, json['sheetMode'], SheetMode.single),
+    sheetMode: _enumByName(
+      SheetMode.values,
+      json['sheetMode'],
+      SheetMode.single,
+    ),
     gridColumns: _int(json['gridColumns'], 0).clamp(0, 4),
     extraQuantities: {
       for (final entry
           in (json['extraQuantities'] is Map
-                  ? (json['extraQuantities'] as Map).entries
-                  : const <MapEntry>[]))
+              ? (json['extraQuantities'] as Map).entries
+              : const <MapEntry>[]))
         if (entry.key is String && entry.value is num)
           entry.key as String: (entry.value as num).toDouble(),
     },
@@ -89,122 +93,121 @@ OrderProject orderFromJson(Map<String, dynamic> json) {
 
 /// Окно → JSON.
 Map<String, dynamic> windowToJson(WindowParams p) => {
-      'projectName': p.projectName,
-      'customer': p.customer,
-      'drawingNumber': p.drawingNumber,
-      'screenColor': p.screenColor,
-      'apexOffsetMm': p.apexOffsetMm,
-      'roofHeightMm': p.roofHeightMm,
-      'roofOverhangMm': p.roofOverhangMm,
-      'wallHeightMm': p.wallHeightMm,
-      'crossbars': [for (final crossbar in p.crossbars) crossbar.toJson()],
-      'fastenerOffsetsMm': {
-        for (final entry in p.fastenerOffsetsMm.entries)
-          entry.key.name: entry.value,
-      },
-      // Старое поле — доля полосы: пишем для совместимости со старыми
-      // версиями. Читается только если нового поля нет.
-      'fastenerOffsets': {
-        for (final side in EdgeSide.values)
-          if (p.fastenerOffsetsMm.containsKey(side))
-            side.name: p.fastenerOffsetMmFor(side) /
-                (p.fastenerBandFor(side) <= 0 ? 1 : p.fastenerBandFor(side)),
-      },
-      'windowType': p.windowType.name,
-      'material': p.material.name,
-      'bottomWidth': p.bottomWidth,
-      'topWidth': p.topWidth,
-      'leftHeight': p.leftHeight,
-      'rightHeight': p.rightHeight,
-      // Припуск на раскрой, мм: замер + припуск = фактический размер.
-      'allowanceWidthMm': p.allowanceWidthMm,
-      'allowanceHeightMm': p.allowanceHeightMm,
-      'topAlign': p.topAlign.name,
-      'topOffsetMm': p.topOffsetMm,
-      // Какая кромка горизонтальна: bottom / top / none.
-      'levelEdge': p.levelEdge.name,
-      'levelLeft': p.levelLeft,
-      'levelRight': p.levelRight,
-      // Т-образное окно: сторона, размеры приставки, смещение и спайка.
-      'tSide': p.tSide.name,
-      'tWidth': p.tWidth,
-      'tHeight': p.tHeight,
-      'tOffset': p.tOffset,
-      'tWelded': p.tWelded,
-      // Включена ли первая пристройка (старые заказы читаются как включённая).
-      'tEnabled': p.tEnabled,
-      // Вторая пристройка Т-окна (угловая форма). У старых заказов её нет,
-      // поэтому поле пишется всегда, а читается с выключенным значением.
-      't2Enabled': p.t2Enabled,
-      't2Side': p.t2Side.name,
-      't2Width': p.t2Width,
-      't2Height': p.t2Height,
-      't2Offset': p.t2Offset,
-      't2Welded': p.t2Welded,
-      // Ширина рулона окантовки — число миллиметров на каждую сторону.
-      'rollBottom': p.rollBottom,
-      'rollTop': p.rollTop,
-      'rollLeft': p.rollLeft,
-      'rollRight': p.rollRight,
-      'edgeMaterial': p.edgeMaterial.name,
-      'edgeColor': p.edgeColor.name,
-      // Запайка плёнки под окантовку (5…60 мм) — вводится руками.
-      'weldOverlapMm': p.weldOverlapMm,
-      // Подворот скрина по сторонам (10…200 мм на каждую сторону).
-      'hemBottomMm': p.hemBottomMm,
-      'hemRightMm': p.hemRightMm,
-      'hemTopMm': p.hemTopMm,
-      'hemLeftMm': p.hemLeftMm,
-      // Старое одиночное поле пишем, только когда все подвороты равны: так
-      // заказ по-прежнему читается старыми версиями приложения.
-      if (p.hasUniformHem) 'hemMm': p.hemBottomMm,
-      'eyeletType': p.eyeletType.name,
-      'eyeletStep': p.eyeletStep,
-      'eyeletEvenSpacing': p.eyeletEvenSpacing,
-      'spliceStripMm': p.spliceStripMm,
-      'spliceSide': p.spliceSide.name,
-      'eyeletCornerOffset': p.eyeletCornerOffset,
-      // Тумблер «Круглые люверсы в углах» (по умолчанию включён).
-      'roundEyeletsEnabled': p.roundEyeletsEnabled,
-      'fastenerType': p.fastenerType.name,
-      'zippers': [for (final zipper in p.zippers) zipper.toJson()],
-      // «Доп. настройка молнии»: деление полотна на сегменты.
-      'zipperSegments': p.zipperSegments,
-      'zipperTentOverlap': p.zipperTentOverlap,
-      // Ручные положения подъёмных ремней, мм от левого края.
-      'liftStrapOffsets': p.liftStrapOffsets,
-      'liftStrapOrientation': p.liftStrapOrientation.name,
-      'cutouts': [for (final cutout in p.cutouts) cutout.toJson()],
-      // Ручные положения люверсов (перетащены на чертеже).
-      'eyeletPositions': [
-        for (final position in p.eyeletPositions) position.toJson(),
-      ],
-      'manualEyeletSides': [
-        for (final side in p.manualEyeletSides) side.name,
-      ],
-      // Второй сегмент составного окна. Пишем только для составного окна:
-      // у остальных типов поле отсутствует, и старые заказы не меняются.
-      if (p.isComposite) 'composite': _compositeToJson(p.composite),
-      // Кнопки «не ставить люверсы сверху/снизу».
-      'noEyeletsTop': p.noEyeletsTop,
-      'noEyeletsBottom': p.noEyeletsBottom,
-      // Старые поля оставлены, чтобы заказы читались старыми версиями.
-      'zipperEnabled': p.zipperEnabled,
-      'zipperCentered': p.zipperCentered,
-      'zipperOffsetMm': p.zipperOffsetMm,
-      'zipperBandWidth': p.zipperBandWidth,
-      'pocket': p.pocket,
-      'pocketTop': p.pocketTop,
-      'pocketWidth': p.pocketWidth,
-      'drainHoles': p.drainHoles,
-      'drainCount': p.drainCount,
-      // Тумблер усадки и её процент: по умолчанию усадка выключена, поэтому
-      // старый заказ без флага читается как «включена, если процент > 0».
-      'shrinkageEnabled': p.shrinkageEnabled,
-      'shrinkagePercent': p.shrinkagePercent,
-      // Тумблер авто-припуска +10 мм к высоте ПВХ (по умолчанию включён).
-      'pvcHeightAllowanceEnabled': p.pvcHeightAllowanceEnabled,
-    };
+  'projectName': p.projectName,
+  'customer': p.customer,
+  'drawingNumber': p.drawingNumber,
+  'screenColor': p.screenColor,
+  'apexOffsetMm': p.apexOffsetMm,
+  'roofHeightMm': p.roofHeightMm,
+  'roofOverhangMm': p.roofOverhangMm,
+  'wallHeightMm': p.wallHeightMm,
+  'crossbars': [for (final crossbar in p.crossbars) crossbar.toJson()],
+  'fastenerOffsetsMm': {
+    for (final entry in p.fastenerOffsetsMm.entries)
+      entry.key.name: entry.value,
+  },
+  // Старое поле — доля полосы: пишем для совместимости со старыми
+  // версиями. Читается только если нового поля нет.
+  'fastenerOffsets': {
+    for (final side in EdgeSide.values)
+      if (p.fastenerOffsetsMm.containsKey(side))
+        side.name:
+            p.fastenerOffsetMmFor(side) /
+            (p.fastenerBandFor(side) <= 0 ? 1 : p.fastenerBandFor(side)),
+  },
+  'windowType': p.windowType.name,
+  'material': p.material.name,
+  'bottomWidth': p.bottomWidth,
+  'topWidth': p.topWidth,
+  'leftHeight': p.leftHeight,
+  'rightHeight': p.rightHeight,
+  // Припуск на раскрой, мм: замер + припуск = фактический размер.
+  'allowanceWidthMm': p.allowanceWidthMm,
+  'allowanceHeightMm': p.allowanceHeightMm,
+  'topAlign': p.topAlign.name,
+  'topOffsetMm': p.topOffsetMm,
+  // Какая кромка горизонтальна: bottom / top / none.
+  'levelEdge': p.levelEdge.name,
+  'levelLeft': p.levelLeft,
+  'levelRight': p.levelRight,
+  // Т-образное окно: сторона, размеры приставки, смещение и спайка.
+  'tSide': p.tSide.name,
+  'tWidth': p.tWidth,
+  'tHeight': p.tHeight,
+  'tOffset': p.tOffset,
+  'tWelded': p.tWelded,
+  // Включена ли первая пристройка (старые заказы читаются как включённая).
+  'tEnabled': p.tEnabled,
+  // Вторая пристройка Т-окна (угловая форма). У старых заказов её нет,
+  // поэтому поле пишется всегда, а читается с выключенным значением.
+  't2Enabled': p.t2Enabled,
+  't2Side': p.t2Side.name,
+  't2Width': p.t2Width,
+  't2Height': p.t2Height,
+  't2Offset': p.t2Offset,
+  't2Welded': p.t2Welded,
+  // Ширина рулона окантовки — число миллиметров на каждую сторону.
+  'rollBottom': p.rollBottom,
+  'rollTop': p.rollTop,
+  'rollLeft': p.rollLeft,
+  'rollRight': p.rollRight,
+  'edgeMaterial': p.edgeMaterial.name,
+  'edgeColor': p.edgeColor.name,
+  // Запайка плёнки под окантовку (5…60 мм) — вводится руками.
+  'weldOverlapMm': p.weldOverlapMm,
+  // Подворот скрина по сторонам (10…200 мм на каждую сторону).
+  'hemBottomMm': p.hemBottomMm,
+  'hemRightMm': p.hemRightMm,
+  'hemTopMm': p.hemTopMm,
+  'hemLeftMm': p.hemLeftMm,
+  // Старое одиночное поле пишем, только когда все подвороты равны: так
+  // заказ по-прежнему читается старыми версиями приложения.
+  if (p.hasUniformHem) 'hemMm': p.hemBottomMm,
+  'eyeletType': p.eyeletType.name,
+  'eyeletStep': p.eyeletStep,
+  'eyeletEvenSpacing': p.eyeletEvenSpacing,
+  'spliceStripMm': p.spliceStripMm,
+  'spliceSide': p.spliceSide.name,
+  'eyeletCornerOffset': p.eyeletCornerOffset,
+  // Тумблер «Круглые люверсы в углах» (по умолчанию включён).
+  'roundEyeletsEnabled': p.roundEyeletsEnabled,
+  'fastenerType': p.fastenerType.name,
+  'zippers': [for (final zipper in p.zippers) zipper.toJson()],
+  // «Доп. настройка молнии»: деление полотна на сегменты.
+  'zipperSegments': p.zipperSegments,
+  'zipperTentOverlap': p.zipperTentOverlap,
+  // Ручные положения подъёмных ремней, мм от левого края.
+  'liftStrapOffsets': p.liftStrapOffsets,
+  'liftStrapOrientation': p.liftStrapOrientation.name,
+  'cutouts': [for (final cutout in p.cutouts) cutout.toJson()],
+  // Ручные положения люверсов (перетащены на чертеже).
+  'eyeletPositions': [
+    for (final position in p.eyeletPositions) position.toJson(),
+  ],
+  'manualEyeletSides': [for (final side in p.manualEyeletSides) side.name],
+  // Второй сегмент составного окна. Пишем только для составного окна:
+  // у остальных типов поле отсутствует, и старые заказы не меняются.
+  if (p.isComposite) 'composite': _compositeToJson(p.composite),
+  // Кнопки «не ставить люверсы сверху/снизу».
+  'noEyeletsTop': p.noEyeletsTop,
+  'noEyeletsBottom': p.noEyeletsBottom,
+  // Старые поля оставлены, чтобы заказы читались старыми версиями.
+  'zipperEnabled': p.zipperEnabled,
+  'zipperCentered': p.zipperCentered,
+  'zipperOffsetMm': p.zipperOffsetMm,
+  'zipperBandWidth': p.zipperBandWidth,
+  'pocket': p.pocket,
+  'pocketTop': p.pocketTop,
+  'pocketWidth': p.pocketWidth,
+  'drainHoles': p.drainHoles,
+  'drainCount': p.drainCount,
+  // Тумблер усадки и её процент: по умолчанию усадка выключена, поэтому
+  // старый заказ без флага читается как «включена, если процент > 0».
+  'shrinkageEnabled': p.shrinkageEnabled,
+  'shrinkagePercent': p.shrinkagePercent,
+  // Тумблер авто-припуска +10 мм к высоте ПВХ (по умолчанию включён).
+  'pvcHeightAllowanceEnabled': p.pvcHeightAllowanceEnabled,
+};
 
 /// Окно ← JSON.
 WindowParams windowFromJson(Map<String, dynamic> json) {
@@ -231,18 +234,28 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
           side: ((json['fastenerOffsetsMm'] as Map)[side.name] as num)
               .toDouble(),
     },
-    windowType:
-        _enumByName(WindowType.values, json['windowType'], fallback.windowType),
-    material:
-        _enumByName(FilmMaterial.values, json['material'], fallback.material),
+    windowType: _enumByName(
+      WindowType.values,
+      json['windowType'],
+      fallback.windowType,
+    ),
+    material: _enumByName(
+      FilmMaterial.values,
+      json['material'],
+      fallback.material,
+    ),
     bottomWidth: _double(json['bottomWidth'], fallback.bottomWidth),
     topWidth: _double(json['topWidth'], fallback.topWidth),
     leftHeight: _double(json['leftHeight'], fallback.leftHeight),
     rightHeight: _double(json['rightHeight'], fallback.rightHeight),
-    allowanceWidthMm:
-        _double(json['allowanceWidthMm'], fallback.allowanceWidthMm),
-    allowanceHeightMm:
-        _double(json['allowanceHeightMm'], fallback.allowanceHeightMm),
+    allowanceWidthMm: _double(
+      json['allowanceWidthMm'],
+      fallback.allowanceWidthMm,
+    ),
+    allowanceHeightMm: _double(
+      json['allowanceHeightMm'],
+      fallback.allowanceHeightMm,
+    ),
     topAlign: _enumByName(TopAlign.values, json['topAlign'], fallback.topAlign),
     topOffsetMm: _double(json['topOffsetMm'], fallback.topOffsetMm),
     // Старые заказы без поля читаются как bottom: это в точности прежняя
@@ -274,17 +287,25 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     rollLeft: _edgeWidthFromJson(json['rollLeft'], fallback.rollLeft),
     rollRight: _edgeWidthFromJson(json['rollRight'], fallback.rollRight),
     edgeMaterial: _enumByName(
-        EdgeMaterial.values, json['edgeMaterial'], fallback.edgeMaterial),
-    edgeColor:
-        _enumByName(EdgeColor.values, json['edgeColor'], fallback.edgeColor),
-    weldOverlapMm:
-        _double(json['weldOverlapMm'], fallback.weldOverlapMm),
+      EdgeMaterial.values,
+      json['edgeMaterial'],
+      fallback.edgeMaterial,
+    ),
+    edgeColor: _enumByName(
+      EdgeColor.values,
+      json['edgeColor'],
+      fallback.edgeColor,
+    ),
+    weldOverlapMm: _double(json['weldOverlapMm'], fallback.weldOverlapMm),
     hemBottomMm: _double(json['hemBottomMm'], legacyHem),
     hemRightMm: _double(json['hemRightMm'], legacyHem),
     hemTopMm: _double(json['hemTopMm'], legacyHem),
     hemLeftMm: _double(json['hemLeftMm'], legacyHem),
-    eyeletType:
-        _enumByName(EyeletType.values, json['eyeletType'], fallback.eyeletType),
+    eyeletType: _enumByName(
+      EyeletType.values,
+      json['eyeletType'],
+      fallback.eyeletType,
+    ),
     eyeletStep: _eyeletStepFromJson(json['eyeletStep'], fallback.eyeletStep),
     eyeletEvenSpacing: _bool(
       json['eyeletEvenSpacing'],
@@ -296,14 +317,21 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
       json['spliceSide'],
       FilmSpliceSide.right,
     ),
-    eyeletCornerOffset:
-        _double(json['eyeletCornerOffset'], fallback.eyeletCornerOffset),
-    roundEyeletsEnabled:
-        _bool(json['roundEyeletsEnabled'], fallback.roundEyeletsEnabled),
+    eyeletCornerOffset: _double(
+      json['eyeletCornerOffset'],
+      fallback.eyeletCornerOffset,
+    ),
+    roundEyeletsEnabled: _bool(
+      json['roundEyeletsEnabled'],
+      fallback.roundEyeletsEnabled,
+    ),
     fastenerType: _enumByName(
-        FastenerType.values, json['fastenerType'], fallback.fastenerType),
+      FastenerType.values,
+      json['fastenerType'],
+      fallback.fastenerType,
+    ),
     zippers: _zippersFromJson(json),
-    zipperSegments: _bool(json['zipperSegments'], false),
+    zipperSegments: _bool(json['zipperSegments'], true),
     zipperTentOverlap: _double(
       json['zipperTentOverlap'],
       defaultZipperTentOverlapMm,
@@ -328,8 +356,10 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     drainHoles: _bool(json['drainHoles'], fallback.drainHoles),
     drainCount: _double(json['drainCount'], fallback.drainCount),
     shrinkageEnabled: _shrinkageEnabledFromJson(json),
-    shrinkagePercent:
-        _double(json['shrinkagePercent'], fallback.shrinkagePercent),
+    shrinkagePercent: _double(
+      json['shrinkagePercent'],
+      fallback.shrinkagePercent,
+    ),
     pvcHeightAllowanceEnabled: _bool(
       json['pvcHeightAllowanceEnabled'],
       fallback.pvcHeightAllowanceEnabled,
@@ -416,13 +446,13 @@ double _edgeWidthFromJson(Object? value, double fallback) {
   return fallback;
 }
 
-int _int(Object? value, int fallback) => value is num ? value.toInt() : fallback;
+int _int(Object? value, int fallback) =>
+    value is num ? value.toInt() : fallback;
 
 bool _bool(Object? value, bool fallback) => value is bool ? value : fallback;
 
 String _string(Object? value, String fallback) =>
     value is String ? value : fallback;
-
 
 /// Молнии из JSON. Понимает и новый список, и старые одиночные поля.
 List<ZipperSpec> _zippersFromJson(Map<String, dynamic> json) {
@@ -512,15 +542,15 @@ List<double> _doubleList(Object? raw) {
 }
 
 Map<String, dynamic> _compositeToJson(CompositeSpec spec) => {
-      'side': spec.side.name,
-      'material': spec.material.name,
-      'width': spec.width,
-      'depth': spec.depth,
-      'offset': spec.offset,
-      'seam': spec.seam.name,
-      'seamOffset': spec.seamOffset,
-      'seamAngleDeg': spec.seamAngleDeg,
-    };
+  'side': spec.side.name,
+  'material': spec.material.name,
+  'width': spec.width,
+  'depth': spec.depth,
+  'offset': spec.offset,
+  'seam': spec.seam.name,
+  'seamOffset': spec.seamOffset,
+  'seamAngleDeg': spec.seamAngleDeg,
+};
 
 CompositeSpec _compositeFromJson(Object? raw) {
   const fallback = CompositeSpec();
@@ -528,8 +558,11 @@ CompositeSpec _compositeFromJson(Object? raw) {
   final json = raw.cast<String, dynamic>();
   return CompositeSpec(
     side: _enumByName(EdgeSide.values, json['side'], fallback.side),
-    material:
-        _enumByName(FilmMaterial.values, json['material'], fallback.material),
+    material: _enumByName(
+      FilmMaterial.values,
+      json['material'],
+      fallback.material,
+    ),
     width: _double(json['width'], fallback.width),
     depth: _double(json['depth'], fallback.depth),
     offset: _double(json['offset'], fallback.offset),

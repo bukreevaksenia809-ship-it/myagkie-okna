@@ -3203,6 +3203,27 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     ),
                   ),
                 ],
+                SwitchListTile(
+                  key: const Key('zipper-segments-toggle'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Делить раскрой на сегменты',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  subtitle: Text(
+                    params.zipperSegments
+                        ? 'Молния между сегментами даёт зазор; впритык к канту — вычет из ширины.'
+                        : 'Полотно остаётся целым: ширина каждой молнии вычитается из заготовки.',
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      color: Color(0xFF66748A),
+                    ),
+                  ),
+                  value: params.zipperSegments,
+                  onChanged: (value) =>
+                      _updateWindow(params.withZipperSegments(value)),
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -3229,6 +3250,21 @@ class _ParamsPanelState extends State<ParamsPanel> {
                   onChanged: (value) => _updateProject(
                     project.updateOptions(
                       project.options.copyWith(showGrid: value),
+                    ),
+                  ),
+                ),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Внутренние размеры ПВХ'),
+                  subtitle: const Text(
+                    'маленькие стрелки внутри полотна',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                  ),
+                  value: project.options.showInnerDimensions,
+                  onChanged: (value) => _updateProject(
+                    project.updateOptions(
+                      project.options.copyWith(showInnerDimensions: value),
                     ),
                   ),
                 ),

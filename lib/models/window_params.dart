@@ -1019,7 +1019,7 @@ class WindowParams {
     this.roundEyeletsEnabled = true,
     this.fastenerType = FastenerType.turnBuckles,
     this.zippers = const [],
-    this.zipperSegments = false,
+    this.zipperSegments = true,
     this.zipperTentOverlap = defaultZipperTentOverlapMm,
     this.liftStrapOffsets = const [],
     this.liftStrapOrientation = LiftStrapOrientation.vertical,
@@ -2194,29 +2194,33 @@ class DrawingOptions {
     this.showGrid = true,
     this.showEdgeLengths = true,
     this.showCallouts = true,
+    this.showInnerDimensions = true,
   });
 
   final bool showDimensions;
   final bool showGrid;
   final bool showEdgeLengths;
   final bool showCallouts;
+  final bool showInnerDimensions;
 
   DrawingOptions copyWith({
     bool? showDimensions,
     bool? showGrid,
     bool? showEdgeLengths,
     bool? showCallouts,
+    bool? showInnerDimensions,
   }) {
     return DrawingOptions(
       showDimensions: showDimensions ?? this.showDimensions,
       showGrid: showGrid ?? this.showGrid,
       showEdgeLengths: showEdgeLengths ?? this.showEdgeLengths,
       showCallouts: showCallouts ?? this.showCallouts,
+      showInnerDimensions: showInnerDimensions ?? this.showInnerDimensions,
     );
   }
 
   String get signature =>
-      '$showDimensions|$showGrid|$showEdgeLengths|$showCallouts';
+      '$showDimensions|$showGrid|$showEdgeLengths|$showCallouts|$showInnerDimensions';
 }
 
 /// Форматирует длину в ТЕКУЩЕЙ единице отображения: «3 000» или «300,0».

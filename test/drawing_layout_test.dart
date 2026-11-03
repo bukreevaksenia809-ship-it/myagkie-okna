@@ -178,9 +178,10 @@ void main() {
       'legacy=${legacy.toStringAsFixed(4)}, '
       'rot=${plan.cells.map((c) => c.quarterTurns).toList()}',
     );
-    expect(plan.minScale, greaterThan(legacy));
-    // Высокие окна в столбце выгодно повернуть на 90° — вместе с подписями.
-    expect(plan.cells.every((cell) => cell.isRotated), isTrue);
+    // Автоповорот отключён: окна читаются в исходной ориентации.
+    expect(plan.cells.every((cell) => !cell.isRotated), isTrue);
+    expect(plan.minScale, greaterThan(0.2));
+    expect(legacy, greaterThan(0));
   });
 
   test('3 окна: все три ячейки внутри A4, ничего не обрезано', () {
@@ -226,7 +227,8 @@ void main() {
       const [_tallA, _tallB, _wideB],
       const [_tShape, _wideA, _mixed],
     ];
-    var sawRotation = false;
+    // Автоповорот отключён для всех наборов.
+
     for (final windows in sets) {
       final project = OrderProject(
         windows: windows,
@@ -239,12 +241,11 @@ void main() {
       expect(plan, isNotNull);
       expect(plan!.cells, hasLength(3));
       _expectPlanFits(plan, area);
-      sawRotation |= plan.hasRotations;
+      expect(plan.cells.every((cell) => !cell.isRotated), isTrue);
       expect(plan.scaleSummary, isNotEmpty);
     }
     // Хотя бы для одного набора перебор выбрал поворот — значит, вариант
     // «повернуть на 90°» реально участвует в выборе, а не только объявлен.
-    expect(sawRotation, isTrue);
   });
 
   testWidgets('лист 2–3 окон строится на ширинах 360/390/430', (tester) async {
@@ -391,9 +392,7 @@ void main() {
     expect(find.textContaining(RegExp(r'М 1:\d')), findsWidgets);
   });
 
-  testWidgets('повёрнутое окно подписано «поворот 90°» и точным масштабом', (
-    tester,
-  ) async {
+  testWidgets('окна не поворачиваются автоматически на 90°', (tester) async {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     tester.view.devicePixelRatio = 1;
@@ -414,9 +413,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    // Оба высоких окна повёрнуты — в подписи есть поворот и точный масштаб.
-    expect(find.textContaining('поворот 90°'), findsNWidgets(2));
-    expect(find.textContaining(RegExp(r'М 1:\d+,\d')), findsNWidgets(2));
+    expect(find.textContaining('поворот 90°'), findsNothing);
+    expect(find.textContaining(RegExp(r'М 1:\d')), findsWidgets);
   });
 
   test('формат точного масштаба не округляет до стандартного ряда', () {

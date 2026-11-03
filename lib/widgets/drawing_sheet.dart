@@ -764,7 +764,9 @@ class DrawingSheet extends StatelessWidget {
     for (final arrangement in DrawingGridArrangement.values) {
       for (final rows in _rowAssignments(arrangement, count)) {
         for (final heights in _rowSplits(rows.length)) {
-          for (var rotations = 0; rotations < (1 << count); rotations++) {
+          // Не переворачиваем окна автоматически: мастер ожидает читать
+          // чертёж в той же ориентации, в которой он нарисован в панели.
+          for (var rotations = 0; rotations < 1; rotations++) {
             final candidate = _evaluateLayout(
               arrangement: arrangement,
               specs: specs,
