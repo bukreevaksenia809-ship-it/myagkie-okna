@@ -27,6 +27,13 @@ void main() {
     expect(widths.every((width) => width > 100), isTrue);
   });
 
+  test('тумблер выключает деление: полотно целое, ширина вычитается', () {
+    final spec = WindowSpec.of(base().copyWith(zipperSegments: false));
+    expect(spec.filmCutPolygons, hasLength(1));
+    expect(spec.zipperBandTotalMm, greaterThan(0));
+    expect(spec.zipperSegmentsLabel, isEmpty);
+  });
+
   test('две молнии — три сегмента', () {
     final spec = WindowSpec.of(
       WindowParams(
