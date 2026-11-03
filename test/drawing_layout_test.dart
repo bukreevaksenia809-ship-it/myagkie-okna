@@ -5,6 +5,8 @@
 // Запуск: flutter test test/drawing_layout_test.dart
 import 'dart:typed_data';
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/models/order_project.dart';
@@ -216,6 +218,33 @@ void main() {
     )!;
     expect(sheet.height, closeTo(DrawingSheet.a4Height + 40, 0.01));
     expect(sheet.width, closeTo(DrawingSheet.a4Width + 40, 0.01));
+  });
+
+  test('4 окна: авто-раскладка 2×2 заполняет весь A4, а не ряд', () {
+    const window = WindowParams(
+      bottomWidth: 900,
+      topWidth: 900,
+      leftHeight: 2000,
+      rightHeight: 2000,
+    );
+    final project = OrderProject(
+      windows: const [window, window, window, window],
+      sheetMode: SheetMode.grid,
+      gridColumns: 0,
+    );
+    final area = DrawingSheet.optimizedGridArea();
+    final plan = DrawingSheet.optimizedGridPlan(project, area);
+    expect(plan, isNotNull);
+    expect(plan!.arrangement, DrawingGridArrangement.twoByTwo);
+    expect(plan.cells, hasLength(4));
+    _expectPlanFits(plan, area);
+    // Ячейки занимают всю ширину и высоту поля — без пустых полос.
+    final right = plan.cells.map((cell) => cell.rect.right).reduce(math.max);
+    final bottom = plan.cells.map((cell) => cell.rect.bottom).reduce(math.max);
+    expect(right, closeTo(area.width, 0.01));
+    expect(bottom, closeTo(area.height, 0.01));
+    // Все четыре чертежа читаются в исходной ориентации.
+    expect(plan.cells.every((cell) => !cell.isRotated), isTrue);
   });
 
   test('3 окна: разные наборы — план всегда внутри A4 и без обрезки', () {

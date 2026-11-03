@@ -762,6 +762,14 @@ class DrawingSheet extends StatelessWidget {
 
     DrawingGridPlan? best;
     for (final arrangement in DrawingGridArrangement.values) {
+      // 4 окна на A4 ставим только 2×2, 3 окна — «2+1»/«1+2». Ленточные
+      // раскладки «в ряд» оставляем для явного выбора колонок: в авторежиме
+      // они дают крупный масштаб, но оставляют пустые поля сверху и снизу —
+      // лист выглядит как ряд картинок, а не как раскладка на A4.
+      if (arrangement == DrawingGridArrangement.fourInRow ||
+          arrangement == DrawingGridArrangement.threeInRow) {
+        continue;
+      }
       for (final rows in _rowAssignments(arrangement, count)) {
         for (final heights in _rowSplits(rows.length)) {
           // Не переворачиваем окна автоматически: мастер ожидает читать
