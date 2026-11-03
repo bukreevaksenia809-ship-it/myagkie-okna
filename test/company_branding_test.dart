@@ -13,7 +13,6 @@ import 'package:soft_window_drawer/services/document_store.dart';
 import 'package:soft_window_drawer/widgets/drawing_sheet.dart';
 import 'package:soft_window_drawer/widgets/estimate_sheet.dart';
 import 'package:soft_window_drawer/main.dart' as app;
-import 'package:soft_window_drawer/widgets/params_panel.dart';
 import 'package:soft_window_drawer/widgets/settings_screen.dart';
 
 /// Компания на листах: тумблер, реквизиты, логотип, отрисовка на смете и
@@ -184,7 +183,7 @@ void main() {
             dealerPrices: const PriceList.defaults(),
             materials: const [FilmMaterial.clearPvc],
             rollWidths: const {},
-            onRollWidth: (_, __) {},
+            onRollWidth: (_, _) {},
             onClientPrices: (_) {},
             onDealerPrices: (_) {},
             onCompany: () {},

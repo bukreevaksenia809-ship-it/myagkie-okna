@@ -46,10 +46,7 @@ class WindowPresetStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! List) return const [];
-      return [
-        for (final item in decoded)
-          if (WindowPreset.fromJson(item) case final preset?) preset,
-      ];
+      return [for (final item in decoded) ?WindowPreset.fromJson(item)];
     } catch (_) {
       return const [];
     }
