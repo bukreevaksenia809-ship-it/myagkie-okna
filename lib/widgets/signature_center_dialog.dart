@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -51,13 +52,28 @@ class _SignatureCenterDialogState extends State<SignatureCenterDialog> {
   Future<void> _upload(SignatureRole role) async {
     final bytes = await _pickImage();
     if (!mounted || bytes == null || bytes.isEmpty) return;
+    final prepared = await _prepareImage(bytes);
+    if (!mounted) return;
     setState(() {
       _settings.items[role]!
-        ..image = bytes
+        ..image = prepared
         ..enabled = true;
       _selected = role;
       _settings.enabled = true;
     });
+  }
+
+  Future<Uint8List> _prepareImage(Uint8List bytes) async {
+    try {
+      final codec = await ui.instantiateImageCodec(bytes, targetWidth: 1200);
+      final frame = await codec.getNextFrame();
+      final data = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+      frame.image.dispose();
+      codec.dispose();
+      return data?.buffer.asUint8List() ?? bytes;
+    } catch (_) {
+      return bytes;
+    }
   }
 
   Future<void> _draw(SignatureRole role) async {
