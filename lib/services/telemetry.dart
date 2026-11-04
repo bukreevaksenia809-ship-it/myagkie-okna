@@ -35,6 +35,9 @@ class Telemetry {
   static Timer? _timer;
   static Timer? _debounce;
 
+  /// Последняя ошибка автообновления — для понятного сообщения мастеру.
+  static String? lastUpdateError;
+
   static bool get _enabled =>
       !test_env.isTestEnvironment && _base.isNotEmpty && secret.isNotEmpty;
 
@@ -183,12 +186,14 @@ class Telemetry {
   /// Скачать и применить обновление (desktop). Возвращает false, если
   /// платформа не поддерживает замену файлов.
   static Future<bool> applyUpdate(AppUpdate update) async {
+    lastUpdateError = null;
     try {
       final path = await device.downloadUpdate(update.url, update.sha256);
       await event('update_apply', {'version': update.version});
       await device.applyUpdateZip(path);
       return true;
-    } catch (_) {
+    } catch (error) {
+      lastUpdateError = '$error';
       return false;
     }
   }

@@ -62,7 +62,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.5.2';
+const String kAppVersion = '2.5.3';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -444,11 +444,13 @@ class _BuilderScreenState extends State<BuilderScreen>
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       final applied = await _applyWindowsUpdate(update);
       if (applied || !mounted) return;
+      final detail = Telemetry.lastUpdateError;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 12),
           content: Text(
-            'Автообновление не удалось. Открываю архив — распакуйте его '
-            'поверх папки программы.',
+            'Автообновление не удалось${detail == null || detail.isEmpty ? '' : ': $detail'}. '
+            'Открываю архив — распакуйте его поверх папки программы.',
           ),
         ),
       );
