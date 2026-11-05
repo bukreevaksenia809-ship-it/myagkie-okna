@@ -63,7 +63,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.6.0';
+const String kAppVersion = '2.6.1';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -597,9 +597,16 @@ class _BuilderScreenState extends State<BuilderScreen>
     if (editing) return false;
     if (ModalRoute.of(this.context)?.isCurrent != true) return false;
     final keyboard = HardwareKeyboard.instance;
-    final undo =
-        event.logicalKey == LogicalKeyboardKey.keyZ &&
-        (keyboard.isControlPressed || keyboard.isMetaPressed);
+    final command = keyboard.isControlPressed || keyboard.isMetaPressed;
+    if (command && event.logicalKey == LogicalKeyboardKey.keyN) {
+      _updateProject(_project.addWindow());
+      return true;
+    }
+    if (command && event.logicalKey == LogicalKeyboardKey.keyD) {
+      _updateProject(_project.duplicateSelected());
+      return true;
+    }
+    final undo = event.logicalKey == LogicalKeyboardKey.keyZ && command;
     if (undo) {
       _undoProject();
       return true;

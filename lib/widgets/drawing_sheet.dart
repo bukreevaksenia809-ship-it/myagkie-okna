@@ -1330,7 +1330,7 @@ class _CompactLegend extends StatelessWidget {
             ),
           ),
           for (final item in const [
-            ('Окантовка', _LegendMarkKind.edge),
+            ('Кант', _LegendMarkKind.edge),
             ('Запайка', _LegendMarkKind.seam),
             ('Люверс Ø10', _LegendMarkKind.eyelet),
             ('Крепёж', _LegendMarkKind.fastener),
@@ -1586,7 +1586,6 @@ class _SidePanel extends StatelessWidget {
     final labelSettings = LabelSettings.value;
     final windows = project.windows;
     final params = windows.first;
-    final anyLifting = windows.any((window) => window.isLifting);
     // Подвижный крепёж (скобы, замки, ремни) есть и у скрина — он ставится по
     // подвороту независимо от типа окна.
     final anyMovable = windows.any(
@@ -1613,7 +1612,7 @@ class _SidePanel extends StatelessWidget {
       else ...[
         (
           LegendKind.edge,
-          'Окантовка по сторонам: ${_widthList(windows)} ${unitSuffix()}',
+          'Кант по сторонам: ${_widthList(windows)} ${unitSuffix()}',
         ),
         (
           LegendKind.seam,
@@ -1674,12 +1673,6 @@ class _SidePanel extends StatelessWidget {
                 : 'Крепление саморезами',
           ),
         },
-      if (anyLifting)
-        (
-          LegendKind.liftStrap,
-          'Подъёмный ремень ${formatMm(liftStrapWidth)}×'
-              '${formatMm(liftStrapLength)} ${unitSuffix()}',
-        ),
       if (anyZipper)
         (
           LegendKind.zipperBand,
@@ -1945,13 +1938,13 @@ class _SidePanel extends StatelessWidget {
             '${formatMm(specs.first.filmCutHeightWithAllowance)} ${unitSuffix()}; '
             'тента и окантовки нет'
       else
-        'Окантовка складывается пополам, запайка плёнки под окантовку '
+        'Кант складывается пополам, запайка плёнки под кант '
             '${formatMm(first.weldOverlapMm)} ${unitSuffix()} по всему периметру',
       if (pvcZipperNotes.isNotEmpty)
         'Молния: ширина кроя плёнки уменьшена на полосу (спайку) — '
             '${pvcZipperNotes.join('; ')}',
       if (!first.isScreen)
-        'Расход окантовки: '
+        'Расход канта: '
             '${labels.map((entry) => '${edgeBandLabel(entry.key)} — ${formatMm(entry.value)} ${unitSuffix()}').join(', ')}',
       if (!first.isScreen)
         'Кант: ${edgeGroups.join('; ')} — всего '

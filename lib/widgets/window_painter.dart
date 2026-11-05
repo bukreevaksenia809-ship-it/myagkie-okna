@@ -1322,7 +1322,7 @@ class WindowDrawingPainter extends CustomPainter {
       final normal = _uprightNormal(aPx, bPx);
       final text = params.isScreen
           ? '${side.label}: подворот ${formatMm(layers.hemWidthFor(side))} ${unitSuffix()}'
-          : '${side.label}: окантовка ${formatMm(layers.finishedWidthFor(side))} ${unitSuffix()}';
+          : '${side.label}: кант ${formatMm(layers.finishedWidthFor(side))} ${unitSuffix()}';
       final halfLength =
           _textPainter(text, color: _metalDark, small: true).width / 2;
       // Подпись стороны уступает место размерам между креплениями: на
@@ -2154,8 +2154,7 @@ class WindowDrawingPainter extends CustomPainter {
         ? 'вырез Ø${formatMm(cutout.spec.width)}'
         : 'вырез ${formatMm(cutout.spec.width)}×${formatMm(cutout.spec.height)}';
     final extras = <String>[
-      if (cutout.spec.edgingMm > 0)
-        'окантовка ${formatMm(cutout.spec.edgingMm)}',
+      if (cutout.spec.edgingMm > 0) 'кант ${formatMm(cutout.spec.edgingMm)}',
       if (cutout.spec.eyeletCount > 0) '${cutout.spec.eyeletCount} люверсов',
     ];
     return extras.isEmpty ? base : '$base · ${extras.join(' · ')}';
@@ -2553,16 +2552,6 @@ class WindowDrawingPainter extends CustomPainter {
         Paint()..color = _metalDark,
       );
     }
-
-    final first = straps.first;
-    final topPoint = layout.toPxPoint(Offset(first.center.dx, first.bottom));
-    _label(
-      canvas,
-      'подъёмные ремни: ${straps.length} шт',
-      topPoint + const Offset(0, -12),
-      small: true,
-      color: _metalDark,
-    );
   }
 
   /// Фартук (бывший карман) — полоса от внутреннего края окантовки (у скрина
@@ -3600,7 +3589,7 @@ class WindowDrawingPainter extends CustomPainter {
         canvas,
         span[0],
         span[1],
-        'внутр. ${formatMm(value)}',
+        'вн ${formatMm(value)}',
         vertical: !horizontal,
       );
     }
@@ -3928,7 +3917,7 @@ class WindowDrawingPainter extends CustomPainter {
       final boundary = Offset.lerp(innerA, innerB, 0.3)!;
       final depth = (boundary - middle).distance;
       if (depth < 1) continue;
-      final text = 'окантовка ${formatMm(widths[i])}';
+      final text = 'кант ${formatMm(widths[i])}';
       final position = _freeSpotOnEdge(
         edgeIndex: i,
         a: layout.toPxPoint(a),

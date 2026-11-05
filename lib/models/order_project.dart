@@ -158,13 +158,27 @@ class OrderProject {
     return copyWith(windows: next, selectedIndex: selectedIndex + 1);
   }
 
-  OrderProject addWindow() => copyWith(
-    windows: [
-      ...windows,
-      selected.copyWith(drawingNumber: ''),
-    ],
-    selectedIndex: windows.length,
-  );
+  /// Новое окно — стандарт 1500 × 2500 мм. Остальные настройки берём
+  /// с текущего окна, но тип сбрасываем на обычный, чтобы Т-окно или
+  /// составное не появилось неожиданно.
+  OrderProject addWindow() {
+    final type = switch (selected.windowType) {
+      WindowType.fixed || WindowType.lifting => selected.windowType,
+      _ => WindowType.fixed,
+    };
+    final fresh = selected.copyWith(
+      windowType: type,
+      bottomWidth: 1500,
+      topWidth: 1500,
+      leftHeight: 2500,
+      rightHeight: 2500,
+      drawingNumber: '',
+    );
+    return copyWith(
+      windows: [...windows, fresh],
+      selectedIndex: windows.length,
+    );
+  }
 
   OrderProject removeSelected() {
     if (windows.length <= 1) return this;
