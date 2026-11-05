@@ -2600,21 +2600,56 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
   /// Точки стороны: ручные (с их типами) или материализованные из авто-шага.
   List<EyeletPosition> _currentPoints(EdgeSide side, Offset a, Offset b) {
     if (widget.params.hasManualEyelets(side)) {
-      return widget.params.eyeletPositions
-          .where((position) => position.side == side)
-          .toList()
-        ..sort((left, right) => left.fraction.compareTo(right.fraction));
+      final params = widget.params;
+      final movable =
+          side != EdgeSide.top && (params.isLifting || params.isScreen);
+      final selected = _markerKindFor(params.fastenerType);
+      return [
+        for (final position in params.eyeletPositions)
+          if (position.side == side)
+            // Старые ручные стороны хранили только «люверс». Если на стороне
+            // стоит скоба/замок, возвращаем ей выбранный тип, иначе при
+            // первом же изменении вся сторона превращалась в люверсы.
+            if (position.kind == MarkerKind.eyelet &&
+                movable &&
+                selected != MarkerKind.eyelet &&
+                position.fraction > 0.005 &&
+                position.fraction < 0.995)
+              position.copyWith(kind: selected)
+            else
+              position,
+      ]..sort((left, right) => left.fraction.compareTo(right.fraction));
     }
+    final autoFasteners = widget.spec.layers.autoFastenerEyelets;
+    final fastener = widget.spec.params.fastenerType;
     final points = <EyeletPosition>[
       for (final eyelet in widget.spec.layers.eyelets)
         if (WindowLayers.edgeSideOf(eyelet.side) == side)
           EyeletPosition(
             side: side,
             fraction: _fractionOf(eyelet.center, a, b),
+            kind:
+                autoFasteners.any(
+                  (target) => (target.center - eyelet.center).distance < 1,
+                )
+                ? switch (fastener) {
+                    FastenerType.frenchLocks => MarkerKind.frenchLock,
+                    FastenerType.metalFrenchLock => MarkerKind.metalFrenchLock,
+                    FastenerType.turnBuckles => MarkerKind.turnBuckle,
+                    _ => MarkerKind.eyelet,
+                  }
+                : MarkerKind.eyelet,
           ),
     ]..sort((left, right) => left.fraction.compareTo(right.fraction));
     return points;
   }
+
+  MarkerKind _markerKindFor(FastenerType type) => switch (type) {
+    FastenerType.frenchLocks => MarkerKind.frenchLock,
+    FastenerType.metalFrenchLock => MarkerKind.metalFrenchLock,
+    FastenerType.turnBuckles => MarkerKind.turnBuckle,
+    _ => MarkerKind.eyelet,
+  };
 
   double _fractionOf(Offset point, Offset a, Offset b) {
     final direction = b - a;
@@ -2702,6 +2737,14 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
     final side = _side;
     final index = _index;
     if (side == null || index < 0 || index >= _points.length) return;
+    // Нижние углы — не «точка крепления по низу», а угловой крепёж.
+    // При удалении точек по низу оставляем оба нижних угла на месте.
+    if (side == EdgeSide.bottom &&
+        (_points[index].fraction <= 0.005 ||
+            _points[index].fraction >= 0.995)) {
+      _closeMenu();
+      return;
+    }
     final next = [..._points]..removeAt(index);
     _closeMenu();
     widget.onChanged(widget.params.withManualPoints(side, next));

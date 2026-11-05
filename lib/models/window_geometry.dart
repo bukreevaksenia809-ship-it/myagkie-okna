@@ -1924,8 +1924,18 @@ class WindowLayers {
     // Т-образное окно глухое: подвижного крепежа у него нет (у скрина есть —
     // он снимается).
     if (!isScreen && !params.isLifting) return const [];
+    // Нижние углы — рабочие точки подъёмного окна: там стоит выбранный
+    // крепёж (скоба/замок), а не круглый люверс. Верхние углы остаются
+    // круглыми: на них окно подвешивается.
     return eyelets
-        .where((eyelet) => eyelet.side != WindowSide.top && !eyelet.isCorner)
+        .where(
+          (eyelet) =>
+              eyelet.side != WindowSide.top &&
+              (!eyelet.isCorner ||
+                  (params.isLifting &&
+                      !isScreen &&
+                      eyelet.side == WindowSide.bottom)),
+        )
         .toList(growable: false);
   }
 
@@ -1958,8 +1968,18 @@ class WindowLayers {
   ///
   /// Число берётся из фактических точек, а не из «4 угла»: при выключенном
   /// тумблере, спайке стороны или сторонах без люверсов углов может не быть.
-  int get roundEyeletCount =>
-      eyelets.where((eyelet) => typeFor(eyelet).isRound).length;
+  int get roundEyeletCount {
+    final fasteners = autoFastenerEyelets;
+    return eyelets
+        .where(
+          (eyelet) =>
+              typeFor(eyelet).isRound &&
+              !fasteners.any(
+                (fastener) => (fastener.center - eyelet.center).distance < 1,
+              ),
+        )
+        .length;
+  }
 
   /// Включён ли тумблер «Круглые люверсы в углах».
   bool get roundEyeletsEnabled => params.roundEyeletsEnabled;
