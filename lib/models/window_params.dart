@@ -465,6 +465,7 @@ enum EdgeSide {
 /// Тип люверса: круглый Ø10 мм или овальный 42×22 мм под скобу.
 enum EyeletType {
   round10('Круглый Ø10 мм', 22, 22, 10, 10),
+  round16('Круглый Ø16 мм', 30, 30, 16, 16),
   oval42x22('Овальный 42×22 мм', 42, 22, 30, 11);
 
   const EyeletType(
@@ -485,12 +486,12 @@ enum EyeletType {
   final double holeWidth;
   final double holeHeight;
 
-  bool get isRound => this == EyeletType.round10;
+  bool get isRound => outerWidth == outerHeight;
 
   /// Размер в текущей единице: «Ø10 мм» или «Ø1,0 см», «42×22 мм» / «4,2×2,2 см».
   String get sizeLabel => isRound
-      ? 'Ø${formatMm(10)} ${unitSuffix()}'
-      : '${formatMm(42)}×${formatMm(22)} ${unitSuffix()}';
+      ? 'Ø${formatMm(holeWidth)} ${unitSuffix()}'
+      : '${formatMm(outerWidth)}×${formatMm(outerHeight)} ${unitSuffix()}';
 
   /// Полное название для подписей: «Круглый Ø10 мм», «Овальный 42×22 мм».
   String get displayLabel =>
@@ -2209,6 +2210,7 @@ class DrawingOptions {
     this.showEdgeLengths = true,
     this.showCallouts = true,
     this.showInnerDimensions = true,
+    this.fastenerScale = 1,
   });
 
   final bool showDimensions;
@@ -2217,12 +2219,16 @@ class DrawingOptions {
   final bool showCallouts;
   final bool showInnerDimensions;
 
+  /// Масштаб иконок крепежа на чертеже (0,6–1,8).
+  final double fastenerScale;
+
   DrawingOptions copyWith({
     bool? showDimensions,
     bool? showGrid,
     bool? showEdgeLengths,
     bool? showCallouts,
     bool? showInnerDimensions,
+    double? fastenerScale,
   }) {
     return DrawingOptions(
       showDimensions: showDimensions ?? this.showDimensions,
@@ -2230,11 +2236,12 @@ class DrawingOptions {
       showEdgeLengths: showEdgeLengths ?? this.showEdgeLengths,
       showCallouts: showCallouts ?? this.showCallouts,
       showInnerDimensions: showInnerDimensions ?? this.showInnerDimensions,
+      fastenerScale: (fastenerScale ?? this.fastenerScale).clamp(0.6, 1.8),
     );
   }
 
   String get signature =>
-      '$showDimensions|$showGrid|$showEdgeLengths|$showCallouts|$showInnerDimensions';
+      '$showDimensions|$showGrid|$showEdgeLengths|$showCallouts|$showInnerDimensions|$fastenerScale';
 }
 
 /// Форматирует длину в ТЕКУЩЕЙ единице отображения: «3 000» или «300,0».

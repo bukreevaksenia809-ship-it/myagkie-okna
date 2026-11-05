@@ -175,12 +175,20 @@ void main() {
       });
     });
 
-    test('круглые угловые люверсы выключены — первая цифра не 0', () {
+    test('круглые угловые люверсы выключены — в углах стоят скобы', () {
       final spec = WindowSpec.of(
         _window2000x1500.copyWith(roundEyeletsEnabled: false),
       );
+      // Вместо углового люверса остаётся поворотная скоба, поэтому цепочка
+      // начинается от угла (0), а не с первой точки на стороне.
       final bottom = _side(fastenerChainLabels(spec), WindowSide.bottom);
-      expect(bottom.first.cumulativeMm, closeTo(1950 / 7, 1e-9));
+      expect(bottom.first.cumulativeMm, closeTo(0, 1e-9));
+      expect(
+        spec.layers.manualFasteners
+            .where((fastener) => fastener.type == FastenerType.turnBuckles)
+            .length,
+        4,
+      );
     });
   });
 

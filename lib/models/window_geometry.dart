@@ -2700,10 +2700,6 @@ class WindowLayers {
           var distance = offset + (exact ? exactDistances[k] : actual * k);
           final isCornerIndex = offset < 0.5 && (k == 0 || k == intervals);
 
-          if (!params.roundEyeletsEnabled && isCornerIndex && offset < 0.5) {
-            continue;
-          }
-
           if (params.pocket) {
             if (side == WindowSide.bottom && (k == 0 || k == intervals)) {
               continue;
@@ -2735,6 +2731,19 @@ class WindowLayers {
           // Точка ровно на шве составного окна — это стык, а не кромка:
           // люверс там не ставится (иначе он задваивался бы).
           if (isOnCompositeSeam(center)) continue;
+          // Угловой круглый люверс выключен — на его место ставим
+          // пластиковую поворотную скобу, а не оставляем угол пустым.
+          if (!params.roundEyeletsEnabled && isCornerIndex && offset < 0.5) {
+            manualFasteners.add(
+              ManualFastener(
+                center: center,
+                side: side,
+                angle: angle,
+                type: FastenerType.turnBuckles,
+              ),
+            );
+            continue;
+          }
           placements.add(
             EyeletPlacement(
               center: center,
@@ -2769,7 +2778,18 @@ class WindowLayers {
         if (sideHasEyelets(eyelet.side)) eyelet,
     ];
 
-    return _EyeletResult(visible, steps, manualFasteners);
+    // Углы обходятся дважды (соседние стороны), скобу оставляем по одной.
+    final uniqueFasteners = <ManualFastener>[];
+    for (final fastener in manualFasteners) {
+      if (uniqueFasteners.any(
+        (existing) => (existing.center - fastener.center).distance < 1,
+      )) {
+        continue;
+      }
+      uniqueFasteners.add(fastener);
+    }
+
+    return _EyeletResult(visible, steps, uniqueFasteners);
   }
 }
 

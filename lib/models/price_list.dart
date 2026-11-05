@@ -595,7 +595,7 @@ class PriceList {
   /// Установка входит в цену люверса (отдельной строки в смете нет), поэтому
   /// выключенная в прайсе установка убирает из цены только её надбавку.
   double eyeletPerEach(EyeletType type) =>
-      (type == EyeletType.round10 ? eyeletPrice : eyeletOvalPrice) +
+      (type.isRound ? eyeletPrice : eyeletOvalPrice) +
       (isEnabled(PriceItemKeys.eyeletInstall) ? eyeletInstall : 0);
 
   /// Цена крепежа подвижных сторон по типу, ₽/шт.

@@ -2799,6 +2799,11 @@ class WindowDrawingPainter extends CustomPainter {
       final center = params.isScreen
           ? anchor + normal * layout.px(bandWidth / 2)
           : anchor;
+      final scale = options.fastenerScale.clamp(0.6, 1.8);
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.scale(scale);
+      canvas.translate(-center.dx, -center.dy);
       switch (params.fastenerType) {
         case FastenerType.turnBuckles:
           _drawTurnBuckle(canvas, center, normal, bandWidth);
@@ -2810,6 +2815,7 @@ class WindowDrawingPainter extends CustomPainter {
         case FastenerType.eyeletsOnly:
           break;
       }
+      canvas.restore();
     }
   }
 
@@ -3104,6 +3110,11 @@ class WindowDrawingPainter extends CustomPainter {
       final bandWidth = _fastenerBandWidth(fastener.side);
       final normal = _outwardNormalAt(fastener.center);
       final center = layout.toPxPoint(fastener.center);
+      final scale = options.fastenerScale.clamp(0.6, 1.8);
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.scale(scale);
+      canvas.translate(-center.dx, -center.dy);
       switch (fastener.type) {
         case FastenerType.turnBuckles:
           _drawTurnBuckle(canvas, center, normal, bandWidth);
@@ -3114,6 +3125,7 @@ class WindowDrawingPainter extends CustomPainter {
         case FastenerType.eyeletsOnly:
           break;
       }
+      canvas.restore();
     }
   }
 
@@ -3579,7 +3591,11 @@ class WindowDrawingPainter extends CustomPainter {
       }
       if (span == null) continue;
       final horizontal = dx.abs() >= dy.abs();
-      final value = (horizontal ? dx.abs() : dy.abs()) / layout.scale;
+      final raw = (horizontal ? dx.abs() : dy.abs()) / layout.scale;
+      // Внутренний размер — это просвет между запайками под окантовку:
+      // на каждой стороне плёнка заходит под кант на weldOverlapMm.
+      final weld = params.isScreen ? 0.0 : params.weldOverlapMm * 2;
+      final value = math.max(0.0, raw - weld);
       _innerSpan(
         canvas,
         span[0],

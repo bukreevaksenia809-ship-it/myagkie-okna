@@ -46,6 +46,7 @@ OrderProject orderFromJson(Map<String, dynamic> json) {
           showEdgeLengths: _bool(optionsJson['showEdgeLengths'], true),
           showCallouts: _bool(optionsJson['showCallouts'], true),
           showInnerDimensions: _bool(optionsJson['showInnerDimensions'], true),
+          fastenerScale: _double(optionsJson['fastenerScale'], 1),
         )
       : const DrawingOptions();
 

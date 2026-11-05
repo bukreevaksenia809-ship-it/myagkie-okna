@@ -169,6 +169,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
   bool _extrasOpen = false;
   final WindowPresetStore _presetStore = WindowPresetStore();
   List<WindowPreset> _savedPresets = const [];
+  bool _ordersHidden = false;
 
   late final TextEditingController _nameController;
   late final TextEditingController _customerController;
@@ -1477,7 +1478,23 @@ class _ParamsPanelState extends State<ParamsPanel> {
       children: [
         _brandHeader(orders, project),
         const SizedBox(height: 12),
-        _sectionHeader('Заказы', '${orders.length} шт · сверху — активный'),
+        _sectionHeader(
+          'Заказы',
+          _ordersHidden
+              ? 'список скрыт'
+              : '${orders.length} шт · сверху — активный',
+          trailing: IconButton(
+            key: const Key('toggle-orders-list'),
+            tooltip: _ordersHidden ? 'Показать заказы' : 'Скрыть заказы',
+            onPressed: () => setState(() => _ordersHidden = !_ordersHidden),
+            icon: Icon(
+              _ordersHidden
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off_outlined,
+              size: 18,
+            ),
+          ),
+        ),
         const SizedBox(height: 8),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -1520,83 +1537,84 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
         ),
         const SizedBox(height: 8),
-        for (var index = 0; index < orders.length; index++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Container(
-              key: Key('order-row-$index'),
-              decoration: BoxDecoration(
-                color: index == selected
-                    ? const Color(0xFFE8F0FE)
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(9),
-                border: Border.all(
+        if (!_ordersHidden)
+          for (var index = 0; index < orders.length; index++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Container(
+                key: Key('order-row-$index'),
+                decoration: BoxDecoration(
                   color: index == selected
-                      ? const Color(0xFF0B62C4)
-                      : const Color(0xFFD9E0EA),
-                ),
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: ListTile(
-                  selected: index == selected,
-                  dense: true,
-                  visualDensity: VisualDensity.compact,
-                  contentPadding: const EdgeInsets.only(left: 10, right: 2),
-                  leading: Icon(
-                    index == selected
-                        ? Icons.check_circle
-                        : Icons.folder_outlined,
-                    size: 18,
+                      ? const Color(0xFFE8F0FE)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(
                     color: index == selected
                         ? const Color(0xFF0B62C4)
-                        : const Color(0xFF8A93A0),
+                        : const Color(0xFFD9E0EA),
                   ),
-                  title: Text(
-                    orders[index].name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: index == selected
-                          ? FontWeight.w700
-                          : FontWeight.w600,
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: ListTile(
+                    selected: index == selected,
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    contentPadding: const EdgeInsets.only(left: 10, right: 2),
+                    leading: Icon(
+                      index == selected
+                          ? Icons.check_circle
+                          : Icons.folder_outlined,
+                      size: 18,
+                      color: index == selected
+                          ? const Color(0xFF0B62C4)
+                          : const Color(0xFF8A93A0),
                     ),
-                  ),
-                  subtitle: Text(
-                    'окон: ${orders[index].windowCount}',
-                    style: const TextStyle(fontSize: 10.5),
-                  ),
-                  onTap: widget.onSelectOrder == null
-                      ? null
-                      : () => widget.onSelectOrder!(index),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.onRenameOrder != null)
-                        IconButton(
-                          key: Key('rename-order-$index'),
-                          tooltip: 'Переименовать заказ',
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () => widget.onRenameOrder!(index),
-                          icon: const Icon(Icons.edit_outlined, size: 17),
-                        ),
-                      if (widget.onDeleteOrder != null)
-                        IconButton(
-                          key: Key('delete-order-$index'),
-                          tooltip: 'Удалить заказ',
-                          visualDensity: VisualDensity.compact,
-                          onPressed: orders.length > 1
-                              ? () => widget.onDeleteOrder!(index)
-                              : null,
-                          icon: const Icon(Icons.delete_outline, size: 17),
-                        ),
-                    ],
+                    title: Text(
+                      orders[index].name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: index == selected
+                            ? FontWeight.w700
+                            : FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'окон: ${orders[index].windowCount}',
+                      style: const TextStyle(fontSize: 10.5),
+                    ),
+                    onTap: widget.onSelectOrder == null
+                        ? null
+                        : () => widget.onSelectOrder!(index),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.onRenameOrder != null)
+                          IconButton(
+                            key: Key('rename-order-$index'),
+                            tooltip: 'Переименовать заказ',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => widget.onRenameOrder!(index),
+                            icon: const Icon(Icons.edit_outlined, size: 17),
+                          ),
+                        if (widget.onDeleteOrder != null)
+                          IconButton(
+                            key: Key('delete-order-$index'),
+                            tooltip: 'Удалить заказ',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: orders.length > 1
+                                ? () => widget.onDeleteOrder!(index)
+                                : null,
+                            icon: const Icon(Icons.delete_outline, size: 17),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
         const SizedBox(height: 6),
         FilledButton.icon(
           key: const Key('create-order'),
@@ -2000,6 +2018,46 @@ class _ParamsPanelState extends State<ParamsPanel> {
         Text(
           params.windowType.hint,
           style: const TextStyle(fontSize: 11.5, color: Color(0xFF5B6B80)),
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'Быстрый пресет',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () =>
+                  _updateWindow(params.copyWith(windowType: WindowType.fixed)),
+              icon: const Icon(Icons.crop_square, size: 18),
+              label: const Text('Глухое'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _updateWindow(
+                params.copyWith(
+                  windowType: WindowType.lifting,
+                  fastenerType: FastenerType.turnBuckles,
+                ),
+              ),
+              icon: const Icon(Icons.vertical_align_top, size: 18),
+              label: const Text('Подъёмное'),
+            ),
+            OutlinedButton.icon(
+              onPressed: params.zippers.length < maxZippers
+                  ? () => _updateWindow(params.addZipper())
+                  : null,
+              icon: const Icon(Icons.vertical_split, size: 18),
+              label: const Text('Молния по центру'),
+            ),
+            TextButton.icon(
+              onPressed: widget.onReset,
+              icon: const Icon(Icons.restart_alt, size: 18),
+              label: const Text('Сбросить'),
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         const Text(
@@ -3264,6 +3322,30 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     ),
                   ),
                 ),
+                const Text(
+                  'Масштаб креплений',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  '${(project.options.fastenerScale * 100).round()} % — размер иконок скоб, замков и ремней',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF66748A),
+                  ),
+                ),
+                Slider(
+                  key: const Key('fastener-scale'),
+                  value: project.options.fastenerScale,
+                  min: 0.6,
+                  max: 1.8,
+                  divisions: 12,
+                  label: '${(project.options.fastenerScale * 100).round()} %',
+                  onChanged: (value) => _updateProject(
+                    project.updateOptions(
+                      project.options.copyWith(fastenerScale: value),
+                    ),
+                  ),
+                ),
                 SwitchListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
@@ -3342,45 +3424,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
               ),
               onChanged: (value) => _updateAllMarking(drawingNumber: value),
             ),
-            const SizedBox(height: 20),
             const _SectionTitle('Пресеты'),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () => _updateWindow(
-                    params.copyWith(windowType: WindowType.fixed),
-                  ),
-                  icon: const Icon(Icons.crop_square, size: 18),
-                  label: const Text('Глухое'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _updateWindow(
-                    params.copyWith(
-                      windowType: WindowType.lifting,
-                      fastenerType: FastenerType.turnBuckles,
-                    ),
-                  ),
-                  icon: const Icon(Icons.vertical_align_top, size: 18),
-                  label: const Text('Подъёмное'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: params.zippers.length < maxZippers
-                      ? () => _updateWindow(params.addZipper())
-                      : null,
-                  icon: const Icon(Icons.vertical_split, size: 18),
-                  label: const Text('Молния по центру'),
-                ),
-                TextButton.icon(
-                  onPressed: widget.onReset,
-                  icon: const Icon(Icons.restart_alt, size: 18),
-                  label: const Text('Сбросить'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
             _savedPresetsSection(params),
             const SizedBox(height: 20),
             const SizedBox(height: 12),
@@ -5137,7 +5182,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _updateWindow(_params.updateCutout(index, updated));
   }
 
-  Widget _sectionHeader(String title, String subtitle) {
+  Widget _sectionHeader(String title, String subtitle, {Widget? trailing}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -5146,6 +5191,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           subtitle,
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
+        if (trailing != null) ...[const SizedBox(width: 4), trailing],
       ],
     );
   }

@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -62,7 +63,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.5.3';
+const String kAppVersion = '2.6.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -222,6 +223,9 @@ class _BuilderScreenState extends State<BuilderScreen>
   double _zoomLevel = 1;
   bool _exporting = false;
 
+  /// История изменений проекта для Ctrl+Z.
+  final List<OrderProject> _undoStack = [];
+
   /// Прогресс подготовки печати: пока не null, поверх экрана видна завеса.
   PrintProgress? _printProgress;
 
@@ -235,6 +239,7 @@ class _BuilderScreenState extends State<BuilderScreen>
     DisplayUnits.current.addListener(_onUnitsChanged);
     LabelSettings.current.addListener(_onLabelSettingsChanged);
     WidgetsBinding.instance.addObserver(this);
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     _restoreSession();
     _loadLayoutPrefs();
     _refreshOrders(showBusy: false);
@@ -539,6 +544,7 @@ class _BuilderScreenState extends State<BuilderScreen>
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     WidgetsBinding.instance.removeObserver(this);
     _licenseWatch?.cancel();
     _updateWatch?.cancel();
@@ -568,11 +574,65 @@ class _BuilderScreenState extends State<BuilderScreen>
   }
 
   void _updateProject(OrderProject project) {
+    if (!identical(project, _project)) {
+      _undoStack.add(_project);
+      if (_undoStack.length > 50) _undoStack.removeAt(0);
+    }
     setState(() {
       _drafts[_orderIndex] = _drafts[_orderIndex].copyWith(project: project);
     });
     _scheduleSessionSave(project);
     Telemetry.projectChanged(project, kAppVersion);
+  }
+
+  /// Горячие клавиши: Ctrl/Cmd+Z — отменить, Delete — удалить выбранное окно.
+  /// В текстовых полях не перехватываем, чтобы не ломать ввод.
+  bool _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent || !mounted) return false;
+    final primary = FocusManager.instance.primaryFocus;
+    final context = primary?.context;
+    final editing =
+        context?.widget is EditableText ||
+        context?.findAncestorWidgetOfExactType<EditableText>() != null;
+    if (editing) return false;
+    if (ModalRoute.of(this.context)?.isCurrent != true) return false;
+    final keyboard = HardwareKeyboard.instance;
+    final undo =
+        event.logicalKey == LogicalKeyboardKey.keyZ &&
+        (keyboard.isControlPressed || keyboard.isMetaPressed);
+    if (undo) {
+      _undoProject();
+      return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.delete &&
+        !keyboard.isControlPressed &&
+        !keyboard.isMetaPressed &&
+        !keyboard.isShiftPressed) {
+      _deleteSelectedWindow();
+      return true;
+    }
+    return false;
+  }
+
+  void _undoProject() {
+    if (_undoStack.isEmpty) return;
+    final previous = _undoStack.removeLast();
+    setState(() {
+      _drafts[_orderIndex] = _drafts[_orderIndex].copyWith(project: previous);
+    });
+    _scheduleSessionSave(previous);
+    Telemetry.projectChanged(previous, kAppVersion);
+  }
+
+  void _deleteSelectedWindow() {
+    if (_project.windowCount <= 1) return;
+    final windows = [..._project.windows]..removeAt(_project.selectedIndex);
+    _updateProject(
+      _project.copyWith(
+        windows: windows,
+        selectedIndex: _project.selectedIndex.clamp(0, windows.length - 1),
+      ),
+    );
   }
 
   /// Автосохранение рабочей сессии с небольшой задержкой, чтобы не писать
