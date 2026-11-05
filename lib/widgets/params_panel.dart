@@ -3906,7 +3906,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           Text(
             spec.params.roundEyeletsEnabled
                 ? 'Круглых люверсов в углах: '
-                      '${spec.layers.cornerEyelets.length} шт'
+                      '${spec.layers.roundEyeletCount} шт'
                 : 'Круглых люверсов нет: углы остаются без крепёжных точек.',
             style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),

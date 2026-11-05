@@ -1,0 +1,20 @@
+{
+  "id": "/pwa/",
+  "name": "Мягкие окна Excl — замер",
+  "short_name": "Мягкие окна",
+  "description": "Быстрый замер мягких окон, смета и документы с телефона.",
+  "lang": "ru",
+  "start_url": "/pwa/",
+  "scope": "/pwa/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#f4f1ea",
+  "theme_color": "#f4f1ea",
+  "orientation": "portrait-primary",
+  "icons": [
+    {"src": "/icons/Icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/Icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/Icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+    {"src": "/icons/Icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

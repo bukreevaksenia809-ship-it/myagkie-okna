@@ -77,6 +77,7 @@ git-тег `myagkie-okna-1`, архивы исходников и веб-сбо�
 | Платформа | Где скачать |
 |---|---|
 | **Web** (рабочая версия) | https://myagkie-okna-excl.web.app |
+| **Веб-приложение для телефона** | https://myagkie-okna-excl.web.app/pwa/ |
 | **Скачать** | https://myagkie-okna-excl.web.app/updates/ |
 | **Админка** | https://myagkie-okna-excl.web.app/admin/ |
 | **Windows** | [MyagkieOknaExcl-windows.zip](https://myagkie-okna-excl.web.app/releases/v2.6.3/MyagkieOknaExcl-windows.zip) |

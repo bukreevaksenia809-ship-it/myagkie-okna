@@ -86,6 +86,33 @@
               "value": "no-cache, no-store, must-revalidate"
             }
           ]
+        },
+        {
+          "source": "/pwa/manifest.webmanifest",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/pwa/sw.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/pwa/index.html",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
         }
       ]
     },
@@ -169,6 +196,33 @@
         },
         {
           "source": "/admin/style.css",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/pwa/manifest.webmanifest",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/pwa/sw.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/pwa/index.html",
           "headers": [
             {
               "key": "Cache-Control",
