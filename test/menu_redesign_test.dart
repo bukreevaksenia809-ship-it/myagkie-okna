@@ -99,7 +99,6 @@ void main() {
       'Крепёж',
       'Окантовка',
       'Молния',
-      'ЦВЕТА',
     ];
     for (var i = 1; i < order.length; i++) {
       expect(
@@ -108,17 +107,13 @@ void main() {
         reason: '«${order[i]}» должен идти после «${order[i - 1]}»',
       );
     }
-    // «Цвета» — ниже маркировки и пресетов.
-    expect(_top(tester, 'ЦВЕТА'), greaterThan(_top(tester, 'ПРЕСЕТЫ')));
-    expect(_top(tester, 'ЦВЕТА'), greaterThan(_top(tester, 'МАРКИРОВКА')));
-    // Припуски остались в рабочем порядке; цвета, файлы, технолог и прайс —
-    // в самом низу.
+    // Припуски остались в рабочем порядке; файлы, технолог и прайс — внизу.
     expect(find.text('Припуски на раскрой'), findsOneWidget);
     expect(
       _top(tester, 'СОХРАНЁННЫЕ ФАЙЛЫ'),
-      greaterThan(_top(tester, 'ЦВЕТА')),
+      greaterThan(_top(tester, 'ПРЕСЕТЫ')),
     );
-    expect(_top(tester, 'ТЕХНОЛОГ'), greaterThan(_top(tester, 'ЦВЕТА')));
+    expect(_top(tester, 'ТЕХНОЛОГ'), greaterThan(_top(tester, 'ПРЕСЕТЫ')));
 
     // Старые блоки кромок убраны полностью.
     expect(find.text('Верхняя кромка'), findsNothing);

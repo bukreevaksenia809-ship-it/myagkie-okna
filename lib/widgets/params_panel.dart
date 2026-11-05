@@ -2924,8 +2924,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
         children: [
           _hemSection(spec),
           const SizedBox(height: 8),
-          _fastenerOffsetSection(params, spec),
-          const SizedBox(height: 8),
           const Text(
             'У скрина нет окантовки: материал подворачивается сам, шов 3 мм. '
             'К высоте заготовки добавляется 20 мм на шов и запас.',
@@ -2965,6 +2963,13 @@ class _ParamsPanelState extends State<ParamsPanel> {
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
         const SizedBox(height: 10),
+        const Text(
+          'Цвет канта',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        _colorChips(params),
+        const SizedBox(height: 10),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2999,8 +3004,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
           '${formatMm(params.weldOverlapMm)} ${unitSuffix()} может не хватить ленты.',
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
-        const SizedBox(height: 12),
-        _fastenerOffsetSection(params, spec),
         const SizedBox(height: 12),
         _weldOverlapField(params),
       ],
@@ -3105,22 +3108,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   /// «Ширина рулона» — в нижней части панели.
   /// «Цвета» — в самом низу панели.
-  Widget _colorsSection(WindowParams params) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionTitle('Цвета'),
-        const SizedBox(height: 8),
-        _colorChips(params),
-        const SizedBox(height: 6),
-        const Text(
-          'Цвет окантовки, подворота и крепежа на чертеже.',
-          style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final project = widget.project;
@@ -3165,6 +3152,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
             _compositeTool(params),
             const SizedBox(height: 12),
             _cutoutsSection(params),
+            const SizedBox(height: 12),
+            _fastenerOffsetSection(params, spec),
           ],
         ),
       );
@@ -3220,6 +3209,66 @@ class _ParamsPanelState extends State<ParamsPanel> {
               title: 'Молния',
               subtitle: _specElementsSummary(params),
               children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Дверь из двух молний',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            'Ширина между молниями и смещение от центра полотна.',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: Color(0xFF66748A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      key: const Key('door-enabled'),
+                      value: params.doorEnabled,
+                      onChanged: (value) => _updateWindow(
+                        params.withDoor(
+                          filmWidth: spec.filmVisibleWidth,
+                          enabled: value,
+                          widthMm: params.doorWidthMm,
+                          offsetMm: params.doorOffsetMm,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (params.doorEnabled) ...[
+                  Text(
+                    'Дверь ${formatMm(params.doorWidthMm)} ${unitSuffix()}, '
+                    'смещение ${formatSignedMm(params.doorOffsetMm)} ${unitSuffix()}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: Color(0xFF5B6B80),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      key: const Key('door-settings'),
+                      onPressed: () => _editDoor(params, spec),
+                      icon: const Icon(
+                        Icons.door_front_door_outlined,
+                        size: 17,
+                      ),
+                      label: const Text('Ширина и смещение двери'),
+                    ),
+                  ),
+                ],
+                const Divider(height: 16),
                 if (params.zippers.isEmpty)
                   OutlinedButton.icon(
                     onPressed: () => _updateWindow(params.addZipper()),
@@ -3430,7 +3479,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
             const SizedBox(height: 20),
             const SizedBox(height: 12),
             const SizedBox(height: 12),
-            _colorsSection(params),
             const SizedBox(height: 12),
             _rollWarningSection(project, params),
             const SizedBox(height: 12),
@@ -3561,14 +3609,17 @@ class _ParamsPanelState extends State<ParamsPanel> {
   }
 
   String _specElementsSummary(WindowParams params) {
-    final zipperPart = switch (params.zippers.length) {
-      0 => null,
-      1 =>
-        'молния '
-            '${formatMm(WindowSpec.of(params).layers.zipperWidthFor(params.zippers.first))} '
-            '${unitSuffix()}',
-      _ => 'молний ${params.zippers.length}',
-    };
+    final zipperPart = params.doorEnabled
+        ? 'дверь ${formatMm(params.doorWidthMm)} ${unitSuffix()}'
+              '${params.doorOffsetMm.abs() < 0.5 ? '' : ', смещение ${formatSignedMm(params.doorOffsetMm)} ${unitSuffix()}'}'
+        : switch (params.zippers.length) {
+            0 => null,
+            1 =>
+              'молния '
+                  '${formatMm(WindowSpec.of(params).layers.zipperWidthFor(params.zippers.first))} '
+                  '${unitSuffix()}',
+            _ => 'молний ${params.zippers.length}',
+          };
     final parts = <String>[
       ?zipperPart,
       if (params.cutouts.isNotEmpty) 'вырезов ${params.cutouts.length}',
@@ -4546,6 +4597,76 @@ class _ParamsPanelState extends State<ParamsPanel> {
     return 'Молния между сегментами: зазор '
         '${formatMm(line.gapEnd - line.gapStart)} ${unitSuffix()} '
         '(полоса молнии), полотно режется на отдельные сегменты.';
+  }
+
+  Future<void> _editDoor(WindowParams params, WindowSpec spec) async {
+    final width = TextEditingController(
+      text: params.doorWidthMm.round().toString(),
+    );
+    final offset = TextEditingController(
+      text: params.doorOffsetMm.round().toString(),
+    );
+    final result = await showDialog<({double width, double offset})>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Дверь из двух молний'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const Key('door-width'),
+              controller: width,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Ширина между молниями, мм',
+                helperText: 'например 800',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const Key('door-offset'),
+              controller: offset,
+              keyboardType: const TextInputType.numberWithOptions(signed: true),
+              decoration: const InputDecoration(
+                labelText: 'Смещение от центра, мм',
+                helperText: 'плюс — вправо, минус — влево',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            key: const Key('door-save'),
+            onPressed: () {
+              final w = double.tryParse(width.text.trim().replaceAll(',', '.'));
+              final o = double.tryParse(
+                offset.text.trim().replaceAll(',', '.'),
+              );
+              if (w == null || o == null) return;
+              Navigator.of(context).pop((width: w, offset: o));
+            },
+            child: const Text('Применить'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || result == null) return;
+    _updateWindow(
+      params.withDoor(
+        filmWidth: spec.filmVisibleWidth,
+        enabled: true,
+        widthMm: result.width,
+        offsetMm: result.offset,
+      ),
+    );
   }
 
   Widget _zipperCard(WindowParams params, WindowSpec spec, int index) {

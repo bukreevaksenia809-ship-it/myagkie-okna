@@ -2482,15 +2482,6 @@ class WindowDrawingPainter extends CustomPainter {
         ..color = _metalDark,
     );
 
-    if (layers.zippers.length > 1) {
-      _label(
-        canvas,
-        'молния ${index + 1}',
-        Offset(length * 0.5, half + 14),
-        small: true,
-        color: _special,
-      );
-    }
     canvas.restore();
   }
 

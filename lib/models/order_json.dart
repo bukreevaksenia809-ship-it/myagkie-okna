@@ -174,6 +174,9 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
   'roundEyeletsEnabled': p.roundEyeletsEnabled,
   'fastenerType': p.fastenerType.name,
   'zippers': [for (final zipper in p.zippers) zipper.toJson()],
+  'doorEnabled': p.doorEnabled,
+  'doorWidthMm': p.doorWidthMm,
+  'doorOffsetMm': p.doorOffsetMm,
   // «Доп. настройка молнии»: деление полотна на сегменты.
   'zipperSegments': p.zipperSegments,
   'zipperTentOverlap': p.zipperTentOverlap,
@@ -332,6 +335,9 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
       fallback.fastenerType,
     ),
     zippers: _zippersFromJson(json),
+    doorEnabled: json['doorEnabled'] == true,
+    doorWidthMm: _double(json['doorWidthMm'], 800).clamp(300, 3000),
+    doorOffsetMm: _double(json['doorOffsetMm'], 0).clamp(-3000, 3000),
     zipperSegments: _bool(json['zipperSegments'], true),
     zipperTentOverlap: _double(
       json['zipperTentOverlap'],

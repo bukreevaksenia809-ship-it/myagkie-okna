@@ -3544,6 +3544,13 @@ class WindowSpec {
     return height * layers.zipperBands.length;
   }
 
+  /// Подпись двери из двух молний.
+  String get doorSummary => params.doorEnabled
+      ? 'Дверь: две молнии, ширина между центрами '
+            '${formatMm(params.doorWidthMm)} ${unitSuffix()}, смещение от центра '
+            '${formatSignedMm(params.doorOffsetMm)} ${unitSuffix()}'
+      : '';
+
   /// Подпись всех молний: «2 шт: 33 % и 66 % ширины».
   String get zippersSummary {
     if (params.zippers.isEmpty) return '—';
@@ -3719,6 +3726,7 @@ class WindowSpec {
         'Подъёмные ремни: $strapCount шт, '
             '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} ${unitSuffix()} '
             '(2 шт до 2 м ширины, далее +1 на метр)',
+      if (params.doorEnabled) doorSummary,
       if (params.zippers.length == 1) 'Молния: $zipperBandSummary',
       if (params.zippers.length > 1) 'Молнии: $zippersSummary',
       if (params.hasZipper &&

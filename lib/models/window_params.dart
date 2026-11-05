@@ -1035,6 +1035,9 @@ class WindowParams {
     this.fastenerType = FastenerType.turnBuckles,
     this.zippers = const [],
     this.zipperSegments = true,
+    this.doorEnabled = false,
+    this.doorWidthMm = 800,
+    this.doorOffsetMm = 0,
     this.zipperTentOverlap = defaultZipperTentOverlapMm,
     this.liftStrapOffsets = const [],
     this.liftStrapOrientation = LiftStrapOrientation.vertical,
@@ -1343,6 +1346,11 @@ class WindowParams {
   // Спецэлементы
   /// Молнии: каждая ставится отдельной кнопкой, все вертикальные.
   final List<ZipperSpec> zippers;
+
+  /// Дверь — две молнии; ширина между центрами и смещение от центра.
+  final bool doorEnabled;
+  final double doorWidthMm;
+  final double doorOffsetMm;
 
   /// Положения подъёмных ремней вручную: центр от левого края полотна, мм.
   ///
@@ -1797,6 +1805,9 @@ class WindowParams {
     FastenerType? fastenerType,
     List<ZipperSpec>? zippers,
     bool? zipperSegments,
+    bool? doorEnabled,
+    double? doorWidthMm,
+    double? doorOffsetMm,
     double? zipperTentOverlap,
     List<double>? liftStrapOffsets,
     LiftStrapOrientation? liftStrapOrientation,
@@ -1872,6 +1883,9 @@ class WindowParams {
       fastenerType: fastenerType ?? this.fastenerType,
       zippers: zippers ?? this.zippers,
       zipperSegments: zipperSegments ?? this.zipperSegments,
+      doorEnabled: doorEnabled ?? this.doorEnabled,
+      doorWidthMm: doorWidthMm ?? this.doorWidthMm,
+      doorOffsetMm: doorOffsetMm ?? this.doorOffsetMm,
       zipperTentOverlap: zipperTentOverlap ?? this.zipperTentOverlap,
       liftStrapOffsets: liftStrapOffsets ?? this.liftStrapOffsets,
       liftStrapOrientation: liftStrapOrientation ?? this.liftStrapOrientation,
@@ -1955,6 +1969,45 @@ class WindowParams {
   ///
   /// Первая — по центру полотна. Вторая — разносим обе по трети ширины,
   /// чтобы полосы спайки не совпали и между ними осталось полотно.
+  /// Дверь из двух молний: ширина между центрами и смещение от центра
+  /// полотна. Позиции пересчитываются от левого края видимой плёнки.
+  WindowParams withDoor({
+    required double filmWidth,
+    required bool enabled,
+    required double widthMm,
+    required double offsetMm,
+  }) {
+    if (!enabled) {
+      return copyWith(
+        doorEnabled: false,
+        zippers: const [],
+        doorWidthMm: widthMm.clamp(300, 3000).toDouble(),
+        doorOffsetMm: offsetMm.clamp(-3000, 3000).toDouble(),
+      );
+    }
+    final safeWidth = widthMm.clamp(300, 3000).toDouble();
+    final safeOffset = offsetMm.clamp(-3000, 3000).toDouble();
+    final film = filmWidth.isFinite && filmWidth > 1 ? filmWidth : bottomWidth;
+    final center = film / 2 + safeOffset;
+    final base = zippers.isEmpty ? const ZipperSpec() : zippers.first;
+    final left = base.copyWith(
+      centered: false,
+      offsetMm: (center - safeWidth / 2).clamp(20.0, film - 20.0).toDouble(),
+      atEdge: false,
+    );
+    final right = base.copyWith(
+      centered: false,
+      offsetMm: (center + safeWidth / 2).clamp(20.0, film - 20.0).toDouble(),
+      atEdge: false,
+    );
+    return copyWith(
+      doorEnabled: true,
+      doorWidthMm: safeWidth,
+      doorOffsetMm: safeOffset,
+      zippers: [left, right],
+    );
+  }
+
   WindowParams addZipper() {
     if (zippers.length >= maxZippers) return this;
     if (zippers.isEmpty) {
@@ -2176,6 +2229,9 @@ class WindowParams {
     fastenerType.name,
     for (final zipper in zippers)
       '${zipper.centered}:${zipper.offsetMm}:${zipper.bandWidth}',
+    doorEnabled,
+    doorWidthMm,
+    doorOffsetMm,
     zipperSegments,
     zipperTentOverlap,
     for (final offset in liftStrapOffsets) offset,
