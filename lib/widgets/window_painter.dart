@@ -738,6 +738,11 @@ class WindowDrawingPainter extends CustomPainter {
         ..color = _ink,
     );
 
+    canvas.save();
+    canvas.clipPath(outerPath);
+    _paintZipper(canvas);
+    canvas.restore();
+    _paintZipperDimensions(canvas);
     _paintEyelets(canvas);
     _paintFasteners(canvas);
     _paintManualFasteners(canvas);
@@ -849,6 +854,27 @@ class WindowDrawingPainter extends CustomPainter {
           small: true,
         );
       }
+      if (inner.length >= 3) {
+        var minX = inner.first.dx;
+        var maxX = inner.first.dx;
+        var minY = inner.first.dy;
+        var maxY = inner.first.dy;
+        for (final point in inner) {
+          minX = math.min(minX, point.dx);
+          maxX = math.max(maxX, point.dx);
+          minY = math.min(minY, point.dy);
+          maxY = math.max(maxY, point.dy);
+        }
+        final innerWidth = maxX - minX;
+        final innerHeight = maxY - minY;
+        _label(
+          canvas,
+          'внутр. ${formatMm(innerWidth)} × ${formatMm(innerHeight)}',
+          layout.toPxPoint(Offset((minX + maxX) / 2, minY + 40)) +
+              const Offset(0, 8),
+          small: true,
+        );
+      }
       if (options.showEdgeLengths && !params.isHouse) {
         final polygon = outer;
         for (var i = 0; i < polygon.length; i++) {
@@ -873,6 +899,21 @@ class WindowDrawingPainter extends CustomPainter {
   }
 
   Color get _edgeColor => Color(params.edgeColor.value);
+
+  Color get _eyeletColor => Color(params.eyeletColor.value);
+
+  Color get _fastenerColor => Color(params.fastenerColor.value);
+
+  Shader _hardwareShader(Rect rect, Color base) => RadialGradient(
+    center: Alignment.topLeft,
+    radius: 0.9,
+    colors: [
+      Color.lerp(base, Colors.white, 0.55)!,
+      base,
+      Color.lerp(base, Colors.black, 0.45)!,
+    ],
+    stops: const [0, 0.55, 1],
+  ).createShader(rect);
 
   Color get _edgeDark => Color.lerp(_edgeColor, const Color(0xFF15181C), 0.55)!;
 
@@ -2806,7 +2847,10 @@ class WindowDrawingPainter extends CustomPainter {
     }
 
     // Само кольцо металла: градиент сохраняется и на мелком масштабе.
-    canvas.drawOval(oval, Paint()..shader = _metalShader(oval));
+    canvas.drawOval(
+      oval,
+      Paint()..shader = _hardwareShader(oval, _eyeletColor),
+    );
     canvas.drawOval(
       oval,
       Paint()
@@ -3228,7 +3272,7 @@ class WindowDrawingPainter extends CustomPainter {
     canvas.drawCircle(
       center,
       radius,
-      Paint()..color = Color.lerp(_edgeColor, Colors.black, 0.12)!,
+      Paint()..color = Color.lerp(_eyeletColor, Colors.black, 0.12)!,
     );
     canvas.drawCircle(center, radius * 0.48, Paint()..color = Colors.white);
     canvas.drawCircle(
@@ -3287,7 +3331,10 @@ class WindowDrawingPainter extends CustomPainter {
       plate,
       Radius.circular(size * 0.22),
     );
-    canvas.drawRRect(plateRRect, Paint()..shader = _metalShader(plate));
+    canvas.drawRRect(
+      plateRRect,
+      Paint()..shader = _hardwareShader(plate, _fastenerColor),
+    );
     canvas.drawRRect(
       plateRRect,
       Paint()
@@ -3444,7 +3491,12 @@ class WindowDrawingPainter extends CustomPainter {
         image,
         Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
         destination,
-        Paint()..filterQuality = FilterQuality.medium,
+        Paint()
+          ..filterQuality = FilterQuality.medium
+          ..colorFilter = ColorFilter.mode(
+            _fastenerColor.withValues(alpha: 0.55),
+            BlendMode.modulate,
+          ),
       );
       canvas.restore();
       return;

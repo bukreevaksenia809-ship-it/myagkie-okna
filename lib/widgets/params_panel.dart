@@ -1739,6 +1739,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ],
         ),
         const SizedBox(height: 10),
+        _hardwareColorsSection(params),
+        const SizedBox(height: 10),
         _numberField(ParamField.eyeletCornerOffset),
         const SizedBox(height: 10),
         _noEyeletsSection(params),
@@ -4022,6 +4024,70 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// или крепление полотна к стене/раме другим способом. Углы выключенной
   /// стороны тоже не ставятся — угол принадлежит стороне, которая идёт первой
   /// в обходе (см. WindowLayers.eyelets).
+  Widget _hardwareColorsSection(WindowParams params) {
+    Widget row(
+      String label,
+      EdgeColor selected,
+      ValueChanged<EdgeColor> onChanged,
+    ) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11.5, color: Color(0xFF5B6B80)),
+          ),
+          const SizedBox(height: 5),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final color in EdgeColor.values)
+                ChoiceChip(
+                  key: Key('color-$label-${color.name}'),
+                  avatar: CircleAvatar(
+                    radius: 6,
+                    backgroundColor: Color(color.value),
+                  ),
+                  label: Text(
+                    color.label,
+                    style: const TextStyle(fontSize: 10.5),
+                  ),
+                  selected: selected == color,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => onChanged(color),
+                ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    return _panelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Цвет фурнитуры',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          row(
+            'Люверсы',
+            params.eyeletColor,
+            (color) => _updateWindow(params.copyWith(eyeletColor: color)),
+          ),
+          const SizedBox(height: 10),
+          row(
+            'Скобы и замки',
+            params.fastenerColor,
+            (color) => _updateWindow(params.copyWith(fastenerColor: color)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _noEyeletsSection(WindowParams params) {
     return _panelCard(
       child: Column(

@@ -1048,6 +1048,8 @@ class WindowParams {
     this.rollRight = 100,
     this.edgeMaterial = EdgeMaterial.pvcTent630,
     this.edgeColor = EdgeColor.brown,
+    this.eyeletColor = EdgeColor.brown,
+    this.fastenerColor = EdgeColor.grey,
     this.weldOverlapMm = defaultWeldOverlapMm,
     this.eyeletType = EyeletType.round10,
     this.material = FilmMaterial.clearPvc,
@@ -1324,6 +1326,12 @@ class WindowParams {
 
   final EdgeMaterial edgeMaterial;
   final EdgeColor edgeColor;
+
+  /// Цвет люверсов — независимо от цвета канта.
+  final EdgeColor eyeletColor;
+
+  /// Цвет пластиковых скоб и французских замков.
+  final EdgeColor fastenerColor;
 
   /// Запайка (напайка) плёнки под окантовку, мм — вводится руками, 5…60 мм.
   /// От неё зависит размер заготовки плёнки: каждый миллиметр запайки
@@ -1840,6 +1848,8 @@ class WindowParams {
     double? rollRight,
     EdgeMaterial? edgeMaterial,
     EdgeColor? edgeColor,
+    EdgeColor? eyeletColor,
+    EdgeColor? fastenerColor,
     double? weldOverlapMm,
     FilmMaterial? material,
     double? hemBottomMm,
@@ -1921,6 +1931,8 @@ class WindowParams {
       rollRight: rollRight ?? this.rollRight,
       edgeMaterial: edgeMaterial ?? this.edgeMaterial,
       edgeColor: edgeColor ?? this.edgeColor,
+      eyeletColor: eyeletColor ?? this.eyeletColor,
+      fastenerColor: fastenerColor ?? this.fastenerColor,
       weldOverlapMm: weldOverlapMm ?? this.weldOverlapMm,
       material: material ?? this.material,
       hemBottomMm: hemBottomMm ?? this.hemBottomMm,
@@ -2301,6 +2313,8 @@ class WindowParams {
     rollRight,
     edgeMaterial.name,
     edgeColor.name,
+    eyeletColor.name,
+    fastenerColor.name,
     weldOverlapMm,
     eyeletType.name,
     eyeletStep,
