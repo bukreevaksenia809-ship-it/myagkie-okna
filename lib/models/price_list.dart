@@ -18,6 +18,7 @@ enum PriceField {
   edge80,
   edge100,
   edge120,
+  edge150,
   edge200,
   edge240;
 
@@ -30,6 +31,7 @@ enum PriceField {
     PriceField.edge80 => 'Окантовка, рулон 80 мм (готово 40)',
     PriceField.edge100 => 'Окантовка, рулон 100 мм (готово 50)',
     PriceField.edge120 => 'Окантовка, рулон 120 мм (готово 60)',
+    PriceField.edge150 => 'Окантовка, рулон 150 мм (готово 75)',
     PriceField.edge200 => 'Окантовка, рулон 200 мм (готово 100)',
     PriceField.edge240 => 'Окантовка, рулон 240 мм (готово 120)',
   };
@@ -43,6 +45,7 @@ enum PriceField {
     PriceField.edge80 => 'Тент 80',
     PriceField.edge100 => 'Тент 100',
     PriceField.edge120 => 'Тент 120',
+    PriceField.edge150 => 'Тент 150',
     PriceField.edge200 => 'Тент 200',
     PriceField.edge240 => 'Тент 240',
   };
@@ -83,6 +86,7 @@ class PriceItemKeys {
   static const String edge80 = 'edge80';
   static const String edge100 = 'edge100';
   static const String edge120 = 'edge120';
+  static const String edge150 = 'edge150';
   static const String edge200 = 'edge200';
   static const String edge240 = 'edge240';
 
@@ -126,6 +130,7 @@ class PriceItemKeys {
     edge80,
     edge100,
     edge120,
+    edge150,
     edge200,
     edge240,
     eyeletRound,
@@ -183,6 +188,9 @@ const double defaultEdge100PerM = 140;
 /// дала бы 158 ₽/м, берём 165 ₽/м — полоса 60 мм нестандартная, её чаще
 /// режут из более широкого рулона, поэтому закладываем небольшой отход.
 const double defaultEdge120PerM = 165;
+
+/// Окантовка из рулона 150 мм (готовая полоса 75 мм), ₽/м.
+const double defaultEdge150PerM = 195;
 
 /// Окантовка из рулона 200 мм (готовая 100 мм), ₽/м. Ориентир 200–260 ₽/м.
 const double defaultEdge200PerM = 230;
@@ -344,6 +352,7 @@ class PriceList {
     this.edge80PerM = defaultEdge80PerM,
     this.edge100PerM = defaultEdge100PerM,
     this.edge120PerM = defaultEdge120PerM,
+    this.edge150PerM = defaultEdge150PerM,
     this.edge200PerM = defaultEdge200PerM,
     this.edge240PerM = defaultEdge240PerM,
     this.eyeletPrice = defaultEyeletPrice,
@@ -394,6 +403,7 @@ class PriceList {
   final double edge80PerM;
   final double edge100PerM;
   final double edge120PerM;
+  final double edge150PerM;
   final double edge200PerM;
   final double edge240PerM;
 
@@ -517,6 +527,7 @@ class PriceList {
           EdgeRoll.roll80 => PriceItemKeys.edge80,
           EdgeRoll.roll100 => PriceItemKeys.edge100,
           EdgeRoll.roll120 => PriceItemKeys.edge120,
+          EdgeRoll.roll150 => PriceItemKeys.edge150,
           EdgeRoll.roll200 => PriceItemKeys.edge200,
           EdgeRoll.roll240 => PriceItemKeys.edge240,
         };
@@ -538,6 +549,7 @@ class PriceList {
     EdgeRoll.roll80 => edge80PerM,
     EdgeRoll.roll100 => edge100PerM,
     EdgeRoll.roll120 => edge120PerM,
+    EdgeRoll.roll150 => edge150PerM,
     EdgeRoll.roll200 => edge200PerM,
     EdgeRoll.roll240 => edge240PerM,
   };
@@ -629,6 +641,7 @@ class PriceList {
     PriceField.edge80 => edge80PerM,
     PriceField.edge100 => edge100PerM,
     PriceField.edge120 => edge120PerM,
+    PriceField.edge150 => edge150PerM,
     PriceField.edge200 => edge200PerM,
     PriceField.edge240 => edge240PerM,
     _ => 0,
@@ -690,6 +703,7 @@ class PriceList {
     double? edge80PerM,
     double? edge100PerM,
     double? edge120PerM,
+    double? edge150PerM,
     double? edge200PerM,
     double? edge240PerM,
     double? eyeletPrice,
@@ -732,6 +746,7 @@ class PriceList {
       edge80PerM: edge80PerM ?? this.edge80PerM,
       edge100PerM: edge100PerM ?? this.edge100PerM,
       edge120PerM: edge120PerM ?? this.edge120PerM,
+      edge150PerM: edge150PerM ?? this.edge150PerM,
       edge200PerM: edge200PerM ?? this.edge200PerM,
       edge240PerM: edge240PerM ?? this.edge240PerM,
       eyeletPrice: eyeletPrice ?? this.eyeletPrice,
@@ -775,6 +790,7 @@ class PriceList {
     'edge80PerM': edge80PerM,
     'edge100PerM': edge100PerM,
     'edge120PerM': edge120PerM,
+    'edge150PerM': edge150PerM,
     'edge200PerM': edge200PerM,
     'edge240PerM': edge240PerM,
     'eyeletPrice': eyeletPrice,
@@ -832,6 +848,7 @@ class PriceList {
       edge80PerM: _price(json['edge80PerM'], fallback.edge80PerM),
       edge100PerM: _price(json['edge100PerM'], fallback.edge100PerM),
       edge120PerM: _price(json['edge120PerM'], fallback.edge120PerM),
+      edge150PerM: _price(json['edge150PerM'], fallback.edge150PerM),
       edge200PerM: _price(json['edge200PerM'], fallback.edge200PerM),
       edge240PerM: _price(json['edge240PerM'], fallback.edge240PerM),
       eyeletPrice: _price(json['eyeletPrice'], fallback.eyeletPrice),

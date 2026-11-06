@@ -23,6 +23,7 @@ const List<CostPosition> costPositions = [
   CostPosition(PriceItemKeys.edge80, 'Окантовка 80 мм', 'м'),
   CostPosition(PriceItemKeys.edge100, 'Окантовка 100 мм', 'м'),
   CostPosition(PriceItemKeys.edge120, 'Окантовка 120 мм', 'м'),
+  CostPosition(PriceItemKeys.edge150, 'Окантовка 150 мм', 'м'),
   CostPosition(PriceItemKeys.edge200, 'Окантовка 200 мм', 'м'),
   CostPosition(PriceItemKeys.edge240, 'Окантовка 240 мм', 'м'),
   CostPosition(PriceItemKeys.eyeletRound, 'Люверс круглый', 'шт'),
