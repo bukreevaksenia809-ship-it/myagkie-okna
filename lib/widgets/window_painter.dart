@@ -749,129 +749,16 @@ class WindowDrawingPainter extends CustomPainter {
     _paintCrossbars(canvas);
 
     if (options.showDimensions) {
-      final bounds = layout.geometry.productBounds;
-      final topLeft = Offset(bounds.left, bounds.bottom);
-      final bottomLeft = Offset(bounds.left, bounds.top);
-      final bottomRight = Offset(bounds.right, bounds.top);
-      _dimension(
-        canvas,
-        layout.toPxPoint(bottomLeft),
-        layout.toPxPoint(bottomRight),
-        const Offset(0, 42),
-        formatMm(params.bottomWidth),
-      );
-      _dimension(
-        canvas,
-        layout.toPxPoint(bottomLeft),
-        layout.toPxPoint(topLeft),
-        const Offset(-48, 0),
-        formatMm(layout.geometry.overallHeight),
-      );
-      if (params.isHouse) {
-        final topOffset = (params.bottomWidth - params.topWidth) / 2;
-        final leftBase = math.sqrt(
-          math.max(
-            params.leftHeight * params.leftHeight - topOffset * topOffset,
-            1,
-          ),
-        );
-        final rightBase = math.sqrt(
-          math.max(
-            params.rightHeight * params.rightHeight -
-                (params.bottomWidth - topOffset - params.topWidth) *
-                    (params.bottomWidth - topOffset - params.topWidth),
-            1,
-          ),
-        );
-        final half = params.topWidth / 2;
-        final roofSide =
-            (params.roofLeftHeightMm + params.roofRightHeightMm) / 2;
-        final roofRise = math.sqrt(
-          math.max(roofSide * roofSide - half * half, 1),
-        );
-        final apexX = topOffset + half + params.apexOffsetMm;
-        final apexY = math.max(leftBase, rightBase) + roofRise;
-        final baseTopLeft = Offset(topOffset, leftBase);
-        final baseTopRight = Offset(topOffset + params.topWidth, rightBase);
-        final tl = layout.toPxPoint(baseTopLeft);
-        final tr = layout.toPxPoint(baseTopRight);
-        if (params.topWidth > 0) {
-          _dimension(
-            canvas,
-            tl,
-            tr,
-            const Offset(0, -26),
-            'верх ${formatMm(params.topWidth)}',
-          );
-        }
-        _label(
-          canvas,
-          'бок L ${formatMm(params.leftHeight)}',
-          layout.toPxPoint(Offset(params.bottomWidth / 2, leftBase / 2)) +
-              const Offset(-50, 0),
-          small: true,
-        );
-        _label(
-          canvas,
-          'бок R ${formatMm(params.rightHeight)}',
-          layout.toPxPoint(Offset(params.bottomWidth / 2, rightBase / 2)) +
-              const Offset(50, 0),
-          small: true,
-        );
-        _label(
-          canvas,
-          'скат L ${formatMm(params.roofLeftHeightMm)}',
-          layout.toPxPoint(
-                Offset((topOffset + apexX) / 2, (leftBase + apexY) / 2),
-              ) +
-              const Offset(-25, -8),
-          small: true,
-        );
-        _label(
-          canvas,
-          'скат R ${formatMm(params.roofRightHeightMm)}',
-          layout.toPxPoint(
-                Offset(
-                  (topOffset + params.topWidth + apexX) / 2,
-                  (rightBase + apexY) / 2,
-                ),
-              ) +
-              const Offset(25, -8),
-          small: true,
-        );
-      }
+      _paintInnerShapeDimensions(canvas, inner);
       if (params.apexOffsetMm.abs() > 0.5) {
+        final bounds = layout.geometry.productBounds;
         _label(
           canvas,
           'вершина ${formatSignedMm(params.apexOffsetMm)}',
           layout.toPxPoint(
-                Offset(
-                  bounds.center.dx + params.apexOffsetMm,
-                  bounds.top + layout.geometry.overallHeight,
-                ),
+                Offset(bounds.center.dx + params.apexOffsetMm, bounds.bottom),
               ) +
               const Offset(-18, -18),
-          small: true,
-        );
-      }
-      if (inner.length >= 3) {
-        var minX = inner.first.dx;
-        var maxX = inner.first.dx;
-        var minY = inner.first.dy;
-        var maxY = inner.first.dy;
-        for (final point in inner) {
-          minX = math.min(minX, point.dx);
-          maxX = math.max(maxX, point.dx);
-          minY = math.min(minY, point.dy);
-          maxY = math.max(maxY, point.dy);
-        }
-        final innerWidth = maxX - minX;
-        final innerHeight = maxY - minY;
-        _label(
-          canvas,
-          'внутр. ${formatMm(innerWidth)} × ${formatMm(innerHeight)}',
-          layout.toPxPoint(Offset((minX + maxX) / 2, minY + 40)) +
-              const Offset(0, 8),
           small: true,
         );
       }
@@ -895,6 +782,74 @@ class WindowDrawingPainter extends CustomPainter {
           );
         }
       }
+    }
+  }
+
+  /// Внутренние размеры треугольника и домика: стрелки по каждой стороне
+  /// внутреннего контура, верхняя ширина дома и центральная высота.
+  void _paintInnerShapeDimensions(Canvas canvas, List<Offset> inner) {
+    if (inner.length < 3) return;
+    final points = [for (final point in inner) layout.toPxPoint(point)];
+    final centroid =
+        points.fold(Offset.zero, (a, b) => a + b) / points.length.toDouble();
+    void edge(int i, String label) {
+      final a = points[i];
+      final b = points[(i + 1) % points.length];
+      final direction = b - a;
+      final length = direction.distance;
+      if (length < 60) return;
+      final unit = direction / length;
+      var normal = Offset(-unit.dy, unit.dx);
+      final middle = Offset.lerp(a, b, 0.5)!;
+      if ((middle + normal - centroid).distance <
+          (middle - normal - centroid).distance) {
+        normal = -normal;
+      }
+      _dimension(canvas, a, b, normal * 24, '$label ${formatMm(length)}');
+    }
+
+    final labels = params.isHouse
+        ? const ['низ', 'бок R', 'скат R', 'скат L', 'бок L']
+        : const ['низ', 'скат R', 'скат L'];
+    for (var i = 0; i < points.length; i++) {
+      edge(i, i < labels.length ? labels[i] : 'в');
+    }
+    if (params.isHouse && points.length >= 5) {
+      // Верхняя кромка четырёхугольника — не ребро пятиугольника,
+      // поэтому её показываем отдельной стрелкой между верхними углами.
+      final left = points[4];
+      final right = points[2];
+      final mid = Offset((left.dx + right.dx) / 2, (left.dy + right.dy) / 2);
+      _dimension(
+        canvas,
+        left,
+        right,
+        Offset(0, mid.dy > centroid.dy ? -28 : 28),
+        'верх ${formatMm(params.topWidth)}',
+      );
+      final bottomMid = Offset(
+        (points[0].dx + points[1].dx) / 2,
+        (points[0].dy + points[1].dy) / 2,
+      );
+      _dimension(
+        canvas,
+        bottomMid,
+        points[3],
+        const Offset(-34, 0),
+        'центр ${formatMm(inner[3].dy - inner[0].dy)}',
+      );
+    } else if (points.length == 3) {
+      final bottomMid = Offset(
+        (points[0].dx + points[1].dx) / 2,
+        (points[0].dy + points[1].dy) / 2,
+      );
+      _dimension(
+        canvas,
+        bottomMid,
+        points[2],
+        const Offset(-34, 0),
+        'центр ${formatMm(inner[2].dy - inner[0].dy)}',
+      );
     }
   }
 
