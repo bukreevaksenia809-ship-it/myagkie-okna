@@ -1819,6 +1819,21 @@ class _SidePanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
+          const _SideTitle('История вычислений'),
+          const SizedBox(height: 6),
+          for (final line in _calculationHistory())
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                line,
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  height: 1.25,
+                  color: Color(0xFF4A5563),
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
           const _SideTitle('Примечания'),
           const SizedBox(height: 6),
           Expanded(
@@ -1888,6 +1903,23 @@ class _SidePanel extends StatelessWidget {
   }
 
   /// Для одного окна — полные примечания, для заказа — сводные.
+  List<String> _calculationHistory() {
+    final spec = WindowSpec.of(project.selected);
+    final geometry = spec.geometry;
+    final edge = spec.edgeConsumption.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    return [
+      'Площадь: ${formatMeters(spec.productAreaM2)} м²',
+      'Периметр: ${formatMeters(geometry.perimeter / 1000)} м',
+      if (edge.isNotEmpty)
+        'Кант: ${edge.map((e) => '${formatMeters(e.value / 1000)} м').join(' + ')}',
+      'Люверсы: ${spec.standaloneEyeletCount} шт, шаг '
+          '${formatMm(spec.params.eyeletStep)} ${unitSuffix()}',
+      'Заготовка: ${formatMm(spec.filmCutWidthWithAllowance)} × '
+          '${formatMm(spec.filmCutHeightWithAllowance)} ${unitSuffix()}',
+    ];
+  }
+
   List<String> _notes() {
     if (!project.isMultiWindow) {
       return WindowSpec.of(project.windows.first).notes;

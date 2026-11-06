@@ -103,6 +103,16 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureCostCatalog());
   }
 
+  Future<void> _openCostCatalog() async {
+    final catalog = await CostCatalog.instance.load();
+    if (!mounted) return;
+    final result = await showCostCatalogDialog(context, catalog);
+    if (!mounted || result == null) return;
+    await result.save();
+    if (!mounted) return;
+    setState(() {});
+  }
+
   Future<void> _ensureCostCatalog() async {
     final catalog = await CostCatalog.instance.load();
     if (!mounted || catalog.configured) return;
@@ -1028,6 +1038,12 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
           onPressed: _busy ? null : _showNeedTab,
           icon: const Icon(Icons.calculate_outlined, size: 18),
           label: const Text('Потребность'),
+        ),
+        OutlinedButton.icon(
+          key: const Key('warehouse-cost-catalog'),
+          onPressed: _busy ? null : _openCostCatalog,
+          icon: const Icon(Icons.price_check_outlined, size: 18),
+          label: const Text('Себестоимость'),
         ),
         OutlinedButton.icon(
           key: const Key('warehouse-sync-price'),

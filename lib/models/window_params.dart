@@ -1888,6 +1888,11 @@ class WindowParams {
     bool? pvcHeightAllowanceEnabled,
     Map<String, ZipperLabelOffset>? zipperLabelOffsets,
   }) {
+    // Подъёмное окно по умолчанию без нижнего ряда: низ поднимается, а
+    // крепление остаётся по бокам. Тумблер в панели можно снять вручную.
+    final switchingToLifting =
+        windowType == WindowType.lifting &&
+        this.windowType != WindowType.lifting;
     return WindowParams(
       projectName: projectName ?? this.projectName,
       customer: customer ?? this.customer,
@@ -1960,7 +1965,8 @@ class WindowParams {
       manualEyeletSides: manualEyeletSides ?? this.manualEyeletSides,
       composite: composite ?? this.composite,
       noEyeletsTop: noEyeletsTop ?? this.noEyeletsTop,
-      noEyeletsBottom: noEyeletsBottom ?? this.noEyeletsBottom,
+      noEyeletsBottom:
+          noEyeletsBottom ?? (switchingToLifting ? true : this.noEyeletsBottom),
       pocket: pocket ?? this.pocket,
       pocketTop: pocketTop ?? this.pocketTop,
       pocketWidth: pocketWidth ?? this.pocketWidth,
