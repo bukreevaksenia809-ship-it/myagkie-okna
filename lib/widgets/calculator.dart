@@ -3,6 +3,18 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+/// Запись истории обычного калькулятора: «2 + 2» → «4».
+class CalculatorHistoryEntry {
+  const CalculatorHistoryEntry(this.expression, this.result);
+
+  final String expression;
+  final String result;
+}
+
+/// История живёт в памяти приложения и не теряется при закрытии окна
+/// калькулятора. Ограничение — 50 последних вычислений.
+final List<CalculatorHistoryEntry> calculatorHistory = [];
+
 /// Калькулятор в стиле Xiaomi/Android для вкладки «Чертёж».
 ///
 /// Живой результат: выражение пересчитывается на каждом нажатии, без «=».
@@ -188,9 +200,27 @@ class CalculatorEngine {
 
   /// Фиксирует живой результат («=» / Enter): результат становится
   /// выражением, чтобы с ним можно было продолжить считать.
+  /// Загрузить выражение из истории, не закрывая калькулятор.
+  void loadExpression(String expression) {
+    _expression = expression;
+    _freshResult = false;
+    _recalculate();
+  }
+
   void commit() {
     if (_failure != null || _value == null || _expression.isEmpty) {
       return;
+    }
+    final shownExpression = displayExpression;
+    final shownResult = result;
+    if (shownExpression.isNotEmpty) {
+      calculatorHistory.insert(
+        0,
+        CalculatorHistoryEntry(shownExpression, shownResult),
+      );
+      if (calculatorHistory.length > 50) {
+        calculatorHistory.removeRange(50, calculatorHistory.length);
+      }
     }
     _expression = _formatNumber(_value!);
     _freshResult = true;
@@ -726,6 +756,7 @@ class CalculatorDialog extends StatefulWidget {
 class _CalculatorDialogState extends State<CalculatorDialog> {
   final CalculatorEngine _engine = CalculatorEngine();
   final FocusNode _focusNode = FocusNode(debugLabel: 'calculator');
+  bool _showHistory = false;
 
   @override
   void initState() {
@@ -776,6 +807,7 @@ class _CalculatorDialogState extends State<CalculatorDialog> {
               children: [
                 _buildHeader(context),
                 Expanded(flex: 4, child: _buildDisplay(context)),
+                if (_showHistory) _buildHistory(context),
                 Expanded(flex: 6, child: _buildKeypad(context)),
               ],
             ),
@@ -809,6 +841,15 @@ class _CalculatorDialogState extends State<CalculatorDialog> {
               ),
             ),
             const Spacer(),
+            ExcludeFocus(
+              child: IconButton(
+                key: const Key('calculator-history'),
+                tooltip: _showHistory ? 'Скрыть историю' : 'История вычислений',
+                onPressed: () => setState(() => _showHistory = !_showHistory),
+                color: _showHistory ? scheme.primary : scheme.onSurfaceVariant,
+                icon: const Icon(Icons.history),
+              ),
+            ),
             ExcludeFocus(
               child: IconButton(
                 key: const Key('calculator-backspace'),
@@ -882,6 +923,89 @@ class _CalculatorDialogState extends State<CalculatorDialog> {
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHistory(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'История вычислений',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+              TextButton(
+                key: const Key('calculator-history-clear'),
+                onPressed: calculatorHistory.isEmpty
+                    ? null
+                    : () => setState(calculatorHistory.clear),
+                child: const Text('Очистить', style: TextStyle(fontSize: 10.5)),
+              ),
+            ],
+          ),
+          SizedBox(
+            height: 82,
+            child: calculatorHistory.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Пока пусто. Нажми «=», чтобы сохранить расчёт.',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: Color(0xFF7A8798),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: calculatorHistory.length,
+                    itemBuilder: (context, index) {
+                      final entry = calculatorHistory[index];
+                      return InkWell(
+                        key: Key('calculator-history-$index'),
+                        onTap: () => setState(
+                          () => _engine.loadExpression(entry.expression),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  entry.expression,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '= ${entry.result}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: scheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
