@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function adminKey() { return 'okna-b0ZHSRJIz3XqCnQtsbL0FXBxHu4j'; }
+    function isAdmin() {
+      return request.resource.data.adminKey == adminKey();
+    }
+    function wasAdmin() {
+      return resource.data.adminKey == adminKey();
+    }
+
+    match /installations/{installId} {
+      allow create, update: if request.resource.data.key == adminKey();
+      allow read: if resource.data.key == adminKey();
+      match /events/{eventId} {
+        allow create: if request.resource.data.key == adminKey();
+        allow read: if resource.data.key == adminKey();
+      }
+      match /incoming/{orderId} {
+        allow create: if isAdmin()
+          && request.resource.data.orderId == orderId
+          && request.resource.data.status == 'new';
+        allow get, list: if wasAdmin();
+        allow update: if isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['status', 'importedAt']);
+        allow delete: if wasAdmin();
+      }
+
+      match /commands/{commandId} {
+        allow read: if wasAdmin();
+        allow create: if isAdmin();
+        allow update: if isAdmin();
+        allow delete: if wasAdmin();
+      }
+    }
+
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Коды связи с замерщиком.
+    match /pairings/{code} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if isAdmin();
+      allow delete: if wasAdmin();
+
+      match /devices/{installId} {
+        allow get, list: if wasAdmin();
+        allow create, update: if isAdmin();
+        allow delete: if wasAdmin();
+      }
+    }
+
+    // Ключи активации.
+    match /licenses/{licenseId} {
+      // Клиент читает ключ по точному id, список — только админка.
+      allow get: if true;
+      allow list: if wasAdmin();
+      allow create: if isAdmin();
+      allow delete: if wasAdmin();
+      // Клиент увеличивает счётчик активаций на 1, админка меняет всё.
+      allow update: if isAdmin() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activationsCount']) &&
+        request.resource.data.activationsCount == resource.data.activationsCount + 1
+      );
+
+      match /activations/{activationId} {
+        allow get: if true;
+        allow list: if wasAdmin();
+        allow create: if isAdmin();
+        allow delete: if wasAdmin();
+        allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeen']);
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

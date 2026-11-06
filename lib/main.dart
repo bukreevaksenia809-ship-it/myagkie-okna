@@ -1,0 +1,2647 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'config/app_mode.dart';
+import 'config/app_section.dart';
+import 'models/order_project.dart';
+import 'models/order_record.dart';
+import 'models/window_geometry.dart';
+import 'models/window_params.dart';
+import 'services/order_storage.dart';
+import 'services/estimate.dart';
+import 'data/order_repository.dart';
+import 'services/session_store.dart';
+import 'services/orders_backup.dart';
+import 'services/storage_paths.dart';
+import 'services/app_bootstrap.dart';
+import 'services/database_backup.dart';
+import 'services/client_report_pdf.dart';
+import 'widgets/client_report_dialog.dart';
+import 'services/company_branding.dart';
+import 'theme/app_theme.dart';
+import 'services/file_agent.dart';
+import 'services/license.dart';
+import 'services/pairing.dart';
+import 'services/telemetry.dart';
+import 'services/watermark.dart';
+import 'widgets/license_dialog.dart';
+import 'widgets/pairing_dialog.dart';
+import 'widgets/watermark_dialog.dart';
+import 'widgets/signature_center_dialog.dart';
+import 'widgets/quick_measure_dialog.dart';
+import 'widgets/calculation_history_dialog.dart';
+import 'services/label_settings.dart';
+import 'services/tech_checks.dart';
+import 'services/pdf_export.dart';
+import 'services/roll_plan.dart';
+import 'widgets/calculator.dart';
+import 'widgets/company_dialog.dart';
+import 'widgets/costs_sheet.dart';
+import 'widgets/docs/docs_tab.dart';
+import 'widgets/cut_sheet.dart';
+import 'widgets/estimate_sheet.dart';
+import 'widgets/drawing_sheet.dart';
+import 'widgets/orders_panel.dart';
+import 'widgets/settings_screen.dart';
+import 'widgets/design/app_kit.dart';
+import 'widgets/app_navigation.dart';
+import 'widgets/order_planner_dialog.dart';
+import 'widgets/orders/orders_screen.dart';
+import 'widgets/orders/order_details_dialog.dart';
+import 'widgets/finance_screen.dart';
+import 'widgets/warehouse_screen.dart';
+import 'widgets/params_panel.dart';
+import 'widgets/print_dialog.dart';
+import 'widgets/roll_sheet.dart';
+import 'widgets/tech_card_sheet.dart';
+
+/// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
+const String kAppVersion = '2.7.0';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Единицы показа читаем до первой сборки: если заказчик выбрал см,
+  // приложение не мигнёт миллиметрами.
+  await DisplayUnits.load();
+  // Размеры подписей читаем там же: листы должны открыться с выбранными
+  // кеглями, а не мигнуть стандартными.
+  await LabelSettings.load();
+  await WatermarkSettings.load();
+  await StoragePaths.init();
+  await AppBootstrap.initialize();
+
+  // Ошибки построения/отрисовки: раньше они превращались в серый экран без
+  // следов. Теперь показываем понятную плашку и отправляем текст в телеметрию.
+  if (!kStoreBuild) {
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      Telemetry.event('error', {
+        'message': details.exceptionAsString(),
+        'stack': details.stack?.toString() ?? '',
+      });
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      Telemetry.event('error', {
+        'message': '$error',
+        'stack': stack.toString(),
+      });
+      return false;
+    };
+  }
+  ErrorWidget.builder = (details) => Material(
+    color: const Color(0xFFF1F4F8),
+    child: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          'Ошибка отрисовки. Обновите страницу или измените размеры.\n\n'
+          '${details.exceptionAsString()}',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Color(0xFF8A1F1F), fontSize: 13),
+        ),
+      ),
+    ),
+  );
+
+  runApp(const SoftWindowApp());
+}
+
+class SoftWindowApp extends StatelessWidget {
+  const SoftWindowApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Мягкие окна Excl — Копия 2',
+      debugShowCheckedModeBanner: false,
+      theme: buildAppTheme(),
+      locale: const Locale('ru'),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('ru'), Locale('en')],
+      home: const BuilderScreen(),
+    );
+  }
+}
+
+/// Что показано на листе.
+enum SheetTab { drawing, cut, roll, costs, docs, estimate, techCard }
+
+/// «1 лист», «2 листа», «5 листов» — для имени задания печати.
+String _sheetsWord(int count) {
+  final mod10 = count % 10;
+  final mod100 = count % 100;
+  if (mod10 == 1 && mod100 != 11) return 'лист';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'листа';
+  return 'листов';
+}
+
+/// Заказ в верхнем списке: имя и проект с окнами.
+class _OrderDraft {
+  _OrderDraft({required this.name, required this.project, this.orderId});
+
+  final String name;
+  final OrderProject project;
+
+  /// Связь с записью на доске (SQLite). У нового черновика — null.
+  final String? orderId;
+
+  _OrderDraft copyWith({
+    String? name,
+    OrderProject? project,
+    String? orderId,
+  }) => _OrderDraft(
+    name: name ?? this.name,
+    project: project ?? this.project,
+    orderId: orderId ?? this.orderId,
+  );
+}
+
+class BuilderScreen extends StatefulWidget {
+  const BuilderScreen({super.key});
+
+  @override
+  State<BuilderScreen> createState() => _BuilderScreenState();
+}
+
+class _BuilderScreenState extends State<BuilderScreen>
+    with WidgetsBindingObserver {
+  /// Заказы сверху: у каждого своё имя и свои окна. Активный — [_orderIndex].
+  List<_OrderDraft> _drafts = [
+    _OrderDraft(name: 'Заказ 1', project: const OrderProject()),
+  ];
+  int _orderIndex = 0;
+
+  /// Проект активного заказа.
+  OrderProject get _project => _drafts[_orderIndex].project;
+
+  PriceList _prices = const PriceList.defaults();
+
+  /// Второй прайс — дилерский. Начинается с клиентских цен, дальше его
+  /// можно менять отдельно; смета дилера считается по нему.
+  PriceList _dealerPrices = const PriceList.defaults();
+
+  /// Какая смета открыта: клиентская или дилерская.
+  bool _dealerEstimate = false;
+
+  LicenseState? _license;
+  Timer? _licenseWatch;
+  Timer? _updateWatch;
+  Timer? _sessionSaveTimer;
+  AppUpdate? _pendingUpdate;
+  bool _updateDialogOpen = false;
+  final Set<String> _promptedUpdateVersions = {};
+  bool _licenseDialogOpen = false;
+
+  /// Горизонтальная прокрутка панели листов: стрелки слева и справа.
+  final ScrollController _toolbarScroll = ScrollController();
+  SheetTab _tab = SheetTab.drawing;
+  AppSection _section = AppSection.builder;
+
+  /// Раскладка: ширину боковых панелей можно менять, а сами панели —
+  /// сворачивать. Значения переживают перезапуск.
+  double _railWidth = 236;
+  bool _railCollapsed = false;
+  double _panelWidth = 420;
+  bool _panelCollapsed = false;
+  Timer? _layoutSaveTimer;
+  List<SavedOrder> _orders = const [];
+  bool _ordersBusy = false;
+  final GlobalKey _sheetKey = GlobalKey();
+  final GlobalKey _viewportKey = GlobalKey();
+  final TransformationController _zoom = TransformationController();
+  double _zoomLevel = 1;
+  bool _exporting = false;
+
+  /// История изменений проекта для Ctrl+Z.
+  final List<OrderProject> _undoStack = [];
+
+  /// Прогресс подготовки печати: пока не null, поверх экрана видна завеса.
+  PrintProgress? _printProgress;
+
+  @override
+  void initState() {
+    super.initState();
+    _tab = _tabFromUrl();
+    CompanyBranding.load();
+    CompanyBranding.current.addListener(_onBrandingChanged);
+    _zoom.addListener(_onZoomChanged);
+    DisplayUnits.current.addListener(_onUnitsChanged);
+    LabelSettings.current.addListener(_onLabelSettingsChanged);
+    WidgetsBinding.instance.addObserver(this);
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    _restoreSession();
+    _loadLayoutPrefs();
+    _refreshOrders(showBusy: false);
+    if (!kStoreBuild) {
+      _initTelemetry();
+      _initLicense();
+    } else {
+      _license = const LicenseState(true, 'магазинная сборка');
+      _ensurePairingCode();
+    }
+    if (!kStoreBuild && !LicenseService.isTest) {
+      // Не чаще раза в 30 минут: каждый тик — чтение Firestore. Частый
+      // опрос быстро выедал бесплатную суточную квоту проекта, и активация
+      // начинала отвечать «нет связи» (HTTP 429).
+      _licenseWatch = Timer.periodic(const Duration(minutes: 30), (_) {
+        _checkLicenseLive();
+      });
+    }
+    if (!kStoreBuild) {
+      _updateWatch = Timer.periodic(
+        const Duration(hours: 1),
+        (_) => _checkUpdate(show: false),
+      );
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Вернулись в окно — сразу проверяем ключ, не ждём тика таймера.
+    if (state == AppLifecycleState.resumed) _checkLicenseLive();
+  }
+
+  /// Мгновенная блокировка: админ выключил ключ — клиент узнаёт за секунды.
+  Future<void> _checkLicenseLive() async {
+    if (_licenseDialogOpen || _license?.active != true) return;
+    final state = await LicenseService.quickCheck();
+    if (!mounted || state.active) return;
+    setState(() => _license = state);
+    _licenseDialogOpen = true;
+    final result = await showLicenseDialog(
+      context,
+      blocking: true,
+      initial: state,
+    );
+    _licenseDialogOpen = false;
+    if (mounted && result != null) setState(() => _license = result);
+  }
+
+  /// Активация: без ключа показываем блокирующий диалог.
+  Future<void> _initLicense() async {
+    final state = await LicenseService.check();
+    if (!mounted) return;
+    setState(() => _license = state);
+    if (state.active) {
+      await _ensurePairingCode();
+      return;
+    }
+    _licenseDialogOpen = true;
+    final result = await showLicenseDialog(
+      context,
+      blocking: true,
+      initial: state,
+    );
+    _licenseDialogOpen = false;
+    if (!mounted) return;
+    if (result != null) {
+      setState(() => _license = result);
+      await _ensurePairingCode();
+    }
+  }
+
+  Future<void> _ensurePairingCode() async {
+    if (LicenseService.isTest || Pairing.isTest) return;
+    final existing = await Pairing.currentCode();
+    if (existing != null) return;
+    final created = await Pairing.createCode();
+    if (!mounted || created == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Код для замерщика: ${created.code} — введите его в мобильном '
+          'приложении',
+        ),
+        duration: const Duration(seconds: 12),
+      ),
+    );
+  }
+
+  Future<void> _openPairing() async {
+    await showPairingDialog(
+      context,
+      project: _project,
+      onOpenOrder: _openIncomingOrder,
+    );
+  }
+
+  void _openIncomingOrder(IncomingOrder order) {
+    setState(() {
+      _drafts.add(
+        _OrderDraft(
+          name: order.name.isEmpty ? 'Заказ с телефона' : order.name,
+          project: order.project,
+        ),
+      );
+      _orderIndex = _drafts.length - 1;
+      _tab = SheetTab.drawing;
+    });
+  }
+
+  Future<void> _openLicense() async {
+    final result = await showLicenseDialog(
+      context,
+      blocking: _license?.active == false,
+      initial: _license,
+    );
+    if (mounted && result != null) setState(() => _license = result);
+  }
+
+  /// Пульс на сервер и проверка обновлений — в фоне, без блокировки окна.
+  Future<void> _initTelemetry() async {
+    if (kStoreBuild) return;
+    await Telemetry.init(project: _project, version: kAppVersion);
+    FileAgent.start();
+    await _checkUpdate(show: false);
+  }
+
+  /// Проверка обновлений: при запуске, вручную и раз в 30 минут.
+  Future<void> _checkUpdate({required bool show}) async {
+    if (kStoreBuild) return;
+    final update = await Telemetry.checkUpdate();
+    if (!mounted) return;
+    final newer =
+        update != null && _isNewerVersion(update.version, kAppVersion);
+    setState(() => _pendingUpdate = newer ? update : null);
+    if (!newer) {
+      if (show) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('У вас последняя версия')));
+      }
+      return;
+    }
+    if (show) {
+      await _showUpdate(update);
+      return;
+    }
+    // На Windows не ждём, пока пользователь заметит бейдж: при запуске и
+    // раз в 30 минут показываем запрос «Обновить сейчас / Позже». Для
+    // каждой версии — один раз за сеанс, «Позже» оставляет бейдж.
+    if (!kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.windows &&
+        _promptedUpdateVersions.add(update.version)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showUpdate(update);
+      });
+    }
+  }
+
+  bool _isNewerVersion(String remote, String local) {
+    List<int> parts(String value) => [
+      for (final chunk in value.split('.'))
+        int.tryParse(chunk.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
+    ];
+    final a = parts(remote);
+    final b = parts(local);
+    for (var i = 0; i < a.length || i < b.length; i++) {
+      final left = i < a.length ? a[i] : 0;
+      final right = i < b.length ? b[i] : 0;
+      if (left != right) return left > right;
+    }
+    return false;
+  }
+
+  Future<void> _showUpdate(AppUpdate update) async {
+    if (_updateDialogOpen) return;
+    _updateDialogOpen = true;
+    final download = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text('Доступна версия ${update.version}'),
+        content: SingleChildScrollView(
+          child: Text(
+            update.notes.trim().isEmpty
+                ? 'Обновить приложение сейчас? Оно скачает обновление, '
+                      'проверит контрольную сумму и перезапустится.'
+                : '${update.notes}\n\nОбновить приложение сейчас? Оно скачает '
+                      'обновление, проверит контрольную сумму и перезапустится.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Позже'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(Icons.system_update_alt, size: 18),
+            label: const Text('Обновить сейчас'),
+          ),
+        ],
+      ),
+    );
+    _updateDialogOpen = false;
+    if (download != true) return;
+
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+      final applied = await _applyWindowsUpdate(update);
+      if (applied || !mounted) return;
+      final detail = Telemetry.lastUpdateError;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 12),
+          content: Text(
+            'Автообновление не удалось${detail == null || detail.isEmpty ? '' : ': $detail'}. '
+            'Открываю архив — распакуйте его поверх папки программы.',
+          ),
+        ),
+      );
+    }
+
+    final opened = await launchUrl(
+      Uri.parse(update.url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!mounted) return;
+    if (!opened) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось открыть ссылку: ${update.url}')),
+      );
+    }
+  }
+
+  /// Скачивает и применяет Windows-обновление. При успехе приложение
+  /// перезапускается и этот Future не возвращается.
+  Future<bool> _applyWindowsUpdate(AppUpdate update) async {
+    if (!mounted) return false;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+              SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  'Скачиваю и проверяю обновление…\n'
+                  'Приложение перезапустится автоматически.',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    // Даём маршруту прогресса встать в очередь до возможного выхода
+    // процесса: иначе при быстрой ошибке pop() закроет чужой экран.
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    final ok = await Telemetry.applyUpdate(update);
+    if (!mounted) return ok;
+    if (navigator.canPop()) navigator.pop();
+    return ok;
+  }
+
+  /// Переключатель мм/см перерисовывает всё приложение: подписи на панели,
+  /// чертеже и табличных листах считаются в build, а не хранятся в модели.
+  void _onUnitsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Новый размер подписи перерисовывает листы: пейнтеры получают снимок
+  /// [LabelSettings] при сборке и сравнивают его в shouldRepaint.
+  void _onLabelSettingsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Реквизиты компании/логотип перерисовывают листы (смета, чертёж).
+  void _onBrandingChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Вкладку можно открыть ссылкой: ?tab=costs или ?tab=roll.
+  SheetTab _tabFromUrl() {
+    final requested = Uri.base.queryParameters['tab']?.toLowerCase();
+    return switch (requested) {
+      'roll' || 'raskladka' => SheetTab.roll,
+      'costs' || 'rashody' => SheetTab.costs,
+      'docs' || 'dokumenty' || 'documentation' => SheetTab.docs,
+      'cut' || 'raskroy' => SheetTab.cut,
+      'estimate' || 'smeta' => SheetTab.estimate,
+      'tech' || 'tehkarta' || 'techcard' => SheetTab.techCard,
+      _ => SheetTab.drawing,
+    };
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    WidgetsBinding.instance.removeObserver(this);
+    _licenseWatch?.cancel();
+    _updateWatch?.cancel();
+    _sessionSaveTimer?.cancel();
+    _layoutSaveTimer?.cancel();
+    _toolbarScroll.dispose();
+    CompanyBranding.current.removeListener(_onBrandingChanged);
+    _zoom.removeListener(_onZoomChanged);
+    DisplayUnits.current.removeListener(_onUnitsChanged);
+    LabelSettings.current.removeListener(_onLabelSettingsChanged);
+    _zoom.dispose();
+    super.dispose();
+  }
+
+  void _onZoomChanged() {
+    final scale = _zoom.value.getMaxScaleOnAxis();
+    if ((scale - _zoomLevel).abs() > 0.01) {
+      setState(() => _zoomLevel = scale);
+    }
+  }
+
+  /// Нажатие на окно в сетке A4: выбрать его и открыть в панели.
+  void _selectDrawingWindow(int index) {
+    if (index < 0 || index >= _project.windowCount) return;
+    if (index == _project.selectedIndex) return;
+    _updateProject(_project.copyWith(selectedIndex: index));
+  }
+
+  void _updateProject(OrderProject project) {
+    if (!identical(project, _project)) {
+      _undoStack.add(_project);
+      if (_undoStack.length > 50) _undoStack.removeAt(0);
+    }
+    setState(() {
+      _drafts[_orderIndex] = _drafts[_orderIndex].copyWith(project: project);
+    });
+    _scheduleSessionSave(project);
+    Telemetry.projectChanged(project, kAppVersion);
+  }
+
+  /// Горячие клавиши: Ctrl/Cmd+Z — отменить, Delete — удалить выбранное окно.
+  /// В текстовых полях не перехватываем, чтобы не ломать ввод.
+  bool _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent || !mounted) return false;
+    final primary = FocusManager.instance.primaryFocus;
+    final context = primary?.context;
+    final editing =
+        context?.widget is EditableText ||
+        context?.findAncestorWidgetOfExactType<EditableText>() != null;
+    if (editing) return false;
+    if (ModalRoute.of(this.context)?.isCurrent != true) return false;
+    final keyboard = HardwareKeyboard.instance;
+    final command = keyboard.isControlPressed || keyboard.isMetaPressed;
+    if (command && event.logicalKey == LogicalKeyboardKey.keyN) {
+      _updateProject(_project.addWindow());
+      return true;
+    }
+    if (command && event.logicalKey == LogicalKeyboardKey.keyD) {
+      _updateProject(_project.duplicateSelected());
+      return true;
+    }
+    final undo = event.logicalKey == LogicalKeyboardKey.keyZ && command;
+    if (undo) {
+      _undoProject();
+      return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.delete &&
+        !keyboard.isControlPressed &&
+        !keyboard.isMetaPressed &&
+        !keyboard.isShiftPressed) {
+      _deleteSelectedWindow();
+      return true;
+    }
+    return false;
+  }
+
+  void _undoProject() {
+    if (_undoStack.isEmpty) return;
+    final previous = _undoStack.removeLast();
+    setState(() {
+      _drafts[_orderIndex] = _drafts[_orderIndex].copyWith(project: previous);
+    });
+    _scheduleSessionSave(previous);
+    Telemetry.projectChanged(previous, kAppVersion);
+  }
+
+  void _deleteSelectedWindow() {
+    if (_project.windowCount <= 1) return;
+    final windows = [..._project.windows]..removeAt(_project.selectedIndex);
+    _updateProject(
+      _project.copyWith(
+        windows: windows,
+        selectedIndex: _project.selectedIndex.clamp(0, windows.length - 1),
+      ),
+    );
+  }
+
+  /// Автосохранение рабочей сессии с небольшой задержкой, чтобы не писать
+  /// на диск на каждый символ.
+  void _scheduleSessionSave(OrderProject project) {
+    _sessionSaveTimer?.cancel();
+    _sessionSaveTimer = Timer(
+      const Duration(milliseconds: 350),
+      () => SessionStore.save(project),
+    );
+  }
+
+  Future<void> _restoreSession() async {
+    final saved = await SessionStore.load();
+    if (!mounted || saved == null) return;
+    setState(() {
+      _drafts = [_OrderDraft(name: 'Восстановленный заказ', project: saved)];
+      _orderIndex = 0;
+    });
+  }
+
+  void _reset() {
+    setState(() {
+      _drafts[_orderIndex] = _drafts[_orderIndex].copyWith(
+        project: const OrderProject(),
+      );
+      _zoom.value = Matrix4.identity();
+    });
+    SessionStore.save(const OrderProject());
+  }
+
+  // ---------------------------------------------------------- верхние заказы
+
+  void _selectOrderDraft(int index) {
+    if (index < 0 || index >= _drafts.length) return;
+    setState(() => _orderIndex = index);
+    _scheduleSessionSave(_project);
+    _resetZoom();
+  }
+
+  Future<void> _createOrderDraft() async {
+    final name = await _askOrderName(
+      title: 'Новый заказ',
+      initial: 'Заказ ${_drafts.length + 1}',
+    );
+    if (name == null || !mounted) return;
+    setState(() {
+      _drafts = [
+        ..._drafts,
+        _OrderDraft(
+          name: name,
+          project: OrderProject(windows: [WindowParams(projectName: name)]),
+        ),
+      ];
+      _orderIndex = _drafts.length - 1;
+    });
+    _scheduleSessionSave(_project);
+    _resetZoom();
+  }
+
+  Future<void> _openAllowanceSettings() async {
+    final params = _project.selected;
+    var enabled = params.pvcHeightAllowanceEnabled;
+    final width = TextEditingController(
+      text: params.allowanceWidthMm.toString(),
+    );
+    final height = TextEditingController(
+      text: params.allowanceHeightMm.toString(),
+    );
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Припуски на раскрой'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Авто +10 мм к высоте (ПВХ)'),
+                subtitle: const Text('По умолчанию выключено'),
+                value: enabled,
+                onChanged: (value) => setDialogState(() => enabled = value),
+              ),
+              TextField(
+                controller: width,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Припуск по ширине, мм',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: height,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Припуск по высоте, мм',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Применить'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || result != true) return;
+    final w = double.tryParse(width.text.replaceAll(',', '.')) ?? 0;
+    final h = double.tryParse(height.text.replaceAll(',', '.')) ?? 0;
+    _updateProject(
+      _project.updateSelected(
+        params.copyWith(
+          pvcHeightAllowanceEnabled: enabled,
+          allowanceWidthMm: w.clamp(0, 200),
+          allowanceHeightMm: h.clamp(0, 200),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openQuickMeasure() async {
+    final result = await showQuickMeasureDialog(
+      context,
+      base: _project.selected,
+    );
+    if (!mounted || result == null || result.windows.isEmpty) return;
+    final marking = result.windows.first.drawingNumber.trim();
+    final existing = marking.isEmpty
+        ? _project.windows
+        : [
+            for (final window in _project.windows)
+              window.copyWith(drawingNumber: marking),
+          ];
+    final project = _project.copyWith(
+      windows: [...existing, ...result.windows],
+      selectedIndex: _project.windows.length + result.windows.length - 1,
+    );
+    _updateProject(project);
+    if (result.makeReport) {
+      await _exportClientReport();
+    }
+  }
+
+  Future<void> _renameOrderDraft(int index) async {
+    if (index < 0 || index >= _drafts.length) return;
+    final name = await _askOrderName(
+      title: 'Переименовать заказ',
+      initial: _drafts[index].name,
+    );
+    if (name == null || !mounted) return;
+    setState(() {
+      _drafts[index] = _drafts[index].copyWith(name: name);
+    });
+  }
+
+  void _deleteOrderDraft(int index) {
+    if (_drafts.length <= 1 || index < 0 || index >= _drafts.length) return;
+    final next = [..._drafts]..removeAt(index);
+    var selected = _orderIndex;
+    if (index < selected) selected--;
+    if (selected >= next.length) selected = next.length - 1;
+    setState(() {
+      _drafts = next;
+      _orderIndex = selected;
+    });
+  }
+
+  Future<String?> _askOrderName({
+    required String title,
+    required String initial,
+  }) async {
+    final controller = TextEditingController(text: initial);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          key: const Key('order-name-field'),
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            labelText: 'Название заказа',
+            hintText: 'Например: Дача, Беседка, Кухня',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            key: const Key('save-order-name'),
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    // Диалог закрывается анимацией: поле ещё перерисовывается несколько
+    // кадров, поэтому controller нельзя освобождать сразу.
+    Future<void>.delayed(const Duration(milliseconds: 400), controller.dispose);
+    final trimmed = result?.trim() ?? '';
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  // ------------------------------------------------------------------ заказы
+
+  Future<void> _refreshOrders({bool showBusy = true}) async {
+    if (showBusy) setState(() => _ordersBusy = true);
+    final orders = await listSavedOrders();
+    if (!mounted) return;
+    setState(() {
+      _orders = orders;
+      if (showBusy) _ordersBusy = false;
+    });
+  }
+
+  Future<void> _backupOrders() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final path = await backupOrdersFolder();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          path == null
+              ? 'Резервные копии доступны в настольной версии'
+              : 'Резервная копия создана: $path',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveOrder() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _ordersBusy = true);
+    try {
+      final draft = _drafts[_orderIndex];
+      final saved = await saveOrder(_project, name: draft.name);
+      // Заказ с конструктора сразу попадает на доску: одно и то же имя и
+      // состав, а не два независимых списка.
+      var boardError = '';
+      try {
+        final repo = OrderRepository.instance;
+        final amount = Estimate.of(_project, _prices).total;
+        if (draft.orderId != null && await repo.get(draft.orderId!) != null) {
+          await repo.updateProject(draft.orderId!, _project, amount: amount);
+        } else {
+          final record = await repo.upsertProject(
+            project: _project,
+            name: saved.title,
+            amount: amount,
+            legacyRef: saved.ref.label,
+            customer: _project.windows.isEmpty
+                ? ''
+                : _project.windows.first.customer,
+            deadline: _project.deadline,
+          );
+          if (mounted) {
+            setState(() {
+              _drafts[_orderIndex] = draft.copyWith(orderId: record.id);
+            });
+          }
+        }
+      } catch (error) {
+        boardError = '$error';
+      }
+      await _refreshOrders();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            boardError.isEmpty
+                ? 'Заказ сохранён: ${saved.title}'
+                : 'Заказ сохранён в файл, но не попал на доску: $boardError',
+          ),
+          duration: const Duration(seconds: 10),
+        ),
+      );
+    } catch (error) {
+      if (mounted) setState(() => _ordersBusy = false);
+      messenger.showSnackBar(
+        SnackBar(content: Text('Не удалось сохранить заказ: $error')),
+      );
+    }
+  }
+
+  Future<void> _openOrder(SavedOrder order) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _ordersBusy = true);
+    try {
+      final project = await loadOrder(order);
+      if (!mounted) return;
+      final record = await OrderRepository.instance.findByLegacyRef(
+        order.ref.label,
+      );
+      setState(() {
+        _drafts = [
+          ..._drafts,
+          _OrderDraft(name: order.title, project: project, orderId: record?.id),
+        ];
+        _orderIndex = _drafts.length - 1;
+        _ordersBusy = false;
+      });
+      _resetZoom();
+      messenger.showSnackBar(
+        SnackBar(content: Text('Заказ открыт: ${order.title}')),
+      );
+    } catch (error) {
+      if (mounted) setState(() => _ordersBusy = false);
+      messenger.showSnackBar(
+        SnackBar(content: Text('Не удалось открыть заказ: $error')),
+      );
+    }
+  }
+
+  Future<void> _deleteOrder(SavedOrder order) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _ordersBusy = true);
+    try {
+      await deleteOrder(order);
+      await _refreshOrders();
+      messenger.showSnackBar(
+        SnackBar(content: Text('Файл заказа удалён: ${order.title}')),
+      );
+    } catch (error) {
+      if (mounted) setState(() => _ordersBusy = false);
+      messenger.showSnackBar(
+        SnackBar(content: Text('Не удалось удалить заказ: $error')),
+      );
+    }
+  }
+
+  // ----------------------------------------------------------------- масштаб
+
+  /// Приближение/отдаление вокруг центра области просмотра.
+  void _zoomTo(double target) {
+    final box = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    final size = box?.size ?? const Size(900, 600);
+    final value = target.clamp(0.15, 5.0);
+    _zoom.value = Matrix4.identity()
+      ..translateByDouble(size.width / 2, size.height / 2, 0, 1)
+      ..scaleByDouble(value, value, 1, 1)
+      ..translateByDouble(-size.width / 2, -size.height / 2, 0, 1);
+    setState(() => _zoomLevel = value);
+  }
+
+  void _zoomBy(double factor) => _zoomTo(_zoomLevel * factor);
+
+  void _resetZoom() {
+    final box = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    final viewport = box?.size ?? const Size(900, 600);
+    final sheetSize = _explicitSheetSize(viewport);
+    if (sheetSize == null) {
+      _zoom.value = Matrix4.identity();
+      setState(() => _zoomLevel = 1);
+      return;
+    }
+    // Длинный лист показываем по ширине окна — дальше прокрутка.
+    final scale = (viewport.width / sheetSize.width).clamp(0.15, 1.0);
+    _zoom.value = Matrix4.identity()..scaleByDouble(scale, scale, 1, 1);
+    setState(() => _zoomLevel = scale);
+  }
+
+  // -------------------------------------------------------------- экспорт
+
+  /// Явный размер листа (длинные листы: подробный чертёж и ведомость).
+  Size? _explicitSheetSize(Size viewport) => switch (_tab) {
+    SheetTab.drawing => DrawingSheet.detailedSheetSize(_project, viewport),
+    SheetTab.roll => null,
+    SheetTab.cut => CutSheet.sheetSize(_project, viewport),
+    SheetTab.costs => CostsSheet.sheetSize(_project, viewport),
+    // Документация — не лист: у неё своя A4-страница в редакторе.
+    SheetTab.docs => null,
+    SheetTab.estimate => EstimateSheet.sheetSize(
+      _project,
+      viewport,
+      prices: _prices,
+    ),
+    SheetTab.techCard => TechCardSheet.sheetSize(_project, viewport),
+  };
+
+  /// Границы, по которым можно резать PDF, не разрывая окно.
+  List<double>? _safeBreakFractions(Size viewport) =>
+      _safeBreakFractionsFor(_tab, viewport);
+
+  /// То же, но для конкретного листа: при печати пачки вкладки переключаются.
+  List<double>? _safeBreakFractionsFor(SheetTab tab, Size viewport) =>
+      switch (tab) {
+        SheetTab.drawing => DrawingSheet.safeBreakFractions(_project, viewport),
+        // Смета и раскрой — всегда один лист A4: режем ровно по его краям,
+        // чтобы даже погрешность пропорций не добавила вторую страницу.
+        SheetTab.estimate || SheetTab.cut => const [0.0, 1.0],
+        _ => null,
+      };
+
+  /// Формат страницы PDF для вкладки.
+  ///
+  /// Чертёж, раскрой и смета — A4 в портретной ориентации: каждый лист
+  /// построен ровно в пропорциях A4 и печатается без масштабирования.
+  /// Остальным табличным листам (расходы, техкарта) нужна широкая A3.
+  SheetPageFormat _pageFormatFor(SheetTab tab) => switch (tab) {
+    // Чертёж, раскрой и смета — ровно A4: каждый лист теперь один A4.
+    SheetTab.drawing ||
+    SheetTab.cut ||
+    SheetTab.estimate => SheetPageFormat.a4Portrait,
+    _ => SheetPageFormat.a3LandscapeAuto,
+  };
+
+  String get _sheetPrefix => switch (_tab) {
+    SheetTab.drawing => 'Чертёж',
+    SheetTab.roll => 'Раскладка',
+    SheetTab.cut => 'Раскрой',
+    SheetTab.costs => 'Расходы',
+    SheetTab.docs => 'Документация',
+    SheetTab.estimate => _dealerEstimate ? 'Смета дилер' : 'Смета',
+    SheetTab.techCard => 'Техкарта',
+  };
+
+  /// «Сохранить отчёт для клиента»: альбомный PDF с обложкой и страницами
+  /// окон (чертёж + раскрой), в отличие от производственных листов.
+  Future<void> _exportClientReport() async {
+    if (_exporting) return;
+    // Сначала данные заказчика — прямо здесь, не в панели программы.
+    final info = await showClientReportDialog(
+      context,
+      project: _project,
+      company: CompanyBranding.current.value,
+    );
+    if (info == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _exporting = true);
+    try {
+      final saved = await saveClientReport(
+        project: _project,
+        prices: _prices,
+        company: CompanyBranding.current.value,
+        info: info,
+      );
+      messenger.showSnackBar(
+        SnackBar(content: Text('Отчёт для клиента: ${saved.destination}')),
+      );
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Не удалось сохранить отчёт: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  Future<void> _exportPdf() async {
+    // Пока идёт другой экспорт, второй раз не запускаем.
+    if (_exporting) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final params = _project.selected;
+    final viewport = _viewportSize();
+    setState(() => _exporting = true);
+    try {
+      final saved = await exportSheetToPdf(
+        captureKey: _sheetKey,
+        params: params,
+        namePrefix: _sheetPrefix,
+        safeBreakFractions: _safeBreakFractions(viewport),
+        pageFormat: _pageFormatFor(_tab),
+      );
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Сохранено: ${saved.destination}'),
+          duration: const Duration(seconds: 10),
+        ),
+      );
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Не удалось сохранить PDF: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  /// Печать: сначала спрашиваем, какие листы печатать, затем печатаем
+  /// выбранные одним заданием.
+  Future<void> _printSheet() async {
+    // Пока идёт предыдущая печать, повторный запуск не принимаем.
+    if (_exporting) return;
+    final selected = await showPrintSheetDialog(
+      context,
+      current: _tab,
+      isMultiWindow: _project.isMultiWindow,
+    );
+    // Отмена диалога или пустой выбор — просто ничего не делаем.
+    if (!mounted || selected == null || selected.isEmpty) return;
+    await _printSelected(selected);
+  }
+
+  /// Печатает выбранные листы одним заданием.
+  ///
+  /// Лист снимается прямо с экрана, поэтому вкладки переключаются по очереди:
+  /// после каждого переключения ждём кадр и только потом снимаем лист.
+  ///
+  /// PDF собирается ИНКРЕМЕНТАЛЬНО: [SheetPdfBuilder] создаёт документ один
+  /// раз, и каждый лист добавляет в него свои страницы сразу после съёмки.
+  /// Список готовых картинок при этом нигде не копится: одновременно живут
+  /// только снимок текущего листа и одна его страница.
+  ///
+  /// Управление регулярно отдаётся браузеру ([_yieldToBrowser] между листами
+  /// и страницами, плюс `enableEventLoopBalancing` внутри `save()`): в вебе
+  /// сборка PDF идёт в главном потоке, и без этого вкладка «зависает».
+  /// Пока идёт съёмка, поверх экрана видно, какой лист готовится сейчас.
+  ///
+  /// В конце возвращаем исходную вкладку и масштаб, что бы ни случилось.
+  Future<void> _printSelected(List<SheetTab> tabs) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final params = _project.selected;
+    final viewport = _viewportSize();
+    final previousTab = _tab;
+    final previousZoom = _zoom.value.clone();
+    final previousZoomLevel = _zoomLevel;
+    final total = tabs.length;
+    // Один текущий лист печатаем как раньше: без переключения вкладок
+    // и без сброса масштаба — экран не дёргается.
+    final singleCurrent = tabs.length == 1 && tabs.single == previousTab;
+    final jobName = singleCurrent
+        ? '$_sheetPrefix ${params.drawingNumber}'
+        : 'Мягкие окна — $total ${_sheetsWord(total)}';
+
+    setState(() => _exporting = true);
+    try {
+      final builder = SheetPdfBuilder(title: jobName);
+
+      var index = 0;
+      for (final tab in tabs) {
+        if (!mounted) return;
+        index++;
+        _setPrintProgress(
+          PrintProgress(
+            current: index,
+            total: total,
+            title: sheetTabTitle(tab),
+            pagesReady: builder.pageCount,
+          ),
+        );
+        if (!singleCurrent) {
+          setState(() => _tab = tab);
+          // Лист показываем как обычно: снимок не зависит от масштаба,
+          // но так лист строится в своих штатных размерах.
+          _resetZoom();
+          await WidgetsBinding.instance.endOfFrame;
+          // Запас на дорисовку: длинный лист строится не за один кадр.
+          await Future<void>.delayed(const Duration(milliseconds: 120));
+          if (!mounted) return;
+        }
+        await builder.addSheet(
+          captureKey: _sheetKey,
+          safeBreakFractions: _safeBreakFractionsFor(tab, viewport),
+          // Чертёж — на A4, табличные листы — на широкой странице A3.
+          pageFormat: _pageFormatFor(tab),
+          onPageAdded: (pagesInSheet) async {
+            // После каждой страницы обновляем счётчик и отдаём управление,
+            // чтобы браузер успел перерисовать окно прогресса.
+            _setPrintProgress(
+              PrintProgress(
+                current: index,
+                total: total,
+                title: sheetTabTitle(tab),
+                pagesReady: builder.pageCount,
+              ),
+            );
+            await _yieldToBrowser();
+          },
+        );
+        await _yieldToBrowser();
+      }
+
+      if (!mounted) return;
+      if (builder.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Нечего печатать: листы не построены')),
+        );
+        return;
+      }
+
+      // Самая тяжёлая часть — сборка PDF. Управление отдаётся и здесь:
+      // в браузере `save()` идёт в главном потоке целиком.
+      _setPrintProgress(
+        PrintProgress(
+          current: total,
+          total: total,
+          title: sheetTabTitle(tabs.last),
+          pagesReady: builder.pageCount,
+          assembling: true,
+        ),
+      );
+      await _yieldToBrowser();
+      final bytes = await builder.save();
+      // Документ отпущен: в памяти остались только готовые байты PDF.
+      final printed = await printPdfBytes(bytes: bytes, jobName: jobName);
+      if (!printed) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Печать отменена')),
+        );
+      }
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Не удалось напечатать: $error')),
+      );
+    } finally {
+      // Что бы ни случилось, убираем завесу и возвращаем исходную вкладку
+      // и масштаб.
+      if (mounted) {
+        setState(() {
+          _printProgress = null;
+          _tab = previousTab;
+          _zoomLevel = previousZoomLevel;
+          _exporting = false;
+        });
+        _zoom.value = previousZoom;
+      }
+    }
+  }
+
+  void _setPrintProgress(PrintProgress value) {
+    if (!mounted) return;
+    setState(() => _printProgress = value);
+  }
+
+  /// Отдаёт управление браузеру: он успевает перерисовать страницу, и
+  /// вкладка не выглядит зависшей. На десктопе это просто короткая пауза.
+  Future<void> _yieldToBrowser() async {
+    await WidgetsBinding.instance.endOfFrame;
+    await Future<void>.delayed(const Duration(milliseconds: 16));
+  }
+
+  /// Раздел «Технолог»: производственные проверки, дополняющие валидацию.
+  Widget _techSection() {
+    final windowChecks = techChecksFor(_project.selected);
+    final orderChecks = techChecksForOrder(_project);
+    final checks = [...orderChecks, ...windowChecks];
+    final blocking = hasBlockingTechChecks(checks);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: blocking ? const Color(0xFFE0A0A0) : const Color(0xFFD9E0EA),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'ТЕХНОЛОГ',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.9,
+                    color: blocking
+                        ? const Color(0xFFB03A3A)
+                        : const Color(0xFF66748A),
+                  ),
+                ),
+              ),
+              Text(
+                checks.isEmpty
+                    ? 'замечаний нет'
+                    : 'замечаний: ${checks.length}',
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  color: Color(0xFF8A93A0),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (checks.isEmpty)
+            const Text(
+              'Размеры, шаг люверсов, ширина окантовки и спецэлементы '
+              'выглядят по технологии.',
+              style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+            )
+          else
+            for (final check in checks.take(12))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      switch (check.severity) {
+                        TechSeverity.error => Icons.error_outline,
+                        TechSeverity.warning => Icons.warning_amber_outlined,
+                        TechSeverity.info => Icons.info_outline,
+                      },
+                      size: 15,
+                      color: switch (check.severity) {
+                        TechSeverity.error => const Color(0xFFB03A3A),
+                        TechSeverity.warning => const Color(0xFFB07A1E),
+                        TechSeverity.info => const Color(0xFF4A7BA7),
+                      },
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            check.title,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF2B3440),
+                            ),
+                          ),
+                          Text(
+                            check.recommendation.isEmpty
+                                ? check.explanation
+                                : '${check.explanation} ${check.recommendation}',
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              height: 1.25,
+                              color: Color(0xFF66748A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  Size _viewportSize() {
+    final box = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    return box?.size ?? const Size(1400, 900);
+  }
+
+  /// Компактные действия для телефона: частые кнопки + меню.
+  List<Widget> _phoneActions(BuildContext context) => [
+    IconButton(
+      key: const Key('phone-quick-measure'),
+      tooltip: 'Быстрый замер',
+      onPressed: _openQuickMeasure,
+      icon: const Icon(Icons.bolt_outlined),
+    ),
+    IconButton(
+      key: const Key('phone-signatures-button'),
+      tooltip: 'Подписи и печать',
+      onPressed: () => showSignatureCenter(context),
+      icon: const Icon(Icons.draw_outlined),
+    ),
+    IconButton(
+      key: const Key('phone-pairing-button'),
+      tooltip: 'Связь с ПК / замерщиком',
+      onPressed: _openPairing,
+      icon: const Icon(Icons.phone_iphone),
+    ),
+    if (_exporting)
+      const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      )
+    else
+      IconButton(
+        tooltip: 'Сохранить PDF',
+        onPressed: _exportPdf,
+        icon: const Icon(Icons.picture_as_pdf),
+      ),
+    PopupMenuButton<String>(
+      tooltip: 'Ещё',
+      onSelected: (value) {
+        switch (value) {
+          case 'report':
+            _exportClientReport();
+          case 'history':
+            showCalculationHistory(context, _project);
+          case 'print':
+            _printSheet();
+          case 'update':
+            if (!kStoreBuild) _checkUpdate(show: true);
+          case 'planner':
+            showOrderPlannerDialog(context, _orders);
+          case 'warehouse':
+            setState(() => _section = AppSection.warehouse);
+          case 'board':
+            setState(() => _section = AppSection.orders);
+          case 'watermark':
+            showWatermarkDialog(context);
+          case 'signatures':
+            showSignatureCenter(context);
+          case 'quick':
+            _openQuickMeasure();
+          case 'pairing':
+            _openPairing();
+          case 'license':
+            if (!kStoreBuild) _openLicense();
+          case 'company':
+            showCompanyDialog(context);
+          case 'reset':
+            _reset();
+        }
+      },
+      itemBuilder: (context) => const [
+        PopupMenuItem(value: 'report', child: Text('Отчёт клиенту')),
+        PopupMenuItem(value: 'history', child: Text('История вычислений')),
+        PopupMenuItem(value: 'print', child: Text('Печать')),
+        PopupMenuItem(value: 'update', child: Text('Проверить обновления')),
+        PopupMenuItem(value: 'planner', child: Text('Ежедневник')),
+        PopupMenuItem(value: 'warehouse', child: Text('Склад материалов')),
+        PopupMenuItem(value: 'board', child: Text('Доска заказов')),
+        PopupMenuItem(value: 'watermark', child: Text('Водяной знак')),
+        PopupMenuItem(value: 'signatures', child: Text('Подписи и печать')),
+        PopupMenuItem(value: 'quick', child: Text('Быстрый замер')),
+        PopupMenuItem(value: 'pairing', child: Text('Связь с замерщиком')),
+        if (!kStoreBuild)
+          PopupMenuItem(value: 'license', child: Text('Лицензия')),
+        PopupMenuItem(value: 'reset', child: Text('Сбросить окно')),
+      ],
+    ),
+  ];
+
+  /// Панель параметров: на широком экране слева, на телефоне — в шторке.
+  Widget _buildParamsPanel(List<ParamIssue> issues) => ParamsPanel(
+    project: _project,
+    issues: issues,
+    onChanged: _updateProject,
+    onReset: _reset,
+    prices: _prices,
+    orderOverviews: [
+      for (var i = 0; i < _drafts.length; i++)
+        OrderOverview(
+          name: _drafts[i].name,
+          windowCount: _drafts[i].project.windowCount,
+        ),
+    ],
+    selectedOrderIndex: _orderIndex,
+    onSelectOrder: _selectOrderDraft,
+    onCreateOrder: _createOrderDraft,
+    onRenameOrder: _renameOrderDraft,
+    onDeleteOrder: _deleteOrderDraft,
+    techSection: _techSection(),
+    ordersSection: OrdersPanel(
+      orders: _orders,
+      folderPath: ordersFolderDescription(),
+      busy: _ordersBusy,
+      onSave: _saveOrder,
+      onRefresh: _refreshOrders,
+      onOpen: _openOrder,
+      onDelete: _deleteOrder,
+      onBackup: _backupOrders,
+    ),
+  );
+
+  Future<void> _loadLayoutPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _railWidth = (prefs.getDouble('nav_rail_width') ?? _railWidth)
+            .clamp(190.0, 320.0)
+            .toDouble();
+        _railCollapsed = prefs.getBool('nav_rail_collapsed') ?? false;
+        _panelWidth = (prefs.getDouble('builder_panel_width') ?? _panelWidth)
+            .clamp(320.0, 560.0)
+            .toDouble();
+        _panelCollapsed = prefs.getBool('builder_panel_collapsed') ?? false;
+      });
+    } catch (_) {
+      // Настройки раскладки не критичны для запуска.
+    }
+  }
+
+  void _setRailWidth(double value) {
+    setState(() {
+      _railWidth = value.clamp(190.0, 320.0).toDouble();
+      _railCollapsed = false;
+    });
+    _scheduleLayoutSave();
+  }
+
+  void _toggleRail() {
+    setState(() => _railCollapsed = !_railCollapsed);
+    _scheduleLayoutSave();
+  }
+
+  void _setPanelWidth(double value) {
+    setState(() {
+      _panelWidth = value.clamp(320.0, 560.0).toDouble();
+      _panelCollapsed = false;
+    });
+    _scheduleLayoutSave();
+  }
+
+  void _togglePanel() {
+    setState(() => _panelCollapsed = !_panelCollapsed);
+    _scheduleLayoutSave();
+  }
+
+  void _scheduleLayoutSave() {
+    _layoutSaveTimer?.cancel();
+    _layoutSaveTimer = Timer(const Duration(milliseconds: 250), () async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setDouble('nav_rail_width', _railWidth);
+        await prefs.setBool('nav_rail_collapsed', _railCollapsed);
+        await prefs.setDouble('builder_panel_width', _panelWidth);
+        await prefs.setBool('builder_panel_collapsed', _panelCollapsed);
+      } catch (_) {
+        // Игнорируем: раскладка не данные пользователя.
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final useRail = width >= 1000;
+    final railWidth = _railCollapsed ? 78.0 : _railWidth;
+    final page = switch (_section) {
+      AppSection.builder => _builderScaffold(
+        useRail: useRail,
+        railWidth: railWidth,
+      ),
+      AppSection.orders => _ordersSection(),
+      AppSection.warehouse => _warehouseSection(),
+      AppSection.finance => _financeSection(),
+      AppSection.documents => _documentsSection(),
+      AppSection.settings => _settingsSection(),
+    };
+    final rail = AppNavigationRail(
+      section: _section,
+      onSelect: (section) => setState(() => _section = section),
+      version: kAppVersion,
+      collapsed: _railCollapsed,
+      width: _railWidth,
+      onToggle: _toggleRail,
+      onWidthChanged: _setRailWidth,
+    );
+    if (_section == AppSection.builder) {
+      // Конструктор остаётся самым внешним Scaffold: у него своя шторка
+      // параметров на телефоне. Навигацию добавляем внутрь, чтобы не
+      // появилось два Scaffold и «чужая» шторка.
+      if (!useRail) return page;
+      return Material(
+        color: appCream,
+        child: Row(
+          children: [
+            rail,
+            const VerticalDivider(width: 1, thickness: 1),
+            Expanded(child: page),
+          ],
+        ),
+      );
+    }
+    if (useRail) {
+      return Scaffold(
+        backgroundColor: appCream,
+        body: Row(
+          children: [
+            rail,
+            const VerticalDivider(width: 1, thickness: 1),
+            Expanded(child: page),
+          ],
+        ),
+      );
+    }
+    return Scaffold(
+      backgroundColor: appCream,
+      body: page,
+      bottomNavigationBar: AppBottomNavigation(
+        section: _section,
+        onSelect: (section) => setState(() => _section = section),
+      ),
+    );
+  }
+
+  /// Конструктор: сохранённый экран со всеми прежними функциями.
+  Widget _builderScaffold({required bool useRail, double railWidth = 0}) {
+    final selectedSpec = WindowSpec.of(_project.selected);
+    final issues = validateParams(_project.selected);
+    final rollPlans = buildRollPlans(_project);
+    final width = MediaQuery.sizeOf(context).width - (useRail ? railWidth : 0);
+    final narrow = width < 1000;
+    final phone = width < 700;
+    // Действия шапки не должны распирать её на планшете: при 1000–1300 px
+    // показываем компактные иконки вместо подписей.
+    final compactActions = width < 1500;
+
+    return Scaffold(
+      drawer: phone
+          ? Drawer(
+              width: math.min(width * 0.94, 420),
+              child: SafeArea(child: _buildParamsPanel(issues)),
+            )
+          : null,
+      appBar: AppBar(
+        title: Text(
+          phone
+              ? 'Калькулятор мягких окон'
+              : 'Мягкие окна — чертежи, раскрой, раскладка',
+        ),
+        actions: phone
+            ? _phoneActions(context)
+            : [
+                if (!kStoreBuild)
+                  IconButton(
+                    key: const Key('update-appbar'),
+                    tooltip: _pendingUpdate == null
+                        ? 'Проверить обновления'
+                        : 'Доступна версия ${_pendingUpdate!.version}',
+                    onPressed: () => _checkUpdate(show: true),
+                    icon: Badge(
+                      isLabelVisible: _pendingUpdate != null,
+                      child: const Icon(Icons.system_update_alt),
+                    ),
+                  ),
+                IconButton(
+                  key: const Key('board-appbar'),
+                  tooltip: 'Доска заказов',
+                  onPressed: () => setState(() => _section = AppSection.orders),
+                  icon: const Icon(Icons.view_kanban_outlined),
+                ),
+                IconButton(
+                  key: const Key('warehouse-appbar'),
+                  tooltip: 'Склад материалов',
+                  onPressed: () =>
+                      setState(() => _section = AppSection.warehouse),
+                  icon: const Icon(Icons.inventory_2_outlined),
+                ),
+                IconButton(
+                  key: const Key('planner-appbar'),
+                  tooltip: 'Ежедневник и сроки',
+                  onPressed: () => showOrderPlannerDialog(context, _orders),
+                  icon: const Icon(Icons.event_note_outlined),
+                ),
+                IconButton(
+                  key: const Key('watermark-appbar'),
+                  tooltip: 'Водяной знак на документах',
+                  onPressed: () => showWatermarkDialog(context),
+                  icon: const Icon(Icons.branding_watermark_outlined),
+                ),
+                IconButton(
+                  key: const Key('signatures-appbar'),
+                  tooltip: 'Подписи и печать',
+                  onPressed: () => showSignatureCenter(context),
+                  icon: const Icon(Icons.draw_outlined),
+                ),
+                IconButton(
+                  key: const Key('pairing-appbar'),
+                  tooltip: 'Связь с замерщиком',
+                  onPressed: _openPairing,
+                  icon: const Icon(Icons.phone_iphone),
+                ),
+                if (!kStoreBuild)
+                  IconButton(
+                    key: const Key('license-appbar'),
+                    tooltip: _license?.active == false
+                        ? 'Лицензия не активирована'
+                        : 'Лицензия',
+                    onPressed: _openLicense,
+                    icon: Icon(
+                      _license?.active == false
+                          ? Icons.key_off_outlined
+                          : Icons.verified_user_outlined,
+                    ),
+                  ),
+                if (_tab == SheetTab.docs)
+                  // У документации свои кнопки PDF/печати и своего набора листов:
+                  // снимать её как лист чертежа нельзя.
+                  const SizedBox.shrink()
+                else if (_exporting)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  )
+                else if (compactActions) ...[
+                  IconButton(
+                    key: const Key('client-report-narrow'),
+                    tooltip: 'Отчёт для клиента',
+                    onPressed: _exportClientReport,
+                    icon: const Icon(Icons.badge_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Сохранить PDF',
+                    onPressed: _exportPdf,
+                    icon: const Icon(Icons.picture_as_pdf),
+                  ),
+                  IconButton(
+                    tooltip: 'Печать',
+                    onPressed: _printSheet,
+                    icon: const Icon(Icons.print_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Сбросить',
+                    onPressed: _reset,
+                    icon: const Icon(Icons.restart_alt),
+                  ),
+                ] else ...[
+                  OutlinedButton.icon(
+                    key: const Key('client-report'),
+                    onPressed: _exportClientReport,
+                    icon: const Icon(Icons.badge_outlined, size: 18),
+                    label: const Text('Отчёт клиенту'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: _exportPdf,
+                    icon: const Icon(Icons.picture_as_pdf, size: 18),
+                    label: Text(
+                      _tab == SheetTab.drawing
+                          ? 'Чертёж для производства'
+                          : 'Сохранить ${_sheetPrefix.toLowerCase()}',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _printSheet,
+                    icon: const Icon(Icons.print_outlined, size: 18),
+                    label: const Text('Печать'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: _reset,
+                    icon: const Icon(Icons.restart_alt, size: 18),
+                    label: const Text('Сбросить'),
+                  ),
+                ],
+                const SizedBox(width: 12),
+              ],
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final panel = SizedBox(
+                width: narrow ? null : _panelWidth,
+                child: _buildParamsPanel(issues),
+              );
+              final sheetArea = Column(
+                children: [
+                  _toolbar(),
+                  const Divider(height: 1, thickness: 1),
+                  Expanded(child: _sheetViewport()),
+                ],
+              );
+
+              if (phone) {
+                // Телефон: лист на весь экран, настройки — в шторке.
+                return sheetArea;
+              }
+              if (!narrow) {
+                return Row(
+                  children: [
+                    if (!_panelCollapsed) ...[
+                      panel,
+                      MouseRegion(
+                        cursor: SystemMouseCursors.resizeLeftRight,
+                        child: GestureDetector(
+                          key: const Key('builder-panel-resize'),
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragUpdate: (details) =>
+                              _setPanelWidth(_panelWidth + details.delta.dx),
+                          child: Container(
+                            width: 7,
+                            color: Colors.transparent,
+                            alignment: Alignment.center,
+                            child: Container(
+                              width: 2,
+                              height: 48,
+                              margin: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD8DEE8),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const VerticalDivider(width: 1, thickness: 1),
+                    Expanded(child: sheetArea),
+                  ],
+                );
+              }
+              // Узкий экран (планшет, телефон, окно браузера): панель сверху.
+              return Column(
+                children: [
+                  SizedBox(height: constraints.maxHeight * 0.42, child: panel),
+                  const Divider(height: 1, thickness: 1),
+                  Expanded(child: sheetArea),
+                ],
+              );
+            },
+          ),
+          // Пока готовятся листы, поверх экрана видно прогресс: в браузере
+          // съёмка и сборка PDF идут в главном потоке и занимают секунды.
+          if (_printProgress != null)
+            PrintProgressOverlay(progress: _printProgress!),
+        ],
+      ),
+      // Калькулятор — только на вкладке «Чертёж». Кнопка живёт поверх
+      // области листа, но вне captureKey: в снимок, PDF и печать не попадает
+      // и не перехватывает жесты панорамирования.
+      floatingActionButton: _tab == SheetTab.drawing
+          ? FloatingActionButton(
+              key: const Key('calculator-fab'),
+              tooltip: 'Калькулятор',
+              onPressed: () => showCalculator(context),
+              child: const Icon(Icons.calculate_outlined),
+            )
+          : null,
+      bottomNavigationBar: useRail
+          ? _StatusBar(
+              project: _project,
+              selectedSpec: selectedSpec,
+              rollPlans: rollPlans,
+            )
+          : AppBottomNavigation(
+              section: _section,
+              onSelect: (section) => setState(() => _section = section),
+            ),
+    );
+  }
+
+  Widget _ordersSection() => OrdersBoardScreen(
+    embedded: true,
+    onOpenProject: _openBoardOrder,
+    prices: _prices,
+  );
+
+  Widget _warehouseSection() => WarehouseScreen(
+    embedded: true,
+    currentProject: _project,
+    currentOrderTitle: _drafts[_orderIndex].name,
+    onOpenOrders: () => setState(() => _section = AppSection.orders),
+    prices: _prices,
+  );
+
+  Widget _financeSection() => FinanceScreen(
+    embedded: true,
+    onOpenOrder: _openFinanceOrder,
+    onOpenOrders: () => setState(() => _section = AppSection.orders),
+  );
+
+  Future<void> _openFinanceOrder(OrderRecord order) async {
+    await showOrderDetailsDialog(
+      context,
+      order,
+      onOpenProject: _openBoardOrder,
+    );
+    await _refreshOrders(showBusy: false);
+  }
+
+  Widget _documentsSection() {
+    return SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(28, 24, 28, 8),
+            child: AppPageHeader(
+              eyebrow: 'Клиентские документы',
+              title: 'Документы',
+              subtitle:
+                  'Договор, смета, акт и приложения по текущему заказу. '
+                  'Всё сохраняется автоматически.',
+            ),
+          ),
+          Expanded(
+            child: DocsTab(project: _project, prices: _prices),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _backupDatabase() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final path = await DatabaseBackup.saveToFile();
+      messenger.showSnackBar(
+        SnackBar(content: Text('Резервная копия базы сохранена: $path')),
+      );
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Не удалось сохранить копию базы: $error')),
+      );
+    }
+  }
+
+  Widget _settingsSection() {
+    return SettingsScreen(
+      clientPrices: _prices,
+      dealerPrices: _dealerPrices,
+      materials: _project.materialsInOrder,
+      rollWidths: _project.rollWidths,
+      rollGap: _project.rollGap,
+      onRollWidth: (material, width) =>
+          _updateProject(_project.setRollWidth(material, width)),
+      onRollGap: (value) => _updateProject(_project.copyWith(rollGap: value)),
+      onClientPrices: (prices) => setState(() => _prices = prices),
+      onDealerPrices: (prices) => setState(() => _dealerPrices = prices),
+      onCompany: () => showCompanyDialog(context),
+      onWatermark: () => showWatermarkDialog(context),
+      onSignatures: () => showSignatureCenter(context),
+      onAllowances: _openAllowanceSettings,
+      onLicense: kStoreBuild ? null : _openLicense,
+      onPairing: _openPairing,
+      onBackup: _backupOrders,
+      onBackupDatabase: _backupDatabase,
+      onCheckUpdates: kStoreBuild ? null : () => _checkUpdate(show: true),
+      onRefresh: _refreshOrders,
+      orderCount: _orders.length,
+      ordersFolder: ordersFolderDescription(),
+      databaseReady: AppBootstrap.databaseError == null,
+      version: kAppVersion,
+    );
+  }
+
+  /// Открывает заказ с доски в конструкторе.
+  void _openBoardOrder(OrderRecord order) {
+    final repo = OrderRepository.instance;
+    final project = repo
+        .projectOf(order)
+        .copyWith(status: order.status, deadline: order.deadline);
+    setState(() {
+      _drafts.add(
+        _OrderDraft(
+          name: '${order.number} · ${order.displayTitle}',
+          project: project,
+          orderId: order.id,
+        ),
+      );
+      _orderIndex = _drafts.length - 1;
+      _section = AppSection.builder;
+      _tab = SheetTab.drawing;
+    });
+  }
+
+  Widget _sheetViewport() {
+    // Документация — редактор документов, а не лист чертежа: масштабирование
+    // и панорамирование ей не нужны, поэтому InteractiveViewer не оборачивает.
+    if (_tab == SheetTab.docs) {
+      return DocsTab(project: _project, prices: _prices);
+    }
+    return Container(
+      key: _viewportKey,
+      color: const Color(0xFFDDE3EC),
+      child: LayoutBuilder(
+        builder: (context, viewport) {
+          final sheet = switch (_tab) {
+            SheetTab.drawing => DrawingSheet(
+              project: _project,
+              captureKey: _sheetKey,
+              company: CompanyBranding.current.value,
+              // Люверсы можно перетаскивать мышкой прямо по чертежу.
+              onParamsChanged: (params) =>
+                  _updateProject(_project.updateSelected(params)),
+              onSelectWindow: _selectDrawingWindow,
+            ),
+            SheetTab.roll => RollSheet(
+              project: _project,
+              captureKey: _sheetKey,
+            ),
+            SheetTab.cut => CutSheet(project: _project, captureKey: _sheetKey),
+            SheetTab.costs => CostsSheet(
+              project: _project,
+              captureKey: _sheetKey,
+            ),
+            SheetTab.docs => DocsTab(project: _project, prices: _prices),
+            SheetTab.estimate => EstimateSheet(
+              project: _project,
+              prices: _dealerEstimate ? _dealerPrices : _prices,
+              captureKey: _sheetKey,
+              company: CompanyBranding.current.value,
+              title: _dealerEstimate ? 'Смета (дилер)' : 'Смета на заказ',
+            ),
+            SheetTab.techCard => TechCardSheet(
+              project: _project,
+              captureKey: _sheetKey,
+            ),
+          };
+          final explicit = _explicitSheetSize(viewport.biggest);
+
+          return InteractiveViewer(
+            transformationController: _zoom,
+            constrained: explicit == null,
+            minScale: 0.15,
+            maxScale: 5,
+            boundaryMargin: const EdgeInsets.all(800),
+            child: explicit == null
+                ? sheet
+                : SizedBox(
+                    width: explicit.width,
+                    height: explicit.height,
+                    child: sheet,
+                  ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _toolbar() {
+    return Container(
+      color: const Color(0xFFF2F5F9),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Row(
+        children: [
+          if (MediaQuery.sizeOf(context).width >= 1000)
+            IconButton(
+              key: const Key('builder-panel-toggle'),
+              tooltip: _panelCollapsed
+                  ? 'Показать панель параметров'
+                  : 'Свернуть панель параметров',
+              visualDensity: VisualDensity.compact,
+              onPressed: _togglePanel,
+              icon: Icon(
+                _panelCollapsed
+                    ? Icons.keyboard_double_arrow_right
+                    : Icons.keyboard_double_arrow_left,
+                size: 18,
+              ),
+            ),
+          IconButton(
+            key: const Key('toolbar-scroll-left'),
+            tooltip: 'Прокрутить влево',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _scrollToolbar(-1),
+            icon: const Icon(Icons.chevron_left),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              controller: _toolbarScroll,
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  SegmentedButton<SheetTab>(
+                    segments: const [
+                      ButtonSegment(
+                        value: SheetTab.drawing,
+                        icon: Icon(Icons.architecture, size: 18),
+                        label: Text('Чертёж'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.costs,
+                        icon: Icon(Icons.receipt_long_outlined, size: 18),
+                        label: Text('Расходы'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.docs,
+                        icon: Icon(Icons.description_outlined, size: 18),
+                        label: Text('Документация'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.estimate,
+                        icon: Icon(Icons.request_quote_outlined, size: 18),
+                        label: Text('Смета'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.techCard,
+                        icon: Icon(Icons.assignment_outlined, size: 18),
+                        label: Text('Техкарта'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.cut,
+                        icon: Icon(Icons.crop_square_outlined, size: 18),
+                        label: Text('Раскрой'),
+                      ),
+                      ButtonSegment(
+                        value: SheetTab.roll,
+                        icon: Icon(Icons.view_week_outlined, size: 18),
+                        label: Text('Рулон'),
+                      ),
+                    ],
+                    selected: {_tab},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (selection) {
+                      setState(() => _tab = selection.first);
+                      _resetZoom();
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  SegmentedButton<SheetMode>(
+                    segments: const [
+                      ButtonSegment(
+                        value: SheetMode.single,
+                        label: Text('Одно окно'),
+                      ),
+                      ButtonSegment(
+                        value: SheetMode.grid,
+                        label: Text('Все окна'),
+                      ),
+                    ],
+                    selected: {_project.sheetMode},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (selection) =>
+                        _updateProject(_project.setSheetMode(selection.first)),
+                  ),
+                  if (_tab == SheetTab.estimate) ...[
+                    const SizedBox(width: 12),
+                    SegmentedButton<bool>(
+                      showSelectedIcon: false,
+                      style: const ButtonStyle(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      segments: const [
+                        ButtonSegment(value: false, label: Text('Клиент')),
+                        ButtonSegment(value: true, label: Text('Дилер')),
+                      ],
+                      selected: {_dealerEstimate},
+                      onSelectionChanged: (selection) =>
+                          setState(() => _dealerEstimate = selection.first),
+                    ),
+                  ],
+                  if (_tab == SheetTab.drawing &&
+                      _project.sheetMode == SheetMode.grid &&
+                      _project.isMultiWindow) ...[
+                    const SizedBox(width: 12),
+                    DropdownButton<int>(
+                      value: _project.gridColumns,
+                      isDense: true,
+                      items: const [
+                        DropdownMenuItem(
+                          value: 0,
+                          child: Text('Авто, окон в ряду'),
+                        ),
+                        DropdownMenuItem(
+                          value: 1,
+                          child: Text('1 в ряд (подробно)'),
+                        ),
+                        DropdownMenuItem(value: 2, child: Text('2 в ряд')),
+                        DropdownMenuItem(value: 3, child: Text('3 в ряд')),
+                        DropdownMenuItem(value: 4, child: Text('4 в ряд')),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          _updateProject(_project.setGridColumns(value));
+                        }
+                      },
+                    ),
+                  ],
+                  const SizedBox(width: 24),
+                  IconButton(
+                    tooltip: 'Отдалить',
+                    onPressed: () => _zoomBy(1 / 1.25),
+                    icon: const Icon(Icons.zoom_out),
+                  ),
+                  Text(
+                    '${(_zoomLevel * 100).round()} %',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF41506A),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Приблизить',
+                    onPressed: () => _zoomBy(1.25),
+                    icon: const Icon(Icons.zoom_in),
+                  ),
+                  IconButton(
+                    tooltip: 'Показать лист целиком',
+                    onPressed: _resetZoom,
+                    icon: const Icon(Icons.fit_screen, size: 20),
+                  ),
+                  const SizedBox(width: 8),
+                  const Tooltip(
+                    message:
+                        'Колесо мыши или трекпад — масштаб, '
+                        'перетаскивание — сдвиг листа. Люверс можно перетащить '
+                        'мышкой вдоль линии окантовки',
+                    child: Icon(
+                      Icons.help_outline,
+                      size: 18,
+                      color: Color(0xFF7C8798),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'v$kAppVersion',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF8A93A0),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            key: const Key('toolbar-scroll-right'),
+            tooltip: 'Прокрутить вправо',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _scrollToolbar(1),
+            icon: const Icon(Icons.chevron_right),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Прокрутка строки листов стрелками: на узком экране вкладки иначе
+  /// уходят за край и до них не добраться.
+  void _scrollToolbar(double direction) {
+    if (!_toolbarScroll.hasClients) return;
+    final position = _toolbarScroll.position;
+    final target = (position.pixels + direction * 320).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    _toolbarScroll.animateTo(
+      target,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+}
+
+class _StatusBar extends StatelessWidget {
+  const _StatusBar({
+    required this.project,
+    required this.selectedSpec,
+    required this.rollPlans,
+  });
+
+  final OrderProject project;
+  final WindowSpec selectedSpec;
+  final List<RollPlan> rollPlans;
+
+  @override
+  Widget build(BuildContext context) {
+    final specs = [for (final window in project.windows) WindowSpec.of(window)];
+    // Плёнка в заказе — заготовки к раскрою, то есть с припуском на раскрой.
+    final totalFilmArea = specs.fold<double>(
+      0,
+      (sum, spec) => sum + spec.filmCutAreaM2,
+    );
+    final totalProductArea = specs.fold<double>(
+      0,
+      (sum, spec) => sum + spec.productAreaM2,
+    );
+    final totalEyelets = specs.fold<int>(
+      0,
+      (sum, spec) => sum + spec.standaloneEyeletCount,
+    );
+    final consumption = <double, double>{};
+    for (final spec in specs) {
+      spec.edgeConsumption.forEach((roll, length) {
+        consumption[roll] = (consumption[roll] ?? 0) + length;
+      });
+    }
+    final consumptionText =
+        (consumption.entries.toList()..sort((a, b) => a.key.compareTo(b.key)))
+            .map(
+              (entry) =>
+                  '${edgeBandLabel(entry.key)}: ${formatMm(entry.value)} ${unitSuffix()}',
+            )
+            .join(' · ');
+
+    final compact = MediaQuery.sizeOf(context).width < 700;
+    return Container(
+      height: 64,
+      color: const Color(0xFF111C2B),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 20),
+      child: compact
+          ? Row(
+              children: [
+                _stat('Окон', '${project.windowCount} шт'),
+                _stat(
+                  'Окно',
+                  '№${project.selectedIndex + 1} · '
+                      '${formatMm(selectedSpec.geometry.spanX)}×'
+                      '${formatMm(selectedSpec.geometry.overallHeight)}',
+                ),
+                _stat('Площадь', '${formatMeters(totalProductArea)} м²'),
+                _stat('Шаг', selectedSpec.eyeletStepLabel),
+                const Spacer(),
+                const _LabelSettingsButton(),
+              ],
+            )
+          : Row(
+              children: [
+                _stat('Окон в заказе', '${project.windowCount} шт'),
+                _stat(
+                  'Выбранное окно',
+                  '№${project.selectedIndex + 1} · '
+                      '${formatMm(selectedSpec.geometry.spanX)}×'
+                      '${formatMm(selectedSpec.geometry.overallHeight)} ${unitSuffix()}',
+                ),
+                _stat(
+                  'Площадь изделий',
+                  '${formatMeters(totalProductArea)} м²',
+                ),
+                _stat('Плёнка: заготовки', '${formatMeters(totalFilmArea)} м²'),
+                _stat('Люверсы', 'всего $totalEyelets шт'),
+                _stat('Шаг крепежа', selectedSpec.eyeletStepLabel),
+                _stat('Расход окантовки', consumptionText),
+                _stat(
+                  'Рулоны (материал)',
+                  rollPlans.isEmpty
+                      ? '—'
+                      : rollPlans
+                            .map(
+                              (plan) =>
+                                  '${plan.material.label.split(' ').first} '
+                                  '${formatMm(plan.rollWidth)}×'
+                                  '${formatMm(plan.layout.requiredLength)}',
+                            )
+                            .join(' · '),
+                ),
+                const SizedBox(width: 200, child: _UnitsSwitch()),
+                const SizedBox(width: 8),
+                const _LabelSettingsButton(),
+              ],
+            ),
+    );
+  }
+
+  Widget _stat(String label, String value) {
+    return Expanded(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 9,
+              letterSpacing: 0.6,
+              color: Color(0xFF8FA3BC),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Переключатель единиц внизу экрана: «Единицы: мм · см».
+///
+/// Стоит в нижней строке рядом с итогами, поэтому всегда на виду. Значение
+/// хранится в [DisplayUnits] (shared_preferences), переключение мгновенно
+/// перерисовывает панель, чертёж и все листы. Ввод в полях остаётся в мм.
+class _UnitsSwitch extends StatelessWidget {
+  const _UnitsSwitch();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<LengthUnit>(
+      valueListenable: DisplayUnits.current,
+      builder: (context, unit, _) {
+        return Row(
+          key: const Key('length-unit-switch'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Единицы:',
+              style: TextStyle(fontSize: 10.5, color: Color(0xFF8FA3BC)),
+            ),
+            const SizedBox(width: 6),
+            _UnitButton(
+              key: const Key('unit-mm'),
+              label: 'мм',
+              selected: unit == LengthUnit.mm,
+              onTap: () => DisplayUnits.setUnit(LengthUnit.mm),
+            ),
+            const SizedBox(width: 4),
+            _UnitButton(
+              key: const Key('unit-cm'),
+              label: 'см',
+              selected: unit == LengthUnit.cm,
+              onTap: () => DisplayUnits.setUnit(LengthUnit.cm),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _UnitButton extends StatelessWidget {
+  const _UnitButton({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(5),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : const Color(0xFF1D2C40),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(
+            color: selected ? Colors.white : const Color(0xFF44566D),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: selected ? const Color(0xFF111C2B) : Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Кнопка «Настройки подписей» в нижней строке рядом с единицами мм/см.
+///
+/// Заказчик: «нужно добавить настройку регулирования размеров всех подписей
+/// (для каждой отдельно)». Кнопка открывает диалог с восемью типами подписей;
+/// значения хранятся в shared_preferences и сразу перерисовывают листы.
+class _LabelSettingsButton extends StatelessWidget {
+  const _LabelSettingsButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      key: const Key('label-settings-button'),
+      onPressed: () => showDialog<void>(
+        context: context,
+        builder: (dialogContext) => const _LabelSettingsDialog(),
+      ),
+      style: TextButton.styleFrom(
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+      ),
+      icon: const Icon(Icons.text_fields, size: 16),
+      label: const Text('Настройки подписей'),
+    );
+  }
+}
+
+/// Диалог размеров всех восьми типов подписей, 5…24 pt.
+class _LabelSettingsDialog extends StatefulWidget {
+  const _LabelSettingsDialog();
+
+  @override
+  State<_LabelSettingsDialog> createState() => _LabelSettingsDialogState();
+}
+
+class _LabelSettingsDialogState extends State<_LabelSettingsDialog> {
+  late LabelSettings _settings = LabelSettings.value;
+
+  void _set(LabelKind kind, double value) {
+    // setSize сразу меняет notifier, поэтому листы перерисовываются под
+    // диалогом, а сохранение в shared_preferences идёт следом.
+    LabelSettings.setSize(kind, value);
+    setState(() => _settings = LabelSettings.value);
+  }
+
+  Future<void> _reset() async {
+    await LabelSettings.resetToDefaults();
+    if (!mounted) return;
+    setState(() => _settings = LabelSettings.value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Настройки подписей'),
+      content: SizedBox(
+        width: 520,
+        height: 680,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Размер каждой группы подписей настраивается отдельно, '
+              'от 5 до 24 pt. Значения сохраняются и применяются на всех '
+              'листах: чертёж, раскрой, расходы, смета, техкарта.',
+              style: TextStyle(fontSize: 12, color: Color(0xFF66748A)),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView.separated(
+                itemCount: LabelKind.values.length,
+                separatorBuilder: (_, _) => const Divider(height: 10),
+                itemBuilder: (context, index) {
+                  final kind = LabelKind.values[index];
+                  final value = _settings.ptFor(kind);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              kind.label,
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${value.toStringAsFixed(1).replaceAll('.', ',')} pt',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF0B62C4),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Slider(
+                        key: Key('label-size-${kind.name}'),
+                        min: LabelSettings.minPt,
+                        max: LabelSettings.maxPt,
+                        divisions: 38,
+                        value: value.clamp(
+                          LabelSettings.minPt,
+                          LabelSettings.maxPt,
+                        ),
+                        label: kind.label,
+                        onChanged: (next) => _set(kind, next),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const Key('label-settings-reset'),
+          onPressed: _reset,
+          child: const Text('Сбросить к стандартным'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+          child: const Text('Готово'),
+        ),
+      ],
+    );
+  }
+}

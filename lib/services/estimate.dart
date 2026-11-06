@@ -1,0 +1,855 @@
+// Расчёт сметы заказа: позиции по материалам, фурнитуре и работам.
+//
+// Все количества берутся из [CostsSummary] — готовая сводка расхода уже
+// посчитала площади, метры окантовки, люверсы и спецэлементы. Здесь
+// геометрия заново не пересчитывается, только умножается на цены
+// [PriceList]. Flutter UI в файле нет — только чистый Dart.
+
+import 'dart:math' as math;
+
+import '../models/order_project.dart';
+import '../models/price_list.dart';
+import '../models/window_geometry.dart';
+import '../models/crossbar.dart';
+import '../models/window_params.dart';
+import 'costs_summary.dart';
+
+// Удобные реэкспорты: смете нужен прайс, а деньги форматируются там же.
+export '../models/price_list.dart'
+    show PriceField, PriceItemKeys, PriceList, formatRubles, parsePrice;
+
+/// Раздел сметы — по нему позиции группируются в листе.
+enum EstimateGroup {
+  materials,
+  hardware,
+  work,
+
+  /// Свободные позиции ручного ввода из прайса.
+  extra;
+
+  String get label => switch (this) {
+    EstimateGroup.materials => 'Материалы',
+    EstimateGroup.hardware => 'Фурнитура и спецэлементы',
+    EstimateGroup.work => 'Работы',
+    EstimateGroup.extra => 'Доп',
+  };
+
+  /// Подпись для итоговой строки раздела.
+  String get subtotalLabel => switch (this) {
+    EstimateGroup.materials => 'Итого материалы',
+    EstimateGroup.hardware => 'Итого фурнитура',
+    EstimateGroup.work => 'Итого работы',
+    EstimateGroup.extra => 'Итого доп',
+  };
+}
+
+/// Строка сметы: наименование, количество с единицей, цена и сумма.
+class EstimateLine {
+  const EstimateLine({
+    required this.title,
+    required this.quantity,
+    required this.unit,
+    required this.unitPrice,
+    required this.group,
+    this.note,
+    this.itemKey,
+  });
+
+  final String title;
+
+  /// Количество в [unit]: м², м или шт.
+  final double quantity;
+
+  /// Единица измерения: «м²», «м», «шт».
+  final String unit;
+
+  /// Цена за единицу, ₽.
+  final double unitPrice;
+
+  final EstimateGroup group;
+
+  /// Уточнение под наименованием (может быть null).
+  final String? note;
+
+  /// Ключ позиции прайса ([PriceItemKeys]) — по нему видно, какой тумблер
+  /// панели управляет строкой (может быть null у сводных строк).
+  final String? itemKey;
+
+  /// Сумма позиции, округлённая до копейки.
+  double get amount => roundMoney(quantity * unitPrice);
+
+  String get quantityLabel => formatQuantity(quantity, unit);
+
+  String get unitPriceLabel => formatRubles(unitPrice);
+
+  String get amountLabel => formatRubles(amount);
+}
+
+/// Смета заказа: позиции, подытоги по разделам, наценка, скидка, НДС, ИТОГО.
+///
+/// Порядок расчёта: подытог по позициям → наценка → скидка → НДС «сверху»
+/// (см. [PriceList]) → ИТОГО. Наценка и скидка считаются от денежных сумм,
+/// а не от процентов друг друга, поэтому «скидка 10 %» уменьшает ИТОГО
+/// ровно на 10 %.
+class Estimate {
+  Estimate({
+    required this.prices,
+    required List<EstimateLine> lines,
+    required this.windowCount,
+    required this.productAreaM2,
+    required this.filmAreaM2,
+  }) : lines = List.unmodifiable(lines);
+
+  final PriceList prices;
+  final List<EstimateLine> lines;
+
+  /// Сколько окон в заказе (для цены за одно окно).
+  final int windowCount;
+
+  /// Суммарная площадь готовых изделий, м².
+  final double productAreaM2;
+
+  /// Суммарная площадь заготовок по контуру в раскрое С усадкой, м² — по ней
+  /// считаются позиции плёнки и работы раскроя.
+  final double filmAreaM2;
+
+  /// Смета всего заказа.
+  factory Estimate.of(OrderProject project, PriceList prices) {
+    final summary = CostsSummary(project);
+    final lines = <EstimateLine>[];
+    final hasTShape = project.windows.any((window) => window.isTShape);
+
+    // --- Материалы: полотно одной строкой, вместе с отходом --------------
+    // Пользователь видит одну позицию «Полотно» на материал: площадь
+    // заготовки плюс отход косой формы. Отдельной строки «Отход» больше нет.
+    final wasteByMaterial = _obliqueWasteByMaterial(summary.specs);
+    final materials =
+        <FilmMaterial>{
+          ...summary.filmAreaByMaterialWithShrinkage.keys,
+          ...wasteByMaterial.keys,
+        }.toList()..sort((a, b) {
+          final left = summary.filmAreaByMaterialWithShrinkage[a] ?? 0;
+          final right = summary.filmAreaByMaterialWithShrinkage[b] ?? 0;
+          return right.compareTo(left);
+        });
+    for (final material in materials) {
+      final filmArea = summary.filmAreaByMaterialWithShrinkage[material] ?? 0;
+      final waste = wasteByMaterial[material];
+      final wasteM2 = waste?.wasteM2 ?? 0;
+      final quantity = filmArea + wasteM2;
+      if (!(quantity > 0)) continue;
+      final itemKey = PriceList.filmItemKey(material);
+      if (!prices.isEnabled(itemKey)) continue;
+      final pricePerM2 = prices.filmPerM2(material);
+      final wasteNote = wasteM2 > 0.0001
+          ? ' В том числе отход косой заготовки '
+                '${formatMeters(wasteM2)} м² (габарит '
+                '${formatMeters(waste!.rectangleM2)} − контур '
+                '${formatMeters(waste.contourM2)}).'
+          : '';
+      lines.add(
+        EstimateLine(
+          title: materials.length == 1
+              ? 'Полотно'
+              : 'Полотно: ${material.label}',
+          note: material == FilmMaterial.screen
+              ? 'скрин: заготовка по контуру ${formatMeters(filmArea)} м² × '
+                    '${_unitPriceLabel(pricePerM2)} ₽/м² — готовый размер плюс '
+                    'половина подворота каждой стороны, к высоте +20 мм'
+                    '${summary.screenZipperCount > 0 ? ', ширина кроя уменьшена на '
+                              'полосу молнии '
+                              '${formatMm(summary.screenZipperBandWidthMm)} ${unitSuffix()}' : ''}'
+                    '$wasteNote'
+              : '${material.thickness}; заготовка по контуру'
+                    '${hasTShape ? ' (Т-окно: основное полотно + пристройки)' : ''}'
+                    '${summary.hasShrinkage ? ' с компенсацией усадки' : ''}'
+                    '${summary.hasAutoHeightAllowance ? '${summary.hasShrinkage ? ' и' : ' с'} авто-припуском '
+                              '+10 мм к высоте (ПВХ)' : ''}'
+                    '${summary.pvcZipperCount > 0 ? ', ширина кроя уменьшена на '
+                              'полосу (спайку) молнии '
+                              '${formatMm(summary.pvcZipperBandWidthMm)} ${unitSuffix()}' : ''}'
+                    '$wasteNote',
+          quantity: quantity,
+          unit: 'м²',
+          unitPrice: pricePerM2,
+          group: EstimateGroup.materials,
+          itemKey: itemKey,
+        ),
+      );
+    }
+
+    // --- Материалы: окантовка по ширинам рулонов -------------------------
+    final edgeEntries = summary.edgeByRoll.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    for (final entry in edgeEntries) {
+      final meters = entry.value / 1000;
+      if (!(meters > 0)) continue;
+      final rawWidth = entry.key;
+      // Тумблер пресета убирает строку этого рулона. Своя ширина позиции в
+      // прайсе не имеет (цена интерполируется), поэтому её строка остаётся.
+      final itemKey = PriceList.edgeItemKey(rawWidth);
+      if (itemKey != null && !prices.isEnabled(itemKey)) continue;
+      lines.add(
+        EstimateLine(
+          title: 'Окантовка ${edgeBandLabel(rawWidth)}',
+          note:
+              'готовая полоса '
+              '${formatMm(WindowParams.finishedEdgeWidth(rawWidth))} ${unitSuffix()} · '
+              '${summary.edgeMaterialNote}',
+          quantity: meters,
+          unit: 'м',
+          unitPrice: prices.edgePerMeterForWidth(rawWidth),
+          group: EstimateGroup.materials,
+          itemKey: itemKey,
+        ),
+      );
+    }
+
+    // --- Фурнитура: люверсы по типам -------------------------------------
+    final eyeletEntries = summary.eyeletsByType.entries.toList()
+      ..sort((a, b) => a.key.index.compareTo(b.key.index));
+    for (final entry in eyeletEntries) {
+      if (entry.value <= 0) continue;
+      final isRound = entry.key == EyeletType.round10;
+      final itemKey = isRound
+          ? PriceItemKeys.eyeletRound
+          : PriceItemKeys.eyeletOval;
+      if (!prices.isEnabled(itemKey)) continue;
+      // Установка отдельной строки не имеет — она в цене люверса, поэтому её
+      // тумблер убирает из цены надбавку за установку.
+      final installEnabled = prices.isEnabled(PriceItemKeys.eyeletInstall);
+      lines.add(
+        EstimateLine(
+          title: 'Люверсы ${entry.key.label}',
+          note: installEnabled
+              ? 'в том числе установка'
+              : 'без установки: установка выключена в прайсе',
+          quantity: entry.value.toDouble(),
+          unit: 'шт',
+          unitPrice: prices.eyeletPerEach(entry.key),
+          group: EstimateGroup.hardware,
+          itemKey: itemKey,
+        ),
+      );
+    }
+
+    // --- Фурнитура: крепёж подвижных сторон по типам --------------------
+    // Скоба, замок и ремень ставятся в каждую точку низа и боков, кроме
+    // углов. Люверс под них — отдельная строка выше: замок ставится через
+    // люверс, и это две разные позиции прайса.
+    final fastenerEntries = summary.fastenerCount.entries.toList()
+      ..sort((a, b) => a.key.index.compareTo(b.key.index));
+    for (final entry in fastenerEntries) {
+      if (entry.value <= 0) continue;
+      final itemKey = _fastenerItemKey(entry.key);
+      if (!prices.isEnabled(itemKey)) continue;
+      final unitPrice = prices.fastenerPerEach(entry.key);
+      lines.add(
+        EstimateLine(
+          title: entry.key.itemTitle,
+          note:
+              (entry.key == FastenerType.metalFrenchLock ||
+                  entry.key == FastenerType.frenchLocks)
+              ? 'по чертежу: в каждой точке подвижных сторон; люверс под '
+                    'замком отдельной строкой не считается'
+              : '${entry.value} шт × ${_unitPriceLabel(unitPrice)} ₽/шт — '
+                    'низ и бока, в точках крепления (люверс — отдельной строкой)',
+          quantity: entry.value.toDouble(),
+          unit: 'шт',
+          unitPrice: unitPrice,
+          group: EstimateGroup.hardware,
+          itemKey: itemKey,
+        ),
+      );
+    }
+
+    // Саморезы верхнего ряда: у подъёмного окна и скрина верх идёт к раме.
+    if (summary.screwCount > 0 && prices.isEnabled(PriceItemKeys.screw)) {
+      lines.add(
+        EstimateLine(
+          title: 'Саморезы верхнего ряда',
+          note:
+              '${summary.screwCount} шт × '
+              '${_unitPriceLabel(prices.screwPrice)} ₽/шт — верхняя кромка '
+              'крепится к раме',
+          quantity: summary.screwCount.toDouble(),
+          unit: 'шт',
+          unitPrice: prices.screwPrice,
+          group: EstimateGroup.hardware,
+          itemKey: PriceItemKeys.screw,
+        ),
+      );
+    }
+
+    if (summary.zipperCount > 0 &&
+        summary.zipperBandLengthMm > 0 &&
+        prices.isEnabled(PriceItemKeys.zipper)) {
+      final note = summary.screenZipperCount == 0
+          ? 'полотно и вставка с впайкой, ${summary.zipperCount} шт'
+          : summary.screenZipperCount == summary.zipperCount
+          ? 'полотно и вставка; полоса из скрина со швом '
+                '${formatMm(screenSeamMm)} ${unitSuffix()} по краям — '
+                '${summary.screenZipperCount} шт'
+          : 'полотно и вставка: с полосой тента '
+                '${summary.zipperCount - summary.screenZipperCount} шт, '
+                'с полосой скрина ${summary.screenZipperCount} шт (шов '
+                '${formatMm(screenSeamMm)} ${unitSuffix()})';
+      lines.add(
+        EstimateLine(
+          title: 'Молния тракторная',
+          note: note,
+          quantity: summary.zipperBandLengthMm / 1000,
+          unit: 'м',
+          unitPrice: prices.zipperPerM,
+          group: EstimateGroup.hardware,
+          itemKey: PriceItemKeys.zipper,
+        ),
+      );
+    }
+
+    if (summary.pocketCount > 0 &&
+        summary.pocketLengthMm > 0 &&
+        prices.isEnabled(PriceItemKeys.pocket)) {
+      lines.add(
+        EstimateLine(
+          title: 'Фартук',
+          note: 'нижний/верхний фартук, ${summary.pocketCount} шт',
+          quantity: summary.pocketLengthMm / 1000,
+          unit: 'м',
+          unitPrice: prices.pocketPerM,
+          group: EstimateGroup.hardware,
+          itemKey: PriceItemKeys.pocket,
+        ),
+      );
+    }
+
+    if (summary.strapCount > 0 && prices.isEnabled(PriceItemKeys.strap)) {
+      lines.add(
+        EstimateLine(
+          title: 'Подъёмные ремни',
+          note:
+              '${formatMm(liftStrapWidth)} × ${formatMm(liftStrapLength)} ${unitSuffix()}',
+          quantity: summary.strapCount.toDouble(),
+          unit: 'шт',
+          unitPrice: prices.strapPrice,
+          group: EstimateGroup.hardware,
+          itemKey: PriceItemKeys.strap,
+        ),
+      );
+    }
+
+    final drainTotal = _drainTotal(summary);
+    if (drainTotal > 0 && prices.isEnabled(PriceItemKeys.drain)) {
+      lines.add(
+        EstimateLine(
+          title: 'Дренажные отверстия',
+          note: 'Ø6 мм в нижней окантовке',
+          quantity: drainTotal.toDouble(),
+          unit: 'шт',
+          unitPrice: prices.drainPrice,
+          group: EstimateGroup.hardware,
+          itemKey: PriceItemKeys.drain,
+        ),
+      );
+    }
+
+    if (summary.cutoutCount > 0 && prices.isEnabled(PriceItemKeys.cutout)) {
+      lines.add(
+        EstimateLine(
+          title: 'Вырезы в полотне',
+          note: 'обработка контура; окантовка учтена в расходе выше',
+          quantity: summary.cutoutCount.toDouble(),
+          unit: 'шт',
+          unitPrice: prices.cutoutPrice,
+          group: EstimateGroup.hardware,
+          itemKey: PriceItemKeys.cutout,
+        ),
+      );
+    }
+
+    // Окантовка и люверсы вырезов — только если мастер их включил. Старые
+    // заказы без этих полей дают ноль и смета не меняется.
+    final cutoutEdgingByWidth = <double, double>{};
+    for (final spec in summary.specs) {
+      for (final cutout in spec.params.cutouts) {
+        if (cutout.edgingMm <= 0) continue;
+        cutoutEdgingByWidth[cutout.edgingMm] =
+            (cutoutEdgingByWidth[cutout.edgingMm] ?? 0) + cutout.perimeterMm;
+      }
+    }
+    for (final entry
+        in cutoutEdgingByWidth.entries.toList()
+          ..sort((a, b) => a.key.compareTo(b.key))) {
+      lines.add(
+        EstimateLine(
+          title: 'Окантовка вырезов ${edgeBandLabel(entry.key)}',
+          note:
+              'полоса по контуру выреза, ширина ${formatMm(entry.key)} '
+              '${unitSuffix()}',
+          quantity: entry.value / 1000,
+          unit: 'м',
+          unitPrice: prices.edgePerMeterForWidth(entry.key),
+          group: EstimateGroup.hardware,
+        ),
+      );
+    }
+    final cutoutEyelets = <int>[
+      for (final spec in summary.specs)
+        for (final cutout in spec.params.cutouts) cutout.eyeletCount,
+    ].fold<int>(0, (sum, value) => sum + value);
+    if (cutoutEyelets > 0) {
+      lines.add(
+        EstimateLine(
+          title: 'Люверсы в вырезах',
+          note: 'установка по контуру выреза, шт',
+          quantity: cutoutEyelets.toDouble(),
+          unit: 'шт',
+          unitPrice: prices.eyeletPrice + prices.eyeletInstall,
+          group: EstimateGroup.hardware,
+        ),
+      );
+    }
+
+    // --- Работы -----------------------------------------------------------
+    if (summary.productAreaM2 > 0 && prices.isEnabled(PriceItemKeys.labor)) {
+      lines.add(
+        EstimateLine(
+          title: 'Сварка и сборка изделий',
+          note: 'по площади готовых изделий',
+          quantity: summary.productAreaM2,
+          unit: 'м²',
+          unitPrice: prices.laborPerM2,
+          group: EstimateGroup.work,
+          itemKey: PriceItemKeys.labor,
+        ),
+      );
+    }
+    if (summary.filmAreaWithShrinkageM2 > 0 &&
+        prices.isEnabled(PriceItemKeys.cutting)) {
+      lines.add(
+        EstimateLine(
+          title: 'Раскрой плёнки и разметка',
+          note: 'по площади заготовки по контуру с усадкой',
+          quantity: summary.filmAreaWithShrinkageM2,
+          unit: 'м²',
+          unitPrice: prices.cuttingPerM2,
+          group: EstimateGroup.work,
+          itemKey: PriceItemKeys.cutting,
+        ),
+      );
+    }
+    if (prices.isEnabled(PriceItemKeys.weld)) {
+      // Швы по общим сторонам Т-окна — отдельные операции: это сварка двух
+      // полотен одного изделия, а не спайка с соседним окном. У углового
+      // Т-окна пристроек две, поэтому и строк две — по каждой пристройке.
+      final seamByAnnex = <int, double>{};
+      for (final spec in summary.specs) {
+        for (final annex in spec.layers.tAnnexes.where(
+          (annex) => annex.welded,
+        )) {
+          seamByAnnex.update(
+            annex.number,
+            (value) => value + annex.sharedLength,
+            ifAbsent: () => annex.sharedLength,
+          );
+        }
+      }
+      // Составное окно: шов между ПВХ-полотном и вторым материалом.
+      final compositeSeamMm = summary.specs.fold<double>(
+        0,
+        (sum, spec) => sum + spec.compositeSeamLength,
+      );
+      if (compositeSeamMm > 0) {
+        lines.add(
+          EstimateLine(
+            title: 'Спайка составного окна',
+            note:
+                'ПВХ-полотно и второй материал свариваются по общему шву; '
+                'окантовки на шве нет',
+            quantity: compositeSeamMm / 1000,
+            unit: 'м',
+            unitPrice: prices.weldPerM,
+            group: EstimateGroup.work,
+            itemKey: PriceItemKeys.weld,
+          ),
+        );
+      }
+      final seamNumbers = seamByAnnex.keys.toList()..sort();
+      for (final number in seamNumbers) {
+        final seamMm = seamByAnnex[number] ?? 0;
+        if (!(seamMm > 0)) continue;
+        lines.add(
+          EstimateLine(
+            title: seamNumbers.length == 1
+                ? 'Спайка по общим сторонам Т-окна'
+                : 'Спайка по общей стороне пристройки $number Т-окна',
+            note: seamNumbers.length == 1
+                ? 'два полотна свариваются внахлёст; окантовки на общей '
+                      'стороне нет'
+                : 'пристройка $number: два полотна свариваются внахлёст; '
+                      'окантовки на общей стороне нет',
+            quantity: seamMm / 1000,
+            unit: 'м',
+            unitPrice: prices.weldPerM,
+            group: EstimateGroup.work,
+            itemKey: PriceItemKeys.weld,
+          ),
+        );
+      }
+      final neighborWeldMm = summary.weldLengthMm - summary.tShapeSeamMm;
+      if (neighborWeldMm > 0) {
+        lines.add(
+          EstimateLine(
+            title: 'Спайка полотен между окнами',
+            note: 'на спаянных сторонах окантовка не ставится',
+            quantity: neighborWeldMm / 1000,
+            unit: 'м',
+            unitPrice: prices.weldPerM,
+            group: EstimateGroup.work,
+            itemKey: PriceItemKeys.weld,
+          ),
+        );
+      }
+    }
+    // Скрин: вместо окантовки — подворот по сторонам и шов 3 мм. Работа
+    // считается по длине подворота: периметр готового изделия, а если у окна
+    // есть молнии — плюс шов по длине полосы каждой молнии.
+    if (summary.screenHemLengthMm > 0 &&
+        prices.isEnabled(PriceItemKeys.screenHem)) {
+      final hemMeters = summary.screenHemLengthMm / 1000;
+      lines.add(
+        EstimateLine(
+          title:
+              'Подворот скрина и шов ${formatMm(screenSeamMm)} ${unitSuffix()}',
+          note:
+              'подворот по сторонам (низ, право, верх, лево): '
+              '${formatMeters(hemMeters)} м × '
+              '${_unitPriceLabel(prices.screenHemPerM)} ₽/м — '
+              '${summary.screenZipperCount > 0 ? 'периметр готового изделия плюс '
+                        'швы полос молний '
+                        '(${formatMm(summary.screenZipperBandLengthMm)} ${unitSuffix()})' : 'длина по периметру '
+                        'готового изделия'}',
+          quantity: hemMeters,
+          unit: 'м',
+          unitPrice: prices.screenHemPerM,
+          group: EstimateGroup.work,
+          itemKey: PriceItemKeys.screenHem,
+        ),
+      );
+    }
+
+    // Алюминиевый бокс: по две ширины на каждое окно. Метраж — удвоенная
+    // сумма ширин изделий; цена задаётся в прайсе за метр.
+    final aluminumMeters =
+        summary.specs.fold<double>(
+          0,
+          (sum, spec) => sum + spec.geometry.bottomWidth,
+        ) /
+        1000 *
+        2;
+    if (aluminumMeters > 0 &&
+        prices.aluminumBoxPerM > 0 &&
+        prices.isEnabled(PriceItemKeys.aluminumBox)) {
+      lines.add(
+        EstimateLine(
+          title: 'Алюминиевый бокс',
+          note:
+              'две ширины на окно; всего '
+              '${formatMeters(aluminumMeters)} м',
+          quantity: aluminumMeters,
+          unit: 'м',
+          unitPrice: prices.aluminumBoxPerM,
+          group: EstimateGroup.hardware,
+          itemKey: PriceItemKeys.aluminumBox,
+        ),
+      );
+    }
+
+    // Свободные позиции ручного ввода из прайса: название, количество,
+    // единица и цена. Идут отдельной строкой в работах, без привязки к окну.
+    // Дополнительные позиции: количество вводится в заказе, цена — в прайсе.
+    // --- Перемычки: длина на чертеже × 2 (напайка на два полотна) --------
+    if (prices.crossbarPerM > 0) {
+      for (final spec in summary.specs) {
+        final visible = spec.layers.filmVisibleBounds;
+        for (final crossbar in spec.params.crossbars) {
+          final lengthMm = crossbar.lengthFor(
+            innerWidth: visible.width,
+            innerHeight: visible.height,
+          );
+          if (!(lengthMm > 0)) continue;
+          final meters = lengthMm / 1000 * 2;
+          lines.add(
+            EstimateLine(
+              title:
+                  'Перемычка ${crossbar.axis == CrossbarAxis.horizontal ? 'горизонтальная' : 'вертикальная'}',
+              note:
+                  'полоса ${formatMm(crossbar.widthMm)} ${unitSuffix()}, '
+                  'напайка ${formatMm(crossbar.weldMm)} ${unitSuffix()} на каждое '
+                  'полотно; длина на чертеже ${formatMeters(lengthMm / 1000)} м × 2',
+              quantity: meters,
+              unit: 'м',
+              unitPrice: prices.crossbarPerM,
+              group: EstimateGroup.materials,
+            ),
+          );
+        }
+      }
+    }
+
+    // Крепления на перемычках считаются независимо от цены самой перемычки:
+    // мастер может не продавать перемычку отдельной строкой, но крепёж
+    // обязан попасть в смету.
+    final crossbarFasteners = [
+      for (final spec in summary.specs)
+        for (final crossbar in spec.params.crossbars)
+          crossbar.totalFastenerCount,
+    ].fold<int>(0, (sum, value) => sum + value);
+    if (crossbarFasteners > 0 && prices.isEnabled(PriceItemKeys.eyeletRound)) {
+      lines.add(
+        EstimateLine(
+          title: 'Крепления на перемычках',
+          note: 'люверсы/скобы по перемычке, установка',
+          quantity: crossbarFasteners.toDouble(),
+          unit: 'шт',
+          unitPrice: prices.eyeletPrice + prices.eyeletInstall,
+          group: EstimateGroup.hardware,
+          itemKey: PriceItemKeys.eyeletRound,
+        ),
+      );
+    }
+
+    for (final key in PriceList.extraItemKeys) {
+      final quantity = project.extraQuantities[key] ?? 0;
+      final unitPrice = prices.extraItemPrice(key);
+      if (quantity <= 0 || unitPrice <= 0) continue;
+      final unit = PriceList.extraItemUnit(key);
+      lines.add(
+        EstimateLine(
+          title: 'Дополнительно: ${PriceList.extraItemLabel(key)}',
+          note:
+              '${_unitPriceLabel(quantity)} $unit × '
+              '${_unitPriceLabel(unitPrice)} ₽/$unit — ручной ввод в заказе',
+          quantity: quantity,
+          unit: unit,
+          unitPrice: unitPrice,
+          group: EstimateGroup.extra,
+        ),
+      );
+    }
+    for (final item in prices.customItems) {
+      final title = item.name.trim();
+      if (title.isEmpty) continue;
+      lines.add(
+        EstimateLine(
+          title: 'Дополнительно: $title',
+          note: 'свободная позиция из прайса (ручной ввод)',
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: item.unitPrice,
+          group: EstimateGroup.extra,
+        ),
+      );
+    }
+
+    return Estimate(
+      prices: prices,
+      lines: lines,
+      windowCount: project.windowCount,
+      productAreaM2: summary.productAreaM2,
+      filmAreaM2: summary.filmAreaWithShrinkageM2,
+    );
+  }
+
+  /// Смета одного окна — тот же расчёт по заказу из одного окна.
+  factory Estimate.ofWindow(WindowParams params, PriceList prices) =>
+      Estimate.of(OrderProject(windows: [params]), prices);
+
+  /// Позиции раздела в порядке добавления.
+  List<EstimateLine> linesFor(EstimateGroup group) =>
+      List.unmodifiable(lines.where((line) => line.group == group));
+
+  /// Подытог раздела, ₽.
+  double subtotalFor(EstimateGroup group) => roundMoney(
+    lines
+        .where((line) => line.group == group)
+        .fold<double>(0, (sum, line) => sum + line.amount),
+  );
+
+  double get materialsSubtotal => subtotalFor(EstimateGroup.materials);
+  double get hardwareSubtotal => subtotalFor(EstimateGroup.hardware);
+  double get workSubtotal => subtotalFor(EstimateGroup.work);
+  double get extraSubtotal => subtotalFor(EstimateGroup.extra);
+
+  /// Сумма всех позиций без наценки, скидки и НДС.
+  double get subtotal => roundMoney(
+    materialsSubtotal + hardwareSubtotal + workSubtotal + extraSubtotal,
+  );
+
+  double get markupPercent =>
+      prices.markupPercent.isFinite ? math.max(prices.markupPercent, 0) : 0;
+
+  double get discountPercent => prices.discountPercent.isFinite
+      ? prices.discountPercent.clamp(0, 100).toDouble()
+      : 0;
+
+  /// Монтаж, ₽/м² общей площади окон.
+  double get installationPerM2 => prices.installationPerM2.isFinite
+      ? math.max(prices.installationPerM2, 0)
+      : 0;
+
+  /// Общая площадь окон для монтажа, м².
+  double get installationAreaM2 => productAreaM2;
+
+  /// Стоимость монтажа: площадь окон × цена за м².
+  double get installationAmount =>
+      roundMoney(installationAreaM2 * installationPerM2);
+
+  double get vatPercent => prices.vatPercent.isFinite
+      ? prices.vatPercent.clamp(0, 100).toDouble()
+      : 0;
+
+  /// Наценка в рублях.
+  double get markupAmount => roundMoney(subtotal * markupPercent / 100);
+
+  /// Сумма с монтажом и наценкой — база для скидки.
+  double get afterMarkup =>
+      roundMoney(subtotal + installationAmount + markupAmount);
+
+  /// Скидка в рублях.
+  double get discountAmount => roundMoney(afterMarkup * discountPercent / 100);
+
+  /// Сумма после скидки — база для НДС.
+  double get taxableAmount => roundMoney(afterMarkup - discountAmount);
+
+  /// НДС «сверху», ₽.
+  double get vatAmount => roundMoney(taxableAmount * vatPercent / 100);
+
+  /// ИТОГО к оплате, ₽.
+  double get total => roundMoney(taxableAmount + vatAmount);
+
+  /// Цена за одно окно, ₽ (0 при пустом заказе).
+  double get pricePerWindow =>
+      windowCount > 0 ? roundMoney(total / windowCount) : 0;
+
+  /// Пустая ли смета (нет позиций).
+  bool get isEmpty => lines.isEmpty;
+}
+
+/// Накопленный отход косых заготовок по одному материалу, м².
+///
+/// [rectangleM2] — сумма габаритных прямоугольников заготовок, [contourM2] —
+/// сумма фактических площадей их контуров, [wasteM2] — сумма отходов
+/// `max(0, прямоугольник − контур)` по окнам. Три числа храним для подписи:
+/// в смете видно, из чего сложился отход.
+class _ObliqueWaste {
+  const _ObliqueWaste(this.rectangleM2, this.contourM2, this.wasteM2);
+
+  final double rectangleM2;
+  final double contourM2;
+  final double wasteM2;
+}
+
+/// Отход косых заготовок по материалам, м².
+///
+/// Для каждого окна с косым контуром ([WindowSpec.isObliqueBlank] — трапеция
+/// или разные высоты/ширины, но не прямоугольник) считается:
+/// `прямоугольник = ширина заготовки к раскрою × высота заготовки к раскрою`
+/// (С припуском и усадкой — те же числа, что в строке «Полотно»);
+/// `контур = Σ polygonArea(filmCutPolygonsWithShrinkage)` — БЕЗ вычета
+/// вырезов, иначе отход считался бы по площади с дырами;
+/// `отход = max(0, прямоугольник − контур)`.
+///
+/// Прямоугольные окна и Т-окно (его контур собран из прямоугольников) в
+/// сумму не попадают: у них отхода нет.
+Map<FilmMaterial, _ObliqueWaste> _obliqueWasteByMaterial(
+  Iterable<WindowSpec> specs,
+) {
+  final result = <FilmMaterial, _ObliqueWaste>{};
+  for (final spec in specs) {
+    if (!spec.isObliqueBlank) continue;
+    final rectangleM2 =
+        spec.filmCutWidthWithShrinkage *
+        spec.filmCutHeightWithShrinkage /
+        1000000;
+    var contourMm2 = 0.0;
+    // Контуры заготовки уже растянуты на припуск и усадку; вырезы здесь
+    // намеренно не вычитаются — это площадь раскроенного полотна без дыр.
+    for (final polygon in spec.filmCutPolygonsWithShrinkage) {
+      contourMm2 += polygonArea(polygon).abs();
+    }
+    final contourM2 = contourMm2 / 1000000;
+    final wasteM2 = math.max(0.0, rectangleM2 - contourM2);
+    final current = result[spec.params.material];
+    result[spec.params.material] = current == null
+        ? _ObliqueWaste(rectangleM2, contourM2, wasteM2)
+        : _ObliqueWaste(
+            current.rectangleM2 + rectangleM2,
+            current.contourM2 + contourM2,
+            current.wasteM2 + wasteM2,
+          );
+  }
+  return result;
+}
+
+/// Ключ позиции прайса для типа крепежа: скоба, замок, ремень.
+///
+/// У «только люверсы» своего крепежа нет, строки для него не бывает —
+/// возвращаем ключ ремня как безопасный запасной вариант.
+String _fastenerItemKey(FastenerType type) => switch (type) {
+  FastenerType.eyeletsOnly => PriceItemKeys.strap,
+  FastenerType.turnBuckles => PriceItemKeys.turnBuckle,
+  FastenerType.frenchLocks => PriceItemKeys.frenchLock,
+  FastenerType.metalFrenchLock => PriceItemKeys.frenchLock,
+  FastenerType.clip16 => PriceItemKeys.turnBuckle,
+  FastenerType.straps => PriceItemKeys.strap,
+};
+
+/// Сумма дренажных отверстий по заказу.
+///
+/// В [CostsSummary] нет готового счётчика дренажа (только подписи), поэтому
+/// берём параметры из уже посчитанных спецификаций заказа — геометрия
+/// при этом не пересчитывается.
+int _drainTotal(CostsSummary summary) {
+  var total = 0;
+  for (final spec in summary.specs) {
+    // У скрина нет нижней окантовки — дренаж не считается.
+    if (!spec.params.drainHoles || spec.params.isScreen) continue;
+    final count = spec.params.drainCount;
+    if (count.isFinite && count > 0) total += count.round();
+  }
+  return total;
+}
+
+/// Количество с единицей: «12,34», «8,04», «28».
+String formatQuantity(double value, String unit) {
+  if (!value.isFinite) return '—';
+  if (unit == 'шт') return groupThousands(value.round().toString());
+  return _formatDecimal(value, 2);
+}
+
+/// Округление денег до копейки. Нечисловые значения приводим к нулю.
+double roundMoney(double value) =>
+    value.isFinite ? (value * 100).roundToDouble() / 100 : 0;
+
+/// Цена за единицу без символа валюты: «520» или «520,50».
+///
+/// Нужна для подписей вида «4,33 м² × 520 ₽/м²» — цена стоит рядом с единицей
+/// измерения, поэтому символ валюты в подписи не дублируется.
+String _unitPriceLabel(double value) {
+  if (!value.isFinite) return '—';
+  if (value == value.roundToDouble()) {
+    return groupThousands(value.toStringAsFixed(0));
+  }
+  return value.toStringAsFixed(2).replaceAll('.', ',');
+}
+
+/// Десятичное число с запятой и пробелами между разрядами: «1 234,50».
+String _formatDecimal(double value, int decimals) {
+  final text = value.toStringAsFixed(decimals);
+  final negative = text.startsWith('-');
+  final body = negative ? text.substring(1) : text;
+  final parts = body.split('.');
+  final fraction = parts.length > 1 ? ',${parts[1]}' : '';
+  return '${negative ? '−' : ''}${groupThousands(parts.first)}$fraction';
+}

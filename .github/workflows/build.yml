@@ -1,0 +1,216 @@
+name: Сборка и релиз
+
+# Что делает:
+#   • запускает анализ и тесты;
+#   • собирает приложение под Windows (.exe) и macOS (.app/DMG);
+#   • выкладывает готовые архивы как артефакты Actions. Публичный релиз
+#     собирается ТОЛЬКО на myagkie-okna-excl.web.app, без GitHub Releases.
+#
+# Как выпустить версию:
+#   1) поднять версию в pubspec.yaml;
+#   2) git tag v1.0.2 && git push origin v1.0.2   (или запустить вручную
+#      во вкладке Actions и указать версию);
+#   3) через несколько минут архив появится в разделе Releases.
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия релиза без буквы v (например 1.0.2). Пусто — только артефакты.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  # Та же версия, что сгенерировала папку windows/ и на которой писалась программа.
+  FLUTTER_VERSION: '3.44.7'
+
+jobs:
+  test:
+    name: Анализ и тесты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Шрифты для тестов
+        run: sudo apt-get update && sudo apt-get install -y fonts-liberation
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Зависимости
+        run: flutter pub get
+      - name: Анализ
+        run: flutter analyze
+      - name: Тесты
+        run: flutter test
+
+
+  android:
+    name: Android (.apk)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Зависимости
+        run: flutter pub get
+
+      - name: Подпись release (секреты GitHub)
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/upload-keystore.jks
+          printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=upload-keystore.jks\n' \
+            "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            "${{ secrets.ANDROID_KEY_PASSWORD }}" \
+            "${{ secrets.ANDROID_KEY_ALIAS }}" > android/key.properties
+
+      - name: Сборка APK и AAB (магазинная, без backend)
+        run: |
+          flutter build apk --release --dart-define=STORE_BUILD=true             --dart-define=OKNA_BACKEND="${{ secrets.OKNA_BACKEND }}"             --dart-define=OKNA_SECRET="${{ secrets.OKNA_SECRET }}"
+          flutter build appbundle --release --dart-define=STORE_BUILD=true             --dart-define=OKNA_BACKEND="${{ secrets.OKNA_BACKEND }}"             --dart-define=OKNA_SECRET="${{ secrets.OKNA_SECRET }}"
+
+      - name: Артефакт
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyagkieOknaExcl-android
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+  web:
+    name: Web (ZIP)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Зависимости
+        run: flutter pub get
+      - name: SQLite WASM для браузера
+        run: dart run sqflite_common_ffi_web:setup
+      - name: Сборка
+        run: |
+          flutter build web --release --pwa-strategy=none
+          rm -rf build/web/admin
+          cp -R admin build/web/admin
+      - name: Архив
+        run: |
+          mkdir -p dist
+          cd build/web
+          zip -qr ../../dist/MyagkieOknaExcl-web.zip .
+      - name: Артефакт
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyagkieOknaExcl-web
+          path: dist/MyagkieOknaExcl-web.zip
+          if-no-files-found: error
+  windows:
+    name: Windows (.exe)
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Зависимости
+        run: flutter pub get
+
+      - name: Сборка
+        run: flutter build windows --release --dart-define=OKNA_BACKEND="${{ secrets.OKNA_BACKEND }}" --dart-define=OKNA_SECRET="${{ secrets.OKNA_SECRET }}"
+
+      - name: Портативный архив
+        shell: pwsh
+        run: |
+          $release = "build/windows/x64/runner/Release"
+          # VC++ runtime app-local: без него чистая Windows 10/11 не запустит exe.
+          foreach ($dll in @('msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll','concrt140.dll')) {
+            $source = Join-Path $env:SystemRoot "System32\$dll"
+            if (Test-Path $source) { Copy-Item $source "$release\$dll" -Force }
+          }
+          # Дымовой запуск: убеждаемся, что exe стартует и не падает сразу.
+          $process = Start-Process -FilePath "$release\MyagkieOknaExcl.exe" -PassThru
+          Start-Sleep -Seconds 8
+          if ($process.HasExited) {
+            throw "Приложение завершилось сразу после запуска, код $($process.ExitCode)"
+          }
+          Stop-Process -Id $process.Id -Force
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item packaging/README-WINDOWS.txt "$release/ЧИТАЙ-МЕНЯ.txt" -Force
+          Compress-Archive -Path "$release/*" `
+            -DestinationPath dist/MyagkieOknaExcl-windows.zip -Force
+          Get-Item dist/MyagkieOknaExcl-windows.zip | Select-Object Name, Length
+
+      - name: Артефакт
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyagkieOknaExcl-windows
+          path: dist/MyagkieOknaExcl-windows.zip
+          if-no-files-found: error
+
+  macos:
+    name: macOS (.app, DMG)
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Зависимости
+        run: flutter pub get
+
+      - name: Сборка
+        run: flutter build macos --release --dart-define=OKNA_BACKEND="${{ secrets.OKNA_BACKEND }}" --dart-define=OKNA_SECRET="${{ secrets.OKNA_SECRET }}"
+
+      - name: Архивы
+        run: |
+          set -e
+          APP="build/macos/Build/Products/Release/MyagkieOknaExcl.app"
+          codesign --deep --force --sign - "$APP" || true
+          mkdir -p dist/dmg
+          cp -R "$APP" dist/dmg/
+          ln -s /Applications dist/dmg/Applications
+          hdiutil create -volname "Мягкие окна Excl" -srcfolder dist/dmg -ov \
+            -format UDZO dist/MyagkieOknaExcl-macos.dmg
+          ditto -c -k --sequesterRsrc --keepParent "$APP" \
+            dist/MyagkieOknaExcl-macos.zip
+          ls -lh dist
+
+      - name: Артефакт
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyagkieOknaExcl-macos
+          path: |
+            dist/MyagkieOknaExcl-macos.dmg
+            dist/MyagkieOknaExcl-macos.zip
+          if-no-files-found: error

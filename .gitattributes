@@ -1,0 +1,12 @@
+# Windows-скрипты и исходники не должны получать CRLF при клонировании
+*.sh text eol=lf
+*.py text eol=lf
+*.dart text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.rc text eol=crlf
+*.ico binary
+*.png binary
+*.icns binary
+*.dmg binary
+*.zip binary

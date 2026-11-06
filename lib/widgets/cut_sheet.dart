@@ -1,0 +1,1753 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+
+import '../models/order_project.dart';
+import '../models/crossbar.dart';
+import '../models/window_geometry.dart';
+import '../models/window_params.dart';
+import '../services/label_settings.dart';
+
+/// Лист «Раскрой плёнки» — вырезанные заготовки мягких окон.
+///
+/// В отличие от листа «Раскладка» (там заготовки уложены на рулон), здесь
+/// показаны сами заготовки: каждая — фактический контур (прямоугольник или
+/// трапеция) в ОДНОМ общем масштабе, с длинами всех четырёх сторон, площадью
+/// внутри и подписью материала под ним. Заготовки идут в порядке окон, слева
+/// направо, с переносом на новый ряд.
+///
+/// Раскладка на рулоне по-прежнему пакует заготовки по габаритному
+/// прямоугольнику — это упаковка. А в ведомости, смете и на этом листе идёт
+/// фактическая площадь по контуру: для косого окна она меньше габарита.
+class CutSheet extends StatelessWidget {
+  const CutSheet({
+    super.key,
+    required this.project,
+    this.captureKey,
+    this.labelFontFamily,
+  });
+
+  final OrderProject project;
+  final GlobalKey? captureKey;
+  final String? labelFontFamily;
+
+  /// Высота штампа снизу — как на остальных листах.
+  static const double titleBlockHeight = 118;
+
+  /// Лист «Раскрой» всегда один A4 (портрет), как и остальные листы.
+  static const double a4Width = 1240;
+  static const double a4Height = 1754;
+
+  static const double _outerPadding = 20;
+  static const double _innerPadding = 20;
+  static const double _captionBarHeight = 42;
+  static const double _totalsHeight = 132;
+  static const double _piecesVerticalPadding = 10;
+
+  /// Всё, что на листе занимает место кроме самих заготовок.
+  static const double _chromeHeight =
+      _captionBarHeight +
+      _totalsHeight +
+      titleBlockHeight +
+      _piecesVerticalPadding * 2;
+
+  /// Свободная часть A4 под заготовки (без обвязки и полей).
+  static const double a4ContentWidth = a4Width - _innerPadding * 2;
+  static const double a4ContentHeight = a4Height - _chromeHeight;
+
+  /// Заготовки заказа: по одной на окно, в порядке окон.
+  static List<CutPiece> piecesOf(OrderProject project) => [
+    for (var i = 0; i < project.windows.length; i++)
+      ...CutPiece.piecesOfSpec(
+        WindowSpec.of(project.windows[i]),
+        windowIndex: i,
+      ),
+  ];
+
+  /// Размер листа раскроя — всегда один A4 с полями рабочей области.
+  ///
+  /// Заготовки укладываются в свободную часть листа и при необходимости
+  /// уменьшаются общим масштабом, поэтому лист не растёт и не переносится
+  /// на вторую страницу.
+  static Size sheetSize(OrderProject project, Size viewport) =>
+      Size(a4Width + _outerPadding * 2, a4Height + _outerPadding * 2);
+
+  @override
+  Widget build(BuildContext context) {
+    final specs = [for (final window in project.windows) WindowSpec.of(window)];
+    final pieces = [
+      for (var i = 0; i < specs.length; i++)
+        ...CutPiece.piecesOfSpec(specs[i], windowIndex: i),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Если родитель дал бесконечные ограничения, не строим лист
+        // бесконечного размера: берём разумную ширину листа. Иначе
+        // Container с width: Infinity просто не рисует заготовку.
+        // Строго один A4: размеры листа не зависят от окна программы.
+        final sheetWidth = a4Width;
+        final sheetHeight = a4Height;
+        final contentWidth = math.max(sheetWidth - _innerPadding * 2, 160.0);
+        final area = Size(
+          contentWidth,
+          math.max(sheetHeight - _chromeHeight, 40.0),
+        );
+        final layout = CutLayout.place(pieces, area);
+        final paint = CustomPaint(
+          painter: CutSheetPainter(
+            specs: specs,
+            layout: layout,
+            labelFontFamily: labelFontFamily,
+          ),
+          size: Size(contentWidth, layout.contentHeight),
+        );
+
+        return Container(
+          color: const Color(0xFFE7EBF2),
+          padding: const EdgeInsets.all(_outerPadding),
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: RepaintBoundary(
+                key: captureKey,
+                child: Container(
+                  width: sheetWidth,
+                  height: sheetHeight,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFC3CCDA)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.10),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        height: _captionBarHeight,
+                        width: double.infinity,
+                        color: const Color(0xFF0B62C4),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          children: [
+                            const Text(
+                              'Раскрой плёнки',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              'Заготовок: ${pieces.length} шт',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: ClipRect(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: _innerPadding,
+                              vertical: _piecesVerticalPadding,
+                            ),
+                            child: pieces.isEmpty
+                                ? const Center(
+                                    child: Text(
+                                      'В заказе нет окон — кроить нечего',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFF66748A),
+                                      ),
+                                    ),
+                                  )
+                                : Center(child: paint),
+                          ),
+                        ),
+                      ),
+                      _CutTotalsBlock(specs: specs),
+                      SizedBox(
+                        height: titleBlockHeight,
+                        child: _CutTitleBlock(project: project, specs: specs),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Заготовка плёнки: фактический контур в миллиметрах.
+///
+/// [widthMm] и [heightMm] — габарит контура (по нему упаковывается лист),
+/// [outline] — сам контур в миллиметрах с началом в левом нижнем углу
+/// габарита и осью Y вверх. Для прямоугольного окна контур не хранится
+/// (`outline` пуст) — это экономит память и сохраняет прежнее поведение.
+class CutPiece {
+  const CutPiece({
+    required this.widthMm,
+    required this.heightMm,
+    this.outline = const [],
+    this.contours = const [],
+    this.areaM2 = 0,
+    this.nominalSideLengths = const [],
+    this.materials = const [],
+    this.windowIndex = 0,
+    this.partLabel = '',
+  });
+
+  /// Заготовка к раскрою: плёнка с напайкой под окантовку, припуском на
+  /// раскрой и компенсацией усадки ПВХ (см.
+  /// [WindowSpec.filmCutPolygonWithShrinkage]).
+  ///
+  /// Форма — фактический контур заготовки: прямоугольник у прямоугольного
+  /// окна и косой четырёхугольник у трапеции или окна с разными высотами
+  /// сторон (стороны считаются по формуле заказчика, см.
+  /// [WindowSpec.blankSideLengths]).
+  factory CutPiece.ofSpec(WindowSpec spec) {
+    final areaM2 = spec.filmCutAreaWithShrinkageM2;
+    // Составное окно: у каждого контура свой материал (ПВХ + скрин/ПВХ).
+    final compositeMaterials = spec.isComposite
+        ? [spec.params.material, spec.params.composite.material]
+        : const <FilmMaterial>[];
+    final width = _positive(spec.filmCutWidthWithShrinkage);
+    final height = _positive(spec.filmCutHeightWithShrinkage);
+    final polygons = spec.filmCutPolygonsWithShrinkage;
+    // У Т-окна сторон больше четырёх (основное полотно плюс пристройки):
+    // номинальные четыре стороны обычного окна к нему не применимы.
+    final nominal = spec.params.isTShape || spec.params.isComposite
+        ? const <double>[]
+        : spec.filmCutSideLengths;
+    if (polygons.isEmpty) {
+      return CutPiece(
+        widthMm: width,
+        heightMm: height,
+        areaM2: areaM2,
+        nominalSideLengths: nominal,
+        materials: compositeMaterials,
+      );
+    }
+    final bounds = boundsOfAll(polygons);
+    if (bounds.width <= 0 || bounds.height <= 0) {
+      return CutPiece(
+        widthMm: width,
+        heightMm: height,
+        areaM2: areaM2,
+        nominalSideLengths: nominal,
+      );
+    }
+    final contours = [
+      for (final polygon in polygons)
+        [
+          for (final point in polygon)
+            Offset(point.dx - bounds.left, point.dy - bounds.top),
+        ],
+    ];
+    return CutPiece(
+      widthMm: bounds.width,
+      heightMm: bounds.height,
+      outline: contours.first,
+      contours: contours,
+      areaM2: areaM2,
+      nominalSideLengths: nominal,
+      materials: compositeMaterials,
+    );
+  }
+
+  /// Заготовки окна с учётом перемычек во всю ширину/высоту.
+  static List<CutPiece> piecesOfSpec(WindowSpec spec, {int windowIndex = 0}) {
+    final base = CutPiece.ofSpec(spec);
+    final splicePieces = spec.params.hasSplice
+        ? _splitSplice(base, spec)
+        : null;
+    final crossbars = spec.params.crossbars
+        .where((crossbar) => crossbar.fullSpan)
+        .toList();
+    if (crossbars.isEmpty) {
+      final pieces = splicePieces ?? [base];
+      if (pieces.length == 1) return [pieces.first.withWindow(windowIndex)];
+      return [
+        for (var i = 0; i < pieces.length; i++)
+          pieces[i].copyWith(
+            windowIndex: windowIndex,
+            partLabel: pieces[i].partLabel.isEmpty
+                ? '${windowIndex + 1}.${i + 1}'
+                : pieces[i].partLabel,
+          ),
+      ];
+    }
+    final visible = spec.layers.filmVisibleBounds;
+    var pieces = splicePieces ?? [base];
+    // Горизонтальные, затем вертикальные: полосы идут через всё полотно.
+    for (final axis in [CrossbarAxis.horizontal, CrossbarAxis.vertical]) {
+      final bars = crossbars.where((bar) => bar.axis == axis).toList();
+      if (bars.isEmpty) continue;
+      final next = <CutPiece>[];
+      for (final piece in pieces) {
+        next.addAll(_splitPiece(piece, bars, visible, axis));
+      }
+      pieces = next;
+    }
+    if (pieces.length == 1) return [pieces.first.withWindow(windowIndex)];
+    return [
+      for (var i = 0; i < pieces.length; i++)
+        pieces[i].copyWith(
+          windowIndex: windowIndex,
+          partLabel: pieces[i].partLabel.isEmpty
+              ? '${windowIndex + 1}.${i + 1}'
+              : pieces[i].partLabel,
+        ),
+    ];
+  }
+
+  /// Режет заготовку на основной кусок и доборную полосу при спайке.
+  static List<CutPiece>? _splitSplice(CutPiece base, WindowSpec spec) {
+    final strip = spec.params.spliceStripMm;
+    final total = base.widthMm;
+    if (strip <= 0.5 || strip >= total - 0.5) return null;
+    final main = total - strip;
+    final intervals = spec.params.spliceSide == FilmSpliceSide.right
+        ? [
+            (start: 0.0, end: main, label: 'основа'),
+            (start: main, end: total, label: 'полоса'),
+          ]
+        : [
+            (start: 0.0, end: strip, label: 'полоса'),
+            (start: strip, end: total, label: 'основа'),
+          ];
+    final result = <CutPiece>[];
+    for (final interval in intervals) {
+      final contours = <List<Offset>>[];
+      for (final contour in base.allContours) {
+        final clipped = _clipContour(
+          contour,
+          false,
+          interval.start,
+          interval.end,
+        );
+        if (clipped.length >= 3 && polygonArea(clipped).abs() > 1) {
+          contours.add(clipped);
+        }
+      }
+      if (contours.isEmpty) continue;
+      final bounds = boundsOfAll(contours);
+      if (bounds.width <= 0 || bounds.height <= 0) continue;
+      final local = [
+        for (final contour in contours)
+          [
+            for (final point in contour)
+              Offset(point.dx - bounds.left, point.dy - bounds.top),
+          ],
+      ];
+      result.add(
+        CutPiece(
+          widthMm: bounds.width,
+          heightMm: bounds.height,
+          outline: local.first,
+          contours: local,
+          areaM2:
+              [
+                for (final contour in local) polygonArea(contour).abs(),
+              ].fold<double>(0, (sum, value) => sum + value) /
+              1000000,
+          materials: base.materials,
+          partLabel: interval.label,
+        ),
+      );
+    }
+    return result.length == 2 ? result : null;
+  }
+
+  /// Режет заготовку полосами [bars] по оси [axis].
+  static List<CutPiece> _splitPiece(
+    CutPiece piece,
+    List<CrossbarSpec> bars,
+    Rect visible,
+    CrossbarAxis axis,
+  ) {
+    final horizontal = axis == CrossbarAxis.horizontal;
+    final total = horizontal ? piece.heightMm : piece.widthMm;
+    final visibleSize = horizontal ? visible.height : visible.width;
+    final offset = math.max(0.0, (total - visibleSize) / 2);
+    final cuts = <({double start, double end})>[];
+    for (final bar in bars) {
+      final center = (offset + bar.positionMm).clamp(0.0, total);
+      final gap = bar.gapMm;
+      final half = gap / 2;
+      cuts.add((
+        start: (center - half).clamp(0.0, total),
+        end: (center + half).clamp(0.0, total),
+      ));
+    }
+    cuts.sort((a, b) => a.start.compareTo(b.start));
+    final intervals = <({double start, double end})>[];
+    var cursor = 0.0;
+    for (final cut in cuts) {
+      if (cut.start > cursor + 0.5) {
+        intervals.add((start: cursor, end: cut.start));
+      }
+      cursor = math.max(cursor, cut.end);
+    }
+    if (cursor < total - 0.5) intervals.add((start: cursor, end: total));
+    if (intervals.length <= 1) return [piece];
+
+    final result = <CutPiece>[];
+    for (final interval in intervals) {
+      final contours = <List<Offset>>[];
+      for (final contour in piece.allContours) {
+        final clipped = _clipContour(
+          contour,
+          horizontal,
+          interval.start,
+          interval.end,
+        );
+        if (clipped.length >= 3 && polygonArea(clipped).abs() > 1) {
+          contours.add(clipped);
+        }
+      }
+      if (contours.isEmpty) continue;
+      final bounds = boundsOfAll(contours);
+      if (bounds.width <= 0 || bounds.height <= 0) continue;
+      final local = [
+        for (final contour in contours)
+          [
+            for (final point in contour)
+              Offset(point.dx - bounds.left, point.dy - bounds.top),
+          ],
+      ];
+      result.add(
+        CutPiece(
+          widthMm: bounds.width,
+          heightMm: bounds.height,
+          outline: local.first,
+          contours: local,
+          areaM2:
+              [
+                for (final contour in local) polygonArea(contour).abs(),
+              ].fold<double>(0, (sum, value) => sum + value) /
+              1000000,
+          materials: piece.materials,
+        ),
+      );
+    }
+    return result.isEmpty ? [piece] : result;
+  }
+
+  /// Отсекает контур по полосе [min]…[max] вдоль оси.
+  static List<Offset> _clipContour(
+    List<Offset> contour,
+    bool horizontal,
+    double min,
+    double max,
+  ) {
+    List<Offset> clip(
+      List<Offset> input,
+      double Function(Offset) value,
+      double limit,
+      bool keepAbove,
+    ) {
+      final output = <Offset>[];
+      for (var i = 0; i < input.length; i++) {
+        final current = input[i];
+        final previous = input[(i - 1 + input.length) % input.length];
+        final currentIn = keepAbove
+            ? value(current) >= limit
+            : value(current) <= limit;
+        final previousIn = keepAbove
+            ? value(previous) >= limit
+            : value(previous) <= limit;
+        if (currentIn) {
+          if (!previousIn) {
+            final t =
+                (limit - value(previous)) / (value(current) - value(previous));
+            output.add(Offset.lerp(previous, current, t)!);
+          }
+          output.add(current);
+        } else if (previousIn) {
+          final t =
+              (limit - value(previous)) / (value(current) - value(previous));
+          output.add(Offset.lerp(previous, current, t)!);
+        }
+      }
+      return output;
+    }
+
+    final value = horizontal
+        ? (Offset point) => point.dy
+        : (Offset point) => point.dx;
+    var result = clip(contour, value, min, true);
+    if (result.isEmpty) return const [];
+    result = clip(result, value, max, false);
+    return result;
+  }
+
+  CutPiece withWindow(int index) => copyWith(windowIndex: index);
+
+  CutPiece copyWith({int? windowIndex, String? partLabel}) => CutPiece(
+    widthMm: widthMm,
+    heightMm: heightMm,
+    outline: outline,
+    contours: contours,
+    areaM2: areaM2,
+    nominalSideLengths: nominalSideLengths,
+    materials: materials,
+    windowIndex: windowIndex ?? this.windowIndex,
+    partLabel: partLabel ?? this.partLabel,
+  );
+
+  final double widthMm;
+  final double heightMm;
+
+  /// Контур заготовки, мм: начало в левом нижнем углу габарита, ось Y вверх.
+  /// Пустой список — заготовка прямоугольная. У Т-окна без спайки здесь
+  /// первый контур, полный список — [contours].
+  final List<Offset> outline;
+
+  /// Все контуры заготовки: у обычного окна один, у Т-окна без спайки два.
+  final List<List<Offset>> contours;
+
+  /// Площадь к раскрою по фактическому контуру, м² (с усадкой, минус вырезы).
+  /// Ноль — посчитать по габариту (для заготовок, созданных вручную).
+  final double areaM2;
+
+  /// Номинальные длины сторон заготовки по обходу: низ, право, верх, лево.
+  ///
+  /// У косого окна это ровно числа заказчика (2 990 / 2 740 / 2 990 / 2 080),
+  /// а не фактические длины наклонных отрезков. Подписи на листе берут их,
+  /// поэтому цифры совпадают с расчётом и документами.
+  final List<double> nominalSideLengths;
+
+  /// Некорректные размеры не роняют лист: считаем их минимальной заготовкой.
+  static double _positive(double value) =>
+      (!value.isFinite || value <= 0) ? 1 : value;
+
+  bool get hasContour => allContours.isNotEmpty;
+
+  /// Материал каждого контура: у составного окна их два.
+  final List<FilmMaterial> materials;
+
+  /// Номер окна в заказе (с нуля) — для подписей, когда у окна несколько
+  /// заготовок из-за перемычек.
+  final int windowIndex;
+
+  /// Подпись части: «1.2» и т.п.; пусто — окно целиком.
+  final String partLabel;
+
+  /// Материал контура [index] (по умолчанию — первый/общий).
+  FilmMaterial? materialFor(int index) {
+    if (materials.isEmpty) return null;
+    if (index < materials.length) return materials[index];
+    return materials.first;
+  }
+
+  /// Все контуры: явный список [contours] или одиночный [outline].
+  List<List<Offset>> get allContours => contours.isNotEmpty
+      ? contours
+      : (outline.length >= 3 ? [outline] : const []);
+
+  /// Площадь фактических контуров, мм² (без вычетов вырезов).
+  double get areaMm2 {
+    if (!hasContour) return widthMm * heightMm;
+    var area = 0.0;
+    for (final contour in allContours) {
+      area += polygonArea(contour).abs();
+    }
+    return area;
+  }
+
+  /// Длины сторон по обходу всех контуров (мм).
+  ///
+  /// У обычного окна порядок прежний: низ, право, верх, лево. У Т-окна без
+  /// спайки сначала идут четыре стороны основного полотна, затем приставки.
+  /// Для косого окна берутся НОМИНАЛЬНЫЕ стороны заготовки
+  /// ([nominalSideLengths]) — они совпадают с формулой заказчика и с
+  /// подписями, хотя наклонная кромка на чертеже длиннее по построению.
+  List<double> get sideLengths {
+    if (nominalSideLengths.isNotEmpty) return nominalSideLengths;
+    if (!hasContour) return [widthMm, heightMm, widthMm, heightMm];
+    return [
+      for (final contour in allContours)
+        for (var i = 0; i < contour.length; i++)
+          (contour[(i + 1) % contour.length] - contour[i]).distance,
+    ];
+  }
+
+  double get minSideMm => sideLengths.isEmpty
+      ? math.min(widthMm, heightMm)
+      : sideLengths.reduce(math.min);
+
+  /// Отношение сторон заготовки (ширина / высота).
+  double get aspect => heightMm <= 0 ? 1 : widthMm / heightMm;
+}
+
+/// Контуры заготовки в координатах листа (точки), без отрисовки.
+///
+/// Именно эти точки обводит лист «Раскрой»: контур в мм масштабируется в
+/// прямоугольник [rect], а ось Y зеркалится (в модели Y вверх, на листе —
+/// вниз). Функция вынесена из painter, чтобы тесты сверяли контур раскроя с
+/// контуром чертежа без запуска отрисовки.
+List<List<Offset>> cutSheetContours(
+  Rect rect,
+  CutPiece piece, {
+  double minGapPx = 0,
+}) {
+  final contours = piece.allContours;
+  if (contours.isEmpty) return const [];
+  final mapped = [
+    for (final contour in contours)
+      [
+        for (final point in contour)
+          Offset(
+            rect.left + point.dx / piece.widthMm * rect.width,
+            rect.bottom - point.dy / piece.heightMm * rect.height,
+          ),
+      ],
+  ];
+  if (minGapPx <= 0 || mapped.length < 2) return mapped;
+
+  // Сегменты кроя рисуем с увеличенными зазорами: реальные 75 мм на листе
+  // превращаются в пару точек, и размерные числа соседних сегментов
+  // накладываются друг на друга. Геометрия при этом не меняется — это
+  // только оформление листа «Раскрой».
+  final boxes = [
+    for (final contour in mapped)
+      Rect.fromLTRB(
+        contour.map((point) => point.dx).reduce(math.min),
+        contour.map((point) => point.dy).reduce(math.min),
+        contour.map((point) => point.dx).reduce(math.max),
+        contour.map((point) => point.dy).reduce(math.max),
+      ),
+  ];
+  final order = List.generate(mapped.length, (index) => index)
+    ..sort((a, b) => boxes[a].left.compareTo(boxes[b].left));
+  final gap = math.min(minGapPx, rect.width * 0.08);
+  final gaps = <double>[];
+  var contentWidth = 0.0;
+  for (var i = 0; i < order.length; i++) {
+    contentWidth += boxes[order[i]].width;
+    if (i + 1 < order.length) {
+      final realGap = boxes[order[i + 1]].left - boxes[order[i]].right;
+      gaps.add(math.max(realGap, gap));
+    }
+  }
+  final totalGap = gaps.fold<double>(0, (sum, value) => sum + value);
+  final scale = (rect.width - totalGap) / contentWidth;
+  if (!scale.isFinite || scale <= 0.05) return mapped;
+
+  final result = List<List<Offset>>.filled(mapped.length, const []);
+  var cursor = rect.left;
+  for (var i = 0; i < order.length; i++) {
+    final index = order[i];
+    final box = boxes[index];
+    result[index] = [
+      for (final point in mapped[index])
+        Offset(cursor + (point.dx - box.left) * scale, point.dy),
+    ];
+    cursor += box.width * scale + (i < gaps.length ? gaps[i] : 0);
+  }
+  return result;
+}
+
+/// Место заготовки на листе: прямоугольник в точках листа.
+class CutPlacement {
+  const CutPlacement({
+    required this.index,
+    required this.piece,
+    required this.rect,
+    required this.row,
+    required this.column,
+  });
+
+  /// Номер окна в заказе (с нуля) — порядок заготовок сохраняется.
+  final int index;
+
+  final CutPiece piece;
+
+  /// Прямоугольник заготовки в координатах области заготовок.
+  final Rect rect;
+
+  final int row;
+  final int column;
+
+  /// Габариты заготовки, мм — для подписей и проверок.
+  double get widthMm => piece.widthMm;
+  double get heightMm => piece.heightMm;
+}
+
+/// Раскладка заготовок по листу: один масштаб на все заготовки.
+///
+/// Считается только по ширине листа и «естественной» полосе ряда, поэтому
+/// результат устойчив: лист растёт по числу рядов, а не по высоте окна.
+class CutLayout {
+  const CutLayout._({
+    required this.placements,
+    required this.scale,
+    required this.rows,
+    required this.contentWidth,
+    required this.contentHeight,
+    required this.smallestSidePx,
+  });
+
+  /// Заготовки в порядке окон.
+  final List<CutPlacement> placements;
+
+  /// Общий масштаб: сколько точек листа приходится на один миллиметр.
+  final double scale;
+
+  final int rows;
+
+  /// Габариты всей раскладки, точки.
+  final double contentWidth;
+  final double contentHeight;
+
+  /// Меньшая сторона самой мелкой заготовки на листе, точки.
+  final double smallestSidePx;
+
+  /// Зазор между заготовками по горизонтали, точки.
+  static const double columnGap = 44;
+
+  /// Зазор между рядами, точки.
+  static const double rowGap = 24;
+
+  /// Поля под размерные линии: слева и справа, сверху и снизу.
+  static const double sideMargin = 58;
+  static const double topMargin = 56;
+  static const double bottomMargin = 58;
+
+  /// Место под подписи «№1 · материал» и «с усадкой …» под заготовкой.
+  static const double captionHeight = 112;
+
+  /// Естественная высота полосы ряда: одна строка занимает ~420–460 точек.
+  static const double preferredRowHeight = 460;
+
+  /// Самая крупная заготовка занимает около 75 % полосы ряда.
+  static const double pieceHeightFraction = 0.75;
+
+  /// Меньшая сторона заготовки не должна быть неразличимой.
+  static const double minSmallSidePx = 60;
+
+  /// Раскладывает заготовки по области [area]: в ряд слева направо, с
+  /// переносом на новый ряд, когда не хватает ширины.
+  ///
+  /// Масштаб один для всех заготовок: самая крупная заготовка занимает около
+  /// 75 % высоты доступной области, а если заготовок много — масштаб
+  /// уменьшается так, чтобы вся раскладка поместилась в [area].
+  static CutLayout place(List<CutPiece> pieces, Size area) {
+    if (pieces.isEmpty) return _empty;
+
+    final width = (area.width.isFinite && area.width > 0) ? area.width : 900.0;
+    final height = (area.height.isFinite && area.height > 0)
+        ? area.height
+        : preferredRowHeight;
+    // Запас для подгонки: подписи и зазоры считаются целыми, и без запаса
+    // округление могло вытолкнуть нижнюю подпись за край A4. Естественный
+    // масштаб (75 % полосы) считается от полной высоты, чтобы не менять
+    // привычный вид одной заготовки.
+    final fitHeight = math.max(height - 2, 40.0);
+
+    final naturalLayout = _wrap(
+      pieces,
+      _naturalScale(pieces, width, height),
+      width,
+    );
+    if (naturalLayout.contentHeight <= height) return naturalLayout;
+
+    // Не влезло по высоте: уменьшаем ОБЩИЙ масштаб, пока всё не поместится.
+    // Так заготовки остаются одного масштаба и не обрезаются.
+    var low = naturalLayout.scale * 0.001;
+    var high = naturalLayout.scale;
+    var best = _wrap(pieces, low, width);
+    if (best.contentHeight > fitHeight) return best;
+    for (var i = 0; i < 30; i++) {
+      final middle = (low + high) / 2;
+      final candidate = _wrap(pieces, middle, width);
+      if (candidate.contentHeight <= fitHeight) {
+        best = candidate;
+        low = middle;
+      } else {
+        high = middle;
+      }
+    }
+    return best;
+  }
+
+  /// Раскладка «естественного» масштаба без подгонки по высоте: по ней
+  /// считается нужная высота листа, когда заготовок много.
+  static CutLayout natural(List<CutPiece> pieces, double width) {
+    if (pieces.isEmpty) return _empty;
+    final safeWidth = (width.isFinite && width > 0) ? width : 900.0;
+    return _wrap(
+      pieces,
+      _naturalScale(pieces, safeWidth, preferredRowHeight),
+      safeWidth,
+    );
+  }
+
+  static const CutLayout _empty = CutLayout._(
+    placements: [],
+    scale: 1,
+    rows: 0,
+    contentWidth: 0,
+    contentHeight: 0,
+    smallestSidePx: 0,
+  );
+
+  /// «Естественный» масштаб: самая крупная заготовка — около 75 % высоты
+  /// полосы ряда, мелкие не различимы не остаются, всё влезает в ширину листа.
+  static double _naturalScale(
+    List<CutPiece> pieces,
+    double width,
+    double height,
+  ) {
+    var maxWidthMm = 0.0;
+    var maxHeightMm = 0.0;
+    var minSideMm = double.infinity;
+    for (final piece in pieces) {
+      maxWidthMm = math.max(maxWidthMm, piece.widthMm);
+      maxHeightMm = math.max(maxHeightMm, piece.heightMm);
+      minSideMm = math.min(minSideMm, piece.minSideMm);
+    }
+
+    var scale = pieceHeightFraction * height / maxHeightMm;
+    // Одна заготовка вместе с размерными линиями обязана влезать в ширину.
+    final widthLimit = (width - 2 * sideMargin) / maxWidthMm;
+    if (widthLimit.isFinite && widthLimit > 0) {
+      scale = math.min(scale, widthLimit);
+    }
+    // Мелкие заготовки не должны стать неразличимыми.
+    if (minSideMm.isFinite &&
+        minSideMm > 0 &&
+        widthLimit.isFinite &&
+        widthLimit > 0) {
+      final readable = minSmallSidePx / minSideMm;
+      if (readable > scale) scale = math.min(readable, widthLimit);
+    }
+    if (!scale.isFinite || scale <= 0) scale = 0.001;
+    return scale;
+  }
+
+  /// Укладывает заготовки рядами при заданном масштабе.
+  static CutLayout _wrap(List<CutPiece> pieces, double scale, double width) {
+    final placements = <CutPlacement>[];
+    final row =
+        <
+          ({
+            int index,
+            CutPiece piece,
+            double left,
+            double heightPx,
+            int column,
+          })
+        >[];
+    var x = 0.0;
+    var top = 0.0;
+    var rowIndex = 0;
+    var rowHeightPx = 0.0;
+    var contentWidth = 0.0;
+    var column = 0;
+
+    void flushRow() {
+      if (row.isEmpty) return;
+      final cellHeight = topMargin + rowHeightPx + bottomMargin + captionHeight;
+      for (final item in row) {
+        placements.add(
+          CutPlacement(
+            index: item.index,
+            piece: item.piece,
+            // Заготовки ряда выравниваем по нижней кромке: подписи под ними
+            // оказываются на одной линии.
+            rect: Rect.fromLTWH(
+              item.left + sideMargin,
+              top + topMargin + (rowHeightPx - item.heightPx),
+              item.piece.widthMm * scale,
+              item.heightPx,
+            ),
+            row: rowIndex,
+            column: item.column,
+          ),
+        );
+      }
+      top += cellHeight + rowGap;
+      rowIndex += 1;
+      row.clear();
+      rowHeightPx = 0;
+      x = 0;
+      column = 0;
+    }
+
+    var smallestSidePx = double.infinity;
+    for (var i = 0; i < pieces.length; i++) {
+      final piece = pieces[i];
+      final widthPx = piece.widthMm * scale;
+      final heightPx = piece.heightMm * scale;
+      final cellWidth = widthPx + 2 * sideMargin;
+      // Перенос на новый ряд, когда заготовка не влезает по ширине.
+      if (row.isNotEmpty && x + cellWidth > width) flushRow();
+      row.add((
+        index: i,
+        piece: piece,
+        left: x,
+        heightPx: heightPx,
+        column: column,
+      ));
+      x += cellWidth + columnGap;
+      column += 1;
+      contentWidth = math.max(contentWidth, x - columnGap);
+      rowHeightPx = math.max(rowHeightPx, heightPx);
+      smallestSidePx = math.min(smallestSidePx, piece.minSideMm * scale);
+    }
+    flushRow();
+
+    return CutLayout._(
+      placements: placements,
+      scale: scale,
+      rows: rowIndex,
+      contentWidth: contentWidth,
+      contentHeight: math.max(top - rowGap, 0),
+      smallestSidePx: smallestSidePx.isFinite ? smallestSidePx : 0,
+    );
+  }
+}
+
+/// Палитра заготовки: полупрозрачная заливка, кромка и признак клетки.
+class CutPalette {
+  const CutPalette({
+    required this.fill,
+    required this.edge,
+    this.mesh = false,
+    this.meshColor = const Color(0x33707B8A),
+  });
+
+  final Color fill;
+  final Color edge;
+
+  /// Москитная сетка рисуется мелкой клеткой.
+  final bool mesh;
+  final Color meshColor;
+
+  static CutPalette of(FilmMaterial material) => switch (material) {
+    FilmMaterial.clearPvc => const CutPalette(
+      fill: Color(0x335AA7E8),
+      edge: Color(0xFF4C9BE8),
+    ),
+    FilmMaterial.tintedPvc => const CutPalette(
+      fill: Color(0x40546886),
+      edge: Color(0xFF54688A),
+    ),
+    FilmMaterial.mosquitoNet => const CutPalette(
+      fill: Color(0x2E8A93A0),
+      edge: Color(0xFF7C8798),
+      mesh: true,
+    ),
+    // Скрин — простая серая заливка, без клетки.
+    FilmMaterial.screen => const CutPalette(
+      fill: Color(0x33B9BEC4),
+      edge: Color(0xFF8C9298),
+    ),
+  };
+}
+
+/// Отрисовка листа раскроя: прямоугольники заготовок, размеры, площади, подписи.
+///
+/// Только прямоугольники, линии и текст: ни Path.combine, ни прочей геометрии,
+/// которая не работает в вебе.
+class CutSheetPainter extends CustomPainter {
+  CutSheetPainter({
+    required this.specs,
+    required this.layout,
+    this.labelFontFamily,
+    LengthUnit? unit,
+    LabelSettings? labelSettings,
+  }) : unit = unit ?? DisplayUnits.unit,
+       labelSettings = labelSettings ?? LabelSettings.value;
+
+  final List<WindowSpec> specs;
+  final CutLayout layout;
+  final String? labelFontFamily;
+
+  /// Единица подписей: при переключении мм/см лист перерисовывается.
+  final LengthUnit unit;
+
+  /// Размеры подписей листа «Раскрой» (см. «Настройки подписей»).
+  final LabelSettings labelSettings;
+
+  /// Базовый кегль подписей листа в точках.
+  ///
+  /// Ограничен полутора стандартными: на маленькой заготовке крупная
+  /// подпись не влезла бы в контур и вылезла за лист.
+  double get _basePx =>
+      math.min(labelSettings.pxFor(LabelKind.cutSheet), 10.5 * 1.45);
+
+  static const Color _ink = Color(0xFF1B1F27);
+  static const Color _dim = Color(0xFF41506A);
+  static const double _meshStep = 7;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (layout.placements.isEmpty) return;
+    final dx = math.max((size.width - layout.contentWidth) / 2, 0.0);
+    for (final placement in layout.placements) {
+      final windowIndex = placement.piece.windowIndex;
+      if (windowIndex < 0 || windowIndex >= specs.length) continue;
+      _paintPiece(
+        canvas,
+        placement.rect.shift(Offset(dx, 0)),
+        specs[windowIndex],
+        placement,
+      );
+    }
+  }
+
+  void _paintPiece(
+    Canvas canvas,
+    Rect rect,
+    WindowSpec spec,
+    CutPlacement placement,
+  ) {
+    final piece = placement.piece;
+
+    // Полупрозрачная плёнка, как на чертеже. Форма — фактический контур:
+    // прямоугольник, трапеция или четырёхугольник с разными высотами.
+    final contours = cutSheetContours(rect, piece, minGapPx: 40);
+    if (contours.isEmpty) {
+      final palette = CutPalette.of(spec.params.material);
+      final path = _piecePath(rect, piece);
+      canvas.drawPath(path, Paint()..color = palette.fill);
+      if (palette.mesh) _paintMesh(canvas, path, rect, palette.meshColor);
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6
+          ..color = palette.edge,
+      );
+    } else {
+      for (var index = 0; index < contours.length; index++) {
+        final points = contours[index];
+        if (points.isEmpty) continue;
+        final material = piece.materialFor(index) ?? spec.params.material;
+        final palette = CutPalette.of(material);
+        final path = Path()..moveTo(points.first.dx, points.first.dy);
+        for (final point in points.skip(1)) {
+          path.lineTo(point.dx, point.dy);
+        }
+        path.close();
+        canvas.drawPath(path, Paint()..color = palette.fill);
+        if (palette.mesh) _paintMesh(canvas, path, rect, palette.meshColor);
+        canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.6
+            ..color = palette.edge,
+        );
+      }
+    }
+
+    _paintArea(canvas, rect, placement.piece, spec);
+    _paintDimensions(canvas, rect, placement);
+    _paintLevelArrows(canvas, rect, spec);
+    _paintCaption(
+      canvas,
+      rect,
+      spec,
+      placement.piece.windowIndex,
+      placement.piece.partLabel,
+    );
+  }
+
+  /// Путь заготовки на листе: контур в мм переводится в точки листа.
+  ///
+  /// Ось Y модели направлена вверх, ось Y листа — вниз, поэтому Y зеркалится.
+  Path _piecePath(Rect rect, CutPiece piece) {
+    final path = Path();
+    if (!piece.hasContour) {
+      path.addRect(rect);
+      return path;
+    }
+    final contours = cutSheetContours(rect, piece);
+    if (contours.isEmpty) {
+      path.addRect(rect);
+      return path;
+    }
+    for (final points in contours) {
+      if (points.isEmpty) continue;
+      path.moveTo(points.first.dx, points.first.dy);
+      for (final point in points.skip(1)) {
+        path.lineTo(point.dx, point.dy);
+      }
+      path.close();
+    }
+    return path;
+  }
+
+  /// Мелкая клетка москитной сетки — только линии внутри контура.
+  void _paintMesh(Canvas canvas, Path path, Rect rect, Color color) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1;
+    canvas.save();
+    canvas.clipPath(path);
+    for (var x = rect.left + _meshStep; x < rect.right; x += _meshStep) {
+      canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), paint);
+    }
+    for (var y = rect.top + _meshStep; y < rect.bottom; y += _meshStep) {
+      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), paint);
+    }
+    canvas.restore();
+  }
+
+  /// Площадь заготовки к раскрою крупно по центру контура.
+  ///
+  /// Площадь берётся фактическая (по контуру, с усадкой и без вырезов), а не
+  /// габаритная: для трапеции это то же число, что в ведомости и смете.
+  ///
+  /// У окна с молнией под площадью стоит строка «− полоса молнии 50 мм»:
+  /// заготовка уже сужена на полосу (у ПВХ и у скрина одинаково), и человек
+  /// должен видеть, почему ширина меньше готового размера с подворотами или
+  /// видимого размера плёнки с запайкой.
+  void _paintArea(Canvas canvas, Rect rect, CutPiece piece, WindowSpec spec) {
+    final areaM2 = piece.areaM2 > 0 ? piece.areaM2 : piece.areaMm2 / 1000000;
+    final text = '${formatMeters(areaM2)} м²';
+    var fontSize = math.min(_basePx * 2.0, rect.height * 0.34);
+    if (fontSize < 8) return;
+    var painter = _painter(text, fontSize: fontSize, bold: true);
+    while (fontSize > 8 && painter.width > rect.width - 12) {
+      fontSize -= 1;
+      painter = _painter(text, fontSize: fontSize, bold: true);
+    }
+    if (painter.width > rect.width - 6 || painter.height > rect.height - 6) {
+      return;
+    }
+    // Светлая подложка: поверх клетки сетки цифры иначе теряются.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: rect.center,
+          width: painter.width + 12,
+          height: painter.height + 6,
+        ),
+        const Radius.circular(4),
+      ),
+      Paint()..color = Colors.white.withValues(alpha: 0.62),
+    );
+    painter.paint(
+      canvas,
+      rect.center - Offset(painter.width / 2, painter.height / 2),
+    );
+
+    final zipperBand = spec.zipperBandTotalMm;
+    if (zipperBand <= 0) return;
+    final note = '− полоса молнии ${formatMm(zipperBand)} ${unitSuffix()}';
+    final notePainter = _painter(note, color: _dim, small: true);
+    // Строка не должна вылезать за заготовку: на мелких заготовках она
+    // останется только в подписи под ними.
+    if (notePainter.width > rect.width - 12) return;
+    final noteTop = rect.center.dy + painter.height / 2 + 4;
+    if (noteTop + notePainter.height > rect.bottom - 4) return;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(rect.center.dx, noteTop + notePainter.height / 2),
+          width: notePainter.width + 10,
+          height: notePainter.height + 4,
+        ),
+        const Radius.circular(3),
+      ),
+      Paint()..color = Colors.white.withValues(alpha: 0.88),
+    );
+    notePainter.paint(
+      canvas,
+      Offset(rect.center.dx - notePainter.width / 2, noteTop),
+    );
+  }
+
+  /// Размеры заготовки по всем четырём сторонам фактического контура.
+  ///
+  /// Для прямоугольника это прежние «ширина сверху/снизу» и «высота
+  /// слева/справа». Для трапеции каждая сторона получает свою длину, а
+  /// наклонные стороны — наклонную размерную линию.
+  void _paintDimensions(Canvas canvas, Rect rect, CutPlacement placement) {
+    final piece = placement.piece;
+    final contours = cutSheetContours(rect, piece, minGapPx: 40);
+    if (contours.isEmpty) return;
+
+    // Фигуры (треугольник, домик): не подписываем каждую наклонную кромку,
+    // иначе числа накладываются. Только габарит заготовки.
+    if (piece.allContours.first.length != 4) {
+      final paint = Paint()
+        ..color = _ink
+        ..strokeWidth = 1.1;
+      _arrowedDimension(
+        canvas,
+        rect.bottomLeft,
+        rect.bottomRight,
+        const Offset(0, 34),
+        formatMm(piece.widthMm),
+        paint,
+      );
+      _arrowedDimension(
+        canvas,
+        rect.topLeft,
+        rect.bottomLeft,
+        const Offset(-34, 0),
+        formatMm(piece.heightMm),
+        paint,
+        angle: -math.pi / 2,
+      );
+      return;
+    }
+
+    final paint = Paint()
+      ..color = _ink
+      ..strokeWidth = 1.1;
+    final center = rect.center;
+    // У косого окна подписываем НОМИНАЛЬНЫЕ стороны заготовки — те же числа,
+    // что в расчёте и документах (низ 2 990, право 2 740, верх 2 990,
+    // лево 2 080). Наклонная кромка на чертеже длиннее по построению.
+    final nominal = piece.nominalSideLengths.length == 4 && contours.length == 1
+        ? piece.nominalSideLengths
+        : null;
+
+    for (var c = 0; c < contours.length; c++) {
+      final points = contours[c];
+      if (points.length < 3) continue;
+      final contour = piece.allContours[c];
+      final lengths = [
+        for (var i = 0; i < contour.length; i++)
+          (contour[(i + 1) % contour.length] - contour[i]).distance,
+      ];
+      for (var i = 0; i < points.length; i++) {
+        final a = points[i];
+        final b = points[(i + 1) % points.length];
+        final direction = b - a;
+        final lengthPx = direction.distance;
+        if (lengthPx < 1) continue;
+        final unit = direction / lengthPx;
+        var normal = Offset(-unit.dy, unit.dx);
+        final middle = (a + b) / 2;
+        // Нормаль наружу: от центра заготовки.
+        if ((middle + normal - center).distance <
+            (middle - normal - center).distance) {
+          normal = -normal;
+        }
+        // Размерные числа у стрелок — в три раза крупнее обычных подписей.
+        final dimensionPx = _basePx * 3.0;
+        final offset = normal * (16 + dimensionPx * 0.55);
+        final a2 = a + offset;
+        final b2 = b + offset;
+
+        // Выносные линии и размерная линия со стрелками.
+        canvas.drawLine(a + normal * 3, a2 + normal * 6, paint);
+        canvas.drawLine(b + normal * 3, b2 + normal * 6, paint);
+        canvas.drawLine(a2, b2, paint);
+        _arrow(canvas, a2, -unit);
+        _arrow(canvas, b2, unit);
+
+        _label(
+          canvas,
+          formatMm(
+            nominal != null && i < nominal.length ? nominal[i] : lengths[i],
+          ),
+          (a2 + b2) / 2 + normal * (dimensionPx * 0.55),
+          angle: _uprightAngle(direction),
+          fontSize: dimensionPx,
+          color: _dim,
+        );
+      }
+    }
+  }
+
+  /// Размерная линия со стрелками и подписью для фигур.
+  /// Стрелки «Ровно лево/право» на раскрое: показывают, какая вертикальная
+  /// кромка выпрямлена, и смотрят в её сторону.
+  void _paintLevelArrows(Canvas canvas, Rect rect, WindowSpec spec) {
+    final params = spec.params;
+    if (!params.levelLeft && !params.levelRight) return;
+    if (rect.width < 110) return;
+    const blue = Color(0xFF0B62C4);
+    final paint = Paint()
+      ..color = blue
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+    final y = rect.top + 22;
+    void arrow(bool left) {
+      final edge = left ? rect.left : rect.right;
+      final start = edge + (left ? 8.0 : -8.0);
+      final tip = edge + (left ? 38.0 : -38.0);
+      canvas.drawLine(Offset(start, y), Offset(tip, y), paint);
+      _arrow(
+        canvas,
+        Offset(tip, y),
+        left ? const Offset(-1, 0) : const Offset(1, 0),
+        color: blue,
+      );
+      _label(
+        canvas,
+        left ? 'Ровно лево' : 'Ровно право',
+        Offset((start + tip) / 2, y + 11),
+        small: true,
+        color: blue,
+      );
+    }
+
+    if (params.levelLeft) arrow(true);
+    if (params.levelRight) arrow(false);
+  }
+
+  void _arrowedDimension(
+    Canvas canvas,
+    Offset a,
+    Offset b,
+    Offset offset,
+    String text,
+    Paint paint, {
+    double angle = 0,
+  }) {
+    final a2 = a + offset;
+    final b2 = b + offset;
+    canvas.drawLine(a + offset * 0.2, a2 + offset * 0.2, paint);
+    canvas.drawLine(b + offset * 0.2, b2 + offset * 0.2, paint);
+    canvas.drawLine(a2, b2, paint);
+    final direction = (b2 - a2) / (b2 - a2).distance;
+    _arrow(canvas, a2, -direction);
+    _arrow(canvas, b2, direction);
+    _label(
+      canvas,
+      text,
+      (a2 + b2) / 2 + offset / offset.distance * 16,
+      angle: angle,
+      fontSize: _basePx * 2.6,
+      color: _dim,
+    );
+  }
+
+  /// Угол подписи вдоль отрезка, повёрнутый так, чтобы текст читался слева
+  /// направо.
+  double _uprightAngle(Offset direction) {
+    var angle = math.atan2(direction.dy, direction.dx);
+    if (angle > math.pi / 2) angle -= math.pi;
+    if (angle < -math.pi / 2) angle += math.pi;
+    return angle;
+  }
+
+  void _arrow(
+    Canvas canvas,
+    Offset tip,
+    Offset direction, {
+    Color color = _ink,
+  }) {
+    const length = 9.0;
+    const halfWidth = 3.0;
+    final back = tip - direction * length;
+    final normal = Offset(-direction.dy, direction.dx) * halfWidth;
+    canvas.drawPath(
+      Path()
+        ..moveTo(tip.dx, tip.dy)
+        ..lineTo(back.dx + normal.dx, back.dy + normal.dy)
+        ..lineTo(back.dx - normal.dx, back.dy - normal.dy)
+        ..close(),
+      Paint()..color = color,
+    );
+  }
+
+  /// Подпись под заготовкой: номер и материал, припуск и усадка.
+  void _paintCaption(
+    Canvas canvas,
+    Rect rect,
+    WindowSpec spec,
+    int index,
+    String partLabel,
+  ) {
+    final params = spec.params;
+    final materials = <String>[
+      for (final material
+          in spec.isComposite
+              ? [params.material, params.composite.material]
+              : [params.material])
+        material.label,
+    ];
+    final material = materials.toSet().join(' + ');
+    _label(
+      canvas,
+      // «Обычный ПВХ» → «обычный ПВХ», аббревиатуру не трогаем.
+      '№${partLabel.isEmpty ? index + 1 : partLabel} · '
+      '${material[0].toLowerCase()}${material.substring(1)}'
+      '${spec.isComposite ? ' — две детали, шов общий' : ''}',
+      Offset(rect.center.dx, rect.bottom + 78),
+      color: _ink,
+    );
+    final parts = <String>[
+      // Окно с молнией кроится уже: ширина заготовки уменьшена на полосу
+      // молнии у всех материалов. Показываем оба числа, чтобы подпись не
+      // расходилась с готовым размером и подворотами/запайкой
+      // (2 530 → 2 480 мм при полосе 50 мм).
+      if (spec.zipperSegmentsLabel.isNotEmpty) spec.zipperSegmentsLabel,
+      if (spec.zipperBandTotalMm > 0)
+        'ширина заготовки '
+            '${formatMm(spec.filmCutWidthBeforeZipper)}'
+            ' → ${formatMm(spec.filmCutWidth)} ${unitSuffix()}, '
+            'минус полоса молнии ${formatMm(spec.zipperBandTotalMm)} ${unitSuffix()}',
+      if (params.hasManualAllowance)
+        'припуск ${params.allowanceWidthLabel}/'
+            '${params.manualAllowanceHeightLabel} ${unitSuffix()}',
+      if (params.hasShrinkage)
+        'с усадкой ${formatPercent(params.effectiveShrinkagePercent)}: '
+            '${formatMm(spec.filmCutWidthWithShrinkage)} × '
+            '${formatMm(spec.filmCutHeightWithShrinkage)} ${unitSuffix()}',
+    ];
+    if (spec.zipperSegmentWidths.length > 1) {
+      final total = spec.zipperSegmentWidths.fold<double>(
+        0,
+        (sum, width) => sum + width,
+      );
+      _label(
+        canvas,
+        'Общая ширина сегментов ${formatMm(total)} ${unitSuffix()}',
+        Offset(rect.center.dx, rect.bottom + 100),
+        color: _ink,
+        fontSize: _basePx * 2.6,
+      );
+    }
+    if (parts.isNotEmpty) {
+      _label(
+        canvas,
+        parts.join(' · '),
+        Offset(
+          rect.center.dx,
+          rect.bottom + (spec.zipperSegmentWidths.length > 1 ? 120 : 96),
+        ),
+        small: true,
+        color: _dim,
+      );
+    }
+  }
+
+  TextPainter _painter(
+    String text, {
+    Color color = _ink,
+    double fontSize = 0,
+    bool small = false,
+    bool bold = false,
+  }) {
+    final size = fontSize > 0 ? fontSize : (small ? _basePx : _basePx * 1.19);
+    return TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: size,
+          fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+          fontFamily: labelFontFamily,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+  }
+
+  /// Подпись с белой подложкой по центру точки.
+  void _label(
+    Canvas canvas,
+    String text,
+    Offset position, {
+    double angle = 0,
+    bool small = false,
+    Color color = _ink,
+    double? fontSize,
+  }) {
+    final painter = _painter(
+      text,
+      color: color,
+      small: small,
+      fontSize: fontSize ?? 0,
+    );
+    canvas.save();
+    canvas.translate(position.dx, position.dy);
+    canvas.rotate(angle);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset.zero,
+          width: painter.width + 8,
+          height: painter.height + 4,
+        ),
+        const Radius.circular(3),
+      ),
+      Paint()..color = Colors.white.withValues(alpha: 0.92),
+    );
+    painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant CutSheetPainter oldDelegate) =>
+      oldDelegate.layout != layout ||
+      oldDelegate.specs != specs ||
+      oldDelegate.labelFontFamily != labelFontFamily ||
+      oldDelegate.unit != unit ||
+      oldDelegate.labelSettings != labelSettings;
+}
+
+/// Итоги раскроя: количество, площади заготовок и материалы.
+class _CutTotals {
+  _CutTotals(this.specs) {
+    for (final spec in specs) {
+      // Плёнка в раскрое — заготовка по фактическому контуру: припуск и
+      // усадка уже внутри, вырезы вычтены. Для косого окна это меньше
+      // габаритного прямоугольника, по которому идёт только упаковка.
+      filmAreaM2 += spec.filmCutAreaM2;
+      filmAreaWithShrinkageM2 += spec.filmCutAreaWithShrinkageM2;
+      productAreaM2 += spec.productAreaM2;
+      areaByMaterial.update(
+        spec.params.material,
+        (value) => value + spec.filmCutAreaWithShrinkageM2,
+        ifAbsent: () => spec.filmCutAreaWithShrinkageM2,
+      );
+    }
+  }
+
+  final List<WindowSpec> specs;
+
+  /// Площадь заготовок к раскрою по фактическому контуру (с припуском), м².
+  double filmAreaM2 = 0;
+  double filmAreaWithShrinkageM2 = 0;
+  double productAreaM2 = 0;
+
+  /// Площадь заготовок по материалам.
+  final Map<FilmMaterial, double> areaByMaterial = {};
+
+  /// Подписи по материалам: «Обычный ПВХ — 8,57 м²».
+  List<String> get materialLabels {
+    final entries = areaByMaterial.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return [
+      for (final entry in entries)
+        '${entry.key.label} — ${formatMeters(entry.value)} м²',
+    ];
+  }
+}
+
+/// Блок итогов перед штампом.
+class _CutTotalsBlock extends StatelessWidget {
+  const _CutTotalsBlock({required this.specs});
+
+  final List<WindowSpec> specs;
+
+  @override
+  Widget build(BuildContext context) {
+    final totals = _CutTotals(specs);
+    final materials = totals.materialLabels;
+
+    return Container(
+      height: CutSheet._totalsHeight,
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Color(0xFFD9E0EA))),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'ИТОГИ ПО РАСКРОЮ',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: Color(0xFF66748A),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'Масштаб заготовок единый · размеры в ${unitSuffix()}',
+                style: const TextStyle(fontSize: 9.5, color: Color(0xFF8A93A0)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _statTile('Заготовок', '${specs.length} шт')),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _statTile(
+                  'Площадь заготовок с усадкой',
+                  '${formatMeters(totals.filmAreaWithShrinkageM2)} м²',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _statTile(
+                  'Без усадки (по контуру)',
+                  '${formatMeters(totals.filmAreaM2)} м²',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Материалы: ${materials.isEmpty ? '—' : materials.join(' · ')}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 10.5, color: Color(0xFF2B3440)),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Это размеры готовых заготовок к раскрою; раскладка на рулоне — '
+            'на отдельном листе.',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 9.5,
+              height: 1.2,
+              color: Color(0xFF66748A),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statTile(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F9FC),
+        border: Border.all(color: const Color(0xFFD9E0EA)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            label.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 8.5,
+              height: 1.15,
+              letterSpacing: 0.4,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF5B6B80),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF16324F),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Штамп снизу — в стиле остальных листов.
+class _CutTitleBlock extends StatelessWidget {
+  const _CutTitleBlock({required this.project, required this.specs});
+
+  final OrderProject project;
+  final List<WindowSpec> specs;
+
+  @override
+  Widget build(BuildContext context) {
+    final totals = _CutTotals(specs);
+    final first = project.windows.isEmpty ? null : project.windows.first;
+    final now = DateTime.now();
+    final date =
+        '${now.day.toString().padLeft(2, '0')}.'
+        '${now.month.toString().padLeft(2, '0')}.${now.year}';
+
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Color(0xFF1B1F27), width: 1.4)),
+      ),
+      child: Row(
+        children: [
+          Expanded(flex: 3, child: _cell('Изделие', first?.projectName ?? '')),
+          Expanded(flex: 2, child: _cell('Заказчик', first?.customer ?? '')),
+          Expanded(
+            flex: 2,
+            child: _cell('Окон в заказе', '${project.windowCount} шт'),
+          ),
+          Expanded(flex: 2, child: _cell('Дата', date)),
+          Expanded(
+            flex: 3,
+            child: _cell(
+              'Площадь изделий',
+              '${formatMeters(totals.productAreaM2)} м²',
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: _cell(
+              'Площадь заготовок с усадкой',
+              '${formatMeters(totals.filmAreaWithShrinkageM2)} м²',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cell(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: const BoxDecoration(
+        border: Border(left: BorderSide(color: Color(0xFFC3CCDA))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            label.toUpperCase(),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 8.5,
+              height: 1.15,
+              letterSpacing: 0.4,
+              color: Color(0xFF7C8798),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value.isEmpty ? '—' : value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12.5,
+              color: Color(0xFF1B1F27),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

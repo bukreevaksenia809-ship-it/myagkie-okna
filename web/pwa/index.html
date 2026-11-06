@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f1ea">
+  <meta name="description" content="Быстрый замер мягких окон, смета и печать с телефона.">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Мягкие окна">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="/pwa/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/Icon-192.png">
+  <link rel="icon" href="/icons/Icon-192.png">
+  <link rel="stylesheet" href="/pwa/style.css">
+  <title>Мягкие окна — замер</title>
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="brand">
+        <div class="mark">МО</div>
+        <div>
+          <div class="brand-title">Мягкие окна</div>
+          <div class="brand-sub">быстрый замер с телефона</div>
+        </div>
+      </div>
+      <button id="installBtn" class="icon-btn" type="button" aria-label="Установить на телефон" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg>
+      </button>
+    </header>
+
+    <div id="iosHint" class="ios-hint" hidden>
+      <b>Добавьте на экран «Домой»</b>
+      <span>В Safari нажмите «Поделиться» → «На экран „Домой“». Приложение откроется как обычное.</span>
+      <button type="button" id="iosHintClose" class="link-btn">Понятно</button>
+    </div>
+
+    <main>
+      <section id="measureView" class="view active">
+        <div class="hero">
+          <div class="eyebrow">ЗАМЕР</div>
+          <h1>Окно за<br><em>полминуты</em></h1>
+          <p>Введите размеры — получите площадь, материалы и цену. Заказ сохранится на телефоне.</p>
+        </div>
+
+        <form id="windowForm" class="card form" autocomplete="off">
+          <input type="hidden" id="editId">
+          <div class="row two">
+            <label class="field">
+              <span>Ширина, мм</span>
+              <input id="width" type="number" inputmode="numeric" min="300" max="6000" step="10" value="1500" required>
+            </label>
+            <label class="field">
+              <span>Высота, мм</span>
+              <input id="height" type="number" inputmode="numeric" min="300" max="6000" step="10" value="2500" required>
+            </label>
+          </div>
+
+          <div class="field">
+            <span>Тип окна</span>
+            <div class="segmented" role="group" aria-label="Тип окна">
+              <button type="button" data-type="fixed" class="active">Глухое</button>
+              <button type="button" data-type="lifting">Подъёмное</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span>Материал</span>
+            <div class="chips" role="group" aria-label="Материал">
+              <button type="button" data-material="pvc" class="active">ПВХ</button>
+              <button type="button" data-material="tinted">Тонированный</button>
+              <button type="button" data-material="screen">Скрин</button>
+            </div>
+          </div>
+
+          <div class="row two">
+            <label class="field">
+              <span>Количество</span>
+              <div class="stepper">
+                <button type="button" id="minusQty" aria-label="Меньше">−</button>
+                <input id="qty" type="number" inputmode="numeric" min="1" max="50" value="1">
+                <button type="button" id="plusQty" aria-label="Больше">+</button>
+              </div>
+            </label>
+            <label class="field check-field">
+              <span>Молния</span>
+              <label class="switch-line"><input id="zipper" type="checkbox"> <span>есть</span></label>
+            </label>
+          </div>
+
+          <div class="calc-preview">
+            <div><span>Площадь</span><b id="previewArea">3,75 м²</b></div>
+            <div><span>Примерно</span><b id="previewPrice">—</b></div>
+          </div>
+
+          <button class="primary" type="submit" id="addBtn">Добавить окно</button>
+          <button class="ghost" type="button" id="cancelEdit" hidden>Отменить редактирование</button>
+        </form>
+
+        <div class="section-head">
+          <h2>Окна в замере</h2>
+          <span id="windowCount" class="muted">0</span>
+        </div>
+        <div id="quickList" class="window-list empty-state">
+          <div class="empty-mark">◎</div>
+          <b>Пока пусто</b>
+          <span>Добавьте первое окно — список появится здесь.</span>
+        </div>
+      </section>
+
+      <section id="windowsView" class="view">
+        <div class="section-hero">
+          <div class="eyebrow">ЗАКАЗ</div>
+          <h1>Все окна</h1>
+          <p>Проверьте размеры и количество. Можно изменить или удалить окно.</p>
+        </div>
+        <div class="card order-fields">
+          <label class="field">
+            <span>Название заказа</span>
+            <input id="orderName" type="text" placeholder="Например, Дача" maxlength="80">
+          </label>
+          <label class="field">
+            <span>Клиент</span>
+            <input id="customer" type="text" placeholder="Имя и телефон" maxlength="120">
+          </label>
+        </div>
+        <div id="fullList" class="window-list"></div>
+        <a class="full-link" href="/">Сложный чертёж и раскрой — в полной версии</a>
+      </section>
+
+      <section id="estimateView" class="view">
+        <div class="section-hero">
+          <div class="eyebrow">СМЕТА</div>
+          <h1>Расчёт</h1>
+          <p>Цена считается по площади, канту, крепежу и молнии. Цены можно изменить в настройках.</p>
+        </div>
+
+        <div id="printMeta" class="print-meta"></div>
+
+        <div class="card total-card">
+          <div class="total-top">
+            <span>Итого</span>
+            <button type="button" id="settingsBtn" class="icon-btn" aria-label="Настройки цен">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5ZM19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.42 1.42-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20h-2v-.09A1.7 1.7 0 0 0 12.4 18.4a1.7 1.7 0 0 0-1.88.34l-.06.06-1.42-1.42.06-.06A1.7 1.7 0 0 0 9.44 15a1.7 1.7 0 0 0-1.56-1.03H7.8v-2h.08A1.7 1.7 0 0 0 9.44 10.9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 1.42-1.42.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 13.43 6.4V6.3h2v.1a1.7 1.7 0 0 0 1.03 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 1.42 1.42-.06.06A1.7 1.7 0 0 0 19.4 10.9a1.7 1.7 0 0 0 1.56 1.03H21v2h-.04A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+            </button>
+          </div>
+          <div id="totalPrice" class="total-price">0 ₽</div>
+          <div id="totalDetails" class="muted">Добавьте окна</div>
+          <label class="switch-line install-line"><input id="install" type="checkbox"> <span>Учесть монтаж</span></label>
+        </div>
+
+        <div id="estimateLines" class="card lines"></div>
+
+        <div class="card signature-card">
+          <div class="section-head">
+            <h2>Подпись клиента</h2>
+            <button type="button" id="clearSignature" class="link-btn">Очистить</button>
+          </div>
+          <canvas id="signature" aria-label="Подпись клиента"></canvas>
+          <div class="muted small">Клиент ставит подпись пальцем. Она попадёт в печатную смету.</div>
+        </div>
+
+        <div class="actions">
+          <button type="button" class="primary" id="printBtn">Печать / PDF</button>
+          <button type="button" class="ghost" id="shareBtn">Отправить</button>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Разделы">
+      <button type="button" data-view="measureView" class="active">
+        <span class="nav-ico">＋</span><span>Замер</span>
+      </button>
+      <button type="button" data-view="windowsView">
+        <span class="nav-ico">▤</span><span>Окна</span>
+      </button>
+      <button type="button" data-view="estimateView">
+        <span class="nav-ico">₽</span><span>Смета</span>
+      </button>
+    </nav>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="settingsDialog" class="sheet">
+    <form method="dialog" class="sheet-inner">
+      <div class="sheet-grab"></div>
+      <div class="section-head"><h2>Настройки цен</h2><button value="cancel" class="link-btn">Закрыть</button></div>
+      <div class="price-grid">
+        <label class="field"><span>ПВХ, ₽/м²</span><input id="pricePvc" type="number" min="0" step="10"></label>
+        <label class="field"><span>Тонированный, ₽/м²</span><input id="priceTinted" type="number" min="0" step="10"></label>
+        <label class="field"><span>Скрин, ₽/м²</span><input id="priceScreen" type="number" min="0" step="10"></label>
+        <label class="field"><span>Кант, ₽/м</span><input id="priceEdge" type="number" min="0" step="5"></label>
+        <label class="field"><span>Люверс, ₽/шт</span><input id="priceEyelet" type="number" min="0" step="5"></label>
+        <label class="field"><span>Крепёж, ₽/шт</span><input id="priceFastener" type="number" min="0" step="5"></label>
+        <label class="field"><span>Молния, ₽/м</span><input id="priceZipper" type="number" min="0" step="10"></label>
+        <label class="field"><span>Монтаж, ₽/м²</span><input id="priceInstall" type="number" min="0" step="10"></label>
+      </div>
+      <button id="saveSettings" class="primary" value="default">Сохранить</button>
+    </form>
+  </dialog>
+
+  <script src="/pwa/app.js" defer></script>
+</body>
+</html>
