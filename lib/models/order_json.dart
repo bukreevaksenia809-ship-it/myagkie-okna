@@ -156,6 +156,8 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
   'rollRight': p.rollRight,
   'edgeMaterial': p.edgeMaterial.name,
   'edgeColor': p.edgeColor.name,
+  'eyeletColor': p.eyeletColor.name,
+  'fastenerColor': p.fastenerColor.name,
   // Запайка плёнки под окантовку (5…60 мм) — вводится руками.
   'weldOverlapMm': p.weldOverlapMm,
   // Подворот скрина по сторонам (10…200 мм на каждую сторону).
