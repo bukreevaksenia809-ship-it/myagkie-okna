@@ -2223,6 +2223,24 @@ class WindowParams {
   /// «Ровно» низ → верх выглядел как «ничего не происходит» — галочка в панели
   /// переезжала, а чертёж оставался прежним, потому что
   /// `WindowDrawingPainter.shouldRepaint` сравнивает эту подпись.
+  /// Скрыть все три подписи одной молнии.
+  WindowParams hideZipperLabels(int zipperIndex) {
+    final next = Map<String, ZipperLabelOffset>.from(zipperLabelOffsets);
+    for (final kind in const ['left', 'band', 'right']) {
+      next['$zipperIndex:$kind'] = const ZipperLabelOffset(hidden: true);
+    }
+    return copyWith(zipperLabelOffsets: next);
+  }
+
+  /// Вернуть подписи одной молнии на расчётные места.
+  WindowParams resetZipperLabels(int zipperIndex) {
+    final next = Map<String, ZipperLabelOffset>.from(zipperLabelOffsets);
+    for (final kind in const ['left', 'band', 'right']) {
+      next.remove('$zipperIndex:$kind');
+    }
+    return copyWith(zipperLabelOffsets: next);
+  }
+
   ZipperLabelOffset zipperLabelOffset(int zipperIndex, String kind) =>
       zipperLabelOffsets['$zipperIndex:$kind'] ?? const ZipperLabelOffset();
 

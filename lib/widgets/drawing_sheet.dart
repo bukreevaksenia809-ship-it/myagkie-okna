@@ -2750,15 +2750,28 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
     if (side == null || index < 0 || index >= _points.length) return;
     // Нижние углы — не «точка крепления по низу», а угловой крепёж.
     // При удалении точек по низу оставляем оба нижних угла на месте.
+    final center =
+        _edgeStart + (_edgeEnd - _edgeStart) * _points[index].fraction;
+    final bounds = widget.spec.geometry.productBounds;
+    final nearBottom = (center.dy - bounds.top).abs() <= 30;
+    final nearSide =
+        (center.dx - bounds.left).abs() <= 30 ||
+        (center.dx - bounds.right).abs() <= 30;
     if (side == EdgeSide.bottom &&
         (_points[index].fraction <= 0.005 ||
-            _points[index].fraction >= 0.995)) {
+            _points[index].fraction >= 0.995 ||
+            (nearBottom && nearSide))) {
       _closeMenu();
       return;
     }
     final next = [..._points]..removeAt(index);
     _closeMenu();
     widget.onChanged(widget.params.withManualPoints(side, next));
+  }
+
+  void _setClip16() {
+    _closeMenu();
+    widget.onChanged(widget.params.copyWith(fastenerType: FastenerType.clip16));
   }
 
   void _addPoint() {
@@ -2863,6 +2876,12 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
                   onTap: () => _apply(
                     (point) => point.copyWith(kind: MarkerKind.turnBuckle),
                   ),
+                ),
+                _menuItem(
+                  key: 'eyelet-menu-clip16',
+                  icon: Icons.circle_outlined,
+                  label: 'Клипса под люверс 16',
+                  onTap: _setClip16,
                 ),
                 _menuItem(
                   key: 'eyelet-menu-add',
