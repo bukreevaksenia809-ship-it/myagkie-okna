@@ -912,7 +912,10 @@ enum MarkerKind {
   turnBuckle('Поворотная скоба'),
 
   /// Французский замок (металлический) в этой точке.
-  metalFrenchLock('Французский замок');
+  metalFrenchLock('Французский замок'),
+
+  /// Клипса под люверс 16 в этой точке.
+  clip16('Клипса под люверс 16');
 
   const MarkerKind(this.label);
 

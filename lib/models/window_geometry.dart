@@ -1947,21 +1947,40 @@ class WindowLayers {
   /// прямоугольная скоба. Если тумблер «Круглые люверсы в углах» выключен,
   /// угловых точек в [eyelets] нет вовсе, и список крепежа не меняется.
   List<EyeletPlacement> get movableSideEyelets {
-    // Т-образное окно глухое: подвижного крепежа у него нет (у скрина есть —
-    // он снимается).
+    // Клипса под люверс 16 — это крепёж, который ставится в круглые точки
+    // люверса с тем же шагом. На глухом окне — по всему периметру, на
+    // подъёмном — только по бокам (верх и нижние углы остаются круглыми).
+    if (params.fastenerType == FastenerType.clip16) {
+      if (params.isLifting && !isScreen) {
+        return eyelets
+            .where(
+              (eyelet) =>
+                  (eyelet.side == WindowSide.left ||
+                      eyelet.side == WindowSide.right) &&
+                  !eyelet.isCorner,
+            )
+            .toList(growable: false);
+      }
+      if (!isScreen) return eyelets.toList(growable: false);
+    }
+    // Т-образное/составное/треугольник/домик — глухие: подвижного крепежа
+    // у них нет (у скрина есть — он снимается).
     if (!isScreen && !params.isLifting) return const [];
-    // Нижние углы — рабочие точки подъёмного окна: там стоит выбранный
-    // крепёж (скоба/замок), а не круглый люверс. Верхние углы остаются
-    // круглыми: на них окно подвешивается.
+    if (!isScreen && params.isLifting) {
+      // Подъёмное окно: сверху всегда круглые люверсы, низ — без люверсов
+      // (кроме нижних углов), а выбранный крепёж идёт только по бокам.
+      return eyelets
+          .where(
+            (eyelet) =>
+                (eyelet.side == WindowSide.left ||
+                    eyelet.side == WindowSide.right) &&
+                !eyelet.isCorner,
+          )
+          .toList(growable: false);
+    }
+    // Скрин — съёмное полотно: крепёж по низу и бокам, сверху люверсы.
     return eyelets
-        .where(
-          (eyelet) =>
-              eyelet.side != WindowSide.top &&
-              (!eyelet.isCorner ||
-                  (params.isLifting &&
-                      !isScreen &&
-                      eyelet.side == WindowSide.bottom)),
-        )
+        .where((eyelet) => eyelet.side != WindowSide.top && !eyelet.isCorner)
         .toList(growable: false);
   }
 
@@ -2659,7 +2678,8 @@ class WindowLayers {
             // на изделии нет.
             if (point.kind == MarkerKind.frenchLock ||
                 point.kind == MarkerKind.metalFrenchLock ||
-                point.kind == MarkerKind.turnBuckle) {
+                point.kind == MarkerKind.turnBuckle ||
+                point.kind == MarkerKind.clip16) {
               manualFasteners.add(
                 ManualFastener(
                   center: center,
@@ -2669,6 +2689,7 @@ class WindowLayers {
                     MarkerKind.frenchLock => FastenerType.frenchLocks,
                     MarkerKind.metalFrenchLock => FastenerType.metalFrenchLock,
                     MarkerKind.turnBuckle => FastenerType.turnBuckles,
+                    MarkerKind.clip16 => FastenerType.clip16,
                     _ => FastenerType.frenchLocks,
                   },
                 ),
@@ -2821,7 +2842,14 @@ class WindowLayers {
     // сохраняют. Крепёж считается уменьшенным предсказуемо — см. тесты.
     final visible = [
       for (final eyelet in merged)
-        if (sideHasEyelets(eyelet.side)) eyelet,
+        if (sideHasEyelets(eyelet.side) ||
+            // У подъёмного окна низ остаётся без люверсов, но нижние углы —
+            // рабочие круглые люверсы: они держат полотно внизу.
+            (params.isLifting &&
+                !isScreen &&
+                eyelet.side == WindowSide.bottom &&
+                eyelet.isCorner))
+          eyelet,
     ];
 
     // Углы обходятся дважды (соседние стороны), скобу оставляем по одной.
@@ -3543,9 +3571,13 @@ class WindowSpec {
       WindowType.tShape ||
       WindowType.composite ||
       WindowType.triangle ||
-      WindowType.house => 'Саморезы по окантовке (глухое)',
+      WindowType.house =>
+        params.fastenerType == FastenerType.eyeletsOnly
+            ? 'Круглые люверсы по окантовке (глухое)'
+            : 'Крепёж по окантовке (глухое)',
       WindowType.lifting =>
-        'Сверху саморезы, низ и бока — $movableFastenerLabel',
+        'Сверху круглые люверсы, бока — '
+            '$movableFastenerLabel, низ без люверсов (кроме углов)',
     };
   }
 
