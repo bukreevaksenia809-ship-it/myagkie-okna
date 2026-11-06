@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../data/order_repository.dart';
@@ -5,6 +7,9 @@ import '../../data/warehouse_repository.dart';
 import '../../models/order_project.dart';
 import '../../models/window_params.dart';
 import '../../models/order_record.dart';
+import '../../models/order_json.dart';
+import '../../services/estimate.dart';
+import '../../services/cost_catalog.dart';
 import '../../models/price_list.dart';
 import '../../services/order_materials.dart';
 import '../design/app_kit.dart';
@@ -57,6 +62,7 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
   final _repo = OrderRepository.instance;
   List<OrderRecord> _orders = const [];
   Map<String, OrderCardStats> _stats = const {};
+  Map<String, double> _costs = const {};
   OrderFilter _filter = const OrderFilter();
   OrdersView _view = OrdersView.board;
   final Set<String> _selected = {};
@@ -79,10 +85,25 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
       final stats = await _repo.stats();
       final assignees = await _repo.assignees();
       final labels = await _repo.labels();
+      final catalog = await CostCatalog.instance.load();
+      final costs = <String, double>{};
+      for (final order in orders) {
+        try {
+          final project = orderFromJson(
+            (jsonDecode(order.projectJson) as Map).cast<String, dynamic>(),
+          );
+          costs[order.id] = catalog.orderCost(
+            Estimate.of(project, widget.prices),
+          );
+        } catch (_) {
+          costs[order.id] = 0;
+        }
+      }
       if (!mounted) return;
       setState(() {
         _orders = orders;
         _stats = stats;
+        _costs = costs;
         _assignees = assignees;
         _labels = labels;
         _loading = false;
@@ -1005,6 +1026,15 @@ class _OrdersBoardScreenState extends State<OrdersBoardScreen> {
                                       color: AppTokens.inkSoft,
                                     ),
                                   ),
+                                  if ((_costs[order.id] ?? 0) > 0)
+                                    Text(
+                                      'себест. ${appMoneyShort(_costs[order.id]!)}',
+                                      style: const TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTokens.copper,
+                                      ),
+                                    ),
                                   if ((stats?.due ?? 0) > 0.005)
                                     Text(
                                       'долг ${appMoneyShort(stats!.due)}',

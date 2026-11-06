@@ -8,6 +8,10 @@ import '../data/order_repository.dart';
 import '../models/finance.dart';
 import '../models/order_project.dart';
 import '../models/order_record.dart';
+import '../models/order_json.dart';
+import '../models/price_list.dart';
+import '../services/cost_catalog.dart';
+import '../services/estimate.dart';
 import '../services/file_saver.dart';
 import 'design/app_kit.dart';
 import 'orders/finance_dialogs.dart';
@@ -46,11 +50,13 @@ class FinanceScreen extends StatefulWidget {
     this.embedded = false,
     this.onOpenOrder,
     this.onOpenOrders,
+    this.prices = const PriceList.defaults(),
   });
 
   final bool embedded;
   final Future<void> Function(OrderRecord)? onOpenOrder;
   final VoidCallback? onOpenOrders;
+  final PriceList prices;
 
   @override
   State<FinanceScreen> createState() => _FinanceScreenState();
@@ -65,6 +71,7 @@ class _FinanceScreenState extends State<FinanceScreen> {
   List<CashEntry> _cash = const [];
   List<(OrderRecord, OrderFinance)> _orderFinances = const [];
   List<OrderRecord> _allOrders = const [];
+  Map<String, double> _catalogCosts = const {};
   bool _loading = true;
   String? _error;
 
@@ -88,9 +95,24 @@ class _FinanceScreenState extends State<FinanceScreen> {
         _orders.list(includeArchived: false),
         _repo.orderFinances(),
       ]);
+      final catalog = await CostCatalog.instance.load();
+      final costs = <String, double>{};
+      for (final order in results[3] as List<OrderRecord>) {
+        try {
+          final project = orderFromJson(
+            (jsonDecode(order.projectJson) as Map).cast<String, dynamic>(),
+          );
+          costs[order.id] = catalog.orderCost(
+            Estimate.of(project, widget.prices),
+          );
+        } catch (_) {
+          costs[order.id] = 0;
+        }
+      }
       if (!mounted) return;
       setState(() {
         _summary = results[0] as FinanceSummary;
+        _catalogCosts = costs;
         _debtors = results[1] as List<(OrderRecord, OrderFinance)>;
         _cash = results[2] as List<CashEntry>;
         _allOrders = results[3] as List<OrderRecord>;
@@ -270,6 +292,8 @@ class _FinanceScreenState extends State<FinanceScreen> {
             _cashSection(),
             const SizedBox(height: 16),
             _costsSection(_summary!),
+            const SizedBox(height: 16),
+            _catalogCostSection(),
           ],
           const SizedBox(height: 24),
         ],
@@ -816,6 +840,66 @@ class _FinanceScreenState extends State<FinanceScreen> {
                   ],
                 ),
               ),
+        ],
+      ),
+    );
+  }
+
+  Widget _catalogCostSection() {
+    final rows = [
+      for (final order in _allOrders)
+        if ((_catalogCosts[order.id] ?? 0) > 0) order,
+    ];
+    if (rows.isEmpty) {
+      return const AppSurface(
+        padding: EdgeInsets.all(16),
+        shadow: false,
+        child: Text(
+          'Себестоимость по позициям появится после заполнения склада.',
+          style: TextStyle(fontSize: 11.5, color: AppTokens.muted),
+        ),
+      );
+    }
+    return AppSurface(
+      padding: EdgeInsets.zero,
+      clip: true,
+      shadow: false,
+      child: Column(
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 14, 16, 10),
+            child: AppSectionTitle(
+              title: 'Себестоимость по позициям',
+              subtitle: 'Из цен, заполненных при первом открытии склада',
+            ),
+          ),
+          for (final order in rows.take(30))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 7, 16, 7),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${order.number} · ${order.displayTitle}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${appMoney(_catalogCosts[order.id]!)} ₽',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppTokens.copper,
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

@@ -874,6 +874,13 @@ class ClientReportBuilder {
           if (spec.params.isScreen && spec.params.screenColor.trim().isNotEmpty)
             _darkSpec('Цвет', spec.params.screenColor.trim()),
           _darkSpec('Окантовка', edgeText),
+          _darkSpec('Цвет канта', spec.params.edgeColor.label),
+          _darkSpec(
+            'Цвет люверсов',
+            spec.params.edgeColor == EdgeColor.white
+                ? 'Серебристый'
+                : 'Коричневый',
+          ),
           _darkSpec(
             'Крепёж',
             spec.params.fastenerType == FastenerType.eyeletsOnly
