@@ -3399,7 +3399,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     ),
                   ),
                 ],
-                if (params.zipperLabelOffsets.isNotEmpty)
+                if (params.zippers.isNotEmpty)
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton.icon(
@@ -3408,7 +3408,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                         params.copyWith(zipperLabelOffsets: const {}),
                       ),
                       icon: const Icon(Icons.restart_alt, size: 17),
-                      label: const Text('Вернуть подписи размеров молний'),
+                      label: const Text('Вернуть все надписи размеров'),
                     ),
                   ),
                 SwitchListTile(
@@ -5019,6 +5019,25 @@ class _ParamsPanelState extends State<ParamsPanel> {
               ),
             ),
           ],
+          const Divider(height: 18),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              OutlinedButton.icon(
+                key: Key('zipper-hide-labels-$index'),
+                onPressed: () => _updateWindow(params.hideZipperLabels(index)),
+                icon: const Icon(Icons.visibility_off_outlined, size: 16),
+                label: const Text('Удалить надписи'),
+              ),
+              TextButton.icon(
+                key: Key('zipper-reset-labels-$index'),
+                onPressed: () => _updateWindow(params.resetZipperLabels(index)),
+                icon: const Icon(Icons.restart_alt, size: 16),
+                label: const Text('Вернуть надписи'),
+              ),
+            ],
+          ),
         ],
       ),
     );
