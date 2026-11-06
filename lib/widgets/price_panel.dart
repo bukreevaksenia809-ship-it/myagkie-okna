@@ -137,6 +137,12 @@ class _PricePanelState extends State<PricePanel> {
                 itemKey: PriceItemKeys.edge120,
               ),
               _row(
+                'Тент 150 мм',
+                prices.edge(PriceField.edge150),
+                (value) => _set(prices.copyWith(edge150PerM: value)),
+                itemKey: PriceItemKeys.edge150,
+              ),
+              _row(
                 'Тент 200 мм',
                 prices.edge(PriceField.edge200),
                 (value) => _set(prices.copyWith(edge200PerM: value)),

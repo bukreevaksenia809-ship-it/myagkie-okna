@@ -3,6 +3,7 @@ import 'package:sqflite_common/sqlite_api.dart';
 import '../data/app_database.dart';
 import '../data/warehouse_repository.dart';
 import '../models/price_list.dart';
+import '../models/window_params.dart';
 import '../models/warehouse.dart';
 
 /// Синхронизация номенклатуры склада с прайс-листом.
@@ -127,19 +128,23 @@ class PriceWarehouseSync {
         (PriceItemKeys.edge80, 80.0, p.edge80PerM),
         (PriceItemKeys.edge100, 100.0, p.edge100PerM),
         (PriceItemKeys.edge120, 120.0, p.edge120PerM),
+        (PriceItemKeys.edge150, 150.0, p.edge150PerM),
         (PriceItemKeys.edge200, 200.0, p.edge200PerM),
         (PriceItemKeys.edge240, 240.0, p.edge240PerM),
       ])
-        _PriceProduct(
-          key: key,
-          name: 'Окантовка тент ${width.toStringAsFixed(0)} мм',
-          category: 'Окантовка',
-          material: 'Тент',
-          color: 'Коричневый',
-          unit: StockUnit.meter,
-          widthMm: width,
-          salePrice: price,
-        ),
+        for (final color in EdgeColor.values)
+          _PriceProduct(
+            key: '$key:${color.name}',
+            name:
+                'Окантовка тент ${width.toStringAsFixed(0)} мм — '
+                '${color.label}',
+            category: 'Окантовка',
+            material: 'Тент',
+            color: color.label,
+            unit: StockUnit.meter,
+            widthMm: width,
+            salePrice: price,
+          ),
       _PriceProduct(
         key: PriceItemKeys.eyeletRound,
         name: 'Люверс круглый Ø10',
