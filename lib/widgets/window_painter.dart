@@ -3448,10 +3448,7 @@ class WindowDrawingPainter extends CustomPainter {
         destination,
         Paint()
           ..filterQuality = FilterQuality.medium
-          ..colorFilter = ColorFilter.mode(
-            _fastenerColor.withValues(alpha: 0.55),
-            BlendMode.modulate,
-          ),
+          ..colorFilter = ColorFilter.mode(_fastenerColor, BlendMode.modulate),
       );
       canvas.restore();
       return;

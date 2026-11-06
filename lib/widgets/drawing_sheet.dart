@@ -2679,6 +2679,7 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
                     FastenerType.frenchLocks => MarkerKind.frenchLock,
                     FastenerType.metalFrenchLock => MarkerKind.metalFrenchLock,
                     FastenerType.turnBuckles => MarkerKind.turnBuckle,
+                    FastenerType.clip16 => MarkerKind.clip16,
                     _ => MarkerKind.eyelet,
                   }
                 : MarkerKind.eyelet,
@@ -2691,6 +2692,7 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
     FastenerType.frenchLocks => MarkerKind.frenchLock,
     FastenerType.metalFrenchLock => MarkerKind.metalFrenchLock,
     FastenerType.turnBuckles => MarkerKind.turnBuckle,
+    FastenerType.clip16 => MarkerKind.clip16,
     _ => MarkerKind.eyelet,
   };
 

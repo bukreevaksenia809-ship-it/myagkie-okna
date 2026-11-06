@@ -1670,33 +1670,36 @@ class _ParamsPanelState extends State<ParamsPanel> {
                   ),
                 ),
               ),
-              (
-                'fastener-plastic-clip',
-                'Пластиковая скоба',
-                '${formatRubles(prices.fastenerPerEach(FastenerType.frenchLocks))}/шт',
-                fastening == FastenerType.frenchLocks,
-                () => _updateWindow(
-                  params.copyWith(fastenerType: FastenerType.frenchLocks),
+              if (params.isLifting || params.isScreen)
+                (
+                  'fastener-plastic-clip',
+                  'Пластиковая скоба',
+                  '${formatRubles(prices.fastenerPerEach(FastenerType.frenchLocks))}/шт',
+                  fastening == FastenerType.frenchLocks,
+                  () => _updateWindow(
+                    params.copyWith(fastenerType: FastenerType.frenchLocks),
+                  ),
                 ),
-              ),
-              (
-                'fastener-french-lock',
-                'Французский замок',
-                '${formatRubles(prices.fastenerPerEach(FastenerType.metalFrenchLock))}/шт',
-                fastening == FastenerType.metalFrenchLock,
-                () => _updateWindow(
-                  params.copyWith(fastenerType: FastenerType.metalFrenchLock),
+              if (params.isLifting || params.isScreen)
+                (
+                  'fastener-french-lock',
+                  'Французский замок',
+                  '${formatRubles(prices.fastenerPerEach(FastenerType.metalFrenchLock))}/шт',
+                  fastening == FastenerType.metalFrenchLock,
+                  () => _updateWindow(
+                    params.copyWith(fastenerType: FastenerType.metalFrenchLock),
+                  ),
                 ),
-              ),
-              (
-                'fastener-turn-buckle',
-                'Поворотная скоба',
-                '${formatRubles(prices.fastenerPerEach(FastenerType.turnBuckles))}/шт',
-                fastening == FastenerType.turnBuckles,
-                () => _updateWindow(
-                  params.copyWith(fastenerType: FastenerType.turnBuckles),
+              if (params.isLifting || params.isScreen)
+                (
+                  'fastener-turn-buckle',
+                  'Поворотная скоба',
+                  '${formatRubles(prices.fastenerPerEach(FastenerType.turnBuckles))}/шт',
+                  fastening == FastenerType.turnBuckles,
+                  () => _updateWindow(
+                    params.copyWith(fastenerType: FastenerType.turnBuckles),
+                  ),
                 ),
-              ),
               (
                 'fastener-clip16',
                 'Клипса под люверс 16',
@@ -1706,15 +1709,16 @@ class _ParamsPanelState extends State<ParamsPanel> {
                   params.copyWith(fastenerType: FastenerType.clip16),
                 ),
               ),
-              (
-                'fastener-straps',
-                'Подвязочный ремень',
-                '${formatRubles(prices.fastenerPerEach(FastenerType.straps))}/шт',
-                fastening == FastenerType.straps,
-                () => _updateWindow(
-                  params.copyWith(fastenerType: FastenerType.straps),
+              if (params.isLifting || params.isScreen)
+                (
+                  'fastener-straps',
+                  'Подвязочный ремень',
+                  '${formatRubles(prices.fastenerPerEach(FastenerType.straps))}/шт',
+                  fastening == FastenerType.straps,
+                  () => _updateWindow(
+                    params.copyWith(fastenerType: FastenerType.straps),
+                  ),
                 ),
-              ),
             ])
               ChoiceChip(
                 key: Key(key),
