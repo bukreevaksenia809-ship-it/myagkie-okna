@@ -19,6 +19,8 @@ import 'warehouse/operation_dialog.dart';
 import 'warehouse/bulk_materials_dialog.dart';
 import 'warehouse/order_materials_dialog.dart';
 import 'warehouse/product_editor.dart';
+import '../services/cost_catalog.dart';
+import 'cost_catalog_dialog.dart';
 
 /// Открывает склад как отдельный экран (для старых точек входа).
 Future<void> showWarehouseScreen(BuildContext context) {
@@ -98,6 +100,21 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
   void initState() {
     super.initState();
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureCostCatalog());
+  }
+
+  Future<void> _ensureCostCatalog() async {
+    final catalog = await CostCatalog.instance.load();
+    if (!mounted || catalog.configured) return;
+    final result = await showCostCatalogDialog(
+      context,
+      catalog,
+      firstRun: true,
+    );
+    if (!mounted || result == null) return;
+    await result.save();
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _load() async {
