@@ -1918,6 +1918,7 @@ class _BuilderScreenState extends State<BuilderScreen>
 
   Widget _financeSection() => FinanceScreen(
     embedded: true,
+    prices: _prices,
     onOpenOrder: _openFinanceOrder,
     onOpenOrders: () => setState(() => _section = AppSection.orders),
   );
