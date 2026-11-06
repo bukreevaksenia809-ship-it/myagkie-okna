@@ -37,6 +37,7 @@ import 'widgets/pairing_dialog.dart';
 import 'widgets/watermark_dialog.dart';
 import 'widgets/signature_center_dialog.dart';
 import 'widgets/quick_measure_dialog.dart';
+import 'widgets/calculation_history_dialog.dart';
 import 'services/label_settings.dart';
 import 'services/tech_checks.dart';
 import 'services/pdf_export.dart';
@@ -63,7 +64,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.6.3';
+const String kAppVersion = '2.7.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -119,7 +120,7 @@ class SoftWindowApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Калькулятор мягких окон',
+      title: 'Мягкие окна Excl — Копия 2',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       locale: const Locale('ru'),
@@ -698,6 +699,82 @@ class _BuilderScreenState extends State<BuilderScreen>
     });
     _scheduleSessionSave(_project);
     _resetZoom();
+  }
+
+  Future<void> _openAllowanceSettings() async {
+    final params = _project.selected;
+    var enabled = params.pvcHeightAllowanceEnabled;
+    final width = TextEditingController(
+      text: params.allowanceWidthMm.toString(),
+    );
+    final height = TextEditingController(
+      text: params.allowanceHeightMm.toString(),
+    );
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Припуски на раскрой'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Авто +10 мм к высоте (ПВХ)'),
+                subtitle: const Text('По умолчанию выключено'),
+                value: enabled,
+                onChanged: (value) => setDialogState(() => enabled = value),
+              ),
+              TextField(
+                controller: width,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Припуск по ширине, мм',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: height,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Припуск по высоте, мм',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Применить'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || result != true) return;
+    final w = double.tryParse(width.text.replaceAll(',', '.')) ?? 0;
+    final h = double.tryParse(height.text.replaceAll(',', '.')) ?? 0;
+    _updateProject(
+      _project.updateSelected(
+        params.copyWith(
+          pvcHeightAllowanceEnabled: enabled,
+          allowanceWidthMm: w.clamp(0, 200),
+          allowanceHeightMm: h.clamp(0, 200),
+        ),
+      ),
+    );
   }
 
   Future<void> _openQuickMeasure() async {
@@ -1368,6 +1445,8 @@ class _BuilderScreenState extends State<BuilderScreen>
         switch (value) {
           case 'report':
             _exportClientReport();
+          case 'history':
+            showCalculationHistory(context, _project);
           case 'print':
             _printSheet();
           case 'update':
@@ -1396,6 +1475,7 @@ class _BuilderScreenState extends State<BuilderScreen>
       },
       itemBuilder: (context) => const [
         PopupMenuItem(value: 'report', child: Text('Отчёт клиенту')),
+        PopupMenuItem(value: 'history', child: Text('История вычислений')),
         PopupMenuItem(value: 'print', child: Text('Печать')),
         PopupMenuItem(value: 'update', child: Text('Проверить обновления')),
         PopupMenuItem(value: 'planner', child: Text('Ежедневник')),
@@ -1903,6 +1983,7 @@ class _BuilderScreenState extends State<BuilderScreen>
       onCompany: () => showCompanyDialog(context),
       onWatermark: () => showWatermarkDialog(context),
       onSignatures: () => showSignatureCenter(context),
+      onAllowances: _openAllowanceSettings,
       onLicense: kStoreBuild ? null : _openLicense,
       onPairing: _openPairing,
       onBackup: _backupOrders,

@@ -23,6 +23,7 @@ class SettingsScreen extends StatelessWidget {
     required this.onCompany,
     required this.onWatermark,
     required this.onSignatures,
+    required this.onAllowances,
     required this.onPairing,
     required this.onBackup,
     required this.onBackupDatabase,
@@ -47,6 +48,7 @@ class SettingsScreen extends StatelessWidget {
   final VoidCallback onCompany;
   final VoidCallback onWatermark;
   final VoidCallback onSignatures;
+  final VoidCallback onAllowances;
   final VoidCallback onPairing;
   final VoidCallback onBackup;
   final VoidCallback onBackupDatabase;
@@ -82,6 +84,8 @@ class SettingsScreen extends StatelessWidget {
                 _companyCard(),
                 const SizedBox(height: 14),
                 _signaturesCard(),
+                const SizedBox(height: 14),
+                _allowancesCard(),
                 const SizedBox(height: 14),
                 AppSurface(
                   padding: const EdgeInsets.all(18),
@@ -317,6 +321,47 @@ class SettingsScreen extends StatelessWidget {
             key: const Key('settings-signatures'),
             onPressed: onSignatures,
             child: const Text('Открыть'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _allowancesCard() {
+    return AppSurface(
+      padding: const EdgeInsets.all(18),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF1FB),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: const Icon(Icons.content_cut, color: Color(0xFF0B62C4)),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Припуски на раскрой',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'По умолчанию выключены. Здесь можно включить припуск для текущего окна.',
+                  style: TextStyle(fontSize: 11.5, color: AppTokens.muted),
+                ),
+              ],
+            ),
+          ),
+          OutlinedButton(
+            key: const Key('settings-allowances'),
+            onPressed: onAllowances,
+            child: const Text('Настроить'),
           ),
         ],
       ),

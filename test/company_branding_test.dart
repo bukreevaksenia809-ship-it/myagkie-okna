@@ -188,6 +188,7 @@ void main() {
             onCompany: () {},
             onWatermark: () {},
             onSignatures: () {},
+            onAllowances: () {},
             onPairing: () {},
             onBackup: () {},
             onBackupDatabase: () {},

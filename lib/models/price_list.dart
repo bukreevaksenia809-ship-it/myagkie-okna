@@ -608,6 +608,7 @@ class PriceList {
     FastenerType.turnBuckles => turnBucklePrice,
     FastenerType.frenchLocks => frenchLockPrice,
     FastenerType.metalFrenchLock => frenchLockPrice,
+    FastenerType.clip16 => turnBucklePrice,
     FastenerType.straps => strapPrice,
   };
 

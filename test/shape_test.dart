@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/models/window_geometry.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
@@ -26,6 +28,8 @@ void main() {
     leftHeight: 1800,
     rightHeight: 1800,
     roofHeightMm: 500,
+    roofLeftHeightMm: 1230,
+    roofRightHeightMm: 1230,
     rollBottom: 200,
     rollTop: 200,
     rollLeft: 200,
@@ -35,10 +39,7 @@ void main() {
   test('треугольник: площадь, периметр, люверсы и раскрой', () {
     final spec = WindowSpec.of(triangle);
     expect(spec.productAreaM2, closeTo(1.5, 1e-9));
-    expect(
-      spec.outerPerimeter,
-      closeTo(2000 + 2 * 1802.775638, 1e-3),
-    );
+    expect(spec.outerPerimeter, closeTo(2000 + 2 * 1802.775638, 1e-3));
     expect(spec.eyeletCount, greaterThan(0));
     expect(spec.filmCutAreaM2, lessThan(spec.productAreaM2));
     expect(spec.filmCutWidth, lessThan(2000));
@@ -51,14 +52,14 @@ void main() {
 
   test('домик: стена + крыша, площадь и раскрой', () {
     final spec = WindowSpec.of(house);
-    expect(spec.productAreaM2, closeTo(3.1, 1e-9));
+    final rise = math.sqrt(1230 * 1230 - 1000 * 1000);
     expect(
-      spec.outerPerimeter,
-      closeTo(2000 + 2 * 1300 + 2 * 1118.033988, 1e-3),
+      spec.productAreaM2,
+      closeTo((2000 * 1800 + 1000 * rise) / 1000000, 1e-9),
     );
-    // Углы ската при инсете срезаются сильнее вертикальной стены.
-    expect(spec.filmCutWidth, lessThan(2000));
+    expect(spec.outerPerimeter, closeTo(2000 + 2 * 1800 + 2 * 1230, 1e-3));
     expect(spec.filmCutWidth, greaterThan(1700));
+    expect(spec.filmCutWidth, lessThan(2000));
     expect(spec.eyeletCount, greaterThan(0));
     expect(CutPiece.ofSpec(spec).allContours, hasLength(1));
   });
@@ -94,12 +95,45 @@ void main() {
     expect(tiny.productAreaM2, greaterThan(0));
   });
 
-  test('смещение вершины и свес меняют контур, площадь остаётся корректной', () {
-    final shifted = WindowSpec.of(
-      triangle.copyWith(apexOffsetMm: 300),
+  test(
+    'смещение вершины и свес меняют контур, площадь остаётся корректной',
+    () {
+      final shifted = WindowSpec.of(triangle.copyWith(apexOffsetMm: 300));
+      expect(shifted.productAreaM2, closeTo(1.5, 1e-9));
+      final overhang = WindowSpec.of(house.copyWith(roofOverhangMm: 100));
+      expect(overhang.productAreaM2, greaterThan(3.1));
+    },
+  );
+
+  test('домик: левый и правый скаты задаются отдельно', () {
+    const house = WindowParams(
+      windowType: WindowType.house,
+      bottomWidth: 3820,
+      topWidth: 2110,
+      leftHeight: 1810,
+      rightHeight: 1810,
+      wallHeightMm: 0,
+      roofHeightMm: 0,
+      roofLeftHeightMm: 1230,
+      roofRightHeightMm: 1230,
     );
-    expect(shifted.productAreaM2, closeTo(1.5, 1e-9));
-    final overhang = WindowSpec.of(house.copyWith(roofOverhangMm: 100));
-    expect(overhang.productAreaM2, greaterThan(3.1));
+    final spec = WindowSpec.of(house);
+    final topOffset = (3820 - 2110) / 2;
+    final baseHeight = math.sqrt(1810 * 1810 - topOffset * topOffset);
+    final roofRise = math.sqrt(1230 * 1230 - 1055 * 1055);
+    final polygon = spec.geometry.shapePolygon!;
+    bool hasPoint(double x, double y) =>
+        polygon.any((point) => (point - Offset(x, y)).distance < 0.01);
+    expect(hasPoint(topOffset, baseHeight), isTrue);
+    expect(hasPoint(topOffset + 2110, baseHeight), isTrue);
+    expect(hasPoint(1910, baseHeight + roofRise), isTrue);
+    expect(spec.geometry.overallHeight, closeTo(baseHeight + roofRise, 0.01));
+
+    final changed = house.copyWith(
+      roofLeftHeightMm: 900,
+      roofRightHeightMm: 1230,
+    );
+    final changedSpec = WindowSpec.of(changed);
+    expect(changedSpec.geometry.shapePolygon, isNot(equals(polygon)));
   });
 }

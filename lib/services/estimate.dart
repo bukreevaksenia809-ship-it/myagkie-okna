@@ -801,6 +801,7 @@ String _fastenerItemKey(FastenerType type) => switch (type) {
   FastenerType.turnBuckles => PriceItemKeys.turnBuckle,
   FastenerType.frenchLocks => PriceItemKeys.frenchLock,
   FastenerType.metalFrenchLock => PriceItemKeys.frenchLock,
+  FastenerType.clip16 => PriceItemKeys.turnBuckle,
   FastenerType.straps => PriceItemKeys.strap,
 };
 

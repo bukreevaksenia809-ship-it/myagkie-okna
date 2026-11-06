@@ -177,6 +177,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   WindowParams get _params => widget.project.selected;
 
+  void _toast(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), duration: const Duration(seconds: 2)),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1692,6 +1698,15 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 ),
               ),
               (
+                'fastener-clip16',
+                'Клипса под люверс 16',
+                '${formatRubles(prices.fastenerPerEach(FastenerType.clip16))}/шт',
+                fastening == FastenerType.clip16,
+                () => _updateWindow(
+                  params.copyWith(fastenerType: FastenerType.clip16),
+                ),
+              ),
+              (
                 'fastener-straps',
                 'Подвязочный ремень',
                 '${formatRubles(prices.fastenerPerEach(FastenerType.straps))}/шт',
@@ -1992,7 +2007,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionTitle('Тип окна'),
+        const _SectionTitle('Пресеты'),
         const SizedBox(height: 8),
         _chips<WindowType>(
           values: const [
@@ -2065,6 +2080,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
           '«Дополнительно».',
           style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
         ),
+        const SizedBox(height: 10),
+        _savedPresetsSection(params),
       ],
     );
   }
@@ -2248,6 +2265,37 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   /// «Размеры»: ширина/высота и поля разных сторон в компактной сетке.
   /// Гибкие настройки треугольника и домика.
+  /// Все размеры и вычисленные высоты дома.
+  String _houseAngles(WindowParams params) {
+    final bottom = math.max(params.bottomWidth, 1.0);
+    final top = math.max(params.topWidth, 1.0);
+    final leftSide = math.max(params.leftHeight, 1.0);
+    final rightSide = math.max(params.rightHeight, 1.0);
+    final topOffset = (bottom - top) / 2;
+    final leftBase = math.sqrt(
+      math.max(leftSide * leftSide - topOffset * topOffset, 1),
+    );
+    final rightBase = math.sqrt(
+      math.max(
+        rightSide * rightSide -
+            (bottom - topOffset - top) * (bottom - topOffset - top),
+        1,
+      ),
+    );
+    final half = top / 2;
+    final roofSide = (params.roofLeftHeightMm + params.roofRightHeightMm) / 2;
+    final roofRise = math.sqrt(math.max(roofSide * roofSide - half * half, 1));
+    final total = math.max(leftBase, rightBase) + roofRise;
+    final angle = math.atan2(roofRise, half) * 180 / math.pi;
+    return 'Низ ${formatMm(bottom)} · верх ${formatMm(top)} · '
+        'бока ${formatMm(leftSide)}/${formatMm(rightSide)} · '
+        'скаты ${formatMm(params.roofLeftHeightMm)}/'
+        '${formatMm(params.roofRightHeightMm)} ${unitSuffix()}\n'
+        'Высота: слева ${formatMm(leftBase)} · справа '
+        '${formatMm(rightBase)} · центр ${formatMm(total)} · '
+        'угол ската ${angle.toStringAsFixed(1)}°';
+  }
+
   Widget _shapeSection(WindowParams params) {
     double parse(String raw) {
       final text = raw.trim().replaceAll(',', '.');
@@ -2267,8 +2315,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
             params.isTriangle
                 ? 'Ширина — основание, высота — общая высота треугольника. '
                       'Вершина смещается от центра: минус — влево, плюс — вправо.'
-                : 'Ширина — основание стены, высота — общая высота (стена + крыша). '
-                      'Ниже — высота крыши, свес и смещение вершины.',
+                : 'Нижний четырёхугольник задаётся в «Размерах»: низ, верх, '
+                      'длины боков. Здесь — длины двух скатов, смещение вершины '
+                      'и вычисленная высота.',
             style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
           const SizedBox(height: 8),
@@ -2290,50 +2339,53 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
           if (params.isHouse) ...[
             const SizedBox(height: 8),
-            TextFormField(
-              key: const Key('shape-roof'),
-              initialValue: _textFor(params.roofHeightMm),
-              decoration: const InputDecoration(
-                labelText: 'Высота крыши, мм',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              onChanged: (value) =>
-                  _updateWindow(params.copyWith(roofHeightMm: parse(value))),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    key: const Key('shape-roof-left'),
+                    initialValue: _textFor(params.roofLeftHeightMm),
+                    decoration: const InputDecoration(
+                      labelText: 'Левый скат, длина',
+                      helperText: 'мм по чертежу',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    onChanged: (value) => _updateWindow(
+                      params.copyWith(roofLeftHeightMm: parse(value)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextFormField(
+                    key: const Key('shape-roof-right'),
+                    initialValue: _textFor(params.roofRightHeightMm),
+                    decoration: const InputDecoration(
+                      labelText: 'Правый скат, длина',
+                      helperText: 'мм по чертежу',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    onChanged: (value) => _updateWindow(
+                      params.copyWith(roofRightHeightMm: parse(value)),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
-            TextFormField(
-              key: const Key('shape-wall'),
-              initialValue: _textFor(params.wallHeightMm),
-              decoration: const InputDecoration(
-                labelText: 'Высота стены, мм (0 — авто)',
-                helperText: '0 — общая высота минус крыша',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              onChanged: (value) =>
-                  _updateWindow(params.copyWith(wallHeightMm: parse(value))),
-            ),
-            const SizedBox(height: 8),
-            TextFormField(
-              key: const Key('shape-overhang'),
-              initialValue: _textFor(params.roofOverhangMm),
-              decoration: const InputDecoration(
-                labelText: 'Свес крыши с каждой стороны, мм',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              onChanged: (value) =>
-                  _updateWindow(params.copyWith(roofOverhangMm: parse(value))),
+            const SizedBox(height: 6),
+            Text(
+              _houseAngles(params),
+              style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
             ),
           ],
           const SizedBox(height: 6),
@@ -2549,7 +2601,48 @@ class _ParamsPanelState extends State<ParamsPanel> {
         const SizedBox(height: 4),
         _levelEdgeSelector(params, enabled: _fourSizes),
         const SizedBox(height: 10),
-        if (params.isSpecialShape) ...[
+        if (params.isHouse) ...[
+          Row(
+            children: [
+              Expanded(
+                child: _numberField(
+                  ParamField.bottomWidth,
+                  label: 'Ширина снизу',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _numberField(
+                  ParamField.topWidth,
+                  label: 'Ширина сверху',
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: _numberField(
+                  ParamField.leftHeight,
+                  label: 'Бок слева, длина',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _numberField(
+                  ParamField.rightHeight,
+                  label: 'Бок справа, длина',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Низ и верх четырёхугольника, длины боков слева и справа. '
+            'Длины скатов крыши — в «Геометрии формы».',
+            style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+        ] else if (params.isSpecialShape) ...[
           Row(
             children: [
               Expanded(child: _numberField(ParamField.bottomWidth)),
@@ -2559,7 +2652,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Для фигуры: ширина — основание, высота — общая высота. '
+            'Для треугольника: ширина — основание, высота — общая высота. '
             'Остальные размеры задаются в «Геометрии формы».',
             style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
@@ -2604,7 +2697,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
         ],
         const SizedBox(height: 12),
-        _allowanceSection(spec),
+        Offstage(offstage: true, child: _allowanceSection(spec)),
       ],
     );
   }
@@ -3248,7 +3341,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
                 ),
                 if (params.doorEnabled) ...[
                   Text(
-                    'Дверь ${formatMm(params.doorWidthMm)} ${unitSuffix()}, '
+                    'Дверь ${params.doorWidthMm.round()} мм, '
                     'смещение ${formatSignedMm(params.doorOffsetMm)} ${unitSuffix()}',
                     style: const TextStyle(
                       fontSize: 11.5,
@@ -3306,6 +3399,18 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     ),
                   ),
                 ],
+                if (params.zipperLabelOffsets.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      key: const Key('reset-zipper-labels'),
+                      onPressed: () => _updateWindow(
+                        params.copyWith(zipperLabelOffsets: const {}),
+                      ),
+                      icon: const Icon(Icons.restart_alt, size: 17),
+                      label: const Text('Вернуть подписи размеров молний'),
+                    ),
+                  ),
                 SwitchListTile(
                   key: const Key('zipper-segments-toggle'),
                   dense: true,
@@ -3473,10 +3578,6 @@ class _ParamsPanelState extends State<ParamsPanel> {
               ),
               onChanged: (value) => _updateAllMarking(drawingNumber: value),
             ),
-            const _SectionTitle('Пресеты'),
-            const SizedBox(height: 8),
-            _savedPresetsSection(params),
-            const SizedBox(height: 20),
             const SizedBox(height: 12),
             const SizedBox(height: 12),
             const SizedBox(height: 12),
@@ -3610,7 +3711,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
 
   String _specElementsSummary(WindowParams params) {
     final zipperPart = params.doorEnabled
-        ? 'дверь ${formatMm(params.doorWidthMm)} ${unitSuffix()}'
+        ? 'дверь ${params.doorWidthMm.round()} мм'
               '${params.doorOffsetMm.abs() < 0.5 ? '' : ', смещение ${formatSignedMm(params.doorOffsetMm)} ${unitSuffix()}'}'
         : switch (params.zippers.length) {
             0 => null,
@@ -4181,6 +4282,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
                       ),
                     ),
                     IconButton(
+                      key: Key('preset-edit-${preset.name}'),
+                      tooltip: 'Изменить пресет',
+                      onPressed: () => _editWindowPreset(preset),
+                      icon: const Icon(Icons.edit_outlined, size: 15),
+                    ),
+                    IconButton(
                       key: Key('preset-delete-${preset.name}'),
                       tooltip: 'Удалить пресет',
                       onPressed: () => _deleteWindowPreset(preset),
@@ -4192,6 +4299,44 @@ class _ParamsPanelState extends State<ParamsPanel> {
         ],
       ),
     );
+  }
+
+  Future<void> _editWindowPreset(WindowPreset preset) async {
+    final controller = TextEditingController(text: preset.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Изменить пресет'),
+        content: TextField(
+          key: const Key('window-preset-edit-name'),
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Название',
+            helperText: 'Текущие настройки окна сохранятся в этот пресет.',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            key: const Key('window-preset-edit-confirm'),
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || name == null || name.trim().isEmpty) return;
+    await _presetStore.remove(preset.name);
+    final presets = await _presetStore.save(name, _params);
+    if (!mounted) return;
+    setState(() => _savedPresets = presets);
+    _toast('Пресет обновлён');
   }
 
   Future<void> _saveWindowPreset(WindowParams params) async {
@@ -5665,7 +5810,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
   Widget _numberField(ParamField field, {String? label}) {
     final isWidth = field == ParamField.bottomWidth;
     final isHeight = field == ParamField.leftHeight;
-    final symmetric = !_fourSizes && (isWidth || isHeight);
+    final symmetric =
+        !_fourSizes &&
+        !widget.project.selected.isHouse &&
+        (isWidth || isHeight);
     return TextField(
       key: Key('${field.name}-field'),
       controller: _controllers[field],

@@ -504,6 +504,7 @@ enum FastenerType {
   turnBuckles('Поворотные скобы'),
   frenchLocks('Пластиковая скоба'),
   metalFrenchLock('Французский замок'),
+  clip16('Клипса под люверс 16'),
   straps('Силиконовые ремни');
 
   const FastenerType(this.label);
@@ -517,6 +518,7 @@ enum FastenerType {
     FastenerType.turnBuckles => 'Поворотная скоба',
     FastenerType.frenchLocks => 'Пластиковая скоба',
     FastenerType.metalFrenchLock => 'Французский замок',
+    FastenerType.clip16 => 'Клипса под люверс 16',
     FastenerType.straps => 'Силиконовый ремень',
   };
 }
@@ -977,6 +979,40 @@ class EyeletPosition {
 const double pocketCornerOffset = 50;
 
 /// Параметры одного мягкого окна. Все линейные размеры — в миллиметрах.
+/// Смещение и видимость подписи размера молнии на чертеже.
+class ZipperLabelOffset {
+  const ZipperLabelOffset({this.dxMm = 0, this.dyMm = 0, this.hidden = false});
+
+  final double dxMm;
+  final double dyMm;
+  final bool hidden;
+
+  ZipperLabelOffset copyWith({double? dxMm, double? dyMm, bool? hidden}) =>
+      ZipperLabelOffset(
+        dxMm: dxMm ?? this.dxMm,
+        dyMm: dyMm ?? this.dyMm,
+        hidden: hidden ?? this.hidden,
+      );
+
+  List<Object?> get signature => [dxMm, dyMm, hidden];
+
+  Map<String, dynamic> toJson() => {'dx': dxMm, 'dy': dyMm, 'hidden': hidden};
+
+  static ZipperLabelOffset fromJson(Object? raw) {
+    if (raw is! Map) return const ZipperLabelOffset();
+    double read(String key) {
+      final value = raw[key];
+      return value is num && value.isFinite ? value.toDouble() : 0;
+    }
+
+    return ZipperLabelOffset(
+      dxMm: read('dx'),
+      dyMm: read('dy'),
+      hidden: raw['hidden'] == true,
+    );
+  }
+}
+
 class WindowParams {
   const WindowParams({
     this.projectName = 'Мягкое окно',
@@ -1022,6 +1058,8 @@ class WindowParams {
     this.screenColor = '',
     this.apexOffsetMm = 0,
     this.roofHeightMm = 500,
+    this.roofLeftHeightMm = 0,
+    this.roofRightHeightMm = 0,
     this.roofOverhangMm = 0,
     this.wallHeightMm = 0,
     this.crossbars = const [],
@@ -1054,7 +1092,8 @@ class WindowParams {
     this.drainCount = 3,
     this.shrinkageEnabled = false,
     this.shrinkagePercent = 0,
-    this.pvcHeightAllowanceEnabled = true,
+    this.pvcHeightAllowanceEnabled = false,
+    this.zipperLabelOffsets = const {},
   });
 
   // Маркировка
@@ -1071,7 +1110,14 @@ class WindowParams {
   final double apexOffsetMm;
 
   /// Высота крыши домика, мм.
+  /// Высота вершины крыши над стеной, мм.
   final double roofHeightMm;
+
+  /// Высота левого ската над стеной, мм (0 — скат начинается от стены).
+  final double roofLeftHeightMm;
+
+  /// Высота правого ската над стеной, мм.
+  final double roofRightHeightMm;
 
   /// Свес крыши домика за стену с каждой стороны, мм.
   final double roofOverhangMm;
@@ -1136,6 +1182,9 @@ class WindowParams {
   /// выше замера ([autoHeightAllowanceMm]). Для скрина флаг не действует:
   /// у скрина авто-припуска нет никогда.
   final bool pvcHeightAllowanceEnabled;
+
+  /// Смещения/скрытие подписей размеров молний. Ключ — «№молнии:вид».
+  final Map<String, ZipperLabelOffset> zipperLabelOffsets;
 
   final TopAlign topAlign;
   final double topOffsetMm;
@@ -1755,6 +1804,8 @@ class WindowParams {
     String? screenColor,
     double? apexOffsetMm,
     double? roofHeightMm,
+    double? roofLeftHeightMm,
+    double? roofRightHeightMm,
     double? roofOverhangMm,
     double? wallHeightMm,
     List<CrossbarSpec>? crossbars,
@@ -1825,6 +1876,7 @@ class WindowParams {
     bool? shrinkageEnabled,
     double? shrinkagePercent,
     bool? pvcHeightAllowanceEnabled,
+    Map<String, ZipperLabelOffset>? zipperLabelOffsets,
   }) {
     return WindowParams(
       projectName: projectName ?? this.projectName,
@@ -1833,6 +1885,8 @@ class WindowParams {
       screenColor: screenColor ?? this.screenColor,
       apexOffsetMm: apexOffsetMm ?? this.apexOffsetMm,
       roofHeightMm: roofHeightMm ?? this.roofHeightMm,
+      roofLeftHeightMm: roofLeftHeightMm ?? this.roofLeftHeightMm,
+      roofRightHeightMm: roofRightHeightMm ?? this.roofRightHeightMm,
       roofOverhangMm: roofOverhangMm ?? this.roofOverhangMm,
       wallHeightMm: wallHeightMm ?? this.wallHeightMm,
       crossbars: crossbars ?? this.crossbars,
@@ -1904,6 +1958,7 @@ class WindowParams {
       shrinkagePercent: shrinkagePercent ?? this.shrinkagePercent,
       pvcHeightAllowanceEnabled:
           pvcHeightAllowanceEnabled ?? this.pvcHeightAllowanceEnabled,
+      zipperLabelOffsets: zipperLabelOffsets ?? this.zipperLabelOffsets,
     );
   }
 
@@ -2168,6 +2223,19 @@ class WindowParams {
   /// «Ровно» низ → верх выглядел как «ничего не происходит» — галочка в панели
   /// переезжала, а чертёж оставался прежним, потому что
   /// `WindowDrawingPainter.shouldRepaint` сравнивает эту подпись.
+  ZipperLabelOffset zipperLabelOffset(int zipperIndex, String kind) =>
+      zipperLabelOffsets['$zipperIndex:$kind'] ?? const ZipperLabelOffset();
+
+  WindowParams withZipperLabelOffset(
+    int zipperIndex,
+    String kind,
+    ZipperLabelOffset offset,
+  ) {
+    final next = Map<String, ZipperLabelOffset>.from(zipperLabelOffsets);
+    next['$zipperIndex:$kind'] = offset;
+    return copyWith(zipperLabelOffsets: next);
+  }
+
   String get signature => [
     projectName,
     customer,
@@ -2184,6 +2252,8 @@ class WindowParams {
     rightHeight,
     apexOffsetMm,
     roofHeightMm,
+    roofLeftHeightMm,
+    roofRightHeightMm,
     roofOverhangMm,
     wallHeightMm,
     [
@@ -2255,6 +2325,10 @@ class WindowParams {
     shrinkageEnabled,
     shrinkagePercent,
     pvcHeightAllowanceEnabled,
+    [
+      for (final entry in zipperLabelOffsets.entries)
+        '${entry.key}:${entry.value.signature.join(':')}',
+    ],
   ].join('|');
 }
 

@@ -703,6 +703,15 @@ class WindowDrawingPainter extends CustomPainter {
     final innerPath = _polygonPath(inner);
     if (!params.isScreen) {
       canvas.drawPath(outerPath, Paint()..color = _edgeColor);
+      // На мелком масштабе кант иначе выглядит тонкой линией. Усиливаем
+      // внешний контур, не меняя расчётную ширину полосы.
+      canvas.drawPath(
+        outerPath,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 5
+          ..color = _edgeDark,
+      );
       // Светлая подложка: градиент плёнки полупрозрачный, иначе сквозь него
       // просвечивает коричневая окантовка.
       canvas.drawPath(innerPath, Paint()..color = const Color(0xFFEAF2FB));
@@ -754,12 +763,75 @@ class WindowDrawingPainter extends CustomPainter {
         formatMm(layout.geometry.overallHeight),
       );
       if (params.isHouse) {
-        final wallTop =
-            bounds.top + (layout.geometry.overallHeight - params.roofHeightMm);
+        final topOffset = (params.bottomWidth - params.topWidth) / 2;
+        final leftBase = math.sqrt(
+          math.max(
+            params.leftHeight * params.leftHeight - topOffset * topOffset,
+            1,
+          ),
+        );
+        final rightBase = math.sqrt(
+          math.max(
+            params.rightHeight * params.rightHeight -
+                (params.bottomWidth - topOffset - params.topWidth) *
+                    (params.bottomWidth - topOffset - params.topWidth),
+            1,
+          ),
+        );
+        final half = params.topWidth / 2;
+        final roofSide =
+            (params.roofLeftHeightMm + params.roofRightHeightMm) / 2;
+        final roofRise = math.sqrt(
+          math.max(roofSide * roofSide - half * half, 1),
+        );
+        final apexX = topOffset + half + params.apexOffsetMm;
+        final apexY = math.max(leftBase, rightBase) + roofRise;
+        final baseTopLeft = Offset(topOffset, leftBase);
+        final baseTopRight = Offset(topOffset + params.topWidth, rightBase);
+        final tl = layout.toPxPoint(baseTopLeft);
+        final tr = layout.toPxPoint(baseTopRight);
+        if (params.topWidth > 0) {
+          _dimension(
+            canvas,
+            tl,
+            tr,
+            const Offset(0, -26),
+            'верх ${formatMm(params.topWidth)}',
+          );
+        }
         _label(
           canvas,
-          'крыша ${formatMm(params.roofHeightMm)}',
-          layout.toPxPoint(Offset(bounds.right, wallTop)) + const Offset(8, -6),
+          'бок L ${formatMm(params.leftHeight)}',
+          layout.toPxPoint(Offset(params.bottomWidth / 2, leftBase / 2)) +
+              const Offset(-50, 0),
+          small: true,
+        );
+        _label(
+          canvas,
+          'бок R ${formatMm(params.rightHeight)}',
+          layout.toPxPoint(Offset(params.bottomWidth / 2, rightBase / 2)) +
+              const Offset(50, 0),
+          small: true,
+        );
+        _label(
+          canvas,
+          'скат L ${formatMm(params.roofLeftHeightMm)}',
+          layout.toPxPoint(
+                Offset((topOffset + apexX) / 2, (leftBase + apexY) / 2),
+              ) +
+              const Offset(-25, -8),
+          small: true,
+        );
+        _label(
+          canvas,
+          'скат R ${formatMm(params.roofRightHeightMm)}',
+          layout.toPxPoint(
+                Offset(
+                  (topOffset + params.topWidth + apexX) / 2,
+                  (rightBase + apexY) / 2,
+                ),
+              ) +
+              const Offset(25, -8),
           small: true,
         );
       }
@@ -777,7 +849,7 @@ class WindowDrawingPainter extends CustomPainter {
           small: true,
         );
       }
-      if (options.showEdgeLengths) {
+      if (options.showEdgeLengths && !params.isHouse) {
         final polygon = outer;
         for (var i = 0; i < polygon.length; i++) {
           final a = polygon[i];
@@ -2501,10 +2573,41 @@ class WindowDrawingPainter extends CustomPainter {
       final p1 = layout.toPx(band.left, lineY);
       final p2 = layout.toPx(band.right, lineY);
       final p3 = layout.toPx(bounds.right, lineY);
+      Offset shift(String kind) {
+        final offset = params.zipperLabelOffset(i, kind);
+        return Offset(layout.px(offset.dxMm), -layout.px(offset.dyMm));
+      }
 
-      _dimension(canvas, p0, p1, const Offset(0, -18), formatMm(gaps.left));
-      _dimension(canvas, p1, p2, const Offset(0, -18), formatMm(gaps.band));
-      _dimension(canvas, p2, p3, const Offset(0, -18), formatMm(gaps.right));
+      final leftOffset = params.zipperLabelOffset(i, 'left');
+      if (!leftOffset.hidden) {
+        _dimension(
+          canvas,
+          p0 + shift('left'),
+          p1 + shift('left'),
+          const Offset(0, -18),
+          formatMm(gaps.left),
+        );
+      }
+      final bandOffset = params.zipperLabelOffset(i, 'band');
+      if (!bandOffset.hidden) {
+        _dimension(
+          canvas,
+          p1 + shift('band'),
+          p2 + shift('band'),
+          const Offset(0, -18),
+          formatMm(gaps.band),
+        );
+      }
+      final rightOffset = params.zipperLabelOffset(i, 'right');
+      if (!rightOffset.hidden) {
+        _dimension(
+          canvas,
+          p2 + shift('right'),
+          p3 + shift('right'),
+          const Offset(0, -18),
+          formatMm(gaps.right),
+        );
+      }
     }
   }
 
@@ -2790,6 +2893,8 @@ class WindowDrawingPainter extends CustomPainter {
         case FastenerType.frenchLocks:
         case FastenerType.metalFrenchLock:
           _drawFrenchLock(canvas, center, normal, bandWidth);
+        case FastenerType.clip16:
+          _drawClip16(canvas, center, normal, bandWidth);
         case FastenerType.straps:
           _drawStrap(canvas, center, normal);
         case FastenerType.eyeletsOnly:
@@ -3101,12 +3206,49 @@ class WindowDrawingPainter extends CustomPainter {
         case FastenerType.frenchLocks:
         case FastenerType.metalFrenchLock:
           _drawFrenchLock(canvas, center, normal, bandWidth);
+        case FastenerType.clip16:
+          _drawClip16(canvas, center, normal, bandWidth);
         case FastenerType.straps:
         case FastenerType.eyeletsOnly:
           break;
       }
       canvas.restore();
     }
+  }
+
+  /// Клипса под люверс 16: визуально круглое коричневое кольцо.
+  void _drawClip16(
+    Canvas canvas,
+    Offset center,
+    Offset normal,
+    double bandWidth,
+  ) {
+    final radius = math.max(layout.px(bandWidth * 0.28), 5.5);
+    final rrect = Rect.fromCircle(center: center, radius: radius);
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()..color = Color.lerp(_edgeColor, Colors.black, 0.12)!,
+    );
+    canvas.drawCircle(center, radius * 0.48, Paint()..color = Colors.white);
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4
+        ..color = _edgeDark,
+    );
+    canvas.drawArc(
+      rrect.deflate(radius * 0.2),
+      math.pi * 1.05,
+      math.pi * 0.55,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.white.withValues(alpha: 0.65),
+    );
   }
 
   /// Поворотная скоба: пластина на окантовке и проволочная петля,

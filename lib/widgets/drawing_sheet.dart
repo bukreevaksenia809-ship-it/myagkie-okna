@@ -386,7 +386,14 @@ class DrawingSheet extends StatelessWidget {
                     spec: spec,
                     layout: layout,
                     onChanged: onParamsChanged,
-                    child: drawing,
+                    child: _ZipperLabelDragLayer(
+                      key: const Key('drawing-zipper-layer'),
+                      params: params,
+                      spec: spec,
+                      layout: layout,
+                      onChanged: onParamsChanged,
+                      child: drawing,
+                    ),
                   );
                 },
               ),
@@ -1660,6 +1667,10 @@ class _SidePanel extends StatelessWidget {
                 ? 'Французский замок по подвороту'
                 : 'Французский замок',
           ),
+          FastenerType.clip16 => (
+            LegendKind.eyelet,
+            'Клипса под люверс 16 — коричневое кольцо',
+          ),
           FastenerType.straps => (
             LegendKind.strap,
             params.isScreen
@@ -2925,6 +2936,214 @@ class _EyeletDragLayerState extends State<_EyeletDragLayer> {
       },
       child: widget.child,
     );
+  }
+}
+
+/// Перетаскивание подписей размеров молний. Каждая подпись — отдельная
+/// цель: потянули — сдвинули, короткое нажатие/отпускание открывает меню
+/// «скрыть/вернуть». Смещения хранятся в параметрах окна.
+class _ZipperLabelDragLayer extends StatefulWidget {
+  const _ZipperLabelDragLayer({
+    super.key,
+    required this.params,
+    required this.spec,
+    required this.layout,
+    required this.onChanged,
+    required this.child,
+  });
+
+  final WindowParams params;
+  final WindowSpec spec;
+  final DrawingLayout layout;
+  final ValueChanged<WindowParams> onChanged;
+  final Widget child;
+
+  @override
+  State<_ZipperLabelDragLayer> createState() => _ZipperLabelDragLayerState();
+}
+
+class _ZipperLabelDragLayerState extends State<_ZipperLabelDragLayer> {
+  static const String _left = 'left';
+  static const String _band = 'band';
+  static const String _right = 'right';
+  static const double _hitRadius = 30;
+
+  _ZipperLabelHit? _active;
+  Offset _startLocal = Offset.zero;
+  ZipperLabelOffset _startOffset = const ZipperLabelOffset();
+
+  List<_ZipperLabelHit> _labels() {
+    final all = widget.spec.layers.zipperGapsAll;
+    if (all.isEmpty) return const [];
+    final bounds = widget.spec.layers.filmVisibleBounds;
+    final result = <_ZipperLabelHit>[];
+    for (var i = 0; i < all.length; i++) {
+      final gaps = all[i];
+      final band = widget.spec.layers.zipperBands[i];
+      final lineY = bounds.bottom - bounds.height * (0.13 + 0.11 * i);
+      final p0 = widget.layout.toPx(bounds.left, lineY);
+      final p1 = widget.layout.toPx(band.left, lineY);
+      final p2 = widget.layout.toPx(band.right, lineY);
+      final p3 = widget.layout.toPx(bounds.right, lineY);
+      void add(String kind, Offset a, Offset b, String text) {
+        final offset = widget.params.zipperLabelOffset(i, kind);
+        if (offset.hidden) return;
+        final center =
+            Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2 - 18) +
+            Offset(
+              widget.layout.px(offset.dxMm),
+              -widget.layout.px(offset.dyMm),
+            );
+        result.add(
+          _ZipperLabelHit(
+            zipperIndex: i,
+            kind: kind,
+            text: text,
+            center: center,
+            offset: offset,
+          ),
+        );
+      }
+
+      add(_left, p0, p1, formatMm(gaps.left));
+      add(_band, p1, p2, formatMm(gaps.band));
+      add(_right, p2, p3, formatMm(gaps.right));
+    }
+    return result;
+  }
+
+  _ZipperLabelHit? _find(Offset local) {
+    _ZipperLabelHit? best;
+    var bestDistance = _hitRadius;
+    for (final hit in _labels()) {
+      final distance = (hit.center - local).distance;
+      if (distance < bestDistance) {
+        best = hit;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+
+  bool _canStart(Offset local) => _find(local) != null;
+
+  void _onStart(DragStartDetails details) {
+    final hit = _find(details.localPosition);
+    if (hit == null) return;
+    _active = hit;
+    _startLocal = details.localPosition;
+    _startOffset = hit.offset;
+  }
+
+  void _onUpdate(DragUpdateDetails details) {
+    final active = _active;
+    if (active == null) return;
+    final delta = details.localPosition - _startLocal;
+    final next = _startOffset.copyWith(
+      dxMm: _startOffset.dxMm + delta.dx / widget.layout.scale,
+      dyMm: _startOffset.dyMm - delta.dy / widget.layout.scale,
+    );
+    widget.onChanged(
+      widget.params.withZipperLabelOffset(
+        active.zipperIndex,
+        active.kind,
+        next,
+      ),
+    );
+  }
+
+  void _onEnd(DragEndDetails details) {
+    final active = _active;
+    _active = null;
+    if (active == null) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final global = box.localToGlobal(active.center);
+    _openMenu(global, active);
+  }
+
+  Future<void> _openMenu(Offset global, _ZipperLabelHit hit) async {
+    final current = widget.params.zipperLabelOffset(hit.zipperIndex, hit.kind);
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        global.dx,
+        global.dy,
+        global.dx + 1,
+        global.dy + 1,
+      ),
+      items: [
+        PopupMenuItem(
+          value: 'hide',
+          child: Text(current.hidden ? 'Показать подпись' : 'Удалить подпись'),
+        ),
+        if (current.dxMm != 0 || current.dyMm != 0)
+          const PopupMenuItem(value: 'reset', child: Text('Вернуть на место')),
+      ],
+    );
+    if (!mounted || action == null) return;
+    final next = switch (action) {
+      'hide' => current.copyWith(hidden: !current.hidden),
+      'reset' => const ZipperLabelOffset(),
+      _ => current,
+    };
+    widget.onChanged(
+      widget.params.withZipperLabelOffset(hit.zipperIndex, hit.kind, next),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RawGestureDetector(
+      behavior: HitTestBehavior.opaque,
+      gestures: {
+        _ZipperPanRecognizer:
+            GestureRecognizerFactoryWithHandlers<_ZipperPanRecognizer>(
+              () => _ZipperPanRecognizer(canStart: _canStart),
+              (recognizer) {
+                recognizer
+                  ..onStart = _onStart
+                  ..onUpdate = _onUpdate
+                  ..onEnd = _onEnd;
+              },
+            ),
+      },
+      child: widget.child,
+    );
+  }
+}
+
+class _ZipperLabelHit {
+  const _ZipperLabelHit({
+    required this.zipperIndex,
+    required this.kind,
+    required this.text,
+    required this.center,
+    required this.offset,
+  });
+
+  final int zipperIndex;
+  final String kind;
+  final String text;
+  final Offset center;
+  final ZipperLabelOffset offset;
+}
+
+class _ZipperPanRecognizer extends PanGestureRecognizer {
+  _ZipperPanRecognizer({required this.canStart});
+
+  final bool Function(Offset local) canStart;
+
+  @override
+  bool isPointerAllowed(PointerEvent event) =>
+      canStart(event.localPosition) && super.isPointerAllowed(event);
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    if (canStart(event.localPosition)) {
+      resolve(GestureDisposition.accepted);
+    }
   }
 }
 

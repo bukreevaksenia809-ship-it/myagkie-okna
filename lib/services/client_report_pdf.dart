@@ -1391,6 +1391,17 @@ class ClientReportBuilder {
           ..setStrokeColor(metal)
           ..drawEllipse(center.x + 4, center.y, 2, 2)
           ..strokePath();
+      case FastenerType.clip16:
+        canvas
+          ..setFillColor(const PdfColor.fromInt(0xFF7A4A21))
+          ..setStrokeColor(metal)
+          ..setLineWidth(0.6)
+          ..drawEllipse(center.x, center.y, 4.5, 4.5)
+          ..fillPath()
+          ..strokePath()
+          ..setFillColor(const PdfColor.fromInt(0xFFFFFFFF))
+          ..drawEllipse(center.x, center.y, 1.8, 1.8)
+          ..fillPath();
       case FastenerType.straps:
         canvas
           ..setFillColor(const PdfColor.fromInt(0xFFCFD7E2))

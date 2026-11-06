@@ -628,38 +628,64 @@ class WindowGeometry {
       if (params.isTriangle) {
         polygon = [Offset(0, 0), Offset(width, 0), Offset(apexX, height)];
       } else {
-        final roof = params.roofHeightMm
-            .clamp(10.0, math.max(height - 10, 11))
+        // Домик по чертежу: нижний четырёхугольник задаётся длинами
+        // сторон (низ, верх, левый/правый бок), сверху — треугольная
+        // крыша с длинами двух скатов. Высоты углов вычисляются из длин.
+        final topWidth = _positive(params.topWidth);
+        final leftSide = _positive(params.leftHeight);
+        final rightSide = _positive(params.rightHeight);
+        final topOffset = switch (params.topAlign) {
+          TopAlign.center => (width - topWidth) / 2,
+          TopAlign.left => 0.0,
+          TopAlign.right => width - topWidth,
+          TopAlign.custom =>
+            params.topOffsetMm.isFinite
+                ? params.topOffsetMm
+                : (width - topWidth) / 2,
+        };
+        final leftRun = topOffset;
+        final rightRun = width - topOffset - topWidth;
+        final leftBase = math.sqrt(
+          math.max(leftSide * leftSide - leftRun * leftRun, 1),
+        );
+        final rightBase = math.sqrt(
+          math.max(rightSide * rightSide - rightRun * rightRun, 1),
+        );
+        final half = topWidth / 2;
+        final leftRoof = params.roofLeftHeightMm > 0
+            ? params.roofLeftHeightMm
+            : params.roofRightHeightMm > 0
+            ? params.roofRightHeightMm
+            : math.sqrt(
+                half * half + params.roofHeightMm * params.roofHeightMm,
+              );
+        final rightRoof = params.roofRightHeightMm > 0
+            ? params.roofRightHeightMm
+            : leftRoof;
+        final roofLength = (leftRoof + rightRoof) / 2;
+        final roofRise = math.sqrt(
+          math.max(roofLength * roofLength - half * half, 1),
+        );
+        final baseTopLeft = Offset(topOffset, leftBase);
+        final baseTopRight = Offset(topOffset + topWidth, rightBase);
+        final apexX = (topOffset + half + params.apexOffsetMm)
+            .clamp(topOffset + 5, topOffset + math.max(topWidth - 5, 6))
             .toDouble();
-        final wall = params.wallHeightMm > 0
-            ? params.wallHeightMm.clamp(10.0, 20000.0).toDouble()
-            : height - roof;
-        final overhang = params.roofOverhangMm
-            .clamp(0.0, width * 0.25)
-            .toDouble();
-        polygon = overhang <= 0.5
-            ? [
-                Offset(0, 0),
-                Offset(width, 0),
-                Offset(width, wall),
-                Offset(apexX, wall + roof),
-                Offset(0, wall),
-              ]
-            : [
-                Offset(0, 0),
-                Offset(width, 0),
-                Offset(width, wall),
-                Offset(width + overhang, wall),
-                Offset(apexX, wall + roof),
-                Offset(-overhang, wall),
-                Offset(0, wall),
-              ];
+        final apexY = math.max(leftBase, rightBase) + roofRise;
+        // Крыша — треугольник на верхней кромке четырёхугольника.
+        polygon = [
+          const Offset(0, 0),
+          Offset(width, 0),
+          baseTopRight,
+          Offset(apexX, apexY),
+          baseTopLeft,
+        ];
       }
       return WindowGeometry(
         bottomWidth: width,
-        topWidth: width,
-        leftHeight: height,
-        rightHeight: height,
+        topWidth: params.isHouse ? _positive(params.topWidth) : width,
+        leftHeight: params.isHouse ? _positive(params.leftHeight) : height,
+        rightHeight: params.isHouse ? _positive(params.rightHeight) : height,
         topOffset: 0,
         shapePolygon: polygon,
       );
@@ -3491,6 +3517,7 @@ class WindowSpec {
     FastenerType.turnBuckles => 'поворотные скобы',
     FastenerType.frenchLocks => 'пластиковая скоба',
     FastenerType.metalFrenchLock => 'французский замок',
+    FastenerType.clip16 => 'клипсы под люверс 16',
     FastenerType.straps => 'силиконовые ремни',
   };
 
@@ -3506,6 +3533,9 @@ class WindowSpec {
       }
       return 'Сверху саморезы, низ и бока — $movableFastenerLabel '
           'по подвороту (скрин)';
+    }
+    if (params.fastenerType == FastenerType.clip16) {
+      return 'Клипсы под люверс 16 по окантовке (коричневое кольцо)';
     }
     return switch (params.windowType) {
       // Составное окно — тоже глухое: крепёж по окантовке обеих частей.
@@ -3567,7 +3597,7 @@ class WindowSpec {
   /// Подпись двери из двух молний.
   String get doorSummary => params.doorEnabled
       ? 'Дверь: две молнии, ширина между центрами '
-            '${formatMm(params.doorWidthMm)} ${unitSuffix()}, смещение от центра '
+            '${params.doorWidthMm.round()} мм, смещение от центра '
             '${formatSignedMm(params.doorOffsetMm)} ${unitSuffix()}'
       : '';
 
@@ -3700,6 +3730,15 @@ class WindowSpec {
         edgeMaterialNote,
         'Расход окантовки: ${edgeConsumptionLabels.join(', ')}',
       ],
+      if (params.isHouse)
+        'Домик: низ ${formatMm(params.bottomWidth)}, верх '
+            '${formatMm(params.topWidth)} ${unitSuffix()}, стены '
+            '${formatMm(params.leftHeight)}/${formatMm(params.rightHeight)} '
+            '${unitSuffix()}, крыша '
+            '${formatMm(params.roofLeftHeightMm)}/'
+            '${formatMm(params.roofHeightMm)}/'
+            '${formatMm(params.roofRightHeightMm)} ${unitSuffix()} '
+            '(левый/центр/правый)',
       if (params.isTShape) tShapeSummary,
       if (params.isTShape && tLayout!.weldedAnnexes.isNotEmpty)
         'Спайка по общей стороне пристроек: ${formatMm(tWeldedSeamLength)} ${unitSuffix()}, '

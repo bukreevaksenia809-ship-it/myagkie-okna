@@ -100,6 +100,8 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
   'screenColor': p.screenColor,
   'apexOffsetMm': p.apexOffsetMm,
   'roofHeightMm': p.roofHeightMm,
+  'roofLeftHeightMm': p.roofLeftHeightMm,
+  'roofRightHeightMm': p.roofRightHeightMm,
   'roofOverhangMm': p.roofOverhangMm,
   'wallHeightMm': p.wallHeightMm,
   'crossbars': [for (final crossbar in p.crossbars) crossbar.toJson()],
@@ -211,6 +213,11 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
   'shrinkagePercent': p.shrinkagePercent,
   // Тумблер авто-припуска +10 мм к высоте ПВХ (по умолчанию включён).
   'pvcHeightAllowanceEnabled': p.pvcHeightAllowanceEnabled,
+  if (p.zipperLabelOffsets.isNotEmpty)
+    'zipperLabelOffsets': {
+      for (final entry in p.zipperLabelOffsets.entries)
+        entry.key: entry.value.toJson(),
+    },
 };
 
 /// Окно ← JSON.
@@ -226,6 +233,14 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     screenColor: _string(json['screenColor'], fallback.screenColor),
     apexOffsetMm: _double(json['apexOffsetMm'], fallback.apexOffsetMm),
     roofHeightMm: _double(json['roofHeightMm'], fallback.roofHeightMm),
+    roofLeftHeightMm: _double(
+      json['roofLeftHeightMm'],
+      fallback.roofLeftHeightMm,
+    ),
+    roofRightHeightMm: _double(
+      json['roofRightHeightMm'],
+      fallback.roofRightHeightMm,
+    ),
     roofOverhangMm: _double(json['roofOverhangMm'], fallback.roofOverhangMm),
     wallHeightMm: _double(json['wallHeightMm'], fallback.wallHeightMm),
     crossbars: [
@@ -367,6 +382,11 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
       json['shrinkagePercent'],
       fallback.shrinkagePercent,
     ),
+    zipperLabelOffsets: {
+      if (json['zipperLabelOffsets'] is Map)
+        for (final entry in (json['zipperLabelOffsets'] as Map).entries)
+          entry.key.toString(): ZipperLabelOffset.fromJson(entry.value),
+    },
     pvcHeightAllowanceEnabled: _bool(
       json['pvcHeightAllowanceEnabled'],
       fallback.pvcHeightAllowanceEnabled,
