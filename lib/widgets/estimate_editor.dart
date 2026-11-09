@@ -41,89 +41,96 @@ class EstimateEditor extends StatelessWidget {
       color: const Color(0xFFE7EBF2),
       padding: const EdgeInsets.all(16),
       child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1100),
-          child: RepaintBoundary(
-            key: captureKey,
-            child: Container(
-              color: Colors.white,
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          title,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1100, minWidth: 920),
+            child: RepaintBoundary(
+              key: captureKey,
+              child: Container(
+                color: Colors.white,
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
-                      ),
-                      OutlinedButton.icon(
-                        key: const Key('estimate-add-line'),
-                        onPressed: () => onChanged(
-                          project.copyWith(
-                            manualEstimateLines: [
-                              ...project.manualEstimateLines,
-                              const ManualEstimateLine(),
-                            ],
+                        OutlinedButton.icon(
+                          key: const Key('estimate-add-line'),
+                          onPressed: () => onChanged(
+                            project.copyWith(
+                              manualEstimateLines: [
+                                ...project.manualEstimateLines,
+                                const ManualEstimateLine(),
+                              ],
+                            ),
                           ),
+                          icon: const Icon(Icons.add, size: 17),
+                          label: const Text('Добавить позицию'),
                         ),
-                        icon: const Icon(Icons.add, size: 17),
-                        label: const Text('Добавить позицию'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const Row(
-                    children: [
-                      SizedBox(width: 36, child: Text('№', style: _h)),
-                      Expanded(flex: 5, child: Text('Наименование', style: _h)),
-                      SizedBox(width: 100, child: Text('Кол-во', style: _h)),
-                      SizedBox(width: 80, child: Text('Ед.', style: _h)),
-                      SizedBox(width: 120, child: Text('Цена', style: _h)),
-                      SizedBox(width: 120, child: Text('Сумма', style: _h)),
-                      SizedBox(width: 36),
-                    ],
-                  ),
-                  const Divider(height: 14),
-                  for (var i = 0; i < lines.length; i++)
-                    if (project.estimateEdits[i]?.hidden != true)
-                      _AutoLineRow(
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Row(
+                      children: [
+                        SizedBox(width: 36, child: Text('№', style: _h)),
+                        Expanded(
+                          flex: 5,
+                          child: Text('Наименование', style: _h),
+                        ),
+                        SizedBox(width: 100, child: Text('Кол-во', style: _h)),
+                        SizedBox(width: 80, child: Text('Ед.', style: _h)),
+                        SizedBox(width: 120, child: Text('Цена', style: _h)),
+                        SizedBox(width: 120, child: Text('Сумма', style: _h)),
+                        SizedBox(width: 36),
+                      ],
+                    ),
+                    const Divider(height: 14),
+                    for (var i = 0; i < lines.length; i++)
+                      if (project.estimateEdits[i]?.hidden != true)
+                        _AutoLineRow(
+                          index: i,
+                          line: lines[i],
+                          edit: project.estimateEdits[i],
+                          project: project,
+                          onChanged: onChanged,
+                        ),
+                    for (var i = 0; i < project.manualEstimateLines.length; i++)
+                      _ManualLineRow(
                         index: i,
-                        line: lines[i],
+                        line: project.manualEstimateLines[i],
                         project: project,
                         onChanged: onChanged,
                       ),
-                  for (var i = 0; i < project.manualEstimateLines.length; i++)
-                    _ManualLineRow(
-                      index: i,
-                      line: project.manualEstimateLines[i],
-                      project: project,
-                      onChanged: onChanged,
-                    ),
-                  const Divider(height: 28),
-                  _totalRow('Подытог', estimate.subtotal),
-                  if (estimate.markupPercent > 0)
-                    _totalRow(
-                      'Наценка ${_pct(estimate.markupPercent)}',
-                      estimate.markupAmount,
-                    ),
-                  if (estimate.discountPercent > 0)
-                    _totalRow(
-                      'Скидка ${_pct(estimate.discountPercent)}',
-                      -estimate.discountAmount,
-                    ),
-                  if (estimate.vatAmount > 0)
-                    _totalRow(
-                      'НДС ${_pct(estimate.vatPercent)}',
-                      estimate.vatAmount,
-                    ),
-                  _totalRow('ИТОГО', estimate.total, bold: true),
-                ],
+                    const Divider(height: 28),
+                    _totalRow('Подытог', estimate.subtotal),
+                    if (estimate.markupPercent > 0)
+                      _totalRow(
+                        'Наценка ${_pct(estimate.markupPercent)}',
+                        estimate.markupAmount,
+                      ),
+                    if (estimate.discountPercent > 0)
+                      _totalRow(
+                        'Скидка ${_pct(estimate.discountPercent)}',
+                        -estimate.discountAmount,
+                      ),
+                    if (estimate.vatAmount > 0)
+                      _totalRow(
+                        'НДС ${_pct(estimate.vatPercent)}',
+                        estimate.vatAmount,
+                      ),
+                    _totalRow('ИТОГО', estimate.total, bold: true),
+                  ],
+                ),
               ),
             ),
           ),
@@ -168,18 +175,26 @@ class EstimateEditor extends StatelessWidget {
       '${value.toStringAsFixed(1).replaceAll('.', ',')} %';
 }
 
+const InputDecoration _fieldDecoration = InputDecoration(
+  isDense: true,
+  border: InputBorder.none,
+  contentPadding: EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+);
+
 const TextStyle _h = TextStyle(fontSize: 11, fontWeight: FontWeight.w700);
 
 class _AutoLineRow extends StatelessWidget {
   const _AutoLineRow({
     required this.index,
     required this.line,
+    required this.edit,
     required this.project,
     required this.onChanged,
   });
 
   final int index;
   final EstimateLine line;
+  final EstimateLineEdit? edit;
   final OrderProject project;
   final ValueChanged<OrderProject> onChanged;
 
@@ -197,11 +212,11 @@ class _AutoLineRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return _row(
       index,
-      line.title,
-      line.quantity,
+      edit?.title ?? line.title,
+      edit?.quantity ?? line.quantity,
       line.unit,
-      line.unitPrice,
-      line.amount,
+      edit?.unitPrice ?? line.unitPrice,
+      (edit?.quantity ?? line.quantity) * (edit?.unitPrice ?? line.unitPrice),
       onTitle: (v) => _set(title: v),
       onQty: (v) => _set(quantity: double.tryParse(v.replaceAll(',', '.'))),
       onPrice: (v) => _set(unitPrice: double.tryParse(v.replaceAll(',', '.'))),
@@ -273,8 +288,11 @@ Widget _row(
   required VoidCallback onDelete,
   bool manual = false,
 }) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
+  return Container(
+    decoration: const BoxDecoration(
+      border: Border(bottom: BorderSide(color: Color(0xFFE2E8F2))),
+    ),
+    padding: const EdgeInsets.symmetric(vertical: 2),
     child: Row(
       children: [
         SizedBox(width: 36, child: Text('${index + 1}')),
