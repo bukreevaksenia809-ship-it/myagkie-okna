@@ -29,6 +29,7 @@ class _InventoryDialogState extends State<_InventoryDialog> {
   final _note = TextEditingController(text: 'Плановая инвентаризация');
   final _search = TextEditingController();
   String _query = '';
+  final Set<String> _expandedGroups = {};
 
   @override
   void initState() {
@@ -71,6 +72,151 @@ class _InventoryDialogState extends State<_InventoryDialog> {
                     .contains(query)))
           stock,
     ];
+  }
+
+  Widget _buildGroupedList() {
+    if (_visible.isEmpty) {
+      return const AppEmptyState(
+        compact: true,
+        icon: Icons.inventory_2_outlined,
+        title: 'Нечего инвентаризировать',
+        message: 'На складе нет активных товаров.',
+      );
+    }
+    final groups = <String, List<WarehouseStock>>{};
+    for (final stock in _visible) {
+      final category = stock.product.category.trim().isEmpty
+          ? 'Без категории'
+          : stock.product.category;
+      groups.putIfAbsent(category, () => []).add(stock);
+    }
+    final names = groups.keys.toList()..sort();
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      children: [
+        for (final name in names) ...[
+          InkWell(
+            onTap: () => setState(() {
+              if (!_expandedGroups.add(name)) _expandedGroups.remove(name);
+            }),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    _expandedGroups.contains(name)
+                        ? Icons.expand_less
+                        : Icons.expand_more,
+                    size: 20,
+                    color: AppTokens.muted,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  AppPill(
+                    label: '${groups[name]!.length} поз.',
+                    color: AppTokens.blue,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expandedGroups.contains(name))
+            for (final stock in groups[name]!) ...[
+              _stockRow(stock),
+              const SizedBox(height: 7),
+            ],
+          const Divider(height: 1),
+        ],
+      ],
+    );
+  }
+
+  Widget _stockRow(WarehouseStock stock) {
+    final actual = _actual(stock.product.id);
+    final delta = actual - stock.balance;
+    return Container(
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: delta.abs() > 0.000001
+            ? AppTokens.copperSoft.withValues(alpha: 0.45)
+            : AppTokens.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: delta.abs() > 0.000001
+              ? const Color(0xFFE8CBB8)
+              : AppTokens.lineSoft,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  stock.product.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  '${stock.product.location.isEmpty ? 'без места' : stock.product.location} · '
+                  'учёт ${appQty(stock.balance)} '
+                  '${stock.product.unit.label}',
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    color: AppTokens.faint,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 110,
+            child: TextField(
+              controller: _controllers[stock.product.id],
+              textAlign: TextAlign.right,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                suffixText: stock.product.unit.shortLabel,
+                isDense: true,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 92,
+            child: Text(
+              delta.abs() < 0.000001
+                  ? '—'
+                  : '${delta > 0 ? '+' : '−'}${appQty(delta.abs())}',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: delta > 0 ? AppTokens.green : AppTokens.red,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _submit() {
@@ -157,108 +303,15 @@ class _InventoryDialogState extends State<_InventoryDialog> {
                   const SizedBox(width: 12),
                   AppPill(
                     label: 'Расхождений: $_differences',
-                    color: _differences == 0 ? AppTokens.green : AppTokens.copper,
+                    color: _differences == 0
+                        ? AppTokens.green
+                        : AppTokens.copper,
                     icon: Icons.compare_arrows,
                   ),
                 ],
               ),
             ),
-            Flexible(
-              child: _visible.isEmpty
-                  ? const AppEmptyState(
-                      compact: true,
-                      icon: Icons.inventory_2_outlined,
-                      title: 'Нечего инвентаризировать',
-                      message: 'На складе нет активных товаров.',
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-                      itemCount: _visible.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 7),
-                      itemBuilder: (context, index) {
-                        final stock = _visible[index];
-                        final actual = _actual(stock.product.id);
-                        final delta = actual - stock.balance;
-                        return Container(
-                          padding: const EdgeInsets.all(11),
-                          decoration: BoxDecoration(
-                            color: delta.abs() > 0.000001
-                                ? AppTokens.copperSoft.withValues(alpha: 0.45)
-                                : AppTokens.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: delta.abs() > 0.000001
-                                  ? const Color(0xFFE8CBB8)
-                                  : AppTokens.lineSoft,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      stock.product.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    Text(
-                                      '${stock.product.location.isEmpty ? 'без места' : stock.product.location} · '
-                                      'учёт ${appQty(stock.balance)} '
-                                      '${stock.product.unit.label}',
-                                      style: const TextStyle(
-                                        fontSize: 10.5,
-                                        color: AppTokens.faint,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              SizedBox(
-                                width: 110,
-                                child: TextField(
-                                  controller: _controllers[stock.product.id],
-                                  textAlign: TextAlign.right,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  onChanged: (_) => setState(() {}),
-                                  decoration: InputDecoration(
-                                    suffixText: stock.product.unit.shortLabel,
-                                    isDense: true,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              SizedBox(
-                                width: 92,
-                                child: Text(
-                                  delta.abs() < 0.000001
-                                      ? '—'
-                                      : '${delta > 0 ? '+' : '−'}${appQty(delta.abs())}',
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: delta > 0
-                                        ? AppTokens.green
-                                        : AppTokens.red,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-            ),
+            Flexible(child: _buildGroupedList()),
             const Divider(height: 1),
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 12, 20, 14),

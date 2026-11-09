@@ -64,6 +64,7 @@ class OrderMaterialsService {
         products,
         materialHint: materialHint,
         itemKey: line.itemKey,
+        colorHint: _colorHint(project, line.itemKey),
       );
       if (product == null) {
         unmatched.add('${line.title} — ${line.quantityLabel}');
@@ -112,12 +113,25 @@ class OrderMaterialsService {
     );
   }
 
+  String? _colorHint(OrderProject project, String? itemKey) {
+    if (itemKey == null) return null;
+    final params = project.selected;
+    if (itemKey.startsWith('edge')) return params.edgeColor.label;
+    if (itemKey.startsWith('eyelet')) return params.eyeletColor.label;
+    if (itemKey == PriceItemKeys.frenchLock ||
+        itemKey == PriceItemKeys.turnBuckle) {
+      return params.fastenerColor.label;
+    }
+    return null;
+  }
+
   WarehouseProduct? _match(
     String title,
     String unit,
     List<WarehouseProduct> products, {
     FilmMaterial? materialHint,
     String? itemKey,
+    String? colorHint,
   }) {
     final lower = title.toLowerCase();
     // В заказе с несколькими материалами смета подписывает полотно:
@@ -145,10 +159,18 @@ class OrderMaterialsService {
 
       // Позиция прайса — самый точный признак: плёнка, окантовка и
       // фурнитура получают ровно тот товар, который заведён из прайса.
-      if (itemKey != null &&
-          itemKey.isNotEmpty &&
-          product.priceKey == itemKey) {
-        score += 80;
+      if (itemKey != null && itemKey.isNotEmpty) {
+        final key = product.priceKey ?? '';
+        if (key == itemKey) {
+          score += 80;
+        } else if (key.startsWith('$itemKey:')) {
+          score += 75;
+        }
+      }
+      if (colorHint != null && colorHint.isNotEmpty) {
+        score += product.color.toLowerCase() == colorHint.toLowerCase()
+            ? 35
+            : -15;
       }
 
       // Материал в строке сметы должен совпасть с товаром. Иначе «скрин»
