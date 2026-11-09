@@ -749,7 +749,7 @@ class WindowDrawingPainter extends CustomPainter {
     _paintCrossbars(canvas);
 
     if (options.showDimensions) {
-      _paintInnerShapeDimensions(canvas, inner);
+      _paintShapeDimensions(canvas, outer, inner);
       if (params.apexOffsetMm.abs() > 0.5) {
         final bounds = layout.geometry.productBounds;
         _label(
@@ -762,95 +762,112 @@ class WindowDrawingPainter extends CustomPainter {
           small: true,
         );
       }
-      if (options.showEdgeLengths && !params.isHouse) {
-        final polygon = outer;
-        for (var i = 0; i < polygon.length; i++) {
-          final a = polygon[i];
-          final b = polygon[(i + 1) % polygon.length];
-          final length = (b - a).distance;
-          if (length < 80) continue;
-          final middle = Offset.lerp(a, b, 0.5)!;
-          final direction = b - a;
-          final unit = direction / direction.distance;
-          final normal = Offset(unit.dy, -unit.dx);
-          _label(
-            canvas,
-            formatMm(length),
-            layout.toPxPoint(middle) + normal * 14,
-            angle: math.atan2(unit.dy, unit.dx),
-            small: true,
-          );
-        }
-      }
     }
   }
 
-  /// Внутренние размеры треугольника и домика: стрелки по каждой стороне
-  /// внутреннего контура, верхняя ширина дома и центральная высота.
-  void _paintInnerShapeDimensions(Canvas canvas, List<Offset> inner) {
-    if (inner.length < 3) return;
-    final points = [for (final point in inner) layout.toPxPoint(point)];
-    final centroid =
+  /// Размеры треугольника и домика: внешние — снаружи, внутренние — внутри.
+  ///
+  /// Внешние подписи берутся по фактическому наружному контуру (то, что
+  /// введено в размерах). Внутренние — по контуру с учётом окантовки и
+  /// ставятся внутрь фигуры, чтобы не путаться с наружными.
+  void _paintShapeDimensions(
+    Canvas canvas,
+    List<Offset> outer,
+    List<Offset> inner,
+  ) {
+    if (outer.length < 3 || inner.length < 3) return;
+
+    List<Offset> px(List<Offset> polygon) => [
+      for (final point in polygon) layout.toPxPoint(point),
+    ];
+
+    Offset centroidOf(List<Offset> points) =>
         points.fold(Offset.zero, (a, b) => a + b) / points.length.toDouble();
-    void edge(int i, String label) {
-      final a = points[i];
-      final b = points[(i + 1) % points.length];
-      final direction = b - a;
-      final length = direction.distance;
-      if (length < 60) return;
-      final unit = direction / length;
-      var normal = Offset(-unit.dy, unit.dx);
-      final middle = Offset.lerp(a, b, 0.5)!;
-      if ((middle + normal - centroid).distance <
-          (middle - normal - centroid).distance) {
-        normal = -normal;
+
+    void edges(
+      List<Offset> polygon,
+      List<String> labels, {
+      required bool outside,
+      required String prefix,
+    }) {
+      final points = px(polygon);
+      final centroid = centroidOf(points);
+      for (var i = 0; i < points.length; i++) {
+        final a = points[i];
+        final b = points[(i + 1) % points.length];
+        final direction = b - a;
+        final length = direction.distance;
+        if (length < 50) continue;
+        final unit = direction / length;
+        var normal = Offset(-unit.dy, unit.dx);
+        final middle = Offset.lerp(a, b, 0.5)!;
+        final outward =
+            (middle + normal - centroid).distance >
+            (middle - normal - centroid).distance;
+        if (!outside == outward) normal = -normal;
+        final label = i < labels.length
+            ? '$prefix${labels[i]} ${formatMm(length)}'
+            : '$prefix${formatMm(length)}';
+        _dimension(canvas, a, b, normal * (outside ? 42 : 24), label);
       }
-      _dimension(canvas, a, b, normal * 24, '$label ${formatMm(length)}');
     }
 
-    final labels = params.isHouse
+    final outerLabels = params.isHouse
         ? const ['низ', 'бок R', 'скат R', 'скат L', 'бок L']
         : const ['низ', 'скат R', 'скат L'];
-    for (var i = 0; i < points.length; i++) {
-      edge(i, i < labels.length ? labels[i] : 'в');
-    }
-    if (params.isHouse && points.length >= 5) {
-      // Верхняя кромка четырёхугольника — не ребро пятиугольника,
-      // поэтому её показываем отдельной стрелкой между верхними углами.
-      final left = points[4];
-      final right = points[2];
-      final mid = Offset((left.dx + right.dx) / 2, (left.dy + right.dy) / 2);
+    final innerLabels = outerLabels;
+
+    // Снаружи — наружные длины.
+    edges(outer, outerLabels, outside: true, prefix: '');
+    // Внутри — внутренние длины, тем же порядком.
+    edges(inner, innerLabels, outside: false, prefix: 'вн. ');
+
+    final outerPts = px(outer);
+    final innerPts = px(inner);
+    final outerCenter = centroidOf(outerPts);
+    final innerCenter = centroidOf(innerPts);
+
+    if (params.isHouse && outerPts.length >= 5 && innerPts.length >= 5) {
+      // Верхняя ширина — отдельная линия между верхними углами.
       _dimension(
         canvas,
-        left,
-        right,
-        Offset(0, mid.dy > centroid.dy ? -28 : 28),
+        outerPts[4],
+        outerPts[2],
+        Offset(0, outerCenter.dy < outerPts[2].dy ? -34 : 34),
         'верх ${formatMm(params.topWidth)}',
       );
-      final bottomMid = Offset(
-        (points[0].dx + points[1].dx) / 2,
-        (points[0].dy + points[1].dy) / 2,
-      );
       _dimension(
         canvas,
-        bottomMid,
-        points[3],
-        const Offset(-34, 0),
-        'центр ${formatMm(inner[3].dy - inner[0].dy)}',
-      );
-    } else if (points.length == 3) {
-      final bottomMid = Offset(
-        (points[0].dx + points[1].dx) / 2,
-        (points[0].dy + points[1].dy) / 2,
-      );
-      _dimension(
-        canvas,
-        bottomMid,
-        points[2],
-        const Offset(-34, 0),
-        'центр ${formatMm(inner[2].dy - inner[0].dy)}',
+        innerPts[4],
+        innerPts[2],
+        Offset(0, innerCenter.dy < innerPts[2].dy ? 22 : -22),
+        'вн. верх ${formatMm((inner[4] - inner[2]).distance)}',
       );
     }
+
+    // Центральная высота: снаружи и внутри.
+    final outerBottomMid = Offset(
+      (outerPts[0].dx + outerPts[1].dx) / 2,
+      (outerPts[0].dy + outerPts[1].dy) / 2,
+    );
+    final innerBottomMid = Offset(
+      (innerPts[0].dx + innerPts[1].dx) / 2,
+      (innerPts[0].dy + innerPts[1].dy) / 2,
+    );
+    _dimension(
+      canvas,
+      outerBottomMid,
+      outerPts[params.isHouse ? 3 : 2],
+      const Offset(-38, 0),
+      'центр ${formatMm(layout.geometry.overallHeight)}',
+    );
+    _dimension(
+      canvas,
+      innerBottomMid,
+      innerPts[params.isHouse ? 3 : 2],
+      const Offset(24, 0),
+      'вн. центр ${formatMm((inner[params.isHouse ? 3 : 2] - inner[0]).dy)}',
+    );
   }
 
   Color get _edgeColor => Color(params.edgeColor.value);
