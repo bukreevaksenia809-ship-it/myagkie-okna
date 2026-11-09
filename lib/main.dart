@@ -48,6 +48,7 @@ import 'widgets/costs_sheet.dart';
 import 'widgets/docs/docs_tab.dart';
 import 'widgets/cut_sheet.dart';
 import 'widgets/estimate_sheet.dart';
+import 'widgets/estimate_editor.dart';
 import 'widgets/drawing_sheet.dart';
 import 'widgets/orders_panel.dart';
 import 'widgets/settings_screen.dart';
@@ -2129,12 +2130,12 @@ class _BuilderScreenState extends State<BuilderScreen>
               captureKey: _sheetKey,
             ),
             SheetTab.docs => DocsTab(project: _project, prices: _prices),
-            SheetTab.estimate => EstimateSheet(
+            SheetTab.estimate => EstimateEditor(
               project: _project,
               prices: _dealerEstimate ? _dealerPrices : _prices,
               captureKey: _sheetKey,
-              company: CompanyBranding.current.value,
               title: _dealerEstimate ? 'Смета (дилер)' : 'Смета на заказ',
+              onChanged: _updateProject,
             ),
             SheetTab.techCard => TechCardSheet(
               project: _project,
@@ -2273,15 +2274,6 @@ class _BuilderScreenState extends State<BuilderScreen>
                       onSelectionChanged: (selection) =>
                           setState(() => _dealerEstimate = selection.first),
                     ),
-                    if (_tab == SheetTab.estimate) ...[
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        key: const Key('edit-estimate'),
-                        onPressed: _editEstimate,
-                        icon: const Icon(Icons.edit_outlined, size: 16),
-                        label: const Text('Изменить смету'),
-                      ),
-                    ],
                   ],
                   if (_tab == SheetTab.drawing &&
                       _project.sheetMode == SheetMode.grid &&

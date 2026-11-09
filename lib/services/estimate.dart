@@ -662,9 +662,40 @@ class Estimate {
       );
     }
 
+    final editedLines = <EstimateLine>[];
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final edit = project.estimateEdits[i];
+      if (edit?.hidden == true) continue;
+      editedLines.add(
+        edit == null
+            ? line
+            : EstimateLine(
+                title: edit.title ?? line.title,
+                quantity: edit.quantity ?? line.quantity,
+                unit: line.unit,
+                unitPrice: edit.unitPrice ?? line.unitPrice,
+                group: line.group,
+                note: line.note,
+                itemKey: line.itemKey,
+              ),
+      );
+    }
+    for (final manual in project.manualEstimateLines) {
+      editedLines.add(
+        EstimateLine(
+          title: manual.title,
+          quantity: manual.quantity,
+          unit: manual.unit,
+          unitPrice: manual.unitPrice,
+          group: EstimateGroup.extra,
+        ),
+      );
+    }
+
     return Estimate(
       prices: prices,
-      lines: lines,
+      lines: editedLines,
       windowCount: project.windowCount,
       productAreaM2: summary.productAreaM2,
       filmAreaM2: summary.filmAreaWithShrinkageM2,

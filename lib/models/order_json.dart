@@ -24,6 +24,13 @@ Map<String, dynamic> orderToJson(OrderProject project) => {
   'deadline': project.deadline?.toIso8601String(),
   'estimateMarkupPercent': project.estimateMarkupPercent,
   'estimateDiscountPercent': project.estimateDiscountPercent,
+  'estimateEdits': {
+    for (final entry in project.estimateEdits.entries)
+      '${entry.key}': entry.value.toJson(),
+  },
+  'manualEstimateLines': [
+    for (final line in project.manualEstimateLines) line.toJson(),
+  ],
   'windows': [for (final window in project.windows) windowToJson(window)],
 };
 
@@ -97,6 +104,19 @@ OrderProject orderFromJson(Map<String, dynamic> json) {
     estimateDiscountPercent: json['estimateDiscountPercent'] is num
         ? (json['estimateDiscountPercent'] as num).toDouble()
         : null,
+    estimateEdits: {
+      if (json['estimateEdits'] is Map)
+        for (final entry in (json['estimateEdits'] as Map).entries)
+          if (int.tryParse(entry.key.toString()) != null)
+            int.parse(entry.key.toString()): EstimateLineEdit.fromJson(
+              entry.value,
+            ),
+    },
+    manualEstimateLines: [
+      if (json['manualEstimateLines'] is List)
+        for (final line in json['manualEstimateLines'] as List)
+          ManualEstimateLine.fromJson(line),
+    ],
   );
 }
 

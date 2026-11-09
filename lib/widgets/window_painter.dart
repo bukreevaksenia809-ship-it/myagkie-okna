@@ -789,6 +789,8 @@ class WindowDrawingPainter extends CustomPainter {
       List<String> labels, {
       required bool outside,
       required String prefix,
+      List<String>? overrideValues,
+      bool compact = false,
     }) {
       final points = px(polygon);
       final centroid = centroidOf(points);
@@ -808,7 +810,15 @@ class WindowDrawingPainter extends CustomPainter {
         final label = i < labels.length
             ? '$prefix${labels[i]} ${formatMm(length)}'
             : '$prefix${formatMm(length)}';
-        _dimension(canvas, a, b, normal * (outside ? 42 : 24), label);
+        _dimension(
+          canvas,
+          a,
+          b,
+          normal * (outside ? 42 : (compact ? 14 : 24)),
+          label,
+          fontSize: compact ? 8.0 : null,
+          arrowScale: compact ? 0.65 : 1,
+        );
       }
     }
 
@@ -817,18 +827,52 @@ class WindowDrawingPainter extends CustomPainter {
         : const ['низ', 'скат R', 'скат L'];
     final innerLabels = outerLabels;
 
-    // Снаружи — наружные длины.
-    edges(outer, outerLabels, outside: true, prefix: '');
-    // Внутри — внутренние длины, тем же порядком.
-    edges(inner, innerLabels, outside: false, prefix: 'вн. ');
+    // Наружные размеры: для домика берём ровно введённые значения, чтобы
+    // подпись всегда совпадала с полями, даже если геометрия что-то уточнила.
+    final points = px(outer);
+    final centroid = centroidOf(points);
+    for (var i = 0; i < points.length; i++) {
+      final a = points[i];
+      final b = points[(i + 1) % points.length];
+      final direction = b - a;
+      final length = direction.distance;
+      if (length < 50) continue;
+      final unit = direction / length;
+      var normal = Offset(-unit.dy, unit.dx);
+      final middle = Offset.lerp(a, b, 0.5)!;
+      if ((middle + normal - centroid).distance <
+          (middle - normal - centroid).distance) {
+        normal = -normal;
+      }
+      final entered = params.isHouse
+          ? switch (i) {
+              0 => params.bottomWidth,
+              1 => params.rightHeight,
+              2 => params.roofRightHeightMm,
+              3 => params.roofLeftHeightMm,
+              4 => params.leftHeight,
+              _ => length,
+            }
+          : length;
+      _dimension(
+        canvas,
+        a,
+        b,
+        normal * 42,
+        '${outerLabels[i]} ${formatMm(entered)}',
+      );
+    }
 
-    final outerPts = px(outer);
+    // Внутренние — только по кнопке «внутренние размеры», мельче и компактнее.
+    if (!options.showInnerDimensions) return;
+    edges(inner, innerLabels, outside: false, prefix: 'вн. ', compact: true);
+
+    final outerPts = points;
     final innerPts = px(inner);
     final outerCenter = centroidOf(outerPts);
     final innerCenter = centroidOf(innerPts);
 
     if (params.isHouse && outerPts.length >= 5 && innerPts.length >= 5) {
-      // Верхняя ширина — отдельная линия между верхними углами.
       _dimension(
         canvas,
         outerPts[4],
@@ -840,12 +884,13 @@ class WindowDrawingPainter extends CustomPainter {
         canvas,
         innerPts[4],
         innerPts[2],
-        Offset(0, innerCenter.dy < innerPts[2].dy ? 22 : -22),
+        Offset(0, innerCenter.dy < innerPts[2].dy ? 16 : -16),
         'вн. верх ${formatMm((inner[4] - inner[2]).distance)}',
+        fontSize: 8,
+        arrowScale: 0.65,
       );
     }
 
-    // Центральная высота: снаружи и внутри.
     final outerBottomMid = Offset(
       (outerPts[0].dx + outerPts[1].dx) / 2,
       (outerPts[0].dy + outerPts[1].dy) / 2,
@@ -865,8 +910,10 @@ class WindowDrawingPainter extends CustomPainter {
       canvas,
       innerBottomMid,
       innerPts[params.isHouse ? 3 : 2],
-      const Offset(24, 0),
-      'вн. центр ${formatMm((inner[params.isHouse ? 3 : 2] - inner[0]).dy)}',
+      const Offset(16, 0),
+      'вн. центр ${formatMm(inner[params.isHouse ? 3 : 2].dy - inner[0].dy)}',
+      fontSize: 8,
+      arrowScale: 0.65,
     );
   }
 

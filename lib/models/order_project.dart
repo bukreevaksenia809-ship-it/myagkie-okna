@@ -51,6 +51,8 @@ class OrderProject {
     this.deadline,
     this.estimateMarkupPercent,
     this.estimateDiscountPercent,
+    this.estimateEdits = const {},
+    this.manualEstimateLines = const [],
   });
 
   /// Окна заказа. Номер окна — его позиция в списке (нумерация с единицы).
@@ -89,6 +91,12 @@ class OrderProject {
   /// Ручная наценка/скидка только для этого заказа. null — из прайса.
   final double? estimateMarkupPercent;
   final double? estimateDiscountPercent;
+
+  /// Правки строк автосметы по индексу.
+  final Map<int, EstimateLineEdit> estimateEdits;
+
+  /// Ручные строки, добавленные в смету.
+  final List<ManualEstimateLine> manualEstimateLines;
 
   int get windowCount => windows.length;
 
@@ -135,6 +143,8 @@ class OrderProject {
     double? estimateMarkupPercent,
     double? estimateDiscountPercent,
     bool clearEstimateOverrides = false,
+    Map<int, EstimateLineEdit>? estimateEdits,
+    List<ManualEstimateLine>? manualEstimateLines,
   }) {
     final nextWindows = windows ?? this.windows;
     final index = selectedIndex ?? this.selectedIndex;
@@ -158,6 +168,8 @@ class OrderProject {
       estimateDiscountPercent: clearEstimateOverrides
           ? null
           : (estimateDiscountPercent ?? this.estimateDiscountPercent),
+      estimateEdits: estimateEdits ?? this.estimateEdits,
+      manualEstimateLines: manualEstimateLines ?? this.manualEstimateLines,
     );
   }
 
@@ -232,4 +244,100 @@ class OrderProject {
 
   OrderProject setGridColumns(int columns) =>
       copyWith(gridColumns: columns.clamp(0, 4));
+}
+
+/// Правка одной строки сметы поверх автоматического расчёта.
+class EstimateLineEdit {
+  const EstimateLineEdit({
+    this.title,
+    this.quantity,
+    this.unitPrice,
+    this.hidden = false,
+  });
+
+  final String? title;
+  final double? quantity;
+  final double? unitPrice;
+  final bool hidden;
+
+  EstimateLineEdit copyWith({
+    String? title,
+    double? quantity,
+    double? unitPrice,
+    bool? hidden,
+  }) => EstimateLineEdit(
+    title: title ?? this.title,
+    quantity: quantity ?? this.quantity,
+    unitPrice: unitPrice ?? this.unitPrice,
+    hidden: hidden ?? this.hidden,
+  );
+
+  Map<String, dynamic> toJson() => {
+    if (title != null) 'title': title,
+    if (quantity != null) 'quantity': quantity,
+    if (unitPrice != null) 'unitPrice': unitPrice,
+    if (hidden) 'hidden': true,
+  };
+
+  static EstimateLineEdit fromJson(Object? raw) {
+    if (raw is! Map) return const EstimateLineEdit();
+    return EstimateLineEdit(
+      title: raw['title'] is String ? raw['title'] as String : null,
+      quantity: raw['quantity'] is num
+          ? (raw['quantity'] as num).toDouble()
+          : null,
+      unitPrice: raw['unitPrice'] is num
+          ? (raw['unitPrice'] as num).toDouble()
+          : null,
+      hidden: raw['hidden'] == true,
+    );
+  }
+}
+
+/// Своя строка сметы, добавленная вручную.
+class ManualEstimateLine {
+  const ManualEstimateLine({
+    this.title = 'Новая позиция',
+    this.quantity = 1,
+    this.unit = 'шт',
+    this.unitPrice = 0,
+  });
+
+  final String title;
+  final double quantity;
+  final String unit;
+  final double unitPrice;
+
+  ManualEstimateLine copyWith({
+    String? title,
+    double? quantity,
+    String? unit,
+    double? unitPrice,
+  }) => ManualEstimateLine(
+    title: title ?? this.title,
+    quantity: quantity ?? this.quantity,
+    unit: unit ?? this.unit,
+    unitPrice: unitPrice ?? this.unitPrice,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'title': title,
+    'quantity': quantity,
+    'unit': unit,
+    'unitPrice': unitPrice,
+  };
+
+  static ManualEstimateLine fromJson(Object? raw) {
+    if (raw is! Map) return const ManualEstimateLine();
+    return ManualEstimateLine(
+      title: raw['title'] is String ? raw['title'] as String : 'Новая позиция',
+      quantity: raw['quantity'] is num
+          ? (raw['quantity'] as num).toDouble()
+          : 1,
+      unit: raw['unit'] is String ? raw['unit'] as String : 'шт',
+      unitPrice: raw['unitPrice'] is num
+          ? (raw['unitPrice'] as num).toDouble()
+          : 0,
+    );
+  }
 }
