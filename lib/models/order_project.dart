@@ -49,6 +49,8 @@ class OrderProject {
     this.status = OrderStatus.newOrder,
     this.statusChangedAt,
     this.deadline,
+    this.estimateMarkupPercent,
+    this.estimateDiscountPercent,
   });
 
   /// Окна заказа. Номер окна — его позиция в списке (нумерация с единицы).
@@ -83,6 +85,10 @@ class OrderProject {
 
   /// Срок сдачи заказа (для ежедневника и предупреждений).
   final DateTime? deadline;
+
+  /// Ручная наценка/скидка только для этого заказа. null — из прайса.
+  final double? estimateMarkupPercent;
+  final double? estimateDiscountPercent;
 
   int get windowCount => windows.length;
 
@@ -126,6 +132,9 @@ class OrderProject {
     bool clearStatusChangedAt = false,
     DateTime? deadline,
     bool clearDeadline = false,
+    double? estimateMarkupPercent,
+    double? estimateDiscountPercent,
+    bool clearEstimateOverrides = false,
   }) {
     final nextWindows = windows ?? this.windows;
     final index = selectedIndex ?? this.selectedIndex;
@@ -143,6 +152,12 @@ class OrderProject {
           ? null
           : (statusChangedAt ?? this.statusChangedAt),
       deadline: clearDeadline ? null : (deadline ?? this.deadline),
+      estimateMarkupPercent: clearEstimateOverrides
+          ? null
+          : (estimateMarkupPercent ?? this.estimateMarkupPercent),
+      estimateDiscountPercent: clearEstimateOverrides
+          ? null
+          : (estimateDiscountPercent ?? this.estimateDiscountPercent),
     );
   }
 

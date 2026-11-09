@@ -98,6 +98,8 @@ class Estimate {
     required this.windowCount,
     required this.productAreaM2,
     required this.filmAreaM2,
+    this.markupPercentOverride,
+    this.discountPercentOverride,
   }) : lines = List.unmodifiable(lines);
 
   final PriceList prices;
@@ -113,8 +115,16 @@ class Estimate {
   /// считаются позиции плёнки и работы раскроя.
   final double filmAreaM2;
 
+  final double? markupPercentOverride;
+  final double? discountPercentOverride;
+
   /// Смета всего заказа.
-  factory Estimate.of(OrderProject project, PriceList prices) {
+  factory Estimate.of(
+    OrderProject project,
+    PriceList prices, {
+    double? markupPercentOverride,
+    double? discountPercentOverride,
+  }) {
     final summary = CostsSummary(project);
     final lines = <EstimateLine>[];
     final hasTShape = project.windows.any((window) => window.isTShape);
@@ -658,6 +668,8 @@ class Estimate {
       windowCount: project.windowCount,
       productAreaM2: summary.productAreaM2,
       filmAreaM2: summary.filmAreaWithShrinkageM2,
+      markupPercentOverride: markupPercentOverride,
+      discountPercentOverride: discountPercentOverride,
     );
   }
 
@@ -686,12 +698,23 @@ class Estimate {
     materialsSubtotal + hardwareSubtotal + workSubtotal + extraSubtotal,
   );
 
-  double get markupPercent =>
-      prices.markupPercent.isFinite ? math.max(prices.markupPercent, 0) : 0;
+  double get markupPercent {
+    final value = markupPercentOverride;
+    if (value != null && value.isFinite) return math.max(value, 0);
+    return prices.markupPercent.isFinite
+        ? math.max(prices.markupPercent, 0)
+        : 0;
+  }
 
-  double get discountPercent => prices.discountPercent.isFinite
-      ? prices.discountPercent.clamp(0, 100).toDouble()
-      : 0;
+  double get discountPercent {
+    final value = discountPercentOverride;
+    if (value != null && value.isFinite) {
+      return value.clamp(0, 100).toDouble();
+    }
+    return prices.discountPercent.isFinite
+        ? prices.discountPercent.clamp(0, 100).toDouble()
+        : 0;
+  }
 
   /// Монтаж, ₽/м² общей площади окон.
   double get installationPerM2 => prices.installationPerM2.isFinite

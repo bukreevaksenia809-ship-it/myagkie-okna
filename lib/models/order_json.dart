@@ -22,6 +22,8 @@ Map<String, dynamic> orderToJson(OrderProject project) => {
   'status': project.status.name,
   'statusChangedAt': project.statusChangedAt?.toIso8601String(),
   'deadline': project.deadline?.toIso8601String(),
+  'estimateMarkupPercent': project.estimateMarkupPercent,
+  'estimateDiscountPercent': project.estimateDiscountPercent,
   'windows': [for (final window in project.windows) windowToJson(window)],
 };
 
@@ -89,6 +91,12 @@ OrderProject orderFromJson(Map<String, dynamic> json) {
     deadline: DateTime.tryParse(
       json['deadline'] is String ? json['deadline'] as String : '',
     ),
+    estimateMarkupPercent: json['estimateMarkupPercent'] is num
+        ? (json['estimateMarkupPercent'] as num).toDouble()
+        : null,
+    estimateDiscountPercent: json['estimateDiscountPercent'] is num
+        ? (json['estimateDiscountPercent'] as num).toDouble()
+        : null,
   );
 }
 

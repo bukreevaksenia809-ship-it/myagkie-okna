@@ -223,7 +223,12 @@ class ClientReportBuilder {
   pw.Widget _coverPage() {
     final report = _reportProject;
     final summary = CostsSummary(report);
-    final estimate = Estimate.of(report, prices);
+    final estimate = Estimate.of(
+      report,
+      prices,
+      markupPercentOverride: report.estimateMarkupPercent,
+      discountPercentOverride: report.estimateDiscountPercent,
+    );
     final details = company.details;
 
     return pw.Stack(
@@ -1572,6 +1577,7 @@ Future<SavedFile> saveClientReport({
   required PriceList prices,
   required CompanyBrandingState company,
   ClientReportInfo info = const ClientReportInfo(),
+  bool dealer = false,
 }) async {
   final bytes = await ClientReportBuilder(
     project: project,
@@ -1580,7 +1586,9 @@ Future<SavedFile> saveClientReport({
     info: info,
   ).build();
   final number = project.selected.drawingNumber.trim();
-  final name = 'Отчёт клиенту${number.isEmpty ? '' : ' $number'}.pdf';
+  final name =
+      '${dealer ? 'Отчёт дилеру' : 'Отчёт клиенту'}'
+      '${number.isEmpty ? '' : ' $number'}.pdf';
   return saveBytes(bytes, name);
 }
 

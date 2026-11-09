@@ -63,12 +63,7 @@ class EstimateSheet extends StatelessWidget {
 
   /// Поля рабочей области листа (было 20/16/20/12 — увеличены под крупный
   /// текст, чтобы строки не слипались с рамкой листа).
-  static const EdgeInsets _contentPadding = EdgeInsets.fromLTRB(
-    24,
-    24,
-    24,
-    16,
-  );
+  static const EdgeInsets _contentPadding = EdgeInsets.fromLTRB(24, 24, 24, 16);
 
   /// Зазор между таблицей и итогами (было 18).
   static const double _tableGap = 20;
@@ -112,7 +107,12 @@ class EstimateSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final estimate = Estimate.of(project, prices);
+    final estimate = Estimate.of(
+      project,
+      prices,
+      markupPercentOverride: project.estimateMarkupPercent,
+      discountPercentOverride: project.estimateDiscountPercent,
+    );
 
     return Container(
       color: const Color(0xFFE7EBF2),
@@ -229,11 +229,7 @@ class EstimateSheet extends StatelessWidget {
                     color: Colors.white,
                   ),
                 if (company!.contactLine.isNotEmpty)
-                  _text(
-                    company!.contactLine,
-                    size: 14,
-                    color: Colors.white70,
-                  ),
+                  _text(company!.contactLine, size: 14, color: Colors.white70),
               ],
             ),
           ] else

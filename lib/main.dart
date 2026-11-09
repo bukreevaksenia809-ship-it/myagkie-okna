@@ -1078,6 +1078,85 @@ class _BuilderScreenState extends State<BuilderScreen>
 
   /// «Сохранить отчёт для клиента»: альбомный PDF с обложкой и страницами
   /// окон (чертёж + раскрой), в отличие от производственных листов.
+  Future<void> _editEstimate() async {
+    final prices = _dealerEstimate ? _dealerPrices : _prices;
+    final markup = TextEditingController(
+      text: (_project.estimateMarkupPercent ?? prices.markupPercent)
+          .toStringAsFixed(1),
+    );
+    final discount = TextEditingController(
+      text: (_project.estimateDiscountPercent ?? prices.discountPercent)
+          .toStringAsFixed(1),
+    );
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Изменить смету'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const Key('estimate-markup'),
+              controller: markup,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Наценка, %',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const Key('estimate-discount'),
+              controller: discount,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Скидка, %',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Меняется только этот заказ. Цены материалов и позиции — в прайсе.',
+              style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Сбросить'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            key: const Key('estimate-apply'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Применить'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || result == null) return;
+    if (result == false) {
+      _updateProject(_project.copyWith(clearEstimateOverrides: true));
+      return;
+    }
+    final m = double.tryParse(markup.text.replaceAll(',', '.'));
+    final d = double.tryParse(discount.text.replaceAll(',', '.'));
+    _updateProject(
+      _project.copyWith(
+        estimateMarkupPercent: m?.clamp(0, 1000).toDouble(),
+        estimateDiscountPercent: d?.clamp(0, 100).toDouble(),
+      ),
+    );
+  }
+
   Future<void> _exportClientReport() async {
     if (_exporting) return;
     // Сначала данные заказчика — прямо здесь, не в панели программы.
@@ -1092,9 +1171,10 @@ class _BuilderScreenState extends State<BuilderScreen>
     try {
       final saved = await saveClientReport(
         project: _project,
-        prices: _prices,
+        prices: _dealerEstimate ? _dealerPrices : _prices,
         company: CompanyBranding.current.value,
         info: info,
+        dealer: _dealerEstimate,
       );
       messenger.showSnackBar(
         SnackBar(content: Text('Отчёт для клиента: ${saved.destination}')),
@@ -2178,7 +2258,7 @@ class _BuilderScreenState extends State<BuilderScreen>
                     onSelectionChanged: (selection) =>
                         _updateProject(_project.setSheetMode(selection.first)),
                   ),
-                  if (_tab == SheetTab.estimate) ...[
+                  if (_tab != SheetTab.docs) ...[
                     const SizedBox(width: 12),
                     SegmentedButton<bool>(
                       showSelectedIcon: false,
@@ -2193,6 +2273,15 @@ class _BuilderScreenState extends State<BuilderScreen>
                       onSelectionChanged: (selection) =>
                           setState(() => _dealerEstimate = selection.first),
                     ),
+                    if (_tab == SheetTab.estimate) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        key: const Key('edit-estimate'),
+                        onPressed: _editEstimate,
+                        icon: const Icon(Icons.edit_outlined, size: 16),
+                        label: const Text('Изменить смету'),
+                      ),
+                    ],
                   ],
                   if (_tab == SheetTab.drawing &&
                       _project.sheetMode == SheetMode.grid &&
