@@ -53,33 +53,97 @@ class EstimateEditor extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF0C2B45), Color(0xFF174D72)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                        OutlinedButton.icon(
-                          key: const Key('estimate-add-line'),
-                          onPressed: () => onChanged(
-                            project.copyWith(
-                              manualEstimateLines: [
-                                ...project.manualEstimateLines,
-                                const ManualEstimateLine(),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'СМЕТА',
+                                  style: TextStyle(
+                                    color: Color(0xFFF2C48D),
+                                    fontSize: 11,
+                                    letterSpacing: 3,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${project.selected.projectName.isEmpty ? 'Заказ' : project.selected.projectName}'
+                                  '${project.selected.customer.isEmpty ? '' : ' · ${project.selected.customer}'}',
+                                  style: const TextStyle(
+                                    color: Color(0xFFD6E5F2),
+                                    fontSize: 11.5,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
-                          icon: const Icon(Icons.add, size: 17),
-                          label: const Text('Добавить позицию'),
-                        ),
-                      ],
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              title.contains('дилер') ? 'ДИЛЕР' : 'КЛИЕНТ',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                letterSpacing: 1.4,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: OutlinedButton.icon(
+                        key: const Key('estimate-add-line'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF174D72),
+                          side: const BorderSide(color: Color(0xFFB9CCE0)),
+                        ),
+                        onPressed: () => onChanged(
+                          project.copyWith(
+                            manualEstimateLines: [
+                              ...project.manualEstimateLines,
+                              const ManualEstimateLine(),
+                            ],
+                          ),
+                        ),
+                        icon: const Icon(Icons.add, size: 17),
+                        label: const Text('Добавить строку'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     const Row(
                       children: [
                         SizedBox(width: 36, child: Text('№', style: _h)),

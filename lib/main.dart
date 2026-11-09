@@ -65,7 +65,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.7.0';
+const String kAppVersion = '2.7.1';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1158,7 +1158,8 @@ class _BuilderScreenState extends State<BuilderScreen>
     );
   }
 
-  Future<void> _exportClientReport() async {
+  Future<void> _exportClientReport({bool forceDealer = false}) async {
+    final dealer = forceDealer || _dealerEstimate;
     if (_exporting) return;
     // Сначала данные заказчика — прямо здесь, не в панели программы.
     final info = await showClientReportDialog(
@@ -1172,13 +1173,19 @@ class _BuilderScreenState extends State<BuilderScreen>
     try {
       final saved = await saveClientReport(
         project: _project,
-        prices: _dealerEstimate ? _dealerPrices : _prices,
+        prices: dealer ? _dealerPrices : _prices,
         company: CompanyBranding.current.value,
         info: info,
-        dealer: _dealerEstimate,
+        dealer: dealer,
       );
       messenger.showSnackBar(
-        SnackBar(content: Text('Отчёт для клиента: ${saved.destination}')),
+        SnackBar(
+          content: Text(
+            dealer
+                ? 'Отчёт для дилера: ${saved.destination}'
+                : 'Отчёт для клиента: ${saved.destination}',
+          ),
+        ),
       );
     } catch (error) {
       messenger.showSnackBar(
@@ -1188,6 +1195,8 @@ class _BuilderScreenState extends State<BuilderScreen>
       if (mounted) setState(() => _exporting = false);
     }
   }
+
+  Future<void> _exportDealerReport() => _exportClientReport(forceDealer: true);
 
   Future<void> _exportPdf() async {
     // Пока идёт другой экспорт, второй раз не запускаем.
@@ -1841,6 +1850,12 @@ class _BuilderScreenState extends State<BuilderScreen>
                     icon: const Icon(Icons.badge_outlined),
                   ),
                   IconButton(
+                    key: const Key('dealer-report-narrow'),
+                    tooltip: 'Отчёт для дилера',
+                    onPressed: _exportDealerReport,
+                    icon: const Icon(Icons.storefront_outlined),
+                  ),
+                  IconButton(
                     tooltip: 'Сохранить PDF',
                     onPressed: _exportPdf,
                     icon: const Icon(Icons.picture_as_pdf),
@@ -1861,6 +1876,13 @@ class _BuilderScreenState extends State<BuilderScreen>
                     onPressed: _exportClientReport,
                     icon: const Icon(Icons.badge_outlined, size: 18),
                     label: const Text('Отчёт клиенту'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    key: const Key('dealer-report'),
+                    onPressed: _exportDealerReport,
+                    icon: const Icon(Icons.storefront_outlined, size: 18),
+                    label: const Text('Отчёт дилеру'),
                   ),
                   const SizedBox(width: 8),
                   FilledButton.icon(
