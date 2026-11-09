@@ -799,6 +799,8 @@ class WindowDrawingPainter extends CustomPainter {
         final b = points[(i + 1) % points.length];
         final direction = b - a;
         final length = direction.distance;
+        final modelLength =
+            (polygon[(i + 1) % polygon.length] - polygon[i]).distance;
         if (length < 50) continue;
         final unit = direction / length;
         var normal = Offset(-unit.dy, unit.dx);
@@ -808,8 +810,8 @@ class WindowDrawingPainter extends CustomPainter {
             (middle - normal - centroid).distance;
         if (!outside == outward) normal = -normal;
         final label = i < labels.length
-            ? '$prefix${labels[i]} ${formatMm(length)}'
-            : '$prefix${formatMm(length)}';
+            ? '$prefix${labels[i]} ${formatMm(modelLength)}'
+            : '$prefix${formatMm(modelLength)}';
         _dimension(
           canvas,
           a,
@@ -836,6 +838,7 @@ class WindowDrawingPainter extends CustomPainter {
       final b = points[(i + 1) % points.length];
       final direction = b - a;
       final length = direction.distance;
+      final modelLength = (outer[(i + 1) % outer.length] - outer[i]).distance;
       if (length < 50) continue;
       final unit = direction / length;
       var normal = Offset(-unit.dy, unit.dx);
@@ -853,7 +856,7 @@ class WindowDrawingPainter extends CustomPainter {
               4 => params.leftHeight,
               _ => length,
             }
-          : length;
+          : modelLength;
       _dimension(
         canvas,
         a,
