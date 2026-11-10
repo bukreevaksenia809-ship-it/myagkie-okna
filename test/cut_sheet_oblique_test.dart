@@ -64,14 +64,19 @@ void _expectOblique(WindowParams params) {
   expect(piece.hasContour, isTrue, reason: 'контур есть — лист не пустой');
   expect(piece.allContours, hasLength(1));
   expect(piece.sideLengths, hasLength(4));
-  // Подписи сторон — номинальные стороны заготовки по формуле заказчика.
+  // Подписи сторон — фактические длины кромок контура к раскрою.
   expect(piece.sideLengths, spec.filmCutSideLengths);
   expect(piece.sideLengths[0], closeTo(piece.widthMm, 1e-9), reason: 'низ');
-  expect(
-    piece.sideLengths[2],
-    lessThan(piece.widthMm + 1e-9),
-    reason: 'верх уже низа',
-  );
+  expect(piece.sideLengths[2], greaterThan(0), reason: 'верх');
+  // У трапеции с верхом уже низа верхняя кромка остаётся короче нижней;
+  // у окна с разными высотами верх наклонён и может быть длиннее проекции.
+  if (params.topWidth < params.bottomWidth) {
+    expect(
+      piece.sideLengths[2],
+      lessThan(piece.sideLengths[0] + 1e-9),
+      reason: 'верх уже низа',
+    );
+  }
   // Габарит к раскрою — те же числа, что в документах.
   expect(piece.widthMm, closeTo(spec.filmCutWidthWithShrinkage, 1e-9));
   expect(piece.heightMm, closeTo(spec.filmCutHeightWithShrinkage, 1e-9));

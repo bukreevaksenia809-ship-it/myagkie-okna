@@ -117,6 +117,12 @@ void _expectSides(List<double> actual, List<double> expected, String what) {
   }
 }
 
+/// Фактические длины сторон контура (по вершинам), мм.
+List<double> _polygonSides(List<Offset> polygon) => [
+  for (var i = 0; i < polygon.length; i++)
+    (polygon[(i + 1) % polygon.length] - polygon[i]).distance,
+];
+
 void main() {
   group('Косые окна: ручной расчёт против WindowSpec', () {
     test('а) трапеция 2000/1000 × 1000, окантовка 100, запайка 5', () {
@@ -156,7 +162,11 @@ void main() {
       // К раскрою: авто +10 мм к высоте — высоты 920, стороны
       // [1910, 920, 910, 920], площадь (1910 + 910) / 2 × 920 = 1,2972.
       final cut = _manualCutSides(params);
-      _expectSides(spec.filmCutSideLengths, cut, 'стороны к раскрою');
+      _expectSides(
+        spec.filmCutSideLengths,
+        _polygonSides(spec.filmCutPolygonWithShrinkage),
+        'стороны к раскрою',
+      );
       expect(spec.filmCutWidthWithAllowance, closeTo(1910, 1e-9));
       expect(spec.filmCutHeightWithAllowance, closeTo(920, 1e-9));
       expect(spec.filmCutAreaM2, closeTo(1.2972, 1e-9));
@@ -165,7 +175,11 @@ void main() {
 
       // Лист «Раскрой» подписывает те же стороны.
       final piece = CutPiece.ofSpec(spec);
-      _expectSides(piece.sideLengths, cut, 'CutPiece');
+      _expectSides(
+        piece.sideLengths,
+        _polygonSides(spec.filmCutPolygonWithShrinkage),
+        'CutPiece',
+      );
       expect(piece.widthMm, closeTo(1910, 1e-9));
       expect(piece.heightMm, closeTo(920, 1e-9));
       expect(piece.areaM2, closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9));
@@ -207,13 +221,21 @@ void main() {
 
       // К раскрою: высота 1320, площадь (1110 + 1110) / 2 × 1320 = 1,2415.
       final cut = _manualCutSides(params);
-      _expectSides(spec.filmCutSideLengths, cut, 'стороны к раскрою');
+      _expectSides(
+        spec.filmCutSideLengths,
+        _polygonSides(spec.filmCutPolygonWithShrinkage),
+        'стороны к раскрою',
+      );
       expect(spec.filmCutHeightWithAllowance, closeTo(1320, 1e-9));
       expect(spec.filmCutAreaM2, closeTo(_manualAreaM2(cut), 1e-9));
       expect(spec.filmCutAreaM2, closeTo(1.2415, 1e-3));
 
       final piece = CutPiece.ofSpec(spec);
-      _expectSides(piece.sideLengths, cut, 'CutPiece');
+      _expectSides(
+        piece.sideLengths,
+        _polygonSides(spec.filmCutPolygonWithShrinkage),
+        'CutPiece',
+      );
       expect(piece.areaM2, closeTo(spec.filmCutAreaWithShrinkageM2, 1e-9));
 
       // Окантовка: низ 1200 + право 1400 + верх 1264,911 + лево 1000.
@@ -247,13 +269,21 @@ void main() {
 
       // К раскрою: высоты 930, площадь (1920 + 920) / 2 × 930 = 1,3206.
       final cut = _manualCutSides(params);
-      _expectSides(spec.filmCutSideLengths, cut, 'стороны к раскрою');
+      _expectSides(
+        spec.filmCutSideLengths,
+        _polygonSides(spec.filmCutPolygonWithShrinkage),
+        'стороны к раскрою',
+      );
       expect(spec.filmCutHeightWithAllowance, closeTo(930, 1e-9));
       expect(spec.filmCutAreaM2, closeTo(_manualAreaM2(cut), 1e-9));
       expect(spec.filmCutAreaM2, closeTo(1.3206, 1e-9));
 
       final piece = CutPiece.ofSpec(spec);
-      _expectSides(piece.sideLengths, cut, 'CutPiece');
+      _expectSides(
+        piece.sideLengths,
+        _polygonSides(spec.filmCutPolygonWithShrinkage),
+        'CutPiece',
+      );
 
       // Расход по рулонам: низ 2000 → 120, бока 2 × 1118,034 → 100,
       // верх 1000 → 80.
@@ -305,13 +335,21 @@ void main() {
 
       // У скрина нет ни припуска, ни усадки — площадь та же.
       final cut = _manualCutSides(params);
-      _expectSides(spec.filmCutSideLengths, cut, 'стороны к раскрою');
+      _expectSides(
+        spec.filmCutSideLengths,
+        _polygonSides(spec.filmCutPolygonWithShrinkage),
+        'стороны к раскрою',
+      );
       expect(spec.filmCutAreaM2, closeTo(1.7649, 1e-9));
       expect(spec.filmCutAreaM2, closeTo(_manualAreaM2(cut), 1e-9));
       expect(spec.filmCutAreaWithShrinkageM2, closeTo(1.7649, 1e-9));
 
       final piece = CutPiece.ofSpec(spec);
-      _expectSides(piece.sideLengths, cut, 'CutPiece');
+      _expectSides(
+        piece.sideLengths,
+        _polygonSides(spec.filmCutPolygonWithShrinkage),
+        'CutPiece',
+      );
       expect(piece.widthMm, closeTo(2090, 1e-9));
       expect(piece.heightMm, closeTo(1110, 1e-9));
 

@@ -40,8 +40,12 @@ void main() {
         expect(spec.blankSideLengths, [2990, 2740, 2990, 2080]);
         expect(spec.filmCutWidth, closeTo(2990, 1e-9));
         expect(spec.filmCutHeight, closeTo(2740, 1e-9));
-        // Без припуска и усадки стороны к раскрою те же.
-        expect(spec.filmCutSideLengths, [2990, 2740, 2990, 2080]);
+        // К раскрою стороны — ФАКТИЧЕСКИЕ длины кромок: наклонный верх
+        // длиннее горизонтальной проекции 2 990 (≈ 3 061,98).
+        expect(spec.filmCutSideLengths[0], closeTo(2990, 1e-3));
+        expect(spec.filmCutSideLengths[1], closeTo(2740, 1e-3));
+        expect(spec.filmCutSideLengths[2], closeTo(3061.9765, 1e-3));
+        expect(spec.filmCutSideLengths[3], closeTo(2080, 1e-3));
       },
     );
 
@@ -93,7 +97,10 @@ void main() {
       expect(piece.heightMm, closeTo(2740, 1e-9));
       expect(piece.allContours, hasLength(1));
       expect(piece.allContours.first, hasLength(4));
-      expect(piece.sideLengths, [2990, 2740, 2990, 2080]);
+      expect(piece.sideLengths[0], closeTo(2990, 1e-3));
+      expect(piece.sideLengths[1], closeTo(2740, 1e-3));
+      expect(piece.sideLengths[2], closeTo(3061.9765, 1e-3));
+      expect(piece.sideLengths[3], closeTo(2080, 1e-3));
       expect(piece.areaMm2, closeTo(7205900, 1e-6));
       expect(piece.areaM2, closeTo(7.2059, 1e-9));
       // Контур не прямоугольный: верхняя кромка длиннее нижней по построению.

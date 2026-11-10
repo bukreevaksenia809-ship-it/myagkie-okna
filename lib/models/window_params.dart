@@ -1629,6 +1629,16 @@ class WindowParams {
     LevelEdge.none => (rightHeight - leftHeight) / 2,
   };
 
+  /// Вертикальный перепад нижней кромки, мм.
+  ///
+  /// При «верх ровно» низ наклоняется, при «нет» — наклоняется вместе с верхом
+  /// (в противоположную сторону). При «низ ровно» нижняя кромка горизонтальна.
+  double get bottomEdgeSlantMm => switch (levelEdge) {
+    LevelEdge.bottom => 0,
+    LevelEdge.top => leftHeight - rightHeight,
+    LevelEdge.none => (leftHeight - rightHeight) / 2,
+  };
+
   /// Тип люверса, который реально ставится.
   ///
   /// Тип выбирает пользователь, и он действует на **любом** типе окна, включая

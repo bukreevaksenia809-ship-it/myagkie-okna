@@ -3745,12 +3745,19 @@ class WindowDrawingPainter extends CustomPainter {
     final topWidthLeft = layout.toPx(geometry.topLeft.dx, topWidthY);
     final topWidthRight = layout.toPx(geometry.topRight.dx, topWidthY);
 
+    final bottomSlant =
+        (geometry.bottomRight.dy - geometry.bottomLeft.dy).abs();
+    final bottomLength = geometry.sideLengths.isNotEmpty
+        ? geometry.sideLengths[0]
+        : geometry.bottomWidth;
     _dimension(
       canvas,
       bottomLeft,
       bottomRight,
       const Offset(0, 52),
-      'Ширина низ ${formatMm(geometry.bottomWidth)}',
+      bottomSlant >= 0.5
+          ? 'Низ (длина) ${formatMm(bottomLength)}'
+          : 'Ширина низ ${formatMm(geometry.bottomWidth)}',
     );
     _dimension(
       canvas,

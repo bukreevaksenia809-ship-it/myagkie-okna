@@ -3130,11 +3130,22 @@ class WindowSpec {
 
   /// Стороны заготовки К РАСКРОЮ с припуском и усадкой, мм.
   ///
-  /// Порядок прежний: низ, право, верх, лево. Ширины (низ/верх) растянуты на
-  /// припуск по ширине, высоты (право/лево) — на припуск по высоте; усадка
-  /// умножает обе оси. Для прямоугольного окна это ровно прежние
-  /// `[ширина, высота, ширина, высота]`.
+  /// Порядок прежний: низ, право, верх, лево. Для простого окна это
+  /// ФАКТИЧЕСКИЕ длины сторон контура к раскрою: наклонный верх/низ длиннее
+  /// горизонтальной проекции, и мастер должен видеть именно длину кромки,
+  /// а не ширину по горизонтали. Для Т-окна, составного и вырожденных
+  /// контуров — прежняя формула по осям.
   List<double> get filmCutSideLengths {
+    if (!isTShape && !isComposite) {
+      final polygons = filmCutPolygonsWithShrinkage;
+      if (polygons.length == 1 && polygons.first.length == 4) {
+        final polygon = polygons.first;
+        return [
+          for (var i = 0; i < 4; i++)
+            (polygon[(i + 1) % 4] - polygon[i]).distance,
+        ];
+      }
+    }
     final blank = layers.blankGeometry;
     final bounds = layers.filmCutBounds;
     final targetWidth = filmCutWidth + params.allowanceWidthMm;

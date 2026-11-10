@@ -6,6 +6,7 @@ import '../models/order_project.dart';
 import '../models/crossbar.dart';
 import '../models/window_geometry.dart';
 import '../models/window_params.dart';
+import '../services/inner_size.dart';
 import '../services/label_settings.dart';
 
 /// Лист «Раскрой плёнки» — вырезанные заготовки мягких окон.
@@ -525,11 +526,11 @@ class CutPiece {
   /// Ноль — посчитать по габариту (для заготовок, созданных вручную).
   final double areaM2;
 
-  /// Номинальные длины сторон заготовки по обходу: низ, право, верх, лево.
+  /// Длины сторон заготовки к раскрою по обходу: низ, право, верх, лево.
   ///
-  /// У косого окна это ровно числа заказчика (2 990 / 2 740 / 2 990 / 2 080),
-  /// а не фактические длины наклонных отрезков. Подписи на листе берут их,
-  /// поэтому цифры совпадают с расчётом и документами.
+  /// У простого окна это ФАКТИЧЕСКИЕ длины сторон контура к раскрою —
+  /// наклонный верх/низ длиннее горизонтальной проекции. Подписи на листе
+  /// берут их, поэтому мастер видит длину кромки, которую нужно резать.
   final List<double> nominalSideLengths;
 
   /// Некорректные размеры не роняют лист: считаем их минимальной заготовкой.
@@ -574,9 +575,8 @@ class CutPiece {
   ///
   /// У обычного окна порядок прежний: низ, право, верх, лево. У Т-окна без
   /// спайки сначала идут четыре стороны основного полотна, затем приставки.
-  /// Для косого окна берутся НОМИНАЛЬНЫЕ стороны заготовки
-  /// ([nominalSideLengths]) — они совпадают с формулой заказчика и с
-  /// подписями, хотя наклонная кромка на чертеже длиннее по построению.
+  /// Для косого окна берутся ФАКТИЧЕСКИЕ стороны контура к раскрою
+  /// ([nominalSideLengths]) — с длиной наклонной кромки, а не проекцией.
   List<double> get sideLengths {
     if (nominalSideLengths.isNotEmpty) return nominalSideLengths;
     if (!hasContour) return [widthMm, heightMm, widthMm, heightMm];
@@ -1217,9 +1217,9 @@ class CutSheetPainter extends CustomPainter {
       ..color = _ink
       ..strokeWidth = 1.1;
     final center = rect.center;
-    // У косого окна подписываем НОМИНАЛЬНЫЕ стороны заготовки — те же числа,
-    // что в расчёте и документах (низ 2 990, право 2 740, верх 2 990,
-    // лево 2 080). Наклонная кромка на чертеже длиннее по построению.
+    // У косого окна подписываем ФАКТИЧЕСКИЕ длины сторон контура к раскрою:
+    // наклонный верх/низ длиннее горизонтальной проекции, и мастер должен
+    // видеть именно длину кромки, а не ширину по горизонтали.
     final nominal = piece.nominalSideLengths.length == 4 && contours.length == 1
         ? piece.nominalSideLengths
         : null;
@@ -1392,6 +1392,21 @@ class CutSheetPainter extends CustomPainter {
       Offset(rect.center.dx, rect.bottom + 78),
       color: _ink,
     );
+    // Внутренний размер (видимая плёнка) — справочно для мастера. У косого
+    // окна верх/низ показываем по наклонной кромке.
+    String? innerLabel;
+    if (!spec.isTShape && !spec.isComposite) {
+      final inner = innerSidesFromOuter(params);
+      final hasSlant =
+          params.topEdgeSlantMm.abs() >= 0.5 ||
+          params.bottomEdgeSlantMm.abs() >= 0.5;
+      innerLabel = hasSlant
+          ? 'внутренний: низ ${formatMm(inner.bottomWidth)}, '
+                'верх ${formatMm(inner.topWidth)}, '
+                'высота ${formatMm(inner.leftHeight)} ${unitSuffix()}'
+          : 'внутренний ${formatMm(inner.bottomWidth)} × '
+                '${formatMm(inner.leftHeight)} ${unitSuffix()}';
+    }
     final parts = <String>[
       // Окно с молнией кроится уже: ширина заготовки уменьшена на полосу
       // молнии у всех материалов. Показываем оба числа, чтобы подпись не
@@ -1410,6 +1425,7 @@ class CutSheetPainter extends CustomPainter {
         'с усадкой ${formatPercent(params.effectiveShrinkagePercent)}: '
             '${formatMm(spec.filmCutWidthWithShrinkage)} × '
             '${formatMm(spec.filmCutHeightWithShrinkage)} ${unitSuffix()}',
+      ?innerLabel,
     ];
     if (spec.zipperSegmentWidths.length > 1) {
       final total = spec.zipperSegmentWidths.fold<double>(

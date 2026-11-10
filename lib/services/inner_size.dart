@@ -47,13 +47,20 @@ OuterSides outerSidesFromInner(WindowParams params, InnerSides inner) {
   final bottom = params.isScreen
       ? 0.0
       : WindowParams.finishedEdgeWidth(params.rollBottom);
-  final slant = params.topEdgeSlantMm;
-  final innerRun = math.sqrt(
-    math.max(inner.topWidth * inner.topWidth - slant * slant, 0),
+  final topSlant = params.topEdgeSlantMm;
+  final bottomSlant = params.bottomEdgeSlantMm;
+  final innerTopRun = math.sqrt(
+    math.max(inner.topWidth * inner.topWidth - topSlant * topSlant, 0),
+  );
+  final innerBottomRun = math.sqrt(
+    math.max(
+      inner.bottomWidth * inner.bottomWidth - bottomSlant * bottomSlant,
+      0,
+    ),
   );
   return (
-    topWidth: innerRun + left + right,
-    bottomWidth: inner.bottomWidth + left + right,
+    topWidth: innerTopRun + left + right,
+    bottomWidth: innerBottomRun + left + right,
     leftHeight: inner.leftHeight + top + bottom,
     rightHeight: inner.rightHeight + top + bottom,
   );
@@ -61,7 +68,8 @@ OuterSides outerSidesFromInner(WindowParams params, InnerSides inner) {
 
 /// Наружный габарит → внутренние размеры по четырём сторонам.
 ///
-/// Верхний внутренний размер возвращается как длина наклонной кромки.
+/// Верхний и нижний внутренние размеры возвращаются как длина кромки
+/// (гипотенуза): наклонная кромка длиннее горизонтальной проекции.
 InnerSides innerSidesFromOuter(WindowParams params) {
   final left = params.isScreen
       ? 0.0
@@ -76,14 +84,19 @@ InnerSides innerSidesFromOuter(WindowParams params) {
       ? 0.0
       : WindowParams.finishedEdgeWidth(params.rollBottom);
   double positive(double value) => value < 1 ? 1 : value;
-  final slant = params.topEdgeSlantMm;
-  final innerRun = positive(params.topWidth - left - right);
+  final topSlant = params.topEdgeSlantMm;
+  final bottomSlant = params.bottomEdgeSlantMm;
+  final innerTopRun = positive(params.topWidth - left - right);
+  final innerBottomRun = positive(params.bottomWidth - left - right);
   final innerTop = math.sqrt(
-    math.max(innerRun * innerRun + slant * slant, 0),
+    math.max(innerTopRun * innerTopRun + topSlant * topSlant, 0),
+  );
+  final innerBottom = math.sqrt(
+    math.max(innerBottomRun * innerBottomRun + bottomSlant * bottomSlant, 0),
   );
   return (
     topWidth: innerTop,
-    bottomWidth: positive(params.bottomWidth - left - right),
+    bottomWidth: innerBottom,
     leftHeight: positive(params.leftHeight - top - bottom),
     rightHeight: positive(params.rightHeight - top - bottom),
   );

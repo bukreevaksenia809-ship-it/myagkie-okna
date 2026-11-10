@@ -84,4 +84,50 @@ void main() {
     final outer = outerSidesFromInner(window, inner);
     expect(outer.topWidth, closeTo(1700, 0.05));
   });
+
+  test('«Верх ровно»: наклонён низ, внутренний низ — по кромке', () {
+    const window = WindowParams(
+      bottomWidth: 1700,
+      topWidth: 1700,
+      leftHeight: 2900,
+      rightHeight: 2520,
+      levelEdge: LevelEdge.top,
+      rollBottom: 100,
+      rollTop: 100,
+      rollLeft: 100,
+      rollRight: 100,
+    );
+    expect(window.topEdgeSlantMm, 0);
+    expect(window.bottomEdgeSlantMm, closeTo(380, 1e-9));
+    final spec = WindowSpec.of(window);
+    // Верх горизонтален, низ наклонён на 380.
+    expect(spec.geometry.topEdgeLength, closeTo(1700, 0.01));
+    final bottomSide = spec.geometry.sideLengths[0];
+    expect(bottomSide, closeTo(math.sqrt(1700 * 1700 + 380 * 380), 0.1));
+
+    final inner = innerSidesFromOuter(window);
+    final innerBottomRun = 1700.0 - 50 - 50;
+    expect(
+      inner.bottomWidth,
+      closeTo(math.sqrt(innerBottomRun * innerBottomRun + 380 * 380), 0.05),
+    );
+    // Верх горизонтален — внутренний верх равен проекции.
+    expect(inner.topWidth, closeTo(1700 - 50 - 50, 0.05));
+  });
+
+  test('«Нет ровно»: наклонены и верх, и низ', () {
+    const window = WindowParams(
+      bottomWidth: 1700,
+      topWidth: 1700,
+      leftHeight: 2900,
+      rightHeight: 2520,
+      levelEdge: LevelEdge.none,
+    );
+    expect(window.topEdgeSlantMm, closeTo(-190, 1e-9));
+    expect(window.bottomEdgeSlantMm, closeTo(190, 1e-9));
+    final spec = WindowSpec.of(window);
+    final expectedTop = math.sqrt(1700 * 1700 + 190 * 190);
+    expect(spec.geometry.topEdgeLength, closeTo(expectedTop, 0.1));
+    expect(spec.geometry.sideLengths[0], closeTo(expectedTop, 0.1));
+  });
 }

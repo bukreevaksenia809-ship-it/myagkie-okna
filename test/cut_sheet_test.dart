@@ -221,13 +221,15 @@ void main() {
 
       expect(piece.hasContour, isTrue);
       expect(piece.outline, hasLength(4));
-      // Это трапеция: низ шире верха, боковые стороны уже не прямоугольник.
+      // Это трапеция: низ шире верха, боковые стороны наклонные.
       expect(spec.blankSideLengths, [1950, 950, 950, 950]);
       final sides = piece.sideLengths;
+      // На раскрое подписываются ФАКТИЧЕСКИЕ длины: низ и верх — горизонтальные,
+      // боковины — гипотенузы √(500² + 960²) ≈ 1082,4.
       expect(sides[0], closeTo(1950, 1e-9));
-      expect(sides[1], closeTo(960, 1e-9));
+      expect(sides[1], closeTo(1082.40473, 0.001));
       expect(sides[2], closeTo(950, 1e-9));
-      expect(sides[3], closeTo(960, 1e-9));
+      expect(sides[3], closeTo(1082.40473, 0.001));
       expect(piece.widthMm, closeTo(1950, 1e-9));
       expect(piece.heightMm, closeTo(960, 1e-9));
       // Площадь — по формуле Гаусса для трапеции, а не габарит 1950 × 960.

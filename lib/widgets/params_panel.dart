@@ -2787,15 +2787,16 @@ class _ParamsPanelState extends State<ParamsPanel> {
     final right = lengths[1];
     final top = lengths[2];
     final left = lengths[3];
-    final topDrop = (params.leftHeight - params.rightHeight).abs();
-    final slantedTop = topDrop >= 0.5;
+    final topDrop = params.topEdgeSlantMm.abs();
+    final bottomDrop = params.bottomEdgeSlantMm.abs();
+    final slanted = topDrop >= 0.5 || bottomDrop >= 0.5;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: slantedTop ? const Color(0xFFFFF7E6) : const Color(0xFFF4F7FB),
+        color: slanted ? const Color(0xFFFFF7E6) : const Color(0xFFF4F7FB),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: slantedTop
+          color: slanted
               ? const Color(0xFFF0D9A8)
               : const Color(0xFFDCE4EF),
         ),
@@ -2819,13 +2820,24 @@ class _ParamsPanelState extends State<ParamsPanel> {
             'Право ${formatMm(right)} ${unitSuffix()}',
             style: const TextStyle(fontSize: 11, color: Color(0xFF2B3440)),
           ),
-          if (slantedTop) ...[
+          if (topDrop >= 0.5) ...[
             const SizedBox(height: 3),
             Text(
-              'Верх наклонный: перепад высот '
-              '${formatMm(topDrop)} ${unitSuffix()}, длина кромки '
-              '${formatMm(top)} ${unitSuffix()} (ширина '
-              '${formatMm(params.topWidth)} ${unitSuffix()}).',
+              'Верх наклонный: перепад ${formatMm(topDrop)} ${unitSuffix()}, '
+              'длина кромки ${formatMm(top)} ${unitSuffix()} '
+              '(проекция ${formatMm(params.topWidth)} ${unitSuffix()}).',
+              style: const TextStyle(
+                fontSize: 10.5,
+                color: Color(0xFF8E5A1E),
+              ),
+            ),
+          ],
+          if (bottomDrop >= 0.5) ...[
+            const SizedBox(height: 3),
+            Text(
+              'Низ наклонный: перепад ${formatMm(bottomDrop)} ${unitSuffix()}, '
+              'длина кромки ${formatMm(bottom)} ${unitSuffix()} '
+              '(проекция ${formatMm(params.bottomWidth)} ${unitSuffix()}).',
               style: const TextStyle(
                 fontSize: 10.5,
                 color: Color(0xFF8E5A1E),
