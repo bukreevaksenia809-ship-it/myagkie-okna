@@ -298,9 +298,14 @@ class DocxImportService {
     try {
       final archive = ZipDecoder().decodeBytes(bytes);
       final entries = <String, List<int>>{};
+      var headerFooterCount = 0;
       for (final entry in archive) {
         if (!entry.isFile) continue;
         if (entries.length > 5000) break;
+        if (entry.name.startsWith('word/header') ||
+            entry.name.startsWith('word/footer')) {
+          headerFooterCount += 1;
+        }
         if (entry.name == 'word/document.xml' ||
             entry.name == 'word/numbering.xml' ||
             entry.name == 'word/styles.xml' ||
@@ -330,6 +335,15 @@ class DocxImportService {
       final warnings = <String, int>{};
       final blocks = <DocBlock>[];
       final counters = _Counters();
+      if (headerFooterCount > 0) warnings['headers'] = headerFooterCount;
+      final imageCount = document.descendants
+          .whereType<XmlElement>()
+          .where(
+            (node) =>
+                node.name.local == 'drawing' || node.name.local == 'pict',
+          )
+          .length;
+      if (imageCount > 0) warnings['images'] = imageCount;
 
       final body = _firstByLocal(document.rootElement, 'body');
       if (body == null) {
