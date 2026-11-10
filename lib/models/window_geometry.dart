@@ -1967,14 +1967,15 @@ class WindowLayers {
     // у них нет (у скрина есть — он снимается).
     if (!isScreen && !params.isLifting) return const [];
     if (!isScreen && params.isLifting) {
-      // Подъёмное окно: сверху всегда круглые люверсы, низ — без люверсов
-      // (кроме нижних углов), а выбранный крепёж идёт только по бокам.
+      // Подъёмное окно: сверху всегда круглые люверсы, по бокам — выбранный
+      // крепёж, а нижние углы держат полотно скобой/замком (не люверсом).
       return eyelets
           .where(
             (eyelet) =>
-                (eyelet.side == WindowSide.left ||
-                    eyelet.side == WindowSide.right) &&
-                !eyelet.isCorner,
+                ((eyelet.side == WindowSide.left ||
+                        eyelet.side == WindowSide.right) &&
+                    !eyelet.isCorner) ||
+                (eyelet.side == WindowSide.bottom && eyelet.isCorner),
           )
           .toList(growable: false);
     }
@@ -2779,6 +2780,16 @@ class WindowLayers {
         for (var k = 0; k <= intervals; k++) {
           var distance = offset + (exact ? exactDistances[k] : actual * k);
           final isCornerIndex = offset < 0.5 && (k == 0 || k == intervals);
+          // Подъёмное ПВХ-окно: низ поднимается, поэтому по низу остаются
+          // только нижние углы (они держат полотно скобой/замком). Ручную
+          // расстановку не трогаем — мастер мог поставить точки сам.
+          if (params.isLifting &&
+              !params.isScreen &&
+              side == WindowSide.bottom &&
+              !isCornerIndex &&
+              !params.hasManualEyelets(EdgeSide.bottom)) {
+            continue;
+          }
 
           if (params.pocket) {
             if (side == WindowSide.bottom && (k == 0 || k == intervals)) {

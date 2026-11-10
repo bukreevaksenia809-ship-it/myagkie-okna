@@ -2703,7 +2703,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
         ],
         const SizedBox(height: 12),
-        Offstage(offstage: true, child: _allowanceSection(spec)),
+        _allowanceSection(spec),
       ],
     );
   }

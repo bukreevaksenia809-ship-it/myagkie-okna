@@ -1099,7 +1099,7 @@ class WindowParams {
     this.drainCount = 3,
     this.shrinkageEnabled = false,
     this.shrinkagePercent = 0,
-    this.pvcHeightAllowanceEnabled = false,
+    this.pvcHeightAllowanceEnabled = true,
     this.zipperLabelOffsets = const {},
   });
 

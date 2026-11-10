@@ -691,11 +691,9 @@ void main() {
       (candidate) => candidate.title.contains('Тент 150 мм'),
     );
 
-    // Ожидание считаем от пресетов прайса: 150 мм лежит между 120 и 200.
-    final expected =
-        prices.edge120PerM +
-        (prices.edge200PerM - prices.edge120PerM) * (150 - 120) / (200 - 120);
-    expect(expected, closeTo(189.375, 1e-9));
+    // 150 мм — свой пресет прайса (рулон 150 мм = полоса 75 мм).
+    final expected = prices.edge150PerM;
+    expect(expected, closeTo(195, 1e-9));
     expect(prices.edgePerMeterForWidth(150), closeTo(expected, 1e-9));
     expect(line.unitPrice, closeTo(expected, 1e-9));
     expect(line.title, 'Окантовка Тент 150 мм');

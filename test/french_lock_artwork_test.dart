@@ -207,16 +207,11 @@ void main() {
         pxPerMm: 0.378,
       );
       expect(labels, isNotEmpty);
-      // Замок стоит по низу и бокам, сверху — саморезы по кромке; размеры
-      // между креплениями нужны по всем четырём сторонам.
+      // У подъёмного окна низ поднимается: там только два нижних угла,
+      // поэтому «шаг» по низу не рисуется. Размеры нужны по бокам и сверху.
       expect(
         labels.map((label) => label.side).toSet(),
-        {
-          WindowSide.bottom,
-          WindowSide.right,
-          WindowSide.top,
-          WindowSide.left,
-        },
+        {WindowSide.right, WindowSide.top, WindowSide.left},
       );
     });
   });

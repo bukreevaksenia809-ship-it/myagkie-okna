@@ -46,9 +46,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    await tester.enterText(find.byKey(const Key('shape-roof')), '900');
+    await tester.enterText(find.byKey(const Key('shape-roof-left')), '900');
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('shape-overhang')), '150');
+    await tester.enterText(find.byKey(const Key('shape-roof-right')), '150');
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
