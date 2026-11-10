@@ -86,10 +86,12 @@ Color catalogSwatchColor(String raw) {
   }
   const extra = <String, int>{
     'серебристый': 0xFFC0C5CB,
+    'оцинкованный': 0xFFC0C5CB,
     'прозрачный': 0xFFEAF4FA,
     'тонированный': 0xFF4A4F55,
     'натуральный': 0xFFC8A97E,
     'латунь': 0xFFB08D45,
+    'золотой': 0xFFD4AF37,
     'нержавейка': 0xFFB9BEC5,
     'без цвета': 0xFFD9D9D9,
   };

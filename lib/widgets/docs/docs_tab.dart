@@ -5,8 +5,10 @@
 // действия с документом живут в меню. Всё сохраняется в shared_preferences,
 // картинки и подписи — в отдельном хранилище ассетов.
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import '../../models/document.dart';
 import '../../models/order_project.dart';
@@ -740,16 +742,32 @@ class _DocsTabState extends State<DocsTab> {
       return DocumentPages(
         key: _pagesKey,
         document: document,
-        assets: _store.readAsset,
+        assets: _assetReader,
       );
     }
     return DocumentEditor(
       key: ValueKey(document.id),
       document: document,
       store: _store,
-      assets: _store.readAsset,
+      assets: _assetReader,
       onChanged: _updateDocument,
     );
+  }
+
+  /// Читает ассет документа: встроенные (`@asset:<путь>`) — из бандла,
+  /// остальные — из хранилища ассетов.
+  Future<Uint8List?> _assetReader(String? ref) async {
+    if (ref == null || ref.isEmpty) return null;
+    if (ref.startsWith('@asset:')) {
+      final path = ref.substring('@asset:'.length);
+      try {
+        final data = await rootBundle.load(path);
+        return data.buffer.asUint8List();
+      } catch (_) {
+        return null;
+      }
+    }
+    return _store.readAsset(ref);
   }
 
   Widget _errorView(String message) {
@@ -774,6 +792,7 @@ class _DocsTabState extends State<DocsTab> {
 IconData _templateIcon(DocumentTemplate template) => switch (template) {
   DocumentTemplate.act => Icons.task_alt,
   DocumentTemplate.contract => Icons.handshake_outlined,
+  DocumentTemplate.mmoContract => Icons.assignment_outlined,
   DocumentTemplate.offer => Icons.request_quote_outlined,
   DocumentTemplate.specification => Icons.list_alt_outlined,
   DocumentTemplate.warranty => Icons.verified_outlined,

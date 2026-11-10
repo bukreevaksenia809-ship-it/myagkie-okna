@@ -159,6 +159,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// Ширина доборной полосы при спайке полотна.
   late final TextEditingController _spliceController;
 
+  /// Поле «Верх» в режиме трапеции: хранит длину наклонной кромки (гипотенузу),
+  /// а в модель уходит горизонтальная проекция [WindowParams.topWidth].
+  late final TextEditingController _topEdgeController;
+
   /// Поля припусков на раскрой: добавка к ширине и к высоте, мм.
   final Map<_AllowanceField, TextEditingController> _allowanceControllers = {};
   final Map<_AllowanceField, String?> _allowanceErrors = {};
@@ -187,6 +191,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
   void initState() {
     super.initState();
     _spliceController = TextEditingController();
+    _topEdgeController = TextEditingController(
+      text: _textFor(_topEdgeLengthMm(_params)),
+    );
     DisplayUnits.current.addListener(_onUnitsChanged);
     for (final field in _windowFields) {
       _controllers[field] = TextEditingController(
@@ -236,6 +243,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _syncCutoutFields(project.selected, force: windowChanged);
     _syncEdgeFields(project.selected, force: windowChanged);
     _syncAllowanceFields(project.selected, force: windowChanged);
+    _syncTopEdgeField(project.selected, force: windowChanged);
 
     // Текстовые поля обновляем только если пользователь их не редактирует:
     // иначе набранное (и область ввода IME) сбрасывается на каждом символе.
@@ -493,6 +501,57 @@ class _ParamsPanelState extends State<ParamsPanel> {
     }
   }
 
+  /// Фактическая длина наклонной верхней кромки, мм (гипотенуза).
+  double _topEdgeLengthMm(WindowParams params) {
+    final slant = params.topEdgeSlantMm;
+    return math.sqrt(
+      math.max(params.topWidth * params.topWidth + slant * slant, 0),
+    );
+  }
+
+  /// Поле «Верх (длина кромки)»: текст = наклонная длина, модель — проекция.
+  void _syncTopEdgeField(WindowParams params, {bool force = false}) {
+    _syncController(
+      _topEdgeController,
+      _topEdgeLengthMm(params),
+      force: force,
+      parser: parseMm,
+      formatter: _textFor,
+    );
+    if (force) _errors[ParamField.topWidth] = null;
+  }
+
+  /// Ввод длины наклонного верха: пересчитываем горизонтальную проекцию
+  /// `topWidth = √(длина² − перепад²)` и укладываем её в модель.
+  void _onTopEdgeChanged(String raw) {
+    final length = parseMm(raw);
+    if (length == null) {
+      setState(
+        () => _errors[ParamField.topWidth] = 'Введите число, например 1742',
+      );
+      return;
+    }
+    final slant = _params.topEdgeSlantMm;
+    if (length < slant.abs()) {
+      setState(
+        () => _errors[ParamField.topWidth] =
+            'Длина верха меньше перепада высот '
+            '${formatMm(slant.abs())} ${unitSuffix()}',
+      );
+      return;
+    }
+    if (length < 100 || length > 20000) {
+      setState(
+        () => _errors[ParamField.topWidth] =
+            'Размер от 100 до 20 000 ${unitSuffix()}, проверьте значение',
+      );
+      return;
+    }
+    final run = math.sqrt(math.max(length * length - slant * slant, 0));
+    setState(() => _errors[ParamField.topWidth] = null);
+    _updateWindow(_params.copyWith(topWidth: run));
+  }
+
   @override
   void dispose() {
     for (final controller in _controllers.values) {
@@ -577,6 +636,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
         );
       }
       _spliceController.text = _textFor(_params.spliceStripMm);
+      _topEdgeController.text = _textFor(_topEdgeLengthMm(_params));
       for (final field in _AllowanceField.values) {
         _allowanceControllers[field]?.text = _textFor(
           _allowanceValue(_params, field),
@@ -2417,7 +2477,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     };
     var four = false;
     String labelFor(String key) => switch (key) {
-      'top' => 'Ширина сверху',
+      'top' => 'Верх (длина кромки)',
       'bottom' => 'Ширина снизу',
       'left' => 'Высота слева',
       _ => 'Высота справа',
@@ -2530,7 +2590,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     Text(
                       outer == null
                           ? 'Заполните все четыре размера'
-                          : 'Наружный габарит: верх ${formatMm(outer.topWidth)}, '
+                          : 'Наружный габарит: верх (длина кромки) '
+                                '${formatMm(_outerTopEdgeLength(params, outer))}, '
                                 'низ ${formatMm(outer.bottomWidth)}, '
                                 'лево ${formatMm(outer.leftHeight)}, '
                                 'право ${formatMm(outer.rightHeight)} '
@@ -2685,7 +2746,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
             children: [
               Expanded(child: _numberField(ParamField.bottomWidth)),
               const SizedBox(width: 12),
-              Expanded(child: _numberField(ParamField.topWidth)),
+              Expanded(child: _topEdgeField()),
             ],
           ),
           Row(
@@ -2697,14 +2758,108 @@ class _ParamsPanelState extends State<ParamsPanel> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Для разных сторон заполните ширину низа/верха и высоты '
-            'слева/справа.',
+            'Низ и высоты слева/справа задаются как обычно, а верх — длина '
+            'наклонной кромки (гипотенуза). Горизонтальную проекцию программа '
+            'считает сама.',
             style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
+          const SizedBox(height: 6),
+          _edgeLengthsNote(params, spec),
         ],
         const SizedBox(height: 12),
         _allowanceSection(spec),
       ],
+    );
+  }
+
+  /// Фактические длины кромок изделия.
+  ///
+  /// Верх вводится как длина наклонной кромки (гипотенуза), а модель хранит
+  /// горизонтальную проекцию [WindowParams.topWidth]. Здесь показываем обе
+  /// величины: сколько резать по наклонной и какой перепад высот.
+  Widget _edgeLengthsNote(WindowParams params, WindowSpec spec) {
+    if (params.isSpecialShape || params.isTShape || params.isComposite) {
+      return const SizedBox.shrink();
+    }
+    final lengths = spec.geometry.sideLengths;
+    if (lengths.length < 4) return const SizedBox.shrink();
+    final bottom = lengths[0];
+    final right = lengths[1];
+    final top = lengths[2];
+    final left = lengths[3];
+    final topDrop = (params.leftHeight - params.rightHeight).abs();
+    final slantedTop = topDrop >= 0.5;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: slantedTop ? const Color(0xFFFFF7E6) : const Color(0xFFF4F7FB),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: slantedTop
+              ? const Color(0xFFF0D9A8)
+              : const Color(0xFFDCE4EF),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Фактические длины кромок',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF4B5869),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Низ ${formatMm(bottom)} ${unitSuffix()} · '
+            'Верх ${formatMm(top)} ${unitSuffix()} · '
+            'Лево ${formatMm(left)} ${unitSuffix()} · '
+            'Право ${formatMm(right)} ${unitSuffix()}',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF2B3440)),
+          ),
+          if (slantedTop) ...[
+            const SizedBox(height: 3),
+            Text(
+              'Верх наклонный: перепад высот '
+              '${formatMm(topDrop)} ${unitSuffix()}, длина кромки '
+              '${formatMm(top)} ${unitSuffix()} (ширина '
+              '${formatMm(params.topWidth)} ${unitSuffix()}).',
+              style: const TextStyle(
+                fontSize: 10.5,
+                color: Color(0xFF8E5A1E),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Поле «Верх» для трапеции: вводится длина наклонной кромки (гипотенуза).
+  Widget _topEdgeField() {
+    return TextField(
+      key: const Key('topWidth-field'),
+      controller: _topEdgeController,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        labelText: 'Верх (длина кромки)',
+        suffixText: unitSuffix(),
+        border: const OutlineInputBorder(),
+        isDense: true,
+        errorText: _errors[ParamField.topWidth],
+        errorMaxLines: 2,
+      ),
+      onChanged: _onTopEdgeChanged,
+    );
+  }
+
+  /// Наклонная длина наружного верха по горизонтальной проекции и перепаду.
+  double _outerTopEdgeLength(WindowParams params, OuterSides outer) {
+    final slant = params.topEdgeSlantMm;
+    return math.sqrt(
+      math.max(outer.topWidth * outer.topWidth + slant * slant, 0),
     );
   }
 
@@ -4169,12 +4324,15 @@ class _ParamsPanelState extends State<ParamsPanel> {
               ),
             ),
             const SizedBox(height: 6),
-            if (params.eyeletFree)
+            if (params.eyeletFree) ...[
               const Text(
                 'Люверсов на чертеже нет: ни по сторонам, ни в углах. '
                 'Замки и скобы, поставленные вручную, остаются.',
                 style: TextStyle(fontSize: 11, color: Color(0xFF9A3412)),
               ),
+              const SizedBox(height: 10),
+              _screwFasteningSection(params),
+            ],
           ],
           Text(
             'По чертежу: люверсов '
@@ -4182,6 +4340,74 @@ class _ParamsPanelState extends State<ParamsPanel> {
             '${WindowSpec.of(params).layers.fastenerPointsCount > 0 ? ', крепежа ${WindowSpec.of(params).layers.fastenerPointsCount} шт' : ''}'
             '${params.hasEyeletlessSides ? ' (без сторон: '
                       '${WindowSpec.of(params).layers.eyeletlessSidesLabel})' : ''}.',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Выбор саморезов для глухого окна без люверсов: чем крепить низ/верх/
+  /// лево/право. Кровельный цвет следует цвету канта, по дереву — золотой или
+  /// чёрный, по металлу — серебристый.
+  Widget _screwFasteningSection(WindowParams params) {
+    return _panelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Чем крепить: низ · верх · лево · право',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final type in ScrewType.values)
+                ChoiceChip(
+                  key: Key('screw-type-${type.name}'),
+                  label: Text(type.label, style: const TextStyle(fontSize: 11.5)),
+                  selected: params.screwType == type,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) =>
+                      _updateWindow(params.copyWith(screwType: type)),
+                ),
+            ],
+          ),
+          if (params.screwType == ScrewType.wood) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Text(
+                  'Цвет самореза:',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  key: const Key('screw-wood-gold'),
+                  label: const Text('Золотой', style: TextStyle(fontSize: 11.5)),
+                  selected: params.screwWoodGold,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) =>
+                      _updateWindow(params.copyWith(screwWoodGold: true)),
+                ),
+                const SizedBox(width: 6),
+                ChoiceChip(
+                  key: const Key('screw-wood-black'),
+                  label: const Text('Чёрный', style: TextStyle(fontSize: 11.5)),
+                  selected: !params.screwWoodGold,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) =>
+                      _updateWindow(params.copyWith(screwWoodGold: false)),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 6),
+          Text(
+            'Цвет самореза: ${params.screwColorLabel.toLowerCase()}'
+            '${params.screwType == ScrewType.roofing ? ' — синхронизирован с цветом канта' : ''}.',
             style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
           ),
         ],

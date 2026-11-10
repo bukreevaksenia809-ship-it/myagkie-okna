@@ -29,7 +29,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Ширина низ'), findsOneWidget);
-    expect(find.text('Ширина верх'), findsOneWidget);
+    expect(find.text('Верх (длина кромки)'), findsOneWidget);
     expect(find.text('Создать окно'), findsOneWidget);
     expect(find.text('Глухое'), findsWidgets);
     expect(find.text('Подъёмное'), findsWidgets);

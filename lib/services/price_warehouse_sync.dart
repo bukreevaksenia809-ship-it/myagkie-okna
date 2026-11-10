@@ -264,6 +264,38 @@ class PriceWarehouseSync {
         unit: StockUnit.piece,
         salePrice: p.screwPrice,
       ),
+      for (final color in EdgeColor.values)
+        _PriceProduct(
+          key: '${PriceItemKeys.screwRoofing}:${color.name}',
+          name: 'Саморез кровельный — ${color.label}',
+          category: 'Крепёж',
+          material: 'Металл',
+          color: color.label,
+          unit: StockUnit.piece,
+          salePrice: p.screwRoofingPrice,
+        ),
+      for (final (suffix, label) in [
+        ('gold', 'Золотой'),
+        ('black', 'Чёрный'),
+      ])
+        _PriceProduct(
+          key: '${PriceItemKeys.screwWood}:$suffix',
+          name: 'Саморез по дереву — $label',
+          category: 'Крепёж',
+          material: 'Металл',
+          color: label,
+          unit: StockUnit.piece,
+          salePrice: p.screwWoodPrice,
+        ),
+      _PriceProduct(
+        key: '${PriceItemKeys.screwMetal}:silver',
+        name: 'Саморез по металлу — Серебристый',
+        category: 'Крепёж',
+        material: 'Металл',
+        color: 'Серебристый',
+        unit: StockUnit.piece,
+        salePrice: p.screwMetalPrice,
+      ),
       _PriceProduct(
         key: PriceItemKeys.drain,
         name: 'Дренажное отверстие',

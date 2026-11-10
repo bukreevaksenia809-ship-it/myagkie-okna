@@ -481,6 +481,7 @@ class WindowDrawingPainter extends CustomPainter {
     _paintEyelets(canvas);
     _paintFasteners(canvas);
     _paintManualFasteners(canvas);
+    _paintScrews(canvas);
     _paintCrossbars(canvas);
     _paintFastenerSpans(canvas);
     _paintDrains(canvas);
@@ -746,6 +747,7 @@ class WindowDrawingPainter extends CustomPainter {
     _paintEyelets(canvas);
     _paintFasteners(canvas);
     _paintManualFasteners(canvas);
+    _paintScrews(canvas);
     _paintCrossbars(canvas);
 
     if (options.showDimensions) {
@@ -1024,6 +1026,7 @@ class WindowDrawingPainter extends CustomPainter {
     _paintEyelets(canvas);
     _paintFasteners(canvas);
     _paintManualFasteners(canvas);
+    _paintScrews(canvas);
     _paintCrossbars(canvas);
     _paintFastenerSpans(canvas);
     _paintDrains(canvas);
@@ -1208,6 +1211,7 @@ class WindowDrawingPainter extends CustomPainter {
     _paintEyelets(canvas);
     _paintFasteners(canvas);
     _paintManualFasteners(canvas);
+    _paintScrews(canvas);
     _paintCrossbars(canvas);
     _paintFastenerSpans(canvas);
     _paintDrains(canvas);
@@ -2970,6 +2974,48 @@ class WindowDrawingPainter extends CustomPainter {
     }
   }
 
+  /// Саморезы глухого окна по периметру (вместо люверсов).
+  void _paintScrews(Canvas canvas) {
+    final points = layers.screwPoints;
+    if (points.isEmpty) return;
+    final color = _screwColor;
+    for (final point in points) {
+      final center = layout.toPxPoint(point);
+      final radius = math.max(layout.px(3.2), 3.0);
+      final paint = Paint()
+        ..color = color
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(center, radius, paint);
+      final slot = Paint()
+        ..color = const Color(0xFF1B1F27)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.0, radius * 0.28);
+      canvas.drawLine(
+        center - Offset(radius * 0.7, radius * 0.7),
+        center + Offset(radius * 0.7, radius * 0.7),
+        slot,
+      );
+      canvas.drawLine(
+        center - Offset(radius * 0.7, -radius * 0.7),
+        center + Offset(radius * 0.7, -radius * 0.7),
+        slot,
+      );
+    }
+  }
+
+  /// Цвет самореза по его подписи (кровельный — цвет канта).
+  Color get _screwColor {
+    final label = params.screwColorLabel.toLowerCase();
+    for (final edge in EdgeColor.values) {
+      if (edge.label.toLowerCase() == label) return Color(edge.value);
+    }
+    return switch (label) {
+      'золотой' => const Color(0xFFD4AF37),
+      'серебристый' || 'оцинкованный' => const Color(0xFFC0C5CB),
+      _ => const Color(0xFF5A6675),
+    };
+  }
+
   /// Ширина полосы, на которой стоит крепёж, мм.
   ///
   /// У ПВХ это готовая (сложенная пополам) окантовка, у скрина — подворот
@@ -3693,7 +3739,8 @@ class WindowDrawingPainter extends CustomPainter {
     // Верхняя кромка горизонтальна только при равных высотах слева/справа.
     // «Ширина верх» — это горизонтальный размер между верхними углами,
     // поэтому при разных высотах его нельзя вести вдоль наклонной кромки:
-    // там длина стороны (например 1 265 мм), а не ширина (1 200 мм).
+    // там длина стороны (например 1 265 мм), а не ширина (1 200 мм). Показываем
+    // именно фактическую длину наклонной кромки — сколько резать по скату.
     final topWidthY = math.max(geometry.leftHeight, geometry.rightHeight);
     final topWidthLeft = layout.toPx(geometry.topLeft.dx, topWidthY);
     final topWidthRight = layout.toPx(geometry.topRight.dx, topWidthY);
@@ -3710,7 +3757,7 @@ class WindowDrawingPainter extends CustomPainter {
       topWidthLeft,
       topWidthRight,
       const Offset(0, -52),
-      'Ширина верх ${formatMm(geometry.topWidth)}',
+      'Верх (длина) ${formatMm(geometry.topEdgeLength)}',
     );
     _dimension(
       canvas,

@@ -320,6 +320,27 @@ class Estimate {
       );
     }
 
+    // Саморезы глухого окна по периметру (вместо люверсов).
+    for (final entry in summary.screwFasteningCount.entries) {
+      if (entry.value <= 0) continue;
+      final itemKey = PriceList.screwItemKey(entry.key);
+      if (!prices.isEnabled(itemKey)) continue;
+      lines.add(
+        EstimateLine(
+          title: entry.key.itemTitle,
+          note:
+              '${entry.value} шт × '
+              '${_unitPriceLabel(prices.screwPerEach(entry.key))} ₽/шт — '
+              'низ, верх и бока, вместо люверсов',
+          quantity: entry.value.toDouble(),
+          unit: 'шт',
+          unitPrice: prices.screwPerEach(entry.key),
+          group: EstimateGroup.hardware,
+          itemKey: itemKey,
+        ),
+      );
+    }
+
     if (summary.zipperCount > 0 &&
         summary.zipperBandLengthMm > 0 &&
         prices.isEnabled(PriceItemKeys.zipper)) {

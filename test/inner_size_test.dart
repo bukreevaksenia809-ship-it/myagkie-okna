@@ -75,16 +75,16 @@ void _fourSides() {
       leftHeight: 2000,
       rightHeight: 2100,
     );
-    final outer = outerSidesFromInner(
-      params,
-      (
-        topWidth: 1400,
-        bottomWidth: 1500,
-        leftHeight: 2000,
-        rightHeight: 2100,
-      ),
-    );
-    expect(outer.topWidth, 1400);
+    // У скрина подворот не добавляет полос, поэтому внутренний верх совпадает
+    // с наружным. Верх — наклонная кромка (гипотенуза): √(1400² + 100²).
+    final inner = innerSidesFromOuter(params);
+    expect(inner.topWidth, closeTo(1403.57, 0.01));
+    expect(inner.bottomWidth, 1500);
+    expect(inner.leftHeight, 2000);
+    expect(inner.rightHeight, 2100);
+
+    final outer = outerSidesFromInner(params, inner);
+    expect(outer.topWidth, closeTo(1400, 0.01));
     expect(outer.bottomWidth, 1500);
     expect(outer.leftHeight, 2000);
     expect(outer.rightHeight, 2100);

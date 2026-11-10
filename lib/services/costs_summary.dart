@@ -131,6 +131,15 @@ class CostsSummary {
       if (spec.params.isLifting || spec.params.isScreen) {
         screwCount += spec.layers.topEyelets.length;
       }
+      // Глухое окно без люверсов крепится саморезами по всему периметру.
+      final windowScrews = spec.screwPointCount;
+      if (windowScrews > 0) {
+        screwFasteningCount.update(
+          spec.params.screwType,
+          (value) => value + windowScrews,
+          ifAbsent: () => windowScrews,
+        );
+      }
       // Молний в окне может быть две — считаем каждую полосу отдельно,
       // иначе смета на окно с двумя молниями занижается вдвое.
       //
@@ -277,6 +286,9 @@ class CostsSummary {
 
   /// Саморезы верхнего ряда (подъёмные окна и скрин), шт.
   int screwCount = 0;
+
+  /// Саморезы глухого окна по периметру (вместо люверсов) по типам.
+  final Map<ScrewType, int> screwFasteningCount = {};
 
   int get eyeletTotal =>
       eyeletsByType.values.fold(0, (sum, value) => sum + value);

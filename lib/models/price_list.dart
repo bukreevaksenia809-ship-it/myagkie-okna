@@ -118,6 +118,11 @@ class PriceItemKeys {
   static const String frenchLock = 'frenchLock';
   static const String screw = 'screw';
 
+  // Саморезы для глухого окна (по низу/верху/бокам вместо люверсов).
+  static const String screwRoofing = 'screwRoofing';
+  static const String screwWood = 'screwWood';
+  static const String screwMetal = 'screwMetal';
+
   // Работы.
   static const String labor = 'labor';
   static const String cutting = 'cutting';
@@ -150,6 +155,9 @@ class PriceItemKeys {
     turnBuckle,
     frenchLock,
     screw,
+    screwRoofing,
+    screwWood,
+    screwMetal,
     labor,
     cutting,
     screenHem,
@@ -259,6 +267,16 @@ const double defaultFrenchLockPrice = 400;
 /// ряд крепится к раме с тем же шагом, что люверсы, но саморез дешевле
 /// люверса с установкой (65 + 25 ₽): это расходник, а не фурнитура.
 const double defaultScrewPrice = 20;
+
+/// Саморез кровельный (с уплотнительной шайбой), ₽/шт — крепёж глухого окна
+/// по низу/верху/бокам, цвет синхронизирован с цветом канта.
+const double defaultScrewRoofingPrice = 30;
+
+/// Саморез по дереву, ₽/шт — золотой или чёрный.
+const double defaultScrewWoodPrice = 18;
+
+/// Саморез по металлу, ₽/шт — оцинкованный (серебристый).
+const double defaultScrewMetalPrice = 22;
 
 /// Дренажное отверстие Ø6 мм в нижней окантовке, ₽/шт.
 const double defaultDrainPrice = 90;
@@ -378,6 +396,9 @@ class PriceList {
     this.turnBucklePrice = defaultTurnBucklePrice,
     this.frenchLockPrice = defaultFrenchLockPrice,
     this.screwPrice = defaultScrewPrice,
+    this.screwRoofingPrice = defaultScrewRoofingPrice,
+    this.screwWoodPrice = defaultScrewWoodPrice,
+    this.screwMetalPrice = defaultScrewMetalPrice,
     this.drainPrice = defaultDrainPrice,
     this.cutoutPrice = defaultCutoutPrice,
     this.laborPerM2 = defaultLaborPerM2,
@@ -451,6 +472,15 @@ class PriceList {
 
   /// Саморез верхнего ряда, ₽/шт.
   final double screwPrice;
+
+  /// Саморез кровельный (глухое окно), ₽/шт.
+  final double screwRoofingPrice;
+
+  /// Саморез по дереву (глухое окно), ₽/шт.
+  final double screwWoodPrice;
+
+  /// Саморез по металлу (глухое окно), ₽/шт.
+  final double screwMetalPrice;
 
   final double drainPrice;
   final double cutoutPrice;
@@ -642,6 +672,20 @@ class PriceList {
     FastenerType.straps => strapPrice,
   };
 
+  /// Цена самореза глухого окна по типу, ₽/шт.
+  double screwPerEach(ScrewType type) => switch (type) {
+    ScrewType.roofing => screwRoofingPrice,
+    ScrewType.wood => screwWoodPrice,
+    ScrewType.metal => screwMetalPrice,
+  };
+
+  /// Ключ позиции прайса для типа самореза.
+  static String screwItemKey(ScrewType type) => switch (type) {
+    ScrewType.roofing => PriceItemKeys.screwRoofing,
+    ScrewType.wood => PriceItemKeys.screwWood,
+    ScrewType.metal => PriceItemKeys.screwMetal,
+  };
+
   /// Цена позиции панели цен по её полю.
   ///
   /// Чужая группа возвращает 0 — панель не должна падать, если перепутает
@@ -735,6 +779,9 @@ class PriceList {
     double? turnBucklePrice,
     double? frenchLockPrice,
     double? screwPrice,
+    double? screwRoofingPrice,
+    double? screwWoodPrice,
+    double? screwMetalPrice,
     double? drainPrice,
     double? cutoutPrice,
     double? laborPerM2,
@@ -783,6 +830,9 @@ class PriceList {
       turnBucklePrice: turnBucklePrice ?? this.turnBucklePrice,
       frenchLockPrice: frenchLockPrice ?? this.frenchLockPrice,
       screwPrice: screwPrice ?? this.screwPrice,
+      screwRoofingPrice: screwRoofingPrice ?? this.screwRoofingPrice,
+      screwWoodPrice: screwWoodPrice ?? this.screwWoodPrice,
+      screwMetalPrice: screwMetalPrice ?? this.screwMetalPrice,
       drainPrice: drainPrice ?? this.drainPrice,
       cutoutPrice: cutoutPrice ?? this.cutoutPrice,
       laborPerM2: laborPerM2 ?? this.laborPerM2,
@@ -829,6 +879,9 @@ class PriceList {
     'turnBucklePrice': turnBucklePrice,
     'frenchLockPrice': frenchLockPrice,
     'screwPrice': screwPrice,
+    'screwRoofingPrice': screwRoofingPrice,
+    'screwWoodPrice': screwWoodPrice,
+    'screwMetalPrice': screwMetalPrice,
     'drainPrice': drainPrice,
     'cutoutPrice': cutoutPrice,
     'laborPerM2': laborPerM2,
@@ -911,6 +964,12 @@ class PriceList {
         fallback.frenchLockPrice,
       ),
       screwPrice: _price(json['screwPrice'], fallback.screwPrice),
+      screwRoofingPrice: _price(
+        json['screwRoofingPrice'],
+        fallback.screwRoofingPrice,
+      ),
+      screwWoodPrice: _price(json['screwWoodPrice'], fallback.screwWoodPrice),
+      screwMetalPrice: _price(json['screwMetalPrice'], fallback.screwMetalPrice),
       drainPrice: _price(json['drainPrice'], fallback.drainPrice),
       cutoutPrice: _price(json['cutoutPrice'], fallback.cutoutPrice),
       laborPerM2: _price(json['laborPerM2'], fallback.laborPerM2),

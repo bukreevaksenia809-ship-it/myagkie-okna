@@ -122,6 +122,11 @@ class OrderMaterialsService {
         itemKey == PriceItemKeys.turnBuckle) {
       return params.fastenerColor.label;
     }
+    if (itemKey == PriceItemKeys.screwRoofing ||
+        itemKey == PriceItemKeys.screwWood ||
+        itemKey == PriceItemKeys.screwMetal) {
+      return params.screwColorLabel;
+    }
     return null;
   }
 

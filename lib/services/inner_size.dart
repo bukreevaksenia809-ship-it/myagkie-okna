@@ -1,6 +1,11 @@
+import 'dart:math' as math;
+
 import '../models/window_params.dart';
 
 /// Внутренние размеры полотна по четырём сторонам, мм.
+///
+/// `topWidth` — это **длина наклонной верхней кромки** (гипотенуза), а не её
+/// горизонтальная проекция: мастер измеряет видимую плёнку именно по кромке.
 typedef InnerSides = ({
   double topWidth,
   double bottomWidth,
@@ -9,6 +14,9 @@ typedef InnerSides = ({
 });
 
 /// Наружные размеры окна по четырём сторонам, мм.
+///
+/// `topWidth` — горизонтальная проекция верхней кромки (то, что хранит
+/// [WindowParams.topWidth]); наклонная длина считается из неё и перепада высот.
 typedef OuterSides = ({
   double topWidth,
   double bottomWidth,
@@ -21,22 +29,30 @@ typedef OuterSides = ({
 /// Внутренний размер — видимая плёнка/ткань между внутренними кромками
 /// окантовки. К ширине сверху и снизу добавляются готовые полосы слева/справа,
 /// к высоте слева и справа — полосы сверху/снизу. У скрина подворот загибается
-/// внутрь, поэтому его наружный размер равен внутреннему.
+/// внутрь, поэтому полосы нулевые, а наружный размер равен внутреннему.
+///
+/// Верхний размер вводится по наклонной кромке: программа вычитает из
+/// гипотенузы перепад высот, получает горизонтальную проекцию и добавляет
+/// полосы окантовки слева/справа.
 OuterSides outerSidesFromInner(WindowParams params, InnerSides inner) {
-  if (params.isScreen) {
-    return (
-      topWidth: inner.topWidth,
-      bottomWidth: inner.bottomWidth,
-      leftHeight: inner.leftHeight,
-      rightHeight: inner.rightHeight,
-    );
-  }
-  final left = WindowParams.finishedEdgeWidth(params.rollLeft);
-  final right = WindowParams.finishedEdgeWidth(params.rollRight);
-  final top = WindowParams.finishedEdgeWidth(params.rollTop);
-  final bottom = WindowParams.finishedEdgeWidth(params.rollBottom);
+  final left = params.isScreen
+      ? 0.0
+      : WindowParams.finishedEdgeWidth(params.rollLeft);
+  final right = params.isScreen
+      ? 0.0
+      : WindowParams.finishedEdgeWidth(params.rollRight);
+  final top = params.isScreen
+      ? 0.0
+      : WindowParams.finishedEdgeWidth(params.rollTop);
+  final bottom = params.isScreen
+      ? 0.0
+      : WindowParams.finishedEdgeWidth(params.rollBottom);
+  final slant = params.topEdgeSlantMm;
+  final innerRun = math.sqrt(
+    math.max(inner.topWidth * inner.topWidth - slant * slant, 0),
+  );
   return (
-    topWidth: inner.topWidth + left + right,
+    topWidth: innerRun + left + right,
     bottomWidth: inner.bottomWidth + left + right,
     leftHeight: inner.leftHeight + top + bottom,
     rightHeight: inner.rightHeight + top + bottom,
@@ -44,22 +60,29 @@ OuterSides outerSidesFromInner(WindowParams params, InnerSides inner) {
 }
 
 /// Наружный габарит → внутренние размеры по четырём сторонам.
+///
+/// Верхний внутренний размер возвращается как длина наклонной кромки.
 InnerSides innerSidesFromOuter(WindowParams params) {
-  if (params.isScreen) {
-    return (
-      topWidth: params.topWidth,
-      bottomWidth: params.bottomWidth,
-      leftHeight: params.leftHeight,
-      rightHeight: params.rightHeight,
-    );
-  }
-  final left = WindowParams.finishedEdgeWidth(params.rollLeft);
-  final right = WindowParams.finishedEdgeWidth(params.rollRight);
-  final top = WindowParams.finishedEdgeWidth(params.rollTop);
-  final bottom = WindowParams.finishedEdgeWidth(params.rollBottom);
+  final left = params.isScreen
+      ? 0.0
+      : WindowParams.finishedEdgeWidth(params.rollLeft);
+  final right = params.isScreen
+      ? 0.0
+      : WindowParams.finishedEdgeWidth(params.rollRight);
+  final top = params.isScreen
+      ? 0.0
+      : WindowParams.finishedEdgeWidth(params.rollTop);
+  final bottom = params.isScreen
+      ? 0.0
+      : WindowParams.finishedEdgeWidth(params.rollBottom);
   double positive(double value) => value < 1 ? 1 : value;
+  final slant = params.topEdgeSlantMm;
+  final innerRun = positive(params.topWidth - left - right);
+  final innerTop = math.sqrt(
+    math.max(innerRun * innerRun + slant * slant, 0),
+  );
   return (
-    topWidth: positive(params.topWidth - left - right),
+    topWidth: innerTop,
     bottomWidth: positive(params.bottomWidth - left - right),
     leftHeight: positive(params.leftHeight - top - bottom),
     rightHeight: positive(params.rightHeight - top - bottom),

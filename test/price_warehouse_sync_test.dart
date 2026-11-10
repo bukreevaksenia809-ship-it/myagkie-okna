@@ -52,6 +52,37 @@ void main() {
       isTrue,
     );
     expect(products.any((p) => p.priceKey == 'crossbar'), isTrue);
+    // Саморезы глухого окна: кровельный (все цвета), по дереву, по металлу.
+    for (final key in [
+      PriceItemKeys.screwRoofing,
+      PriceItemKeys.screwWood,
+      PriceItemKeys.screwMetal,
+    ]) {
+      expect(
+        products.any((p) => catalogBasePriceKey(p.priceKey) == key),
+        isTrue,
+        reason: key,
+      );
+    }
+    expect(
+      products
+          .where(
+            (p) =>
+                catalogBasePriceKey(p.priceKey) == PriceItemKeys.screwRoofing,
+          )
+          .length,
+      6,
+      reason: 'кровельный саморез — все 6 цветов канта',
+    );
+    expect(
+      products
+          .where(
+            (p) => catalogBasePriceKey(p.priceKey) == PriceItemKeys.screwWood,
+          )
+          .length,
+      2,
+      reason: 'саморез по дереву — золотой и чёрный',
+    );
 
     final again = await sync.sync(const PriceList.defaults());
     expect(again, 0);

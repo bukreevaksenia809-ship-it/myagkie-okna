@@ -205,6 +205,8 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
   // Тумблер «Круглые люверсы в углах» (по умолчанию включён).
   'roundEyeletsEnabled': p.roundEyeletsEnabled,
   'fastenerType': p.fastenerType.name,
+  'screwType': p.screwType.name,
+  'screwWoodGold': p.screwWoodGold,
   'zippers': [for (final zipper in p.zippers) zipper.toJson()],
   'doorEnabled': p.doorEnabled,
   'doorWidthMm': p.doorWidthMm,
@@ -380,6 +382,12 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
       json['fastenerType'],
       fallback.fastenerType,
     ),
+    screwType: _enumByName(
+      ScrewType.values,
+      json['screwType'],
+      fallback.screwType,
+    ),
+    screwWoodGold: _bool(json['screwWoodGold'], fallback.screwWoodGold),
     zippers: _zippersFromJson(json),
     doorEnabled: json['doorEnabled'] == true,
     doorWidthMm: _double(json['doorWidthMm'], 800).clamp(300, 3000),

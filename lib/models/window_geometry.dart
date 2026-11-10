@@ -870,6 +870,17 @@ class WindowGeometry {
   /// Длина окантовки по наружному контуру (без запаса на стыки).
   double get perimeter => sideLengths.reduce((a, b) => a + b);
 
+  /// Фактическая длина верхней кромки, мм.
+  ///
+  /// У простого четырёхугольника это третий отрезок обхода углов
+  /// (низ → право → верх → лево). Когда высоты слева/справа разные, верхняя
+  /// кромка наклонная и её длина больше горизонтальной проекции
+  /// [topWidth] — это «гипотенуза» наклонного верха.
+  double get topEdgeLength {
+    final lengths = sideLengths;
+    return lengths.length > 2 ? lengths[2] : topWidth;
+  }
+
   double get areaMm2 => polygonArea(corners).abs();
 
   double get areaM2 => areaMm2 / 1000000;
@@ -1228,6 +1239,46 @@ class WindowLayers {
 
   /// Наружная граница (внешний контур окна).
   List<Offset> get outer => geometry.corners;
+
+  /// Точки саморезов по периметру глухого окна (вместо люверсов), мм.
+  ///
+  /// Саморез ставится в каждом углу и равномерно по каждой кромке с шагом
+  /// [WindowParams.eyeletStep]. Для наклонного верха точки идут вдоль самой
+  /// кромки, поэтому расход считается по фактической длине.
+  List<Offset> get screwPoints {
+    if (!params.eyeletFree) return const [];
+    final pts = outer;
+    if (pts.length < 3) return const [];
+    final requested = params.eyeletStep;
+    final step = requested.isFinite && requested >= minEyeletStepMm
+        ? requested
+        : minEyeletStepMm;
+    final result = <Offset>[];
+    for (var i = 0; i < pts.length; i++) {
+      final a = pts[i];
+      final b = pts[(i + 1) % pts.length];
+      final length = (b - a).distance;
+      if (length < 1) continue;
+      final intervals = math.max(1, (length / step).ceil());
+      for (var k = 0; k <= intervals; k++) {
+        if (k == 0) {
+          if (i == 0) result.add(a);
+          continue;
+        }
+        if (k == intervals) continue;
+        result.add(a + (b - a) * (k / intervals));
+      }
+    }
+    for (final point in pts) {
+      if (!result.any((existing) => (existing - point).distance < 1)) {
+        result.add(point);
+      }
+    }
+    return result;
+  }
+
+  /// Сколько саморезов ставится по периметру глухого окна без люверсов.
+  int get screwPointCount => screwPoints.length;
 
   /// Ширины рулонов окантовки по сторонам в порядке обхода:
   /// низ, право, верх, лево (мм). У скрина окантовки нет — нули.
@@ -3514,6 +3565,14 @@ class WindowSpec {
 
   /// Люверсы без скоб/замков — столько ставится именно люверсов.
   int get standaloneEyeletCount => layers.standaloneEyelets.length;
+
+  /// Сколько саморезов ставится по периметру глухого окна, когда люверсы
+  /// убраны («Убрать все люверсы»). Считается по фактическим длинам кромок
+  /// с тем же интервалом, что и люверсы.
+  int get screwPointCount => layers.screwPointCount;
+
+  /// Точки саморезов по периметру глухого окна (вместо люверсов), мм.
+  List<Offset> get screwPoints => layers.screwPoints;
 
   double? get eyeletStepMin =>
       layers.eyeletSteps.isEmpty ? null : layers.eyeletSteps.reduce(math.min);

@@ -524,6 +524,21 @@ enum FastenerType {
   };
 }
 
+/// Тип самореза, которым глухое окно крепится к раме по сторонам
+/// (низ/верх/лево/право), когда люверсы убраны кнопкой «Убрать все люверсы».
+enum ScrewType {
+  roofing('Кровельный', 'Саморез кровельный'),
+  wood('По дереву', 'Саморез по дереву'),
+  metal('По металлу', 'Саморез по металлу');
+
+  const ScrewType(this.label, this.itemTitle);
+
+  final String label;
+
+  /// Название в единственном числе для сметы и склада.
+  final String itemTitle;
+}
+
 /// Как расположена верхняя кромка относительно нижней.
 enum TopAlign {
   center,
@@ -1077,6 +1092,8 @@ class WindowParams {
     this.eyeletCornerOffset = 0,
     this.roundEyeletsEnabled = true,
     this.fastenerType = FastenerType.turnBuckles,
+    this.screwType = ScrewType.roofing,
+    this.screwWoodGold = true,
     this.zippers = const [],
     this.zipperSegments = true,
     this.doorEnabled = false,
@@ -1405,6 +1422,24 @@ class WindowParams {
   /// Чем крепятся подвижные стороны (низ и бока).
   final FastenerType fastenerType;
 
+  /// Тип самореза для крепления глухого окна, когда люверсы убраны
+  /// («Убрать все люверсы»). Кровельный цвет следует цвету канта, по дереву —
+  /// золотой/чёрный, по металлу — серебристый.
+  final ScrewType screwType;
+
+  /// Цвет самореза по дереву: true — золотой, false — чёрный.
+  final bool screwWoodGold;
+
+  /// Цвет самореза, который реально ставится.
+  ///
+  /// Кровельный синхронизируется с цветом канта, поэтому при смене канта
+  /// саморез меняет цвет автоматически.
+  String get screwColorLabel => switch (screwType) {
+    ScrewType.roofing => edgeColor.label,
+    ScrewType.wood => screwWoodGold ? 'Золотой' : 'Чёрный',
+    ScrewType.metal => 'Серебристый',
+  };
+
   // Спецэлементы
   /// Молнии: каждая ставится отдельной кнопкой, все вертикальные.
   final List<ZipperSpec> zippers;
@@ -1580,6 +1615,19 @@ class WindowParams {
   double get effectiveTopWidth => topWidth + allowanceWidthMm;
   double get effectiveLeftHeight => leftHeight + effectiveAllowanceHeightMm;
   double get effectiveRightHeight => rightHeight + effectiveAllowanceHeightMm;
+
+  /// Вертикальный перепад верхней кромки, мм.
+  ///
+  /// Верхняя кромка наклонена, когда высоты слева и справа разные. Величина
+  /// наклона зависит от режима «Ровно»: при «низ ровно» это `право − лево`,
+  /// при «верх ровно» кромка горизонтальна (0), при «нет» перепад делится
+  /// пополам. По этому перепаду и горизонтальной проекции считается
+  /// фактическая длина наклонного верха (гипотенуза).
+  double get topEdgeSlantMm => switch (levelEdge) {
+    LevelEdge.bottom => rightHeight - leftHeight,
+    LevelEdge.top => 0,
+    LevelEdge.none => (rightHeight - leftHeight) / 2,
+  };
 
   /// Тип люверса, который реально ставится.
   ///
@@ -1889,6 +1937,8 @@ class WindowParams {
     double? eyeletCornerOffset,
     bool? roundEyeletsEnabled,
     FastenerType? fastenerType,
+    ScrewType? screwType,
+    bool? screwWoodGold,
     List<ZipperSpec>? zippers,
     bool? zipperSegments,
     bool? doorEnabled,
@@ -1978,6 +2028,8 @@ class WindowParams {
       eyeletCornerOffset: eyeletCornerOffset ?? this.eyeletCornerOffset,
       roundEyeletsEnabled: roundEyeletsEnabled ?? this.roundEyeletsEnabled,
       fastenerType: fastenerType ?? this.fastenerType,
+      screwType: screwType ?? this.screwType,
+      screwWoodGold: screwWoodGold ?? this.screwWoodGold,
       zippers: zippers ?? this.zippers,
       zipperSegments: zipperSegments ?? this.zipperSegments,
       doorEnabled: doorEnabled ?? this.doorEnabled,
@@ -2362,6 +2414,8 @@ class WindowParams {
     hemTopMm,
     hemLeftMm,
     fastenerType.name,
+    screwType.name,
+    screwWoodGold,
     for (final zipper in zippers)
       '${zipper.centered}:${zipper.offsetMm}:${zipper.bandWidth}',
     doorEnabled,
