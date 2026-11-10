@@ -127,8 +127,7 @@ jobs:
           if-no-files-found: error
   windows:
     name: Windows (.exe)
-    # Windows собирается независимо от baseline-тестов: в проекте есть
-    # унаследованные падающие тесты, но артефакт .exe нужен для выпуска.
+    needs: test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
