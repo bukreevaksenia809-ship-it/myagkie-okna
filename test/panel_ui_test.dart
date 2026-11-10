@@ -770,13 +770,12 @@ void _levelEdgePanelRules() {
     expect(geometry.topRight.dy, closeTo(1200, 1e-9));
     expect(geometry.areaM2, closeTo(1.44, 1e-9));
 
-    // Ширины 1200/1000: выбранная горизонтальная кромка остаётся
-    // горизонтальной, разница уходит в боковые кромки (верх по центру).
+    // Высоты 1200/1200: при смене «Ровно» проекция невыровненной кромки
+    // сбрасывается на ширину опорной (боковины вертикальные). Поэтому после
+    // любого переключения остаётся прямоугольник 1200 × 1200.
     await tester.enterText(find.byKey(const Key('leftHeight-field')), '1200');
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('rightHeight-field')), '1200');
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('topWidth-field')), '1000');
     await tester.pumpAndSettle();
 
     for (final key in const [
@@ -791,7 +790,7 @@ void _levelEdgePanelRules() {
       expect(geometry.bottomLeft.dy, geometry.bottomRight.dy);
       expect(geometry.topLeft.dy, geometry.topRight.dy);
       expect(geometry.spanX, closeTo(1200, 1e-9));
-      expect(geometry.areaM2, closeTo(1.32, 1e-9));
+      expect(geometry.areaM2, closeTo(1.44, 1e-9));
       expect(tester.takeException(), isNull);
     }
   });

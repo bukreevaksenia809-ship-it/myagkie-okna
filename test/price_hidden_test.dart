@@ -5,6 +5,8 @@
 //   • своё название видно в смете;
 //   • удалённый товар склада запоминается и не возвращается синком;
 //   • «Восстановить» возвращает позицию.
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soft_window_drawer/data/app_database.dart';
 import 'package:soft_window_drawer/data/warehouse_repository.dart';
@@ -202,6 +204,40 @@ void main() {
       final after = await warehouse.products(includeArchived: true);
       expect(after, hasLength(before.length - 1));
       expect(after.any((product) => product.id == colored.id), isFalse);
+    });
+
+    test('миграция 3 → 4 создаёт таблицу скрытых ключей', () async {
+      final dir = await Directory.systemTemp.createTemp('swd_v3_');
+      final path = '${dir.path}/v3.sqlite';
+      final factory = databaseFactoryFfi;
+      try {
+        final old = await factory.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: 3,
+            onCreate: (db, version) async {
+              await db.execute(
+                'CREATE TABLE app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+              );
+            },
+          ),
+        );
+        await old.close();
+        database.configureForTesting(factory, path);
+        await database.open();
+        final tables = await (await database.database).rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='hidden_price_keys'",
+        );
+        expect(tables, isNotEmpty);
+        await warehouse.hidePriceKey(PriceItemKeys.filmClear);
+        expect(
+          await warehouse.hiddenPriceKeys(),
+          contains(PriceItemKeys.filmClear),
+        );
+      } finally {
+        await database.close();
+        await dir.delete(recursive: true);
+      }
     });
 
     test('restoreAllPriceKeys возвращает все скрытые ключи', () async {
