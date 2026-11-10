@@ -6,6 +6,7 @@ import 'package:soft_window_drawer/models/order_project.dart';
 import 'package:soft_window_drawer/models/warehouse.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/services/bulk_materials.dart';
+import 'package:soft_window_drawer/services/catalog_index.dart';
 import 'package:soft_window_drawer/services/estimate.dart';
 import 'package:soft_window_drawer/services/order_materials.dart';
 import 'package:soft_window_drawer/services/price_warehouse_sync.dart';
@@ -115,10 +116,15 @@ void main() {
   });
 
   test('остаток и дефицит считаются по складу', () async {
+    final eyelet = (await warehouse.products()).firstWhere(
+      (product) =>
+          catalogBasePriceKey(product.priceKey) == PriceItemKeys.eyeletRound &&
+          product.color == 'Коричневый',
+    );
     await warehouse.perform(
-      const StockOperation(
+      StockOperation(
         type: StockMoveType.receipt,
-        productId: 'price-eyeletRound',
+        productId: eyelet.id,
         quantity: 10,
         unitCost: 5,
       ),

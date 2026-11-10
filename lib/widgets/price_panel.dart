@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../models/price_list.dart';
+import '../models/warehouse.dart';
 import '../models/window_params.dart';
+import '../services/catalog_index.dart';
+import 'catalog/grouped_catalog_picker.dart';
 import 'material_thumb.dart';
 
 /// Раздел «Прайс-лист»: цены материалов, фурнитуры и работ для сметы.
@@ -15,10 +18,15 @@ class PricePanel extends StatefulWidget {
     required this.prices,
     required this.onChanged,
     this.materials = const [],
+    this.loadProducts,
   });
 
   final PriceList prices;
   final ValueChanged<PriceList> onChanged;
+
+  /// Откуда взять номенклатуру склада для группового выбора. null — кнопка
+  /// выбора скрыта (так панель используют тесты без базы).
+  final Future<List<WarehouseProduct>> Function()? loadProducts;
 
   /// Материалы заказа: по ним показываем превью ПВХ/скрина и продающие
   /// подписи. Пустой список — панель без превью (так её используют тесты,
@@ -33,6 +41,7 @@ class _PricePanelState extends State<PricePanel> {
   final _controllers = <String, TextEditingController>{};
   final _customControllers = <String, TextEditingController>{};
   bool _open = false;
+  CatalogItem? _pickedCatalog;
 
   @override
   void dispose() {
@@ -91,6 +100,8 @@ class _PricePanelState extends State<PricePanel> {
           _materialsPreview(),
           if (_open) ...[
             const SizedBox(height: 10),
+            _catalogBar(),
+            if (_pickedCatalog != null) const SizedBox(height: 6),
             _group('Полотно, ₽/м²', [
               _row(
                 'Обычный ПВХ',
@@ -655,6 +666,156 @@ class _PricePanelState extends State<PricePanel> {
         ],
       ),
     );
+  }
+
+  /// Выбор позиции склада по цвету: цена подставляется в свою строку прайса.
+  Widget _catalogBar() {
+    if (widget.loadProducts == null) return const SizedBox.shrink();
+    final picked = _pickedCatalog;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OutlinedButton.icon(
+          key: const Key('price-catalog-pick'),
+          style: OutlinedButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            alignment: Alignment.centerLeft,
+          ),
+          onPressed: _pickCatalog,
+          icon: const Icon(Icons.category_outlined, size: 17),
+          label: const Text(
+            'Выбрать из номенклатуры склада',
+            style: TextStyle(fontSize: 11.5),
+          ),
+        ),
+        if (picked != null)
+          Row(
+            children: [
+              CatalogSwatch(color: picked.swatch),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '${picked.product.name} · '
+                  '${formatRubles(picked.product.salePrice)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF4B5869),
+                  ),
+                ),
+              ),
+              IconButton(
+                key: const Key('price-catalog-clear'),
+                tooltip: 'Сбросить выбранную позицию',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => _pickedCatalog = null),
+                icon: const Icon(Icons.close, size: 15),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Future<void> _pickCatalog() async {
+    final loader = widget.loadProducts;
+    if (loader == null) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    List<WarehouseProduct> products;
+    try {
+      products = await loader();
+    } catch (error) {
+      messenger?.showSnackBar(
+        SnackBar(content: Text('Не удалось прочитать склад: $error')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    final items = CatalogItem.fromProducts(products);
+    if (items.isEmpty) {
+      messenger?.showSnackBar(
+        const SnackBar(
+          content: Text('Склад пуст — сначала заполните номенклатуру.'),
+        ),
+      );
+      return;
+    }
+    final picked = await GroupedCatalogPicker.show(
+      context,
+      items: items,
+      title: 'Позиция склада для прайса',
+      selectedId: _pickedCatalog?.id,
+      initialCategory: 'Окантовка',
+      showProductName: true,
+      pickerKey: 'price-catalog',
+    );
+    if (!mounted || picked == null) return;
+    final next = _priceWithCatalogItem(widget.prices, picked);
+    if (next == null) {
+      messenger?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Для этой позиции нет строки прайса — выберите материал, '
+            'окантовку или фурнитуру.',
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() => _pickedCatalog = picked);
+    _set(next);
+  }
+
+  /// Подставляет цену выбранной складской позиции в соответствующую строку
+  /// прайса. Цвет не хранится в PriceList: у прайса одна цена на позицию.
+  PriceList? _priceWithCatalogItem(PriceList prices, CatalogItem item) {
+    final product = item.product;
+    if (!product.salePrice.isFinite || product.salePrice <= 0) return null;
+    final base = catalogBasePriceKey(product.priceKey);
+    final key = base.isNotEmpty
+        ? base
+        : PriceList.edgeItemKey(product.widthMm) ?? '';
+    final value = product.salePrice;
+    return switch (key) {
+      PriceItemKeys.filmClear => prices.copyWith(filmClearPerM2: value),
+      PriceItemKeys.filmTinted => prices.copyWith(filmTintedPerM2: value),
+      PriceItemKeys.filmMesh => prices.copyWith(filmMeshPerM2: value),
+      PriceItemKeys.filmScreen => prices.copyWith(filmScreenPerM2: value),
+      PriceItemKeys.edge80 => prices.copyWith(edge80PerM: value),
+      PriceItemKeys.edge100 => prices.copyWith(edge100PerM: value),
+      PriceItemKeys.edge120 => prices.copyWith(edge120PerM: value),
+      PriceItemKeys.edge150 => prices.copyWith(edge150PerM: value),
+      PriceItemKeys.edge200 => prices.copyWith(edge200PerM: value),
+      PriceItemKeys.edge240 => prices.copyWith(edge240PerM: value),
+      PriceItemKeys.eyeletRound => prices.copyWith(
+        eyeletPrice: _withoutInstall(prices, value),
+      ),
+      PriceItemKeys.eyeletOval => prices.copyWith(
+        eyeletOvalPrice: _withoutInstall(prices, value),
+      ),
+      PriceItemKeys.zipper => prices.copyWith(zipperPerM: value),
+      PriceItemKeys.pocket => prices.copyWith(pocketPerM: value),
+      PriceItemKeys.strap => prices.copyWith(strapPrice: value),
+      PriceItemKeys.aluminumBox => prices.copyWith(aluminumBoxPerM: value),
+      PriceItemKeys.turnBuckle => prices.copyWith(turnBucklePrice: value),
+      PriceItemKeys.frenchLock => prices.copyWith(frenchLockPrice: value),
+      PriceItemKeys.screw => prices.copyWith(screwPrice: value),
+      PriceItemKeys.drain => prices.copyWith(drainPrice: value),
+      'crossbar' => prices.copyWith(crossbarPerM: value),
+      'beam' => prices.copyWith(beamPerM: value),
+      'decorBeam' => prices.copyWith(decorBeamPerM: value),
+      'zip' => prices.copyWith(zipPerM2: value),
+      'shadowSail' => prices.copyWith(shadowSailPerM2: value),
+      'romanAwning' => prices.copyWith(romanAwningPerM2: value),
+      _ => null,
+    };
+  }
+
+  double _withoutInstall(PriceList prices, double salePrice) {
+    if (!prices.isEnabled(PriceItemKeys.eyeletInstall)) return salePrice;
+    final value = salePrice - prices.eyeletInstall;
+    return value < 0 ? 0 : value;
   }
 
   Widget _group(String title, List<Widget> children) {

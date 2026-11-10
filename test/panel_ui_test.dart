@@ -583,6 +583,19 @@ void _rollWidthsAndEyeletsPanelRules() {
     expect(find.textContaining('без сторон: низ и верх'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
+    // --- «Убрать все люверсы»: глухое окно, повторное нажатие возвращает ---
+    final allEyelets = find.byKey(const Key('no-eyelets-all'));
+    await tester.ensureVisible(allEyelets);
+    await tester.tap(allEyelets);
+    await tester.pumpAndSettle();
+    expect(hostKey.currentState!.project.selected.eyeletFree, isTrue);
+    expect(find.text('Вернуть автоматическую расстановку'), findsOneWidget);
+    await tester.ensureVisible(allEyelets);
+    await tester.tap(allEyelets);
+    await tester.pumpAndSettle();
+    expect(hostKey.currentState!.project.selected.eyeletFree, isFalse);
+    expect(find.text('Убрать все люверсы'), findsOneWidget);
+
     // --- Овальный люверс доступен на любом окне (скрине) ---
     final ovalChip = find.text('Овальный 42×22 мм');
     await tester.ensureVisible(ovalChip);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/order_project.dart';
+import '../models/window_geometry.dart';
 import '../models/window_params.dart';
 import '../services/company_branding.dart';
 import '../services/estimate.dart';
@@ -253,15 +254,31 @@ class EstimateSheet extends StatelessWidget {
           // Длинное ИТОГО не обрезается и не ломает строку: при нехватке
           // ширины плашка контролируемо ужимается.
           Flexible(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerRight,
-              child: _text(
-                'Окон в заказе: ${project.windowCount}   ·   '
-                'ИТОГО: ${formatRubles(estimate.total)}',
-                size: _captionInfoFontSize,
-                color: Colors.white70,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: _text(
+                    'Окон в заказе: ${project.windowCount}   ·   '
+                    'ИТОГО: ${formatRubles(estimate.total)}',
+                    size: _captionInfoFontSize,
+                    color: Colors.white70,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: _text(
+                    _configurationSummary(project),
+                    size: 14,
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -457,6 +474,40 @@ class EstimateSheet extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Цвета и типы изделий одной строкой в шапке сметы.
+  ///
+  /// Шапка имеет фиксированную высоту, поэтому строка ужимается FittedBox:
+  /// даже заказ из разных цветов и типов не ломает A4.
+  String _configurationSummary(OrderProject project) {
+    if (project.windows.isEmpty) return 'Нет окон в заказе';
+    final types = <String, int>{};
+    final edges = <String>{};
+    final eyelets = <String>{};
+    final fasteners = <String>{};
+    for (final window in project.windows) {
+      types.update(
+        window.windowType.label,
+        (value) => value + 1,
+        ifAbsent: () => 1,
+      );
+      final spec = WindowSpec.of(window);
+      if (!spec.params.isScreen) {
+        edges.add(spec.params.edgeColor.label.toLowerCase());
+      }
+      eyelets.add(spec.params.eyeletColor.label.toLowerCase());
+      fasteners.add(
+        '${spec.params.fastenerType.itemTitle.toLowerCase()} '
+        '(${spec.params.fastenerColor.label.toLowerCase()})',
+      );
+    }
+    final typeText = types.entries
+        .map((entry) => '${entry.key} ×${entry.value}')
+        .join(', ');
+    return 'Типы: $typeText · Кант: '
+        '${edges.isEmpty ? 'подворот' : edges.join(', ')} · Люверсы: '
+        '${eyelets.join(', ')} · Фурнитура: ${fasteners.join(', ')}';
   }
 
   // --------------------------------------------------------------- итоги

@@ -20,6 +20,7 @@ import 'warehouse/bulk_materials_dialog.dart';
 import 'warehouse/order_materials_dialog.dart';
 import 'warehouse/product_editor.dart';
 import '../services/cost_catalog.dart';
+import 'catalog/grouped_catalog_picker.dart';
 import 'cost_catalog_dialog.dart';
 
 /// Открывает склад как отдельный экран (для старых точек входа).
@@ -106,7 +107,13 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
   Future<void> _openCostCatalog() async {
     final catalog = await CostCatalog.instance.load();
     if (!mounted) return;
-    final result = await showCostCatalogDialog(context, catalog);
+    final result = await showCostCatalogDialog(
+      context,
+      catalog,
+      catalogItems: CatalogItem.fromStocks(
+        _snapshot?.stocks ?? const <WarehouseStock>[],
+      ),
+    );
     if (!mounted || result == null) return;
     await result.save();
     if (!mounted) return;
@@ -120,6 +127,9 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
       context,
       catalog,
       firstRun: true,
+      catalogItems: CatalogItem.fromStocks(
+        _snapshot?.stocks ?? const <WarehouseStock>[],
+      ),
     );
     if (!mounted || result == null) return;
     await result.save();

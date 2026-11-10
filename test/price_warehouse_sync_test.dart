@@ -8,6 +8,7 @@ import 'package:soft_window_drawer/models/crossbar.dart';
 import 'package:soft_window_drawer/models/price_list.dart';
 import 'package:soft_window_drawer/models/window_params.dart';
 import 'package:soft_window_drawer/models/warehouse.dart';
+import 'package:soft_window_drawer/services/catalog_index.dart';
 import 'package:soft_window_drawer/services/order_materials.dart';
 import 'package:soft_window_drawer/services/price_warehouse_sync.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -38,9 +39,16 @@ void main() {
     expect(products, hasLength(created));
     expect(products.any((p) => p.priceKey == PriceItemKeys.filmClear), isTrue);
     expect(products.any((p) => p.priceKey == PriceItemKeys.filmScreen), isTrue);
-    expect(products.any((p) => p.priceKey == PriceItemKeys.edge100), isTrue);
     expect(
-      products.any((p) => p.priceKey == PriceItemKeys.eyeletRound),
+      products.any(
+        (p) => catalogBasePriceKey(p.priceKey) == PriceItemKeys.edge100,
+      ),
+      isTrue,
+    );
+    expect(
+      products.any(
+        (p) => catalogBasePriceKey(p.priceKey) == PriceItemKeys.eyeletRound,
+      ),
       isTrue,
     );
     expect(products.any((p) => p.priceKey == 'crossbar'), isTrue);
@@ -116,7 +124,9 @@ void main() {
     );
     expect(
       plan.needs.any(
-        (need) => keys[need.productId] == PriceItemKeys.eyeletRound,
+        (need) =>
+            catalogBasePriceKey(keys[need.productId] ?? '') ==
+            PriceItemKeys.eyeletRound,
       ),
       isTrue,
     );
@@ -150,7 +160,10 @@ void main() {
       for (final product in await warehouse.products())
         product.id: product.priceKey,
     };
-    final neededKeys = {for (final need in plan.needs) keys[need.productId]};
+    final neededKeys = {
+      for (final need in plan.needs)
+        catalogBasePriceKey(keys[need.productId] ?? ''),
+    };
     expect(neededKeys, contains(PriceItemKeys.pocket));
     expect(neededKeys, contains(PriceItemKeys.edge120));
     expect(neededKeys, contains('crossbar'));

@@ -2,6 +2,7 @@ import 'package:sqflite_common/sqlite_api.dart';
 
 import '../data/app_database.dart';
 import '../data/warehouse_repository.dart';
+import 'catalog_index.dart';
 import '../models/price_list.dart';
 import '../models/window_params.dart';
 import '../models/warehouse.dart';
@@ -20,7 +21,7 @@ class PriceWarehouseSync {
   final AppDatabase _database;
   final WarehouseRepository _warehouse;
 
-  static const String _seedKey = 'price_warehouse_seed_v3';
+  static const String _seedKey = 'price_warehouse_seed_v4';
 
   /// Один раз при первом запуске 2.1: добавляет материалы прайса в пустой
   /// или старый склад. Повторно не навязывает позиции.
@@ -44,12 +45,54 @@ class PriceWarehouseSync {
   /// Добавляет недостающие позиции прайса. Возвращает число созданных.
   Future<int> sync(PriceList prices, {bool updatePrices = false}) async {
     final existing = await _warehouse.products(includeArchived: true);
+    final definitions = _definitions(prices);
     final byKey = {
       for (final product in existing)
         if (product.priceKey.isNotEmpty) product.priceKey: product,
     };
+    // Старые установки до цветных позиций: у строки базовый ключ `edge100`
+    // без цвета. Привязываем её к подходящему цвету (остатки и закупочная
+    // цена сохраняются), иначе на складе появятся видимые дубли.
+    final byBase = <String, List<_PriceProduct>>{};
+    for (final definition in definitions) {
+      byBase
+          .putIfAbsent(catalogBasePriceKey(definition.key), () => [])
+          .add(definition);
+    }
+    for (final product in [...existing]) {
+      final key = product.priceKey.trim();
+      if (key.isEmpty) continue;
+      if (key.contains(':')) continue;
+      final targets = byBase[key];
+      if (targets == null || targets.isEmpty) continue;
+      final target = targets.firstWhere(
+        (definition) =>
+            normalizeCatalogColor(definition.color) ==
+            normalizeCatalogColor(product.color),
+        orElse: () => targets.first,
+      );
+      // Обычная одноцветная позиция: ключ уже совпадает с определением.
+      if (target.key == key) continue;
+      if (byKey.containsKey(target.key)) {
+        // Цветная строка уже есть: старую базовую убираем в архив.
+        await _warehouse.archiveProduct(product.id, true);
+        continue;
+      }
+      final converted = product.copyWith(
+        priceKey: target.key,
+        name: target.name,
+        category: target.category,
+        material: target.material,
+        color: target.color,
+        unit: target.unit,
+        widthMm: target.widthMm,
+        salePrice: target.salePrice,
+      );
+      final result = await _warehouse.saveProduct(converted);
+      if (result.ok) byKey[target.key] = converted;
+    }
     var created = 0;
-    for (final definition in _definitions(prices)) {
+    for (final definition in definitions) {
       final product =
           byKey[definition.key] ?? _matchByName(existing, definition);
       if (product == null) {

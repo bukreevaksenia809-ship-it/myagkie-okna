@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../models/warehouse.dart';
+import '../../services/catalog_index.dart';
+import '../catalog/grouped_catalog_picker.dart';
 import '../design/app_kit.dart';
 
 /// Ведомость инвентаризации: фактический остаток по каждой позиции.
@@ -30,6 +32,8 @@ class _InventoryDialogState extends State<_InventoryDialog> {
   final _search = TextEditingController();
   String _query = '';
   final Set<String> _expandedGroups = {};
+  String? _selectedProductId;
+  CatalogItem? _pickedCatalog;
 
   @override
   void initState() {
@@ -65,6 +69,8 @@ class _InventoryDialogState extends State<_InventoryDialog> {
     return [
       for (final stock in widget.snapshot.stocks)
         if (!stock.product.archived &&
+            (_selectedProductId == null ||
+                stock.product.id == _selectedProductId) &&
             (query.isEmpty ||
                 '${stock.product.name} ${stock.product.category} '
                         '${stock.product.location}'
@@ -72,6 +78,70 @@ class _InventoryDialogState extends State<_InventoryDialog> {
                     .contains(query)))
           stock,
     ];
+  }
+
+  /// Фильтр по цветной позиции: выбор через общее дерево номенклатуры.
+  Widget _catalogBar() {
+    final picked = _pickedCatalog;
+    return Row(
+      children: [
+        OutlinedButton.icon(
+          key: const Key('inventory-catalog-pick'),
+          style: OutlinedButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+          ),
+          onPressed: _pickCatalog,
+          icon: const Icon(Icons.category_outlined, size: 17),
+          label: const Text(
+            'Выбрать из номенклатуры',
+            style: TextStyle(fontSize: 11.5),
+          ),
+        ),
+        if (picked != null) ...[
+          const SizedBox(width: 10),
+          CatalogSwatch(color: picked.swatch),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              picked.product.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11.5),
+            ),
+          ),
+          TextButton(
+            key: const Key('inventory-catalog-clear'),
+            onPressed: () => setState(() {
+              _selectedProductId = null;
+              _pickedCatalog = null;
+            }),
+            child: const Text('Показать все'),
+          ),
+        ] else
+          const Spacer(),
+      ],
+    );
+  }
+
+  Future<void> _pickCatalog() async {
+    final items = CatalogItem.fromStocks(widget.snapshot.stocks);
+    if (items.isEmpty) return;
+    final picked = await GroupedCatalogPicker.show(
+      context,
+      items: items,
+      title: 'Фильтр по номенклатуре',
+      selectedId: _selectedProductId,
+      priceMode: CatalogPriceMode.none,
+      showStock: true,
+      showProductName: true,
+      pickerKey: 'inventory-catalog',
+    );
+    if (!mounted || picked == null) return;
+    setState(() {
+      _selectedProductId = picked.id;
+      _pickedCatalog = picked;
+      _expandedGroups.add(catalogCategoryOf(picked.product));
+    });
   }
 
   Widget _buildGroupedList() {
@@ -310,6 +380,10 @@ class _InventoryDialogState extends State<_InventoryDialog> {
                   ),
                 ],
               ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: _catalogBar(),
             ),
             Flexible(child: _buildGroupedList()),
             const Divider(height: 1),

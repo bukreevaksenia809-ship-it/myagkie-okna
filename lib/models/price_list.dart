@@ -105,8 +105,11 @@ class PriceItemKeys {
   /// ремень-крепёж — это один и тот же материал ленты.
   static const String strap = 'strap';
 
-  /// Алюминиевый бокс, ₽/м: две ширины на окно.
+  /// Алюминиевый бокс, ₽/м: только по нижней ширине окна.
   static const String aluminumBox = 'aluminumBox';
+
+  /// Расход тента отдельной строкой сметы (включается в настройках).
+  static const String tentConsumption = 'tentConsumption';
   static const String drain = 'drain';
   static const String cutout = 'cutout';
 
@@ -141,6 +144,7 @@ class PriceItemKeys {
     pocket,
     strap,
     aluminumBox,
+    tentConsumption,
     drain,
     cutout,
     turnBuckle,
@@ -215,8 +219,14 @@ const double defaultZipperPerM = 780;
 /// Спайка полотен двух соседних окон между собой, ₽/м (горячий воздух).
 const double defaultWeldPerM = 450;
 
-/// Алюминиевый бокс, ₽/м. Считается по две ширины на каждое окно.
+/// Алюминиевый бокс, ₽/м. Считается только по нижней ширине каждого окна.
 const double defaultAluminumBoxPerM = 0;
+
+/// Расход тента на каждое окно по умолчанию, см.
+///
+/// 120 см = 1,2 м на окно. На заказ из 3 окон — 3,6 м, из 10 — 12 м.
+/// Настройка включается тумблером «Учитывать расход тента в смете».
+const double defaultTentConsumptionCm = 120;
 
 /// Фартук (бывший карман) под утяжитель (тент 200 мм, сложенный пополам), ₽/м.
 const double defaultPocketPerM = 380;
@@ -363,6 +373,8 @@ class PriceList {
     this.pocketPerM = defaultPocketPerM,
     this.strapPrice = defaultStrapPrice,
     this.aluminumBoxPerM = defaultAluminumBoxPerM,
+    this.tentConsumptionEnabled = false,
+    this.tentConsumptionCm = defaultTentConsumptionCm,
     this.turnBucklePrice = defaultTurnBucklePrice,
     this.frenchLockPrice = defaultFrenchLockPrice,
     this.screwPrice = defaultScrewPrice,
@@ -424,6 +436,12 @@ class PriceList {
 
   /// Алюминиевый бокс, ₽/м.
   final double aluminumBoxPerM;
+
+  /// Учитывать расход тента отдельной строкой сметы.
+  final bool tentConsumptionEnabled;
+
+  /// Расход тента на одно окно, см (по умолчанию 120 см = 1,2 м).
+  final double tentConsumptionCm;
 
   /// Поворотная скоба, ₽/шт.
   final double turnBucklePrice;
@@ -712,6 +730,8 @@ class PriceList {
     double? pocketPerM,
     double? strapPrice,
     double? aluminumBoxPerM,
+    bool? tentConsumptionEnabled,
+    double? tentConsumptionCm,
     double? turnBucklePrice,
     double? frenchLockPrice,
     double? screwPrice,
@@ -757,6 +777,9 @@ class PriceList {
       pocketPerM: pocketPerM ?? this.pocketPerM,
       strapPrice: strapPrice ?? this.strapPrice,
       aluminumBoxPerM: aluminumBoxPerM ?? this.aluminumBoxPerM,
+      tentConsumptionEnabled:
+          tentConsumptionEnabled ?? this.tentConsumptionEnabled,
+      tentConsumptionCm: tentConsumptionCm ?? this.tentConsumptionCm,
       turnBucklePrice: turnBucklePrice ?? this.turnBucklePrice,
       frenchLockPrice: frenchLockPrice ?? this.frenchLockPrice,
       screwPrice: screwPrice ?? this.screwPrice,
@@ -800,6 +823,9 @@ class PriceList {
     'weldPerM': weldPerM,
     'pocketPerM': pocketPerM,
     'strapPrice': strapPrice,
+    'aluminumBoxPerM': aluminumBoxPerM,
+    'tentConsumptionEnabled': tentConsumptionEnabled,
+    'tentConsumptionCm': tentConsumptionCm,
     'turnBucklePrice': turnBucklePrice,
     'frenchLockPrice': frenchLockPrice,
     'screwPrice': screwPrice,
@@ -864,6 +890,15 @@ class PriceList {
       aluminumBoxPerM: _price(
         json['aluminumBoxPerM'],
         fallback.aluminumBoxPerM,
+      ),
+      tentConsumptionEnabled: _bool(
+        json['tentConsumptionEnabled'],
+        fallback.tentConsumptionEnabled,
+      ),
+      tentConsumptionCm: _percent(
+        json['tentConsumptionCm'],
+        fallback.tentConsumptionCm,
+        max: 1000,
       ),
       // Старый прайс без цен крепежа читается с дефолтами: строки крепежа
       // в смете считаются, а не пропадают с нулём.
@@ -974,6 +1009,9 @@ double _percent(Object? value, double fallback, {required double max}) {
   final result = _price(value, fallback);
   return result.clamp(0, max).toDouble();
 }
+
+/// Булево из JSON: только настоящий bool, иначе [fallback].
+bool _bool(Object? value, bool fallback) => value is bool ? value : fallback;
 
 String _trim(double value) {
   if (value == value.roundToDouble()) return value.toStringAsFixed(0);

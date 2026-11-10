@@ -1091,6 +1091,7 @@ class WindowParams {
     this.composite = const CompositeSpec(),
     this.noEyeletsTop = false,
     this.noEyeletsBottom = false,
+    this.noEyeletsAll = false,
     this.pocket = false,
     this.pocketTop = false,
     this.pocketWidth = pocketFinishedWidth,
@@ -1474,6 +1475,15 @@ class WindowParams {
   /// Не ставить люверсы снизу — зеркально [noEyeletsTop].
   final bool noEyeletsBottom;
 
+  /// Убрать люверсы со всех сторон глухого окна.
+  ///
+  /// Кнопка «Убрать все люверсы» в панели. Убираются и угловые люверсы, и
+  /// автоматическая расстановка по сторонам; ручной крепёж (замки, скобы,
+  /// клипсы), который люверсом не является, остаётся. Флаг действует только
+  /// на глухих окнах: у подъёмного правило «сверху круглые, снизу только
+  /// углы» важнее, поэтому там значение игнорируется ([eyeletFree]).
+  final bool noEyeletsAll;
+
   /// Фартук (бывший карман) из тента по нижней кромке: утяжитель заводится
   /// в его полость. У скрина фартук образуется верхним/нижним подворотом.
   ///
@@ -1584,16 +1594,26 @@ class WindowParams {
   /// Стороны, на которых люверсы не ставятся (кнопки панели).
   ///
   /// Порядок обхода углов: низ, право, верх, лево.
-  List<EdgeSide> get eyeletlessSides => [
-    if (noEyeletsBottom) EdgeSide.bottom,
-    if (noEyeletsTop) EdgeSide.top,
-  ];
+  List<EdgeSide> get eyeletlessSides => eyeletFree
+      ? EdgeSide.values
+      : [
+          if (noEyeletsBottom) EdgeSide.bottom,
+          if (noEyeletsTop) EdgeSide.top,
+        ];
+
+  /// Режим «убрать все люверсы» действует.
+  ///
+  /// Только для глухого окна: у подъёмного верхний ряд и нижние углы — часть
+  /// технологии, и кнопка не должна их ломать.
+  bool get eyeletFree => noEyeletsAll && !isLifting;
 
   /// Есть ли сторона без люверсов.
-  bool get hasEyeletlessSides => noEyeletsTop || noEyeletsBottom;
+  bool get hasEyeletlessSides =>
+      eyeletFree || noEyeletsTop || noEyeletsBottom;
 
   /// Сторона окна без люверсов.
   bool hasEyeletsOn(EdgeSide side) => switch (side) {
+    _ when eyeletFree => false,
     EdgeSide.bottom => !noEyeletsBottom,
     EdgeSide.top => !noEyeletsTop,
     EdgeSide.left || EdgeSide.right => true,
@@ -1601,6 +1621,7 @@ class WindowParams {
 
   /// Подпись сторон без люверсов: «верх», «низ», «низ и верх».
   String get eyeletlessSidesLabel {
+    if (eyeletFree) return 'все стороны';
     final labels = [
       for (final side in eyeletlessSides) side.label.toLowerCase(),
     ];
@@ -1882,6 +1903,7 @@ class WindowParams {
     CompositeSpec? composite,
     bool? noEyeletsTop,
     bool? noEyeletsBottom,
+    bool? noEyeletsAll,
     bool? pocket,
     bool? pocketTop,
     double? pocketWidth,
@@ -1971,6 +1993,7 @@ class WindowParams {
       noEyeletsTop: noEyeletsTop ?? this.noEyeletsTop,
       noEyeletsBottom:
           noEyeletsBottom ?? (switchingToLifting ? true : this.noEyeletsBottom),
+      noEyeletsAll: noEyeletsAll ?? (switchingToLifting ? false : this.noEyeletsAll),
       pocket: pocket ?? this.pocket,
       pocketTop: pocketTop ?? this.pocketTop,
       pocketWidth: pocketWidth ?? this.pocketWidth,
@@ -2355,6 +2378,7 @@ class WindowParams {
       '${eyelet.side.name}:${eyelet.fraction.toStringAsFixed(5)}:${eyelet.kind.name}',
     noEyeletsTop,
     noEyeletsBottom,
+    noEyeletsAll,
     zipperEnabled,
     zipperCentered,
     zipperOffsetMm,

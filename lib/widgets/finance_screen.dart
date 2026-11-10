@@ -9,7 +9,6 @@ import '../models/finance.dart';
 import '../models/order_project.dart';
 import '../models/order_record.dart';
 import '../models/order_json.dart';
-import '../models/price_list.dart';
 import '../services/cost_catalog.dart';
 import '../services/estimate.dart';
 import '../services/file_saver.dart';

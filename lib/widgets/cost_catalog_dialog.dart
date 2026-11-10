@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../models/price_list.dart';
+import '../models/warehouse.dart';
+import '../services/catalog_index.dart';
 import '../services/cost_catalog.dart';
+import 'catalog/grouped_catalog_picker.dart';
 
 /// Первичная настройка себестоимости: для каждой производственной позиции
 /// вписывается закупочная цена. Если позиция не используется — галочка
@@ -9,20 +13,29 @@ Future<CostCatalog?> showCostCatalogDialog(
   BuildContext context,
   CostCatalog catalog, {
   bool firstRun = false,
+  List<CatalogItem> catalogItems = const <CatalogItem>[],
 }) {
   return showDialog<CostCatalog>(
     context: context,
     barrierDismissible: !firstRun,
-    builder: (context) =>
-        _CostCatalogDialog(catalog: catalog, firstRun: firstRun),
+    builder: (context) => _CostCatalogDialog(
+      catalog: catalog,
+      firstRun: firstRun,
+      catalogItems: catalogItems,
+    ),
   );
 }
 
 class _CostCatalogDialog extends StatefulWidget {
-  const _CostCatalogDialog({required this.catalog, required this.firstRun});
+  const _CostCatalogDialog({
+    required this.catalog,
+    required this.firstRun,
+    this.catalogItems = const <CatalogItem>[],
+  });
 
   final CostCatalog catalog;
   final bool firstRun;
+  final List<CatalogItem> catalogItems;
 
   @override
   State<_CostCatalogDialog> createState() => _CostCatalogDialogState();
@@ -38,6 +51,60 @@ class _CostCatalogDialogState extends State<_CostCatalogDialog> {
       ),
   };
   late final Set<String> _disabled = {...widget.catalog.disabled};
+  String? _selectedCostKey;
+  CatalogItem? _pickedCatalog;
+
+  /// Позиции себестоимости, отфильтрованные выбранной цветной позицией.
+  List<CostPosition> get _visiblePositions => _selectedCostKey == null
+      ? costPositions
+      : costPositions
+            .where((position) => position.key == _selectedCostKey)
+            .toList();
+
+  String? _costKeyFor(WarehouseProduct product) {
+    final base = catalogBasePriceKey(product.priceKey);
+    if (base.isNotEmpty &&
+        costPositions.any((position) => position.key == base)) {
+      return base;
+    }
+    if (product.widthMm > 0) {
+      final edge = PriceList.edgeItemKey(product.widthMm);
+      if (edge != null &&
+          costPositions.any((position) => position.key == edge)) {
+        return edge;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _pickCatalog() async {
+    final items = [
+      for (final item in widget.catalogItems)
+        if (_costKeyFor(item.product) != null) item,
+    ];
+    if (items.isEmpty) return;
+    final picked = await GroupedCatalogPicker.show(
+      context,
+      items: items,
+      title: 'Позиция себестоимости',
+      selectedId: _pickedCatalog?.id,
+      priceMode: CatalogPriceMode.purchase,
+      showProductName: true,
+      pickerKey: 'cost-catalog',
+    );
+    if (!mounted || picked == null) return;
+    final key = _costKeyFor(picked.product);
+    if (key == null) return;
+    setState(() {
+      _selectedCostKey = key;
+      _pickedCatalog = picked;
+      final purchase = picked.product.purchasePrice;
+      if (purchase.isFinite && purchase > 0) {
+        _controllers[key]?.text = purchase.toStringAsFixed(2);
+        _disabled.remove(key);
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -104,13 +171,55 @@ class _CostCatalogDialogState extends State<_CostCatalogDialog> {
               ),
             ),
             const Divider(height: 1),
+            if (widget.catalogItems.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Row(
+                  children: [
+                    OutlinedButton.icon(
+                      key: const Key('cost-catalog-pick'),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: _pickCatalog,
+                      icon: const Icon(Icons.category_outlined, size: 17),
+                      label: const Text(
+                        'Выбрать позицию из склада',
+                        style: TextStyle(fontSize: 11.5),
+                      ),
+                    ),
+                    if (_pickedCatalog != null) ...[
+                      const SizedBox(width: 10),
+                      CatalogSwatch(color: _pickedCatalog!.swatch),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _pickedCatalog!.product.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11.5),
+                        ),
+                      ),
+                      TextButton(
+                        key: const Key('cost-catalog-clear'),
+                        onPressed: () => setState(() {
+                          _selectedCostKey = null;
+                          _pickedCatalog = null;
+                        }),
+                        child: const Text('Показать все'),
+                      ),
+                    ] else
+                      const Spacer(),
+                  ],
+                ),
+              ),
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                itemCount: costPositions.length,
+                itemCount: _visiblePositions.length,
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (context, index) {
-                  final position = costPositions[index];
+                  final position = _visiblePositions[index];
                   final enabled = !_disabled.contains(position.key);
                   return Row(
                     children: [

@@ -227,6 +227,7 @@ Map<String, dynamic> windowToJson(WindowParams p) => {
   // Кнопки «не ставить люверсы сверху/снизу».
   'noEyeletsTop': p.noEyeletsTop,
   'noEyeletsBottom': p.noEyeletsBottom,
+  'noEyeletsAll': p.noEyeletsAll,
   // Старые поля оставлены, чтобы заказы читались старыми версиями.
   'zipperEnabled': p.zipperEnabled,
   'zipperCentered': p.zipperCentered,
@@ -402,6 +403,7 @@ WindowParams windowFromJson(Map<String, dynamic> json) {
     // окном удалена, заказ открывается без падений и без шва.
     noEyeletsTop: _bool(json['noEyeletsTop'], fallback.noEyeletsTop),
     noEyeletsBottom: _bool(json['noEyeletsBottom'], fallback.noEyeletsBottom),
+    noEyeletsAll: _bool(json['noEyeletsAll'], fallback.noEyeletsAll),
     pocket: _bool(json['pocket'], fallback.pocket),
     pocketTop: _bool(json['pocketTop'], fallback.pocketTop),
     pocketWidth: _double(json['pocketWidth'], fallback.pocketWidth),

@@ -16,12 +16,13 @@ Future<ClientReportInfo?> showClientReportDialog(
   BuildContext context, {
   required OrderProject project,
   required CompanyBrandingState company,
+  bool dealer = false,
 }) {
   return showDialog<ClientReportInfo>(
     context: context,
     barrierDismissible: true,
     builder: (context) =>
-        ClientReportDialog(project: project, company: company),
+        ClientReportDialog(project: project, company: company, dealer: dealer),
   );
 }
 
@@ -30,10 +31,14 @@ class ClientReportDialog extends StatefulWidget {
     super.key,
     required this.project,
     required this.company,
+    this.dealer = false,
   });
 
   final OrderProject project;
   final CompanyBrandingState company;
+
+  /// Дилерский отчёт: показываем переключатель «скрыть клиентские цены».
+  final bool dealer;
 
   @override
   State<ClientReportDialog> createState() => _ClientReportDialogState();
@@ -49,7 +54,7 @@ class _ClientReportDialogState extends State<ClientReportDialog> {
   final _manager = TextEditingController();
   final _surveyor = TextEditingController(text: 'Замер клиента');
   final _installer = TextEditingController(text: 'Без установки');
-  String? _nameError;
+  bool _hideClientPrices = false;
   bool _loaded = false;
 
   @override
@@ -86,6 +91,9 @@ class _ClientReportDialogState extends State<ClientReportDialog> {
         if (read('manager').isNotEmpty) _manager.text = read('manager');
         if (read('surveyor').isNotEmpty) _surveyor.text = read('surveyor');
         if (read('installer').isNotEmpty) _installer.text = read('installer');
+        if (json['hideClientPrices'] is bool) {
+          _hideClientPrices = json['hideClientPrices'] as bool;
+        }
         _loaded = true;
       });
     } catch (_) {
@@ -94,10 +102,6 @@ class _ClientReportDialogState extends State<ClientReportDialog> {
   }
 
   Future<void> _save() async {
-    if (_name.text.trim().isEmpty) {
-      setState(() => _nameError = 'Укажите имя клиента');
-      return;
-    }
     final info = ClientReportInfo(
       name: _name.text.trim(),
       phone: _phone.text.trim(),
@@ -106,6 +110,7 @@ class _ClientReportDialogState extends State<ClientReportDialog> {
       manager: _manager.text.trim(),
       surveyor: _surveyor.text.trim(),
       installer: _installer.text.trim(),
+      hideClientPrices: widget.dealer && _hideClientPrices,
     );
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -119,6 +124,7 @@ class _ClientReportDialogState extends State<ClientReportDialog> {
           'manager': info.manager,
           'surveyor': info.surveyor,
           'installer': info.installer,
+          'hideClientPrices': info.hideClientPrices,
         }),
       );
     } catch (_) {}
@@ -179,7 +185,9 @@ class _ClientReportDialogState extends State<ClientReportDialog> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Отчёт для клиента',
+                            widget.dealer
+                                ? 'Отчёт для дилера'
+                                : 'Отчёт для клиента',
                             style: theme.textTheme.headlineSmall?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
@@ -209,13 +217,18 @@ class _ClientReportDialogState extends State<ClientReportDialog> {
                 _field(
                   key: const Key('client-report-name'),
                   controller: _name,
-                  label: 'ФИО клиента',
+                  label: 'Имя клиента (оно же имя файла отчёта)',
                   icon: Icons.person_outline,
                   autofocus: true,
-                  errorText: _nameError,
-                  onChanged: (_) {
-                    if (_nameError != null) setState(() => _nameError = null);
-                  },
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'PDF сохранится как «$_fileNamePreview». Если имя пустое — '
+                  '«${widget.dealer ? 'Отчёт дилеру' : 'Отчёт клиенту'}».',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 _field(
@@ -296,6 +309,21 @@ class _ClientReportDialogState extends State<ClientReportDialog> {
                       ),
                     ],
                   ),
+                if (widget.dealer) ...[
+                  const SizedBox(height: 14),
+                  SwitchListTile(
+                    key: const Key('client-report-hide-prices'),
+                    contentPadding: EdgeInsets.zero,
+                    value: _hideClientPrices,
+                    title: const Text('Скрыть клиентские цены'),
+                    subtitle: const Text(
+                      'В дилерском отчёте останется только дилерская цена.',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                    onChanged: (value) =>
+                        setState(() => _hideClientPrices = value),
+                  ),
+                ],
                 const SizedBox(height: 22),
                 Row(
                   children: [
@@ -351,6 +379,11 @@ class _ClientReportDialogState extends State<ClientReportDialog> {
       ),
     );
   }
+
+  String get _fileNamePreview => clientReportFileName(
+    name: _name.text,
+    dealer: widget.dealer,
+  );
 
   String get _orderNumber {
     final number = widget.project.selected.drawingNumber.trim();

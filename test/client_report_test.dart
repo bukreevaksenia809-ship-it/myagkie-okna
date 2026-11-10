@@ -49,4 +49,43 @@ void main() {
     // ignore: avoid_print
     print('Отчёт записан: ${file.path} (${bytes.length} байт)');
   });
+
+  test('дилерский отчёт: маркировка ДИЛЕР и дилерские цены', () async {
+    await loadRealFonts();
+    const project = OrderProject(windows: [window, window]);
+    final dealer = const PriceList.defaults().copyWith(
+      filmClearPerM2: 700,
+      laborPerM2: 500,
+      markupPercent: 5,
+    );
+    final bytes = await ClientReportBuilder(
+      project: project,
+      prices: dealer,
+      company: const CompanyBrandingState(),
+      info: const ClientReportInfo(name: 'Дилер Иванов'),
+      dealer: true,
+      clientPrices: const PriceList.defaults(),
+      hideClientPrices: false,
+    ).build();
+    final file = File('build/preview/dealer-report.pdf')
+      ..parent.createSync(recursive: true)
+      ..writeAsBytesSync(bytes);
+    expect(bytes.length, greaterThan(10000));
+    // ignore: avoid_print
+    print('Дилерский отчёт: ${file.path} (${bytes.length} байт)');
+  });
+
+  test('дилерский отчёт: клиентские цены можно скрыть', () async {
+    await loadRealFonts();
+    const project = OrderProject(windows: [window]);
+    final bytes = await ClientReportBuilder(
+      project: project,
+      prices: const PriceList.defaults(),
+      company: const CompanyBrandingState(),
+      dealer: true,
+      clientPrices: const PriceList.defaults(),
+      hideClientPrices: true,
+    ).build();
+    expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+  });
 }

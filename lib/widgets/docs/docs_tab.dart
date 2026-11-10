@@ -10,11 +10,14 @@ import 'package:flutter/material.dart';
 
 import '../../models/document.dart';
 import '../../models/order_project.dart';
-import '../../models/price_list.dart';
 import '../../services/document_pdf.dart';
 import '../../services/company_branding.dart';
 import '../../services/document_store.dart';
+import '../../services/docx_import.dart';
+import '../../services/estimate.dart';
+import '../../services/imported_docx_store.dart';
 import '../docs/document_editor.dart';
+import '../docs/imported_documents.dart';
 import '../docs/document_page.dart';
 
 /// Вкладка «Документация».
@@ -40,6 +43,7 @@ class _DocsTabState extends State<DocsTab> {
   String _loadedKey = '';
   int _loadToken = 0;
   Timer? _saveTimer;
+  final ImportedDocxStore _docxStore = ImportedDocxStore();
 
   @override
   void initState() {
@@ -130,6 +134,57 @@ class _DocsTabState extends State<DocsTab> {
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  /// Импорт пользовательского DOCX и вставка его в текущий заказ.
+  Future<void> _importDocx() async {
+    final template = await importDocxFromPicker(context, store: _docxStore);
+    if (template == null || !mounted) return;
+    await _insertImported(template);
+  }
+
+  /// Список сохранённых DOCX-шаблонов: открыть, переименовать, удалить.
+  Future<void> _openImportedDocx() async {
+    final template = await showImportedDocxDialog(
+      context,
+      store: _docxStore,
+    );
+    if (template == null || !mounted) return;
+    await _insertImported(template);
+  }
+
+  Future<void> _insertImported(ImportedDocxTemplate template) async {
+    final library = _library;
+    if (library == null) return;
+    final now = DateTime.now();
+    final project = widget.project;
+    final orderName = project.selected.projectName.trim().isNotEmpty
+        ? project.selected.projectName.trim()
+        : project.selected.drawingNumber.trim().isNotEmpty
+        ? project.selected.drawingNumber.trim()
+        : 'Заказ';
+    final number =
+        'ДОК-${now.year}${now.month.toString().padLeft(2, '0')}'
+        '${now.day.toString().padLeft(2, '0')}';
+    final values = DocxPlaceholderValues(
+      client: library.customer.displayName,
+      order: orderName,
+      date: formatDocDate(now),
+      amount: formatRubles(Estimate.of(project, widget.prices).total),
+      number: number,
+    );
+    final document = OrderDocument(
+      id: newDocumentId(),
+      title: template.title,
+      number: number,
+      template: DocumentTemplate.custom,
+      createdAt: now,
+      updatedAt: now,
+      blocks: applyDocxPlaceholdersToBlocks(template.blocks, values),
+    );
+    _setLibrary(library.addDocument(document), saveNow: true);
+    setState(() => _preview = true);
+    _toast('Документ «${template.title}» добавлен в заказ');
   }
 
   Future<void> _chooseTemplate() async {
@@ -447,6 +502,21 @@ class _DocsTabState extends State<DocsTab> {
               onPressed: _openSettings,
               icon: const Icon(Icons.settings_outlined, size: 20),
             ),
+            const SizedBox(width: 4),
+            OutlinedButton.icon(
+              key: const Key('docs-import-docx'),
+              onPressed: _importDocx,
+              icon: const Icon(Icons.upload_file, size: 18),
+              label: const Text('Импортировать DOCX'),
+            ),
+            const SizedBox(width: 4),
+            OutlinedButton.icon(
+              key: const Key('docs-imported-list'),
+              onPressed: _openImportedDocx,
+              icon: const Icon(Icons.folder_copy_outlined, size: 18),
+              label: const Text('Импортированные'),
+            ),
+            const SizedBox(width: 4),
           ],
         ),
       ),

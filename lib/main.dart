@@ -16,6 +16,7 @@ import 'models/order_record.dart';
 import 'models/window_geometry.dart';
 import 'models/window_params.dart';
 import 'services/order_storage.dart';
+import 'services/price_book_store.dart';
 import 'services/estimate.dart';
 import 'data/order_repository.dart';
 import 'services/session_store.dart';
@@ -65,7 +66,7 @@ import 'widgets/roll_sheet.dart';
 import 'widgets/tech_card_sheet.dart';
 
 /// Версия сборки — видна в интерфейсе, чтобы понимать, какая версия открыта.
-const String kAppVersion = '2.7.1';
+const String kAppVersion = '2.8.0';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -243,6 +244,7 @@ class _BuilderScreenState extends State<BuilderScreen>
     WidgetsBinding.instance.addObserver(this);
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     _restoreSession();
+    _restorePrices();
     _loadLayoutPrefs();
     _refreshOrders(showBusy: false);
     if (!kStoreBuild) {
@@ -1077,87 +1079,6 @@ class _BuilderScreenState extends State<BuilderScreen>
     SheetTab.techCard => 'Техкарта',
   };
 
-  /// «Сохранить отчёт для клиента»: альбомный PDF с обложкой и страницами
-  /// окон (чертёж + раскрой), в отличие от производственных листов.
-  Future<void> _editEstimate() async {
-    final prices = _dealerEstimate ? _dealerPrices : _prices;
-    final markup = TextEditingController(
-      text: (_project.estimateMarkupPercent ?? prices.markupPercent)
-          .toStringAsFixed(1),
-    );
-    final discount = TextEditingController(
-      text: (_project.estimateDiscountPercent ?? prices.discountPercent)
-          .toStringAsFixed(1),
-    );
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Изменить смету'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              key: const Key('estimate-markup'),
-              controller: markup,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Наценка, %',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              key: const Key('estimate-discount'),
-              controller: discount,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Скидка, %',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Меняется только этот заказ. Цены материалов и позиции — в прайсе.',
-              style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Сбросить'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            key: const Key('estimate-apply'),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Применить'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted || result == null) return;
-    if (result == false) {
-      _updateProject(_project.copyWith(clearEstimateOverrides: true));
-      return;
-    }
-    final m = double.tryParse(markup.text.replaceAll(',', '.'));
-    final d = double.tryParse(discount.text.replaceAll(',', '.'));
-    _updateProject(
-      _project.copyWith(
-        estimateMarkupPercent: m?.clamp(0, 1000).toDouble(),
-        estimateDiscountPercent: d?.clamp(0, 100).toDouble(),
-      ),
-    );
-  }
-
   Future<void> _exportClientReport({bool forceDealer = false}) async {
     final dealer = forceDealer || _dealerEstimate;
     if (_exporting) return;
@@ -1166,6 +1087,7 @@ class _BuilderScreenState extends State<BuilderScreen>
       context,
       project: _project,
       company: CompanyBranding.current.value,
+      dealer: dealer,
     );
     if (info == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -1177,6 +1099,7 @@ class _BuilderScreenState extends State<BuilderScreen>
         company: CompanyBranding.current.value,
         info: info,
         dealer: dealer,
+        clientPrices: _prices,
       );
       messenger.showSnackBar(
         SnackBar(
@@ -2072,6 +1995,43 @@ class _BuilderScreenState extends State<BuilderScreen>
     }
   }
 
+  /// Прайсы и настройка расхода тента переживают перезапуск.
+  Future<void> _restorePrices() async {
+    final saved = await PriceBookStore.load();
+    if (!mounted || saved == null) return;
+    setState(() {
+      _prices = saved.$1;
+      _dealerPrices = saved.$2;
+    });
+  }
+
+  void _setClientPrices(PriceList prices) {
+    setState(() => _prices = prices);
+    PriceBookStore.save(client: _prices, dealer: _dealerPrices);
+  }
+
+  void _setDealerPrices(PriceList prices) {
+    setState(() => _dealerPrices = prices);
+    PriceBookStore.save(client: _prices, dealer: _dealerPrices);
+  }
+
+  /// Расход тента — общая настройка: строка должна быть и в клиентской,
+  /// и в дилерской смете.
+  void _setTentConsumption(bool enabled, double centimeters) {
+    final cm = centimeters.isFinite && centimeters > 0 ? centimeters : 120.0;
+    setState(() {
+      _prices = _prices.copyWith(
+        tentConsumptionEnabled: enabled,
+        tentConsumptionCm: cm,
+      );
+      _dealerPrices = _dealerPrices.copyWith(
+        tentConsumptionEnabled: enabled,
+        tentConsumptionCm: cm,
+      );
+    });
+    PriceBookStore.save(client: _prices, dealer: _dealerPrices);
+  }
+
   Widget _settingsSection() {
     return SettingsScreen(
       clientPrices: _prices,
@@ -2082,12 +2042,13 @@ class _BuilderScreenState extends State<BuilderScreen>
       onRollWidth: (material, width) =>
           _updateProject(_project.setRollWidth(material, width)),
       onRollGap: (value) => _updateProject(_project.copyWith(rollGap: value)),
-      onClientPrices: (prices) => setState(() => _prices = prices),
-      onDealerPrices: (prices) => setState(() => _dealerPrices = prices),
+      onClientPrices: _setClientPrices,
+      onDealerPrices: _setDealerPrices,
       onCompany: () => showCompanyDialog(context),
       onWatermark: () => showWatermarkDialog(context),
       onSignatures: () => showSignatureCenter(context),
       onAllowances: _openAllowanceSettings,
+      onTentConsumption: _setTentConsumption,
       onLicense: kStoreBuild ? null : _openLicense,
       onPairing: _openPairing,
       onBackup: _backupOrders,

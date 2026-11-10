@@ -10,7 +10,6 @@ import '../../models/order_record.dart';
 import '../../models/order_json.dart';
 import '../../services/estimate.dart';
 import '../../services/cost_catalog.dart';
-import '../../models/price_list.dart';
 import '../../services/order_materials.dart';
 import '../design/app_kit.dart';
 import '../warehouse/bulk_materials_dialog.dart';

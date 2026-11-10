@@ -207,6 +207,31 @@ class CostsSummary {
   /// Суммарная площадь готовых изделий по наружному контуру, м².
   double productAreaM2 = 0;
 
+  /// Суммарная нижняя ширина окон, мм.
+  ///
+  /// Алюминиевый бокс ставится только по нижней кромке, поэтому в смету идёт
+  /// `Σ bottomWidth / 1000` метров. Верх, бока и периметр сюда не входят.
+  /// У Т-окна и составного нижняя ширина — это ширина основного полотна;
+  /// пристройка и второй сегмент её не увеличивают.
+  double get aluminumBoxWidthMm =>
+      specs.fold<double>(0, (sum, spec) => sum + spec.geometry.bottomWidth);
+
+  /// Метраж алюминиевого бокса по нижней ширине, м.
+  double get aluminumBoxMeters => aluminumBoxWidthMm / 1000;
+
+  /// Ширина рулона тента, которого в заказе больше всего, мм.
+  ///
+  /// Нужна для строки «Расход тента»: цена берётся из прайса окантовки этой
+  /// ширины. Если окантовки в заказе нет (только скрин), возвращаем 100 мм —
+  /// стандартный рулон тента.
+  double get dominantEdgeWidthMm {
+    if (edgeByRoll.isEmpty) return 100;
+    final entries = edgeByRoll.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final width = entries.first.key;
+    return width.isFinite && width > 0 ? width : 100;
+  }
+
   /// Площадь заготовок-прямоугольников к раскрою: припуск, минус вырезы,
   /// БЕЗ компенсации усадки, м².
   ///

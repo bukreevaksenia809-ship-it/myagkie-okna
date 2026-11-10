@@ -73,21 +73,24 @@ void main() {
     expect(info!.comment, 'Веранда');
   });
 
-  testWidgets('без имени не отправляет', (tester) async {
+  testWidgets('без имени сохраняет с безопасным именем файла', (tester) async {
     tester.view.physicalSize = const Size(1100, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     SharedPreferences.setMockInitialValues({});
+    ClientReportInfo? info;
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
           builder: (context) => TextButton(
-            onPressed: () => showClientReportDialog(
-              context,
-              project: const OrderProject(windows: [window]),
-              company: const CompanyBrandingState(),
-            ),
+            onPressed: () async {
+              info = await showClientReportDialog(
+                context,
+                project: const OrderProject(windows: [window]),
+                company: const CompanyBrandingState(),
+              );
+            },
             child: const Text('open'),
           ),
         ),
@@ -100,7 +103,18 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('client-report-submit')));
     await tester.pumpAndSettle();
-    expect(find.text('Укажите имя клиента'), findsOneWidget);
-    expect(find.text('Отчёт для клиента'), findsOneWidget);
+    // Пустое имя допустимо: файл всё равно получит безопасное имя.
+    expect(find.text('Отчёт для клиента'), findsNothing);
+    expect(clientReportFileName(name: '', dealer: false), 'Отчёт клиенту.pdf');
+    expect(
+      clientReportFileName(name: '  Елена  ', dealer: true),
+      'Отчёт дилеру — Елена.pdf',
+    );
+    expect(
+      clientReportFileName(name: 'a/b:c*?', dealer: false),
+      'a b c.pdf',
+    );
+    expect(info, isNotNull);
+    expect(info!.name, isEmpty);
   });
 }

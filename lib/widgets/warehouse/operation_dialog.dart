@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/order_record.dart';
 import '../../models/warehouse.dart';
+import '../../services/catalog_index.dart';
+import '../catalog/grouped_catalog_picker.dart';
 import '../design/app_kit.dart';
 
 /// Виды операций в интерфейсе. Перемещение в модели — две записи журнала.
@@ -507,26 +509,55 @@ class _ProductField extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 5),
-        DropdownButtonFormField<String>(
-          initialValue: value?.product.id,
-          isExpanded: true,
-          items: [
-            for (final stock in snapshot.stocks)
-              DropdownMenuItem(
-                value: stock.product.id,
-                child: Text(
-                  '${stock.product.name} · ${appQty(stock.available)} '
-                  '${stock.product.unit.label}',
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-          ],
-          onChanged: (id) {
-            final stock = snapshot.stocks
-                .where((item) => item.product.id == id)
-                .firstOrNull;
+        InkWell(
+          key: const Key('operation-product-picker'),
+          borderRadius: BorderRadius.circular(12),
+          onTap: () async {
+            final items = CatalogItem.fromStocks(snapshot.stocks);
+            if (items.isEmpty) return;
+            final picked = await GroupedCatalogPicker.show(
+              context,
+              items: items,
+              title: 'Выбор товара',
+              selectedId: value?.product.id,
+              initialCategory: value == null
+                  ? null
+                  : catalogCategoryOf(value!.product),
+              priceMode: CatalogPriceMode.sale,
+              showStock: true,
+              showProductName: true,
+              pickerKey: 'operation-catalog',
+            );
+            final stock = picked?.stock;
             if (stock != null) onChanged(stock);
           },
+          child: InputDecorator(
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+              suffixIcon: Icon(Icons.expand_more),
+            ),
+            child: Row(
+              children: [
+                if (value != null) ...[
+                  CatalogSwatch(
+                    color: catalogSwatchColor(value!.product.color),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: Text(
+                    value == null
+                        ? 'Выберите товар по группе и цвету'
+                        : '${value!.product.name} · ${appQty(value!.available)} '
+                              '${value!.product.unit.label}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );

@@ -2033,12 +2033,17 @@ class WindowLayers {
   ///
   /// Порядок — по обходу углов: низ, право, верх, лево.
   List<WindowSide> get eyeletlessSides => [
-    if (params.noEyeletsBottom) WindowSide.bottom,
-    if (params.noEyeletsTop) WindowSide.top,
+    if (params.eyeletFree)
+      ...WindowSide.values
+    else ...[
+      if (params.noEyeletsBottom) WindowSide.bottom,
+      if (params.noEyeletsTop) WindowSide.top,
+    ],
   ];
 
   /// Подпись сторон без люверсов для документов: «верх», «низ», «низ и верх».
   String get eyeletlessSidesLabel {
+    if (params.eyeletFree) return 'все стороны';
     final labels = [for (final side in eyeletlessSides) side.label];
     if (labels.isEmpty) return '';
     if (labels.length == 1) return labels.first;
@@ -2047,6 +2052,7 @@ class WindowLayers {
 
   /// Ставятся ли на этой стороне люверсы (кнопки «не ставить сверху/снизу»).
   bool sideHasEyelets(WindowSide side) => switch (side) {
+    _ when params.eyeletFree => false,
     WindowSide.bottom => !params.noEyeletsBottom,
     WindowSide.top => !params.noEyeletsTop,
     WindowSide.left || WindowSide.right => true,
@@ -2696,21 +2702,28 @@ class WindowLayers {
               );
               continue;
             }
-            placements.add(
-              EyeletPlacement(
-                center: center,
-                side: side,
-                angle: angle,
-                isCorner: isCornerPoint,
-                positionInEdge: fraction,
-                forcedType: point.kind == MarkerKind.roundEyelet
-                    ? EyeletType.round10
-                    : null,
-              ),
-            );
+            if (!params.eyeletFree) {
+              placements.add(
+                EyeletPlacement(
+                  center: center,
+                  side: side,
+                  angle: angle,
+                  isCorner: isCornerPoint,
+                  positionInEdge: fraction,
+                  forcedType: point.kind == MarkerKind.roundEyelet
+                      ? EyeletType.round10
+                      : null,
+                ),
+              );
+            }
           }
           continue;
         }
+
+        // «Убрать все люверсы»: автоматическую расстановку не строим вовсе.
+        // Ручной крепёж (замки/скобы/клипсы) выше уже собран — он не люверс,
+        // и трогать его нельзя.
+        if (params.eyeletFree) continue;
 
         final offset = params.eyeletCornerOffset.clamp(
           0.0,

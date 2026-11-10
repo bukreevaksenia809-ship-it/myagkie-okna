@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../data/warehouse_repository.dart';
 import '../models/price_list.dart';
+import '../models/warehouse.dart';
 import '../models/window_params.dart';
 import 'price_panel.dart';
 
@@ -17,6 +19,7 @@ class PricebookSwitcher extends StatefulWidget {
     required this.onClientChanged,
     required this.onDealerChanged,
     this.materials = const [],
+    this.loadProducts,
   });
 
   final PriceList client;
@@ -24,6 +27,7 @@ class PricebookSwitcher extends StatefulWidget {
   final ValueChanged<PriceList> onClientChanged;
   final ValueChanged<PriceList> onDealerChanged;
   final List<FilmMaterial> materials;
+  final Future<List<WarehouseProduct>> Function()? loadProducts;
 
   @override
   State<PricebookSwitcher> createState() => _PricebookSwitcherState();
@@ -69,6 +73,8 @@ class _PricebookSwitcherState extends State<PricebookSwitcher> {
         PricePanel(
           prices: _dealer ? widget.dealer : widget.client,
           materials: widget.materials,
+          loadProducts:
+              widget.loadProducts ?? WarehouseRepository.instance.products,
           onChanged: _dealer ? widget.onDealerChanged : widget.onClientChanged,
         ),
       ],

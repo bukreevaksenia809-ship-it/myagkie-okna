@@ -62,18 +62,20 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('алюминиевый бокс: две ширины на окно, цена за метр', () {
+  test('алюминиевый бокс: только нижняя ширина, цена за метр', () {
     final project = const OrderProject(windows: [_pvcWithoutPocket, _w1500]);
     final prices = const PriceList.defaults().copyWith(aluminumBoxPerM: 450);
     final estimate = Estimate.of(project, prices);
     final line = estimate.lines.firstWhere(
       (line) => line.title == 'Алюминиевый бокс',
     );
-    expect(line.quantity, closeTo(7, 1e-9));
+    // 2000 + 1500 мм по низу = 3,5 м (верх и бока не входят).
+    expect(line.quantity, closeTo(3.5, 1e-9));
     expect(line.unit, 'м');
     expect(line.unitPrice, 450);
-    expect(line.amount, closeTo(3150, 1e-9));
+    expect(line.amount, closeTo(1575, 1e-9));
     expect(line.group, EstimateGroup.hardware);
+    expect(line.note, contains('по нижней ширине'));
 
     // Нулевая цена — позиция не начисляется.
     final free = Estimate.of(project, const PriceList.defaults());

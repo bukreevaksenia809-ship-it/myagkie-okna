@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../models/order_project.dart';
-import '../models/price_list.dart';
 import '../services/estimate.dart';
 
 /// Редактор сметы прямо во вкладке «Смета»: меняем название, количество и
@@ -233,12 +232,6 @@ class EstimateEditor extends StatelessWidget {
       '${value.toStringAsFixed(1).replaceAll('.', ',')} %';
 }
 
-const InputDecoration _fieldDecoration = InputDecoration(
-  isDense: true,
-  border: InputBorder.none,
-  contentPadding: EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-);
-
 const TextStyle _h = TextStyle(fontSize: 11, fontWeight: FontWeight.w700);
 
 class _AutoLineRow extends StatelessWidget {
@@ -369,7 +362,7 @@ Widget _row(
         SizedBox(
           width: 100,
           child: TextFormField(
-            initialValue: '${quantity.toStringAsFixed(2)}',
+            initialValue: quantity.toStringAsFixed(2),
             decoration: const InputDecoration(
               isDense: true,
               border: OutlineInputBorder(),

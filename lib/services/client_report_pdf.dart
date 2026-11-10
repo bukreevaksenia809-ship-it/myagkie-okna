@@ -32,11 +32,23 @@ class ClientReportBuilder {
     this.info = const ClientReportInfo(),
     this.fontRegular,
     this.fontBold,
+    this.dealer = false,
+    this.hideClientPrices = false,
+    this.clientPrices,
   });
 
   final OrderProject project;
   final PriceList prices;
   final CompanyBrandingState company;
+
+  /// Дилерский отчёт: маркировка «ДИЛЕР» и дилерские цены.
+  final bool dealer;
+
+  /// Не показывать клиентскую цену в дилерском отчёте.
+  final bool hideClientPrices;
+
+  /// Клиентский прайс — только для справки в дилерском отчёте.
+  final PriceList? clientPrices;
 
   /// Данные заказчика (ФИО, телефон, адрес, комментарий, исполнители).
   final ClientReportInfo info;
@@ -108,7 +120,7 @@ class ClientReportBuilder {
     _serifBold = serifBold;
     final theme = pw.ThemeData.withFont(base: regular, bold: bold);
     final document = pw.Document(
-      title: 'Отчёт клиенту $_orderNumber',
+      title: '${dealer ? 'Отчёт дилеру' : 'Отчёт клиенту'} $_orderNumber',
       author: company.details.displayName,
     );
     // Шрифт знака нужен до сохранения: build страниц синхронный.
@@ -202,6 +214,19 @@ class ClientReportBuilder {
       ? info.comment.trim()
       : project.selected.projectName;
 
+  /// Типы окон заказа одной строкой: «Глухое ×2 · Подъёмное ×1».
+  String get _windowTypesLabel {
+    final counts = <WindowType, int>{};
+    for (final window in _reportProject.windows) {
+      counts.update(window.windowType, (value) => value + 1, ifAbsent: () => 1);
+    }
+    final entries = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return entries
+        .map((entry) => '${entry.key.label} ×${entry.value}')
+        .join(' · ');
+  }
+
   String _windowsWord(int count) {
     final mod10 = count % 10;
     final mod100 = count % 100;
@@ -272,14 +297,40 @@ class ClientReportBuilder {
         pw.Container(height: 0.9, color: gold),
         pw.SizedBox(height: 26),
         // Заголовок заказа.
-        pw.Text(
-          'КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ',
-          style: pw.TextStyle(
-            font: _font,
-            fontSize: 8.5,
-            letterSpacing: 3.2,
-            color: gold,
-          ),
+        pw.Row(
+          children: [
+            pw.Text(
+              dealer ? 'ДИЛЕРСКОЕ ПРЕДЛОЖЕНИЕ' : 'КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ',
+              style: pw.TextStyle(
+                font: _font,
+                fontSize: 8.5,
+                letterSpacing: 3.2,
+                color: gold,
+              ),
+            ),
+            if (dealer) ...[
+              pw.SizedBox(width: 10),
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(
+                  horizontal: 7,
+                  vertical: 2.5,
+                ),
+                decoration: pw.BoxDecoration(
+                  color: gold,
+                  borderRadius: pw.BorderRadius.circular(3),
+                ),
+                child: pw.Text(
+                  'ДИЛЕР',
+                  style: pw.TextStyle(
+                    font: _font,
+                    fontSize: 7,
+                    letterSpacing: 1.6,
+                    color: charcoal,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
         pw.SizedBox(height: 10),
         pw.Row(
@@ -309,6 +360,13 @@ class ClientReportBuilder {
             ),
           ],
         ),
+        if (_windowTypesLabel.isNotEmpty) ...[
+          pw.SizedBox(height: 5),
+          pw.Text(
+            'Типы окон: $_windowTypesLabel',
+            style: _s(9.5, color: warmDim),
+          ),
+        ],
         pw.SizedBox(height: 24),
         _softDivider(),
         pw.SizedBox(height: 16),
@@ -506,7 +564,7 @@ class ClientReportBuilder {
         _darkDivider(),
         pw.SizedBox(height: 12),
         pw.Text(
-          'ИТОГО ПО ЗАКАЗУ',
+          dealer ? 'ДИЛЕРСКАЯ ЦЕНА' : 'ИТОГО ПО ЗАКАЗУ',
           style: pw.TextStyle(
             font: _font,
             fontSize: 8,
@@ -535,6 +593,18 @@ class ClientReportBuilder {
             ),
           ],
         ),
+        if (dealer && !hideClientPrices && clientPrices != null) ...[
+          pw.SizedBox(height: 6),
+          pw.Text(
+            'Клиентская цена: '
+            '${_rub(Estimate.of(_reportProject, clientPrices!).total)}',
+            style: pw.TextStyle(
+              font: _font,
+              fontSize: 7.5,
+              color: const PdfColor.fromInt(0xFF8E9AAA),
+            ),
+          ),
+        ],
         pw.SizedBox(height: 8),
         pw.Text(
           'Стоимость актуальна в течение 3-х календарных дней '
@@ -1571,6 +1641,34 @@ class PdfRect {
   final double height;
 }
 
+/// Имя PDF-файла отчёта по имени, введённому в диалоге.
+///
+/// Клиентский отчёт сохраняется ровно под введённым именем; пустое имя даёт
+/// безопасный `Отчёт клиенту`. Дилерский — `Отчёт дилеру — <имя>` (или
+/// `Отчёт дилеру`, если имени нет). Запрещённые в именах файлов символы
+/// `\\/:*?"<>|` и управляющие символы вычищаются, пробелы схлопываются,
+/// расширение всегда `.pdf`.
+String clientReportFileName({String name = '', bool dealer = false}) {
+  final cleaned = sanitizeClientReportName(name);
+  final fallback = dealer ? 'Отчёт дилеру' : 'Отчёт клиенту';
+  final base = dealer
+      ? (cleaned.isEmpty ? fallback : 'Отчёт дилеру — $cleaned')
+      : (cleaned.isEmpty ? fallback : cleaned);
+  return '${base.trim().isEmpty ? fallback : base.trim()}.pdf';
+}
+
+/// Очищает имя отчёта от запрещённых символов, не оставляя пустую строку.
+String sanitizeClientReportName(String value) {
+  var text = value
+      .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F\x7F]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  // Windows не любит точки и пробелы в конце имени.
+  text = text.replaceAll(RegExp(r'[. ]+$'), '').trim();
+  if (text.length > 120) text = text.substring(0, 120).trim();
+  return text;
+}
+
 /// Собирает отчёт и сохраняет его файлом (десктоп — папка, браузер — скачивание).
 Future<SavedFile> saveClientReport({
   required OrderProject project,
@@ -1578,17 +1676,19 @@ Future<SavedFile> saveClientReport({
   required CompanyBrandingState company,
   ClientReportInfo info = const ClientReportInfo(),
   bool dealer = false,
+  bool hideClientPrices = false,
+  PriceList? clientPrices,
 }) async {
   final bytes = await ClientReportBuilder(
     project: project,
     prices: prices,
     company: company,
     info: info,
+    dealer: dealer,
+    hideClientPrices: hideClientPrices || info.hideClientPrices,
+    clientPrices: clientPrices,
   ).build();
-  final number = project.selected.drawingNumber.trim();
-  final name =
-      '${dealer ? 'Отчёт дилеру' : 'Отчёт клиенту'}'
-      '${number.isEmpty ? '' : ' $number'}.pdf';
+  final name = clientReportFileName(name: info.name, dealer: dealer);
   return saveBytes(bytes, name);
 }
 
@@ -1603,6 +1703,7 @@ class ClientReportInfo {
     this.manager = '',
     this.surveyor = 'Замер клиента',
     this.installer = 'Без установки',
+    this.hideClientPrices = false,
   });
 
   final String name;
@@ -1612,4 +1713,7 @@ class ClientReportInfo {
   final String manager;
   final String surveyor;
   final String installer;
+
+  /// В дилерском отчёте не показывать клиентскую цену.
+  final bool hideClientPrices;
 }

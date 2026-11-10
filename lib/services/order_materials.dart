@@ -160,7 +160,7 @@ class OrderMaterialsService {
       // Позиция прайса — самый точный признак: плёнка, окантовка и
       // фурнитура получают ровно тот товар, который заведён из прайса.
       if (itemKey != null && itemKey.isNotEmpty) {
-        final key = product.priceKey ?? '';
+        final key = product.priceKey;
         if (key == itemKey) {
           score += 80;
         } else if (key.startsWith('$itemKey:')) {

@@ -4135,6 +4135,47 @@ class _ParamsPanelState extends State<ParamsPanel> {
             onChanged: (value) =>
                 _updateWindow(params.copyWith(noEyeletsBottom: value)),
           ),
+          if (!params.isLifting) ...[
+            const SizedBox(height: 4),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                key: const Key('no-eyelets-all'),
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: params.eyeletFree
+                      ? const Color(0xFF9A3412)
+                      : const Color(0xFF174D72),
+                  side: BorderSide(
+                    color: params.eyeletFree
+                        ? const Color(0xFFF0B27A)
+                        : const Color(0xFFB9CCE0),
+                  ),
+                ),
+                onPressed: () =>
+                    _updateWindow(params.copyWith(noEyeletsAll: !params.noEyeletsAll)),
+                icon: Icon(
+                  params.eyeletFree
+                      ? Icons.restart_alt
+                      : Icons.remove_circle_outline,
+                  size: 17,
+                ),
+                label: Text(
+                  params.eyeletFree
+                      ? 'Вернуть автоматическую расстановку'
+                      : 'Убрать все люверсы',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            if (params.eyeletFree)
+              const Text(
+                'Люверсов на чертеже нет: ни по сторонам, ни в углах. '
+                'Замки и скобы, поставленные вручную, остаются.',
+                style: TextStyle(fontSize: 11, color: Color(0xFF9A3412)),
+              ),
+          ],
           Text(
             'По чертежу: люверсов '
             '${WindowSpec.of(params).layers.standaloneEyelets.length} шт'

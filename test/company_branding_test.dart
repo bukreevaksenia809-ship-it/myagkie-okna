@@ -189,6 +189,7 @@ void main() {
             onWatermark: () {},
             onSignatures: () {},
             onAllowances: () {},
+            onTentConsumption: (_, _) {},
             onPairing: () {},
             onBackup: () {},
             onBackupDatabase: () {},

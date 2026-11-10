@@ -55,9 +55,29 @@ Future<SavedFile> saveBytes(
       ? Directory(directoryPath)
       : exportDirectory();
   await directory.create(recursive: true);
-  final file = File('${directory.path}/$fileName');
+  // Не перезаписываем чужой файл молча: при совпадении имени добавляем « (2)».
+  final file = _uniqueFile(directory, fileName);
   await file.writeAsBytes(bytes, flush: true);
   return SavedFile(destination: file.path, path: file.path);
+}
+
+/// Свободное имя в [directory]: `отчёт.pdf` → `отчёт (2).pdf`.
+///
+/// Сохранение отчёта с тем же именем не должно затирать предыдущий файл без
+/// предупреждения, поэтому ищем первый свободный номер.
+File _uniqueFile(Directory directory, String fileName) {
+  final direct = File('${directory.path}/$fileName');
+  if (!direct.existsSync()) return direct;
+  final dot = fileName.lastIndexOf('.');
+  final hasExtension = dot > 0 && dot < fileName.length - 1;
+  final base = hasExtension ? fileName.substring(0, dot) : fileName;
+  final extension = hasExtension ? fileName.substring(dot) : '';
+  for (var index = 2; index < 1000; index++) {
+    final candidate = File('${directory.path}/$base ($index)$extension');
+    if (!candidate.existsSync()) return candidate;
+  }
+  final stamp = DateTime.now().millisecondsSinceEpoch;
+  return File('${directory.path}/$base ($stamp)$extension');
 }
 
 /// Подпись каталога для интерфейса.

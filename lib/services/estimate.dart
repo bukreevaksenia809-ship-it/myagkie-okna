@@ -188,6 +188,35 @@ class Estimate {
       );
     }
 
+    // --- Материалы: расход тента отдельной строкой ------------------------
+    // 120 см — на каждое окно, а не на весь заказ. 3 окна → 3,6 м,
+    // 10 окон → 12 м. Цена — из прайса окантовки/тента той ширины, которой
+    // в заказе больше всего (для скрина без окантовки — 100 мм).
+    if (prices.tentConsumptionEnabled &&
+        project.windowCount > 0 &&
+        prices.tentConsumptionCm > 0) {
+      final tentMeters =
+          prices.tentConsumptionCm / 100 * project.windowCount;
+      if (tentMeters > 0) {
+        final widthMm = summary.dominantEdgeWidthMm;
+        lines.add(
+          EstimateLine(
+            title: 'Расход тента',
+            note:
+                '${_trimMeters(prices.tentConsumptionCm / 100)} м × '
+                '${project.windowCount} ${_windowsWord(project.windowCount)} = '
+                '${_trimMeters(tentMeters)} м; '
+                'тент ${formatMm(widthMm)} ${unitSuffix()} из прайса',
+            quantity: tentMeters,
+            unit: 'м',
+            unitPrice: prices.edgePerMeterForWidth(widthMm),
+            group: EstimateGroup.materials,
+            itemKey: PriceItemKeys.tentConsumption,
+          ),
+        );
+      }
+    }
+
     // --- Материалы: окантовка по ширинам рулонов -------------------------
     final edgeEntries = summary.edgeByRoll.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
@@ -548,15 +577,9 @@ class Estimate {
       );
     }
 
-    // Алюминиевый бокс: по две ширины на каждое окно. Метраж — удвоенная
-    // сумма ширин изделий; цена задаётся в прайсе за метр.
-    final aluminumMeters =
-        summary.specs.fold<double>(
-          0,
-          (sum, spec) => sum + spec.geometry.bottomWidth,
-        ) /
-        1000 *
-        2;
+    // Алюминиевый бокс: ТОЛЬКО по нижней ширине каждого окна. Верхняя ширина,
+    // бока и периметр в расчёт не входят — бокс ставится по нижней кромке.
+    final aluminumMeters = summary.aluminumBoxMeters;
     if (aluminumMeters > 0 &&
         prices.aluminumBoxPerM > 0 &&
         prices.isEnabled(PriceItemKeys.aluminumBox)) {
@@ -564,8 +587,8 @@ class Estimate {
         EstimateLine(
           title: 'Алюминиевый бокс',
           note:
-              'две ширины на окно; всего '
-              '${formatMeters(aluminumMeters)} м',
+              'по нижней ширине; '
+              '${formatMeters(aluminumMeters)} м (Σ низа / 1000)',
           quantity: aluminumMeters,
           unit: 'м',
           unitPrice: prices.aluminumBoxPerM,
@@ -907,3 +930,20 @@ String _formatDecimal(double value, int decimals) {
   final fraction = parts.length > 1 ? ',${parts[1]}' : '';
   return '${negative ? '−' : ''}${groupThousands(parts.first)}$fraction';
 }
+
+/// Слово «окно» в нужном числе для подписи о расходе тента.
+String _windowsWord(int count) {
+  final mod10 = count % 10;
+  final mod100 = count % 100;
+  if (mod10 == 1 && mod100 != 11) return 'окно';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'окна';
+  return 'окон';
+}
+
+
+/// Метры без хвостовых нулей: 1,20 → 1,2; 3,00 → 3.
+String _trimMeters(double value) => value
+    .toStringAsFixed(2)
+    .replaceAll(RegExp(r'0+$'), '')
+    .replaceAll(RegExp(r'\.$'), '')
+    .replaceAll('.', ',');
