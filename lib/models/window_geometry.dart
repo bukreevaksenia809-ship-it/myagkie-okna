@@ -1862,6 +1862,11 @@ class WindowLayers {
   /// Фактический интервал по каждой стороне, мм (не больше заданного).
   List<double> get eyeletSteps => _eyeletResult.steps;
 
+  /// Остаток у стартового угла по каждой стороне, мм (режим «шаг + остаток»).
+  ///
+  /// 0 — остатка нет (сторона делится шагом нацело или режим «равномерно»).
+  List<double> get eyeletRemainders => _eyeletResult.remainders;
+
   int get eyeletCount => eyelets.length;
 
   /// Габариты видимой плёнки (по внутренней границе окантовки).
@@ -2696,6 +2701,7 @@ class WindowLayers {
   _EyeletResult _computeEyelets() {
     final placements = <EyeletPlacement>[];
     final steps = <double>[];
+    final remainders = <double>[];
     final manualFasteners = <ManualFastener>[];
 
     // Люверсы ставятся по каждому контуру: у обычного окна он один, у Т-окна
@@ -2799,37 +2805,67 @@ class WindowLayers {
         // Два режима:
         //  • равномерно — интервалы округляются вверх, факт не больше
         //    заданного (прежнее поведение);
-        //  • «шаг + остаток» — держим ровно заданный шаг 300 мм, а последний
-        //    промежуток до угла равен остатку.
+        //  • «шаг + остаток» — держим ровно заданный шаг, а ПЕРВЫЙ промежуток
+        //    от стартового угла равен остатку.
+        //
+        // Эталон заказчика для «шаг + остаток»:
+        //  • низ  — старт в левом углу, слева → направо;
+        //  • верх — старт в левом углу, слева → направо;
+        //  • лево — старт в нижнем углу, снизу → вверх;
+        //  • право — старт в нижнем углу, снизу → вверх.
+        // Обход контура идёт низ → право → верх → лево, поэтому верх и лево
+        // раскладываем в обратную сторону. Остаток всегда стоит у стартового
+        // угла, а последняя точка попадает ровно в дальний угол:
+        // `usable = remainder + full × step`.
         final exactDistances = <double>[];
+        var exactRemainder = 0.0;
+        var exactStep = nominal;
         if (!params.eyeletEvenSpacing) {
           final full = (usable / nominal).floor();
-          for (var k = 0; k <= full; k++) {
-            exactDistances.add(nominal * k);
-          }
           final remainder = usable - nominal * full;
-          if (remainder > 1) exactDistances.add(usable);
+          exactStep = full >= 1 ? nominal : usable;
+          if (remainder > 1) {
+            exactRemainder = remainder;
+            exactDistances.add(0);
+            exactDistances.add(remainder);
+            for (var k = 1; k <= full; k++) {
+              exactDistances.add(remainder + nominal * k);
+            }
+          } else {
+            // Остатка нет: ровно full+1 точек, последняя — в углу.
+            for (var k = 0; k <= full; k++) {
+              exactDistances.add(k == full ? usable : nominal * k);
+            }
+          }
           if (exactDistances.length < 2) {
             exactDistances
               ..clear()
               ..addAll([0, usable]);
+            exactRemainder = 0;
+            exactStep = usable;
           }
         }
         final exact = exactDistances.isNotEmpty;
         final intervals = exact
             ? exactDistances.length - 1
             : math.max(1, (usable / nominal).ceil());
-        final actual = exact ? nominal : usable / intervals;
+        final actual = exact ? exactStep : usable / intervals;
+        // Верх и лево обходятся в обратную сторону: стартовый угол — дальний
+        // конец ребра, поэтому расстояние от `a` разворачиваем.
+        final reverseStart =
+            exact && (side == WindowSide.top || side == WindowSide.left);
         if (sideHasEyelets(side)) {
           // По одной записи на сторону: этого ждут подписи цепочки и тесты.
-          // Для режима «шаг + остаток» записываем средний фактический шаг,
-          // а точные промежутки видны по координатам люверсов.
-          steps.add(exact ? usable / intervals : actual);
+          // Для «шаг + остаток» пишем сам шаг и остаток отдельно, чтобы
+          // подпись читалась как «шаг 300, остаток 200».
+          steps.add(actual);
+          remainders.add(exact ? exactRemainder : 0.0);
         }
 
         if (placements.length > 6000) break;
         for (var k = 0; k <= intervals; k++) {
-          var distance = offset + (exact ? exactDistances[k] : actual * k);
+          final point = exact ? exactDistances[k] : actual * k;
+          var distance = offset + (reverseStart ? usable - point : point);
           final isCornerIndex = offset < 0.5 && (k == 0 || k == intervals);
           // Подъёмное ПВХ-окно: низ поднимается, поэтому по низу остаются
           // только нижние углы (они держат полотно скобой/замком). Ручную
@@ -2842,26 +2878,45 @@ class WindowLayers {
             continue;
           }
 
+          // Фартук: угловые точки уходят с кромки фартука, а соседние по
+          // боковине сдвигаются от угла фартука внутрь на pocketCornerOffset.
+          // В «шаг + остаток» старт верх/лево развёрнут, поэтому сдвиг
+          // считаем от стартового угла; в «равномерно» порядок обхода прежний.
+          final inward = reverseStart ? -1.0 : 1.0;
           if (params.pocket) {
             if (side == WindowSide.bottom && (k == 0 || k == intervals)) {
               continue;
             }
-            if (side == WindowSide.right && k == 0) {
-              distance += pocketCornerOffset;
-            }
-            if (side == WindowSide.left && k == intervals) {
-              distance -= pocketCornerOffset;
+            if (exact) {
+              if ((side == WindowSide.left || side == WindowSide.right) &&
+                  k == 0) {
+                distance += inward * pocketCornerOffset;
+              }
+            } else {
+              if (side == WindowSide.right && k == 0) {
+                distance += pocketCornerOffset;
+              }
+              if (side == WindowSide.left && k == intervals) {
+                distance -= pocketCornerOffset;
+              }
             }
           }
           if (params.pocketTop) {
             if (side == WindowSide.top && (k == 0 || k == intervals)) {
               continue;
             }
-            if (side == WindowSide.right && k == intervals) {
-              distance -= pocketCornerOffset;
-            }
-            if (side == WindowSide.left && k == 0) {
-              distance += pocketCornerOffset;
+            if (exact) {
+              if ((side == WindowSide.left || side == WindowSide.right) &&
+                  k == intervals) {
+                distance -= inward * pocketCornerOffset;
+              }
+            } else {
+              if (side == WindowSide.right && k == intervals) {
+                distance -= pocketCornerOffset;
+              }
+              if (side == WindowSide.left && k == 0) {
+                distance += pocketCornerOffset;
+              }
             }
           }
           if ((params.pocket || params.pocketTop) &&
@@ -2938,15 +2993,21 @@ class WindowLayers {
       uniqueFasteners.add(fastener);
     }
 
-    return _EyeletResult(visible, steps, uniqueFasteners);
+    return _EyeletResult(visible, steps, remainders, uniqueFasteners);
   }
 }
 
 class _EyeletResult {
-  const _EyeletResult(this.placements, this.steps, this.manualFasteners);
+  const _EyeletResult(
+    this.placements,
+    this.steps,
+    this.remainders,
+    this.manualFasteners,
+  );
 
   final List<EyeletPlacement> placements;
   final List<double> steps;
+  final List<double> remainders;
   final List<ManualFastener> manualFasteners;
 }
 
@@ -3594,8 +3655,25 @@ class WindowSpec {
     final min = eyeletStepMin;
     final max = eyeletStepMax;
     if (min == null || max == null) return '—';
-    if ((max - min).abs() < 1) return '${formatMm(max)} ${unitSuffix()}';
-    return '${formatMm(min)}…${formatMm(max)} ${unitSuffix()}';
+    final String stepLabel;
+    if ((max - min).abs() < 1) {
+      stepLabel = '${formatMm(max)} ${unitSuffix()}';
+    } else {
+      stepLabel = '${formatMm(min)}…${formatMm(max)} ${unitSuffix()}';
+    }
+    if (params.eyeletEvenSpacing) return stepLabel;
+    // «Шаг + остаток»: у стартового угла остаётся первый промежуток —
+    // показываем его рядом с шагом, чтобы подпись совпадала с чертежом.
+    final remainders = layers.eyeletRemainders
+        .where((value) => value > 1)
+        .toList();
+    if (remainders.isEmpty) return stepLabel;
+    final remainderMin = remainders.reduce(math.min);
+    final remainderMax = remainders.reduce(math.max);
+    final remainderLabel = (remainderMax - remainderMin).abs() < 1
+        ? '${formatMm(remainderMax)} ${unitSuffix()}'
+        : '${formatMm(remainderMin)}…${formatMm(remainderMax)} ${unitSuffix()}';
+    return '$stepLabel, остаток $remainderLabel';
   }
 
   /// Подпись окантовки по сторонам: «низ 100, верх 100, лево 200, право 200».

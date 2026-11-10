@@ -39,14 +39,18 @@ void main() {
     }
   });
 
-  test('режим «шаг + остаток» держит 300 мм, последний промежуток 200 мм', () {
+  test('режим «шаг + остаток»: остаток 150 в начале, далее 300 мм', () {
+    // Линия люверсов у ПВХ идёт по середине окантовки: 2000 − 2 × 25 = 1950.
+    // 1950 = 6 × 300 + 150, поэтому первый промежуток от стартового угла —
+    // остаток 150, а дальше ровный шаг 300 (раньше остаток стоял в конце).
     final xs = bottomXs(base.copyWith(eyeletEvenSpacing: false));
     expect(xs, hasLength(8));
     final gaps = [
       for (var i = 1; i < xs.length; i++) xs[i] - xs[i - 1],
     ];
-    expect(gaps.take(6), everyElement(closeTo(300, 0.01)));
-    expect(gaps.last, closeTo(150, 0.01));
+    expect(gaps.first, closeTo(150, 0.01));
+    expect(gaps.skip(1), everyElement(closeTo(300, 0.01)));
+    expect(xs.first, closeTo(25, 0.01));
     expect(xs.last, closeTo(1975, 0.01));
   });
 

@@ -416,6 +416,8 @@ class PriceList {
     this.zipPerM2 = 0,
     this.crossbarPerM = 0,
     this.disabledItems = const <String>{},
+    this.hiddenItems = const <String>{},
+    this.customTitles = const <String, String>{},
     this.customItems = const <CustomPriceItem>[],
   });
 
@@ -515,6 +517,18 @@ class PriceList {
   /// и [copyWith], иначе состояние панели и сохранённого заказа разъедется.
   final Set<String> disabledItems;
 
+  /// Удалённые (скрытые) позиции прайса: ключи из [PriceItemKeys].
+  ///
+  /// В отличие от [disabledItems], удалённая позиция не показывается в панели
+  /// и в смете, её товары скрываются на складе, а синхронизация склада не
+  /// восстанавливает их. Вернуть позицию можно из раздела «Скрытые позиции».
+  /// Набор неизменяемый: правится через [withHidden].
+  final Set<String> hiddenItems;
+
+  /// Свои названия позиций прайса (ключ → название). Пустая строка/пробелы
+  /// означают «вернуть стандартное название».
+  final Map<String, String> customTitles;
+
   /// Свободные позиции ручного ввода: название, количество, единица, цена.
   final List<CustomPriceItem> customItems;
 
@@ -542,7 +556,55 @@ class PriceList {
 
   /// Учитывать ли позицию [key] в смете. Неизвестный ключ считается
   /// включённым — это безопасный ответ для старого или будущего прайса.
-  bool isEnabled(String key) => !disabledItems.contains(key);
+  bool isEnabled(String key) =>
+      !hiddenItems.contains(key) && !disabledItems.contains(key);
+
+  /// Позиция удалена из прайса (скрыта вместе с товарами склада).
+  bool isHidden(String key) => hiddenItems.contains(key);
+
+  /// Название позиции: своё, если задано, иначе [fallback].
+  String titleFor(String key, String fallback) {
+    final value = customTitles[key]?.trim();
+    return value == null || value.isEmpty ? fallback : value;
+  }
+
+  /// Своё название позиции без fallback (для списка скрытых).
+  String customTitleFor(String key) => customTitles[key]?.trim() ?? '';
+
+  /// Стандартное название позиции — для списка скрытых и подсказок.
+  static String defaultTitle(String key) => switch (key) {
+    PriceItemKeys.filmClear => 'Обычный ПВХ',
+    PriceItemKeys.filmTinted => 'Тонированный',
+    PriceItemKeys.filmMesh => 'Москитная сетка',
+    PriceItemKeys.filmScreen => 'Скрин',
+    PriceItemKeys.edge80 => 'Тент 80 мм',
+    PriceItemKeys.edge100 => 'Тент 100 мм',
+    PriceItemKeys.edge120 => 'Тент 120 мм',
+    PriceItemKeys.edge150 => 'Тент 150 мм',
+    PriceItemKeys.edge200 => 'Тент 200 мм',
+    PriceItemKeys.edge240 => 'Тент 240 мм',
+    PriceItemKeys.eyeletRound => 'Люверс круглый',
+    PriceItemKeys.eyeletOval => 'Люверс овальный',
+    PriceItemKeys.eyeletInstall => 'Установка люверса',
+    PriceItemKeys.zipper => 'Молния',
+    PriceItemKeys.weld => 'Спайка',
+    PriceItemKeys.pocket => 'Фартук',
+    PriceItemKeys.strap => 'Ремень',
+    PriceItemKeys.aluminumBox => 'Алюминиевый бокс',
+    PriceItemKeys.tentConsumption => 'Расход тента',
+    PriceItemKeys.drain => 'Дренаж',
+    PriceItemKeys.cutout => 'Вырез',
+    PriceItemKeys.turnBuckle => 'Поворотная скоба',
+    PriceItemKeys.frenchLock => 'Пластиковая скоба',
+    PriceItemKeys.screw => 'Саморез',
+    PriceItemKeys.screwRoofing => 'Саморез кровельный',
+    PriceItemKeys.screwWood => 'Саморез по дереву',
+    PriceItemKeys.screwMetal => 'Саморез по металлу',
+    PriceItemKeys.labor => 'Работа',
+    PriceItemKeys.cutting => 'Раскрой',
+    PriceItemKeys.screenHem => 'Подворот скрина',
+    _ => key,
+  };
 
   /// Копия прайса с включённой или выключенной позицией [key].
   PriceList withItem(String key, {required bool enabled}) {
@@ -553,6 +615,31 @@ class PriceList {
       next.add(key);
     }
     return copyWith(disabledItems: next);
+  }
+
+  /// Копия прайса со скрытой/восстановленной позицией [key].
+  PriceList withHidden(String key, {required bool hidden}) {
+    final next = {...hiddenItems};
+    if (hidden) {
+      next.add(key);
+    } else {
+      next.remove(key);
+    }
+    return copyWith(hiddenItems: next);
+  }
+
+  /// Копия прайса со своим названием позиции [key].
+  ///
+  /// Пустое название удаляет переопределение и возвращает стандартную подпись.
+  PriceList withTitle(String key, String title) {
+    final next = {...customTitles};
+    final value = title.trim();
+    if (value.isEmpty) {
+      next.remove(key);
+    } else {
+      next[key] = value;
+    }
+    return copyWith(customTitles: next);
   }
 
   /// Ключ позиции прайса для материала полотна.
@@ -802,6 +889,8 @@ class PriceList {
     double? zipPerM2,
     double? crossbarPerM,
     Set<String>? disabledItems,
+    Set<String>? hiddenItems,
+    Map<String, String>? customTitles,
     List<CustomPriceItem>? customItems,
   }) {
     return PriceList(
@@ -850,6 +939,8 @@ class PriceList {
       zipPerM2: zipPerM2 ?? this.zipPerM2,
       crossbarPerM: crossbarPerM ?? this.crossbarPerM,
       disabledItems: disabledItems ?? this.disabledItems,
+      hiddenItems: hiddenItems ?? this.hiddenItems,
+      customTitles: customTitles ?? this.customTitles,
       customItems: customItems ?? this.customItems,
     );
   }
@@ -902,6 +993,13 @@ class PriceList {
     // «нет поля» читается как «всё включено».
     if (disabledItems.isNotEmpty)
       'disabledItems': (disabledItems.toList()..sort()),
+    if (hiddenItems.isNotEmpty)
+      'hiddenItems': (hiddenItems.toList()..sort()),
+    if (customTitles.isNotEmpty)
+      'customTitles': {
+        for (final entry in customTitles.entries)
+          if (entry.value.trim().isNotEmpty) entry.key: entry.value.trim(),
+      },
     if (customItems.isNotEmpty)
       'customItems': [for (final item in customItems) item.toJson()],
   };
@@ -1012,6 +1110,8 @@ class PriceList {
       // Старый прайс без поля — всё включено. Неизвестные ключи (из будущих
       // версий) отбрасываем: модель не должна тащить мусор в панель и смету.
       disabledItems: _disabledItems(json['disabledItems']),
+      hiddenItems: _hiddenItems(json['hiddenItems']),
+      customTitles: _customTitles(json['customTitles']),
       customItems: _customItems(json['customItems']),
     );
   }
@@ -1024,6 +1124,29 @@ class PriceList {
     if (installationPerM2 > 0) 'монтаж ${_trim(installationPerM2)} ₽/м²',
     'валюта $currency',
   ].join(', ');
+}
+
+/// Скрытые позиции из JSON: только известные ключи, иначе пустой набор.
+Set<String> _hiddenItems(Object? value) {
+  if (value is! List) return const <String>{};
+  return {
+    for (final key in value)
+      if (key is String && PriceItemKeys.all.contains(key)) key,
+  };
+}
+
+/// Свои названия из JSON: строки-ключи известных позиций и непустые названия.
+Map<String, String> _customTitles(Object? value) {
+  if (value is! Map) return const <String, String>{};
+  final result = <String, String>{};
+  for (final entry in value.entries) {
+    final key = entry.key.toString();
+    final title = entry.value is String ? (entry.value as String).trim() : '';
+    if (PriceItemKeys.all.contains(key) && title.isNotEmpty) {
+      result[key] = title;
+    }
+  }
+  return result;
 }
 
 /// Свободные позиции из JSON: битые строки пропускаем, неизвестные единицы

@@ -12,7 +12,7 @@ class AppDatabase {
 
   static final AppDatabase instance = AppDatabase._();
 
-  static const int schemaVersion = 3;
+  static const int schemaVersion = 4;
 
   Database? _database;
   Future<Database>? _opening;
@@ -152,6 +152,19 @@ class AppDatabase {
         'ON order_expenses(at DESC)',
       );
     }
+    if (oldVersion < 4) {
+      // Скрытые (удалённые) позиции прайса. Синхронизация склада читает эту
+      // таблицу и не восстанавливает удалённые товары. Миграция — только
+      // CREATE TABLE IF NOT EXISTS, данные не переписываются; onUpgrade в
+      // sqflite выполняется в транзакции.
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS hidden_price_keys (
+          key TEXT PRIMARY KEY,
+          hidden_at TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT ''
+        )
+      ''');
+    }
   }
 
   /// SQL схемы. Порядок важен: сначала справочники, затем журналы.
@@ -160,6 +173,13 @@ class AppDatabase {
     CREATE TABLE app_meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
+    )
+    ''',
+    '''
+    CREATE TABLE hidden_price_keys (
+      key TEXT PRIMARY KEY,
+      hidden_at TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT ''
     )
     ''',
     '''

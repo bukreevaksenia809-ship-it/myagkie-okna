@@ -163,6 +163,10 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// а в модель уходит горизонтальная проекция [WindowParams.topWidth].
   late final TextEditingController _topEdgeController;
 
+  /// Поле «Низ» в режимах «верх ровно» и «нет»: длина нижней кромки,
+  /// в модель уходит горизонтальная проекция [WindowParams.bottomWidth].
+  late final TextEditingController _bottomEdgeController;
+
   /// Поля припусков на раскрой: добавка к ширине и к высоте, мм.
   final Map<_AllowanceField, TextEditingController> _allowanceControllers = {};
   final Map<_AllowanceField, String?> _allowanceErrors = {};
@@ -193,6 +197,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _spliceController = TextEditingController();
     _topEdgeController = TextEditingController(
       text: _textFor(_topEdgeLengthMm(_params)),
+    );
+    _bottomEdgeController = TextEditingController(
+      text: _textFor(_bottomEdgeLengthMm(_params)),
     );
     DisplayUnits.current.addListener(_onUnitsChanged);
     for (final field in _windowFields) {
@@ -243,7 +250,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
     _syncCutoutFields(project.selected, force: windowChanged);
     _syncEdgeFields(project.selected, force: windowChanged);
     _syncAllowanceFields(project.selected, force: windowChanged);
-    _syncTopEdgeField(project.selected, force: windowChanged);
+    _syncEdgeLengthFields(project.selected, force: windowChanged);
 
     // Текстовые поля обновляем только если пользователь их не редактирует:
     // иначе набранное (и область ввода IME) сбрасывается на каждом символе.
@@ -502,15 +509,18 @@ class _ParamsPanelState extends State<ParamsPanel> {
   }
 
   /// Фактическая длина наклонной верхней кромки, мм (гипотенуза).
-  double _topEdgeLengthMm(WindowParams params) {
-    final slant = params.topEdgeSlantMm;
-    return math.sqrt(
-      math.max(params.topWidth * params.topWidth + slant * slant, 0),
-    );
-  }
+  double _topEdgeLengthMm(WindowParams params) => params.topEdgeLengthMm;
 
-  /// Поле «Верх (длина кромки)»: текст = наклонная длина, модель — проекция.
-  void _syncTopEdgeField(WindowParams params, {bool force = false}) {
+  /// Фактическая длина наклонной нижней кромки, мм (гипотенуза).
+  double _bottomEdgeLengthMm(WindowParams params) => params.bottomEdgeLengthMm;
+
+  /// Синхронизация обоих полей длины кромки.
+  ///
+  /// Верх и низ — независимые контроллеры: в режиме «Ровно: низ» поле верха
+  /// показывает гипотенузу, в «Ровно: верх» — наоборот, низ; в «Нет» — оба.
+  /// Скрытое поле тоже синхронизируем, чтобы при переключении режима в нём
+  /// не осталось старое число.
+  void _syncEdgeLengthFields(WindowParams params, {bool force = false}) {
     _syncController(
       _topEdgeController,
       _topEdgeLengthMm(params),
@@ -518,38 +528,117 @@ class _ParamsPanelState extends State<ParamsPanel> {
       parser: parseMm,
       formatter: _textFor,
     );
-    if (force) _errors[ParamField.topWidth] = null;
+    _syncController(
+      _bottomEdgeController,
+      _bottomEdgeLengthMm(params),
+      force: force,
+      parser: parseMm,
+      formatter: _textFor,
+    );
+    if (force) {
+      _errors[ParamField.topWidth] = null;
+      _errors[ParamField.bottomWidth] = null;
+    }
   }
 
-  /// Ввод длины наклонного верха: пересчитываем горизонтальную проекцию
-  /// `topWidth = √(длина² − перепад²)` и укладываем её в модель.
-  void _onTopEdgeChanged(String raw) {
+  /// Поле «Верх (длина кромки)»: текст = наклонная длина, модель — проекция.
+  void _onTopEdgeChanged(String raw) =>
+      _onEdgeLengthChanged(top: true, raw: raw);
+
+  /// Поле «Низ (длина кромки)»: текст = наклонная длина, модель — проекция.
+  void _onBottomEdgeChanged(String raw) =>
+      _onEdgeLengthChanged(top: false, raw: raw);
+
+  /// Ввод длины наклонной кромки: пересчитываем горизонтальную проекцию
+  /// `run = √(длина² − перепад²)` и укладываем её в модель.
+  ///
+  /// Модель хранит проекции (`topWidth` / `bottomWidth`) — по ним строятся
+  /// чертёж, раскрой и все остальные расчёты. Ручной ввод длины кромки
+  /// меняет проекцию и, следовательно, `topOffset` по текущему выравниванию.
+  void _onEdgeLengthChanged({required bool top, required String raw}) {
+    final field = top ? ParamField.topWidth : ParamField.bottomWidth;
     final length = parseMm(raw);
     if (length == null) {
       setState(
-        () => _errors[ParamField.topWidth] = 'Введите число, например 1742',
+        () => _errors[field] = 'Введите число, например 1742',
       );
       return;
     }
-    final slant = _params.topEdgeSlantMm;
+    final slant = top ? _params.topEdgeSlantMm : _params.bottomEdgeSlantMm;
     if (length < slant.abs()) {
       setState(
-        () => _errors[ParamField.topWidth] =
-            'Длина верха меньше перепада высот '
+        () => _errors[field] =
+            'Длина ${top ? 'верха' : 'низа'} меньше перепада высот '
             '${formatMm(slant.abs())} ${unitSuffix()}',
       );
       return;
     }
     if (length < 100 || length > 20000) {
       setState(
-        () => _errors[ParamField.topWidth] =
+        () => _errors[field] =
             'Размер от 100 до 20 000 ${unitSuffix()}, проверьте значение',
       );
       return;
     }
     final run = math.sqrt(math.max(length * length - slant * slant, 0));
-    setState(() => _errors[ParamField.topWidth] = null);
-    _updateWindow(_params.copyWith(topWidth: run));
+    setState(() => _errors[field] = null);
+    _updateWindow(
+      top
+          ? _params.copyWith(topWidth: run)
+          : _params.copyWith(bottomWidth: run),
+    );
+  }
+
+  /// Авто-проекция невыровненной кромки.
+  ///
+  /// «Ровно: низ» — верх автоматически равен ширине низа (боковины
+  /// вертикальные); «Ровно: верх» — наоборот. «Нет» сохраняет проекции:
+  /// обе кромки наклонены, каждая задаётся своей длиной.
+  WindowParams _autoEdgeLengths(
+    WindowParams params, {
+    required ParamField changed,
+  }) {
+    if (params.isSpecialShape || params.isTShape || params.isComposite) {
+      return params;
+    }
+    switch (params.levelEdge) {
+      case LevelEdge.bottom:
+        if (changed == ParamField.bottomWidth ||
+            changed == ParamField.leftHeight ||
+            changed == ParamField.rightHeight) {
+          return params.copyWith(topWidth: params.bottomWidth);
+        }
+      case LevelEdge.top:
+        if (changed == ParamField.topWidth ||
+            changed == ParamField.leftHeight ||
+            changed == ParamField.rightHeight) {
+          return params.copyWith(bottomWidth: params.topWidth);
+        }
+      case LevelEdge.none:
+        break;
+    }
+    return params;
+  }
+
+  /// Кнопка «↺ авто»: возвращает проекцию невыровненной кромки к ширине
+  /// опорной кромки (для «Нет» — верх к низу).
+  void _resetEdgeLengthAuto() {
+    var next = _params;
+    if (!next.isSpecialShape && !next.isTShape && !next.isComposite) {
+      switch (next.levelEdge) {
+        case LevelEdge.bottom:
+        case LevelEdge.none:
+          next = next.copyWith(topWidth: next.bottomWidth);
+        case LevelEdge.top:
+          next = next.copyWith(bottomWidth: next.topWidth);
+      }
+    }
+    setState(() {
+      _errors[ParamField.topWidth] = null;
+      _errors[ParamField.bottomWidth] = null;
+    });
+    _syncEdgeLengthFields(next, force: true);
+    _updateWindow(next);
   }
 
   @override
@@ -582,6 +671,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
       controller.dispose();
     }
     _spliceController.dispose();
+    _topEdgeController.dispose();
+    _bottomEdgeController.dispose();
     for (final controller in _allowanceControllers.values) {
       controller.dispose();
     }
@@ -637,6 +728,7 @@ class _ParamsPanelState extends State<ParamsPanel> {
       }
       _spliceController.text = _textFor(_params.spliceStripMm);
       _topEdgeController.text = _textFor(_topEdgeLengthMm(_params));
+      _bottomEdgeController.text = _textFor(_bottomEdgeLengthMm(_params));
       for (final field in _AllowanceField.values) {
         _allowanceControllers[field]?.text = _textFor(
           _allowanceValue(_params, field),
@@ -732,7 +824,9 @@ class _ParamsPanelState extends State<ParamsPanel> {
       case ParamField.rollGap:
         _updateProject(widget.project.setRollGap(value));
       default:
-        _updateWindow(_params.withField(field, value));
+        _updateWindow(
+          _autoEdgeLengths(_params.withField(field, value), changed: field),
+        );
     }
   }
 
@@ -1157,7 +1251,19 @@ class _ParamsPanelState extends State<ParamsPanel> {
   /// перерисовывает панель. `setState` страхует перерисовку, если родитель
   /// почему-то не отреагирует на `onChanged`.
   void _selectLevelEdge(LevelEdge edge) {
-    final next = _params.copyWith(levelEdge: edge);
+    var next = _params.copyWith(levelEdge: edge);
+    if (!next.isSpecialShape && !next.isTShape && !next.isComposite) {
+      // При смене «Ровно» проекция невыровненной кромки сбрасывается на
+      // ширину опорной: боковины вертикальные, длина кромки — авто.
+      switch (edge) {
+        case LevelEdge.bottom:
+          next = next.copyWith(topWidth: next.bottomWidth);
+        case LevelEdge.top:
+          next = next.copyWith(bottomWidth: next.topWidth);
+        case LevelEdge.none:
+          break;
+      }
+    }
     setState(() {});
     _updateWindow(next);
   }
@@ -2477,8 +2583,12 @@ class _ParamsPanelState extends State<ParamsPanel> {
     };
     var four = false;
     String labelFor(String key) => switch (key) {
-      'top' => 'Верх (длина кромки)',
-      'bottom' => 'Ширина снизу',
+      'top' => params.levelEdge == LevelEdge.top
+          ? 'Ширина верха'
+          : 'Верх (длина кромки)',
+      'bottom' => params.levelEdge == LevelEdge.bottom
+          ? 'Ширина снизу'
+          : 'Низ (длина кромки)',
       'left' => 'Высота слева',
       _ => 'Высота справа',
     };
@@ -2592,7 +2702,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
                           ? 'Заполните все четыре размера'
                           : 'Наружный габарит: верх (длина кромки) '
                                 '${formatMm(_outerTopEdgeLength(params, outer))}, '
-                                'низ ${formatMm(outer.bottomWidth)}, '
+                                'низ (длина кромки) '
+                                '${formatMm(_outerBottomEdgeLength(params, outer))}, '
                                 'лево ${formatMm(outer.leftHeight)}, '
                                 'право ${formatMm(outer.rightHeight)} '
                                 '${unitSuffix()}',
@@ -2744,9 +2855,17 @@ class _ParamsPanelState extends State<ParamsPanel> {
         ] else ...[
           Row(
             children: [
-              Expanded(child: _numberField(ParamField.bottomWidth)),
+              Expanded(
+                child: params.levelEdge == LevelEdge.bottom
+                    ? _numberField(ParamField.bottomWidth)
+                    : _bottomEdgeField(),
+              ),
               const SizedBox(width: 12),
-              Expanded(child: _topEdgeField()),
+              Expanded(
+                child: params.levelEdge == LevelEdge.top
+                    ? _numberField(ParamField.topWidth)
+                    : _topEdgeField(),
+              ),
             ],
           ),
           Row(
@@ -2757,11 +2876,44 @@ class _ParamsPanelState extends State<ParamsPanel> {
             ],
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Низ и высоты слева/справа задаются как обычно, а верх — длина '
-            'наклонной кромки (гипотенуза). Горизонтальную проекцию программа '
-            'считает сама.',
-            style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  switch (params.levelEdge) {
+                    LevelEdge.bottom =>
+                      'Низ горизонтален — вводится ширина низа. Верх — длина '
+                          'наклонной кромки (гипотенуза); горизонтальную '
+                          'проекцию программа считает сама.',
+                    LevelEdge.top =>
+                      'Верх горизонтален — вводится ширина верха. Низ — длина '
+                          'наклонной кромки (гипотенуза); горизонтальную '
+                          'проекцию программа считает сама.',
+                    LevelEdge.none =>
+                      'Обе кромки наклонены: верх и низ — длины кромок '
+                          '(гипотенузы). Горизонтальные проекции программа '
+                          'считает сама.',
+                  },
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF66748A),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              TextButton.icon(
+                key: const Key('edge-length-auto'),
+                onPressed: _resetEdgeLengthAuto,
+                icon: const Icon(Icons.refresh, size: 15),
+                label: const Text('авто', style: TextStyle(fontSize: 11)),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 6),
           _edgeLengthsNote(params, spec),
@@ -2850,28 +3002,57 @@ class _ParamsPanelState extends State<ParamsPanel> {
   }
 
   /// Поле «Верх» для трапеции: вводится длина наклонной кромки (гипотенуза).
-  Widget _topEdgeField() {
-    return TextField(
-      key: const Key('topWidth-field'),
-      controller: _topEdgeController,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: InputDecoration(
-        labelText: 'Верх (длина кромки)',
-        suffixText: unitSuffix(),
-        border: const OutlineInputBorder(),
-        isDense: true,
-        errorText: _errors[ParamField.topWidth],
-        errorMaxLines: 2,
-      ),
-      onChanged: _onTopEdgeChanged,
-    );
-  }
+  Widget _topEdgeField() => _edgeLengthField(
+    key: const Key('topWidth-field'),
+    controller: _topEdgeController,
+    label: 'Верх (длина кромки)',
+    error: _errors[ParamField.topWidth],
+    onChanged: _onTopEdgeChanged,
+  );
+
+  /// Поле «Низ» для режимов «Ровно: верх» и «Ровно: нет».
+  Widget _bottomEdgeField() => _edgeLengthField(
+    key: const Key('bottomWidth-field'),
+    controller: _bottomEdgeController,
+    label: 'Низ (длина кромки)',
+    error: _errors[ParamField.bottomWidth],
+    onChanged: _onBottomEdgeChanged,
+  );
+
+  Widget _edgeLengthField({
+    required Key key,
+    required TextEditingController controller,
+    required String label,
+    required String? error,
+    required ValueChanged<String> onChanged,
+  }) => TextField(
+    key: key,
+    controller: controller,
+    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    decoration: InputDecoration(
+      labelText: label,
+      suffixText: unitSuffix(),
+      border: const OutlineInputBorder(),
+      isDense: true,
+      errorText: error,
+      errorMaxLines: 2,
+    ),
+    onChanged: onChanged,
+  );
 
   /// Наклонная длина наружного верха по горизонтальной проекции и перепаду.
   double _outerTopEdgeLength(WindowParams params, OuterSides outer) {
     final slant = params.topEdgeSlantMm;
     return math.sqrt(
       math.max(outer.topWidth * outer.topWidth + slant * slant, 0),
+    );
+  }
+
+  /// Наклонная длина наружного низа по горизонтальной проекции и перепаду.
+  double _outerBottomEdgeLength(WindowParams params, OuterSides outer) {
+    final slant = params.bottomEdgeSlantMm;
+    return math.sqrt(
+      math.max(outer.bottomWidth * outer.bottomWidth + slant * slant, 0),
     );
   }
 
@@ -6070,7 +6251,8 @@ class _ParamsPanelState extends State<ParamsPanel> {
                     '${spec.eyeletStepLabel} по сторонам: число интервалов '
                     'округляют вверх, поэтому факт не больше заданного.'
               : 'Шаг держится ровно ${formatMm(value)} ${unitSuffix()}, '
-                    'последний промежуток до угла — остаток. '
+                    'первый промежуток от стартового угла — остаток: низ и '
+                    'верх слева → направо, лево и право снизу → вверх. '
                     '${spec.eyeletStepLabel}.',
           key: const Key('eyelet-step-actual'),
           style: const TextStyle(fontSize: 11, color: Color(0xFF66748A)),
@@ -6087,8 +6269,15 @@ class _ParamsPanelState extends State<ParamsPanel> {
     final rows = <(String, String)>[];
     for (final side in WindowSide.values) {
       final points =
-          spec.layers.eyelets.where((eyelet) => eyelet.side == side).toList()
-            ..sort((a, b) => a.positionInEdge.compareTo(b.positionInEdge));
+          spec.layers.eyelets.where((eyelet) => eyelet.side == side).toList();
+      // Стартовый угол эталона: низ и верх — левый, лево и право — нижний.
+      // Обход контура у верха и лево обратный, поэтому позицию разворачиваем,
+      // чтобы остаток в сводке стоял первым так же, как на чертеже.
+      final forward =
+          side == WindowSide.bottom || side == WindowSide.right;
+      double startFraction(EyeletPlacement point) =>
+          forward ? point.positionInEdge : 1 - point.positionInEdge;
+      points.sort((a, b) => startFraction(a).compareTo(startFraction(b)));
       if (points.length < 2) continue;
       final gaps = <double>[
         for (var i = 1; i < points.length; i++)
@@ -6099,10 +6288,24 @@ class _ParamsPanelState extends State<ParamsPanel> {
       final equal = gaps.every(
         (gap) => (gap - first).abs() <= fastenerSpanEqualToleranceMm,
       );
+      // «Шаг + остаток»: первый промежуток — остаток, остальные равны шагу.
+      final rest = gaps.skip(1).toList();
+      final restEqual =
+          rest.isNotEmpty &&
+          rest.every(
+            (gap) => (gap - rest.first).abs() <= fastenerSpanEqualToleranceMm,
+          );
+      final remainderAtStart =
+          !equal &&
+          restEqual &&
+          (gaps.first - rest.first) > fastenerSpanEqualToleranceMm;
       rows.add((
         side.label,
         equal
             ? 'шаг ${formatFastenerSpanMm(first)} ${unitSuffix()} × ${gaps.length}'
+            : remainderAtStart
+            ? 'шаг ${formatFastenerSpanMm(rest.first)} ${unitSuffix()}, '
+                  'остаток ${formatFastenerSpanMm(gaps.first)} ${unitSuffix()}'
             : gaps.map(formatFastenerSpanMm).join(' / '),
       ));
     }

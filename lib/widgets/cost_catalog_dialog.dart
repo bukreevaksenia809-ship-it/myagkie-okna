@@ -51,15 +51,18 @@ class _CostCatalogDialogState extends State<_CostCatalogDialog> {
       ),
   };
   late final Set<String> _disabled = {...widget.catalog.disabled};
+  late final Set<String> _hidden = {...widget.catalog.hidden};
   String? _selectedCostKey;
   CatalogItem? _pickedCatalog;
 
   /// Позиции себестоимости, отфильтрованные выбранной цветной позицией.
-  List<CostPosition> get _visiblePositions => _selectedCostKey == null
-      ? costPositions
-      : costPositions
-            .where((position) => position.key == _selectedCostKey)
-            .toList();
+  List<CostPosition> get _visiblePositions => costPositions
+      .where(
+        (position) =>
+            !_hidden.contains(position.key) &&
+            (_selectedCostKey == null || position.key == _selectedCostKey),
+      )
+      .toList();
 
   String? _costKeyFor(WarehouseProduct product) {
     final base = catalogBasePriceKey(product.priceKey);
@@ -118,13 +121,20 @@ class _CostCatalogDialogState extends State<_CostCatalogDialog> {
     final costs = <String, double>{};
     for (final position in costPositions) {
       if (_disabled.contains(position.key)) continue;
+      // Скрытую статью не показываем, но её цена сохраняется: после
+      // восстановления не придётся вводить заново.
       final raw = _controllers[position.key]!.text.replaceAll(',', '.').trim();
       final value = double.tryParse(raw) ?? 0;
       if (value > 0) costs[position.key] = value;
     }
-    Navigator.of(
-      context,
-    ).pop(CostCatalog(costs: costs, disabled: _disabled, configured: true));
+    Navigator.of(context).pop(
+      CostCatalog(
+        costs: costs,
+        disabled: _disabled,
+        hidden: _hidden,
+        configured: true,
+      ),
+    );
   }
 
   @override
@@ -275,11 +285,62 @@ class _CostCatalogDialogState extends State<_CostCatalogDialog> {
                           ),
                         ),
                       ),
+                      IconButton(
+                        key: Key('cost-delete-${position.key}'),
+                        tooltip: 'Удалить статью (можно восстановить)',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => setState(() {
+                          _hidden.add(position.key);
+                          _selectedCostKey = null;
+                        }),
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          size: 18,
+                          color: Color(0xFF8A93A0),
+                        ),
+                      ),
                     ],
                   );
                 },
               ),
             ),
+            if (_hidden.isNotEmpty) ...[
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Скрытые позиции (${_hidden.length})',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        for (final position in costPositions)
+                          if (_hidden.contains(position.key))
+                            ActionChip(
+                              key: Key('cost-restore-${position.key}'),
+                              label: Text(
+                                '${position.label} · восстановить',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              onPressed: () => setState(
+                                () => _hidden.remove(position.key),
+                              ),
+                            ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const Divider(height: 1),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),

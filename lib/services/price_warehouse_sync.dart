@@ -43,9 +43,26 @@ class PriceWarehouseSync {
   }
 
   /// Добавляет недостающие позиции прайса. Возвращает число созданных.
+  ///
+  /// Удалённые позиции пропускаются: и скрытые в самом прайсе
+  /// ([PriceList.hiddenItems]), и удалённые на складе (таблица
+  /// `hidden_price_keys`). Поэтому «Синхронизировать с прайсом» не
+  /// возвращает товар, который мастер удалил.
   Future<int> sync(PriceList prices, {bool updatePrices = false}) async {
     final existing = await _warehouse.products(includeArchived: true);
-    final definitions = _definitions(prices);
+    final hidden = <String>{
+      ...prices.hiddenItems,
+      ...await _warehouse.hiddenPriceKeys(),
+    };
+    bool isHiddenKey(String key) {
+      final value = key.trim();
+      return hidden.contains(value) ||
+          hidden.contains(catalogBasePriceKey(value));
+    }
+
+    final definitions = _definitions(
+      prices,
+    ).where((definition) => !isHiddenKey(definition.key)).toList();
     final byKey = {
       for (final product in existing)
         if (product.priceKey.isNotEmpty) product.priceKey: product,

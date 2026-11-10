@@ -6,7 +6,6 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:soft_window_drawer/models/document.dart';
@@ -109,47 +108,24 @@ void main() {
     expect(_doc(DocumentTemplate.offer).plainText, contains('КОММЕРЧЕСКОЕ'));
   });
 
-  test('договор Бланк ММО: логотип, реквизиты Сергея и спецификация', () async {
-    final document = _doc(DocumentTemplate.mmoContract);
-    final text = document.plainText;
-
-    expect(document.title, 'Договор Бланк ММО');
-    expect(document.number, 'ДОГОВОР-ММО-20261023');
-    // Реквизиты исполнителя зашиты в шаблон.
-    expect(text, contains('ИП Петрушков Сергей Алексеевич'));
-    expect(text, contains('ИНН 525607199008'));
-    expect(text, contains('8-987-111-02-52'));
-    // Заказчик подставляется из заказа.
-    expect(text, contains(_customer.displayName));
-    // Разделы договора.
-    expect(text, contains('1. Предмет договора'));
-    expect(text, contains('6. Гарантия'));
-    expect(text, contains('БЛАНК ЗАКАЗА'));
-    // Логотип — встроенный ассет.
-    final logo = document.blocks.where(
-      (block) => block.type == DocBlockType.image,
-    );
-    expect(logo, hasLength(1));
-    expect(logo.single.assetRef, DocumentTemplates.mmoLogoRef);
-    // Таблица спецификации — 4 колонки с итогом.
-    final tables = document.blocks.where(
-      (block) => block.type == DocBlockType.table,
+  test('временный бланк удалён: в списке ровно семь шаблонов', () {
+    expect(DocumentTemplate.values, hasLength(7));
+    expect(
+      DocumentTemplate.values.map((template) => template.title).toList(),
+      [
+        'Акт выполненных работ',
+        'Договор подряда',
+        'Коммерческое предложение',
+        'Спецификация',
+        'Гарантийный талон',
+        'Счёт на оплату',
+        'Свой документ',
+      ],
     );
     expect(
-      tables.any(
-        (block) =>
-            block.rows.isNotEmpty &&
-            block.rows.first.length == 4 &&
-            block.rows.first[3] == 'Стоимость, руб.',
-      ),
-      isTrue,
+      DocumentTemplate.values.map((template) => template.code).toSet(),
+      hasLength(DocumentTemplate.values.length),
     );
-
-    // Встроенный логотип зарегистрирован в бандле и читается.
-    final logoData = await rootBundle.load(
-      'assets/contracts/mmo-logo.png',
-    );
-    expect(logoData.lengthInBytes, greaterThan(1000));
   });
 
   test('документы сохраняются и восстанавливаются после перезапуска', () async {

@@ -338,6 +338,7 @@ class _PricePanelState extends State<PricePanel> {
             ]),
             // Проценты — не позиции, а условия расчёта: у них нет тумблера,
             // «не считать» выражается нулём.
+            _hiddenItemsSection(prices),
             _customItemsSection(prices),
             _group('Условия расчёта', [
               _row(
@@ -871,6 +872,14 @@ class _PricePanelState extends State<PricePanel> {
     ValueChanged<double> onChanged, {
     String? itemKey,
   }) {
+    // Удалённая позиция не показывается в панели: её можно вернуть из
+    // раздела «Скрытые позиции» ниже.
+    if (itemKey != null && widget.prices.isHidden(itemKey)) {
+      return const SizedBox.shrink();
+    }
+    final displayLabel = itemKey == null
+        ? label
+        : widget.prices.titleFor(itemKey, label);
     final controller = _controllers.putIfAbsent(
       label,
       () => TextEditingController(text: _format(value)),
@@ -894,7 +903,7 @@ class _PricePanelState extends State<PricePanel> {
         children: [
           Expanded(
             child: Text(
-              label,
+              displayLabel,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -905,7 +914,8 @@ class _PricePanelState extends State<PricePanel> {
               ),
             ),
           ),
-          if (itemKey != null) _toggle(label, itemKey, enabled),
+          if (itemKey != null) _rowMenu(displayLabel, itemKey),
+          if (itemKey != null) _toggle(displayLabel, itemKey, enabled),
           const SizedBox(width: 4),
           // Выключенная строка приглушена, но цену в ней ещё можно править:
           // включение вернёт её в смету уже с новой ценой.
@@ -935,6 +945,158 @@ class _PricePanelState extends State<PricePanel> {
         ],
       ),
     );
+  }
+
+  /// Меню позиции: переименовать или удалить.
+  Widget _rowMenu(String label, String itemKey) {
+    return PopupMenuButton<String>(
+      key: ValueKey('price-menu-$itemKey'),
+      tooltip: 'Действия с позицией',
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 24, height: 30),
+      icon: const Icon(Icons.more_vert, size: 16, color: Color(0xFF66748A)),
+      onSelected: (value) {
+        switch (value) {
+          case 'rename':
+            _renameItem(label, itemKey);
+          case 'delete':
+            _deleteItem(label, itemKey);
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          key: ValueKey('price-rename-$itemKey'),
+          value: 'rename',
+          child: const Text('Переименовать'),
+        ),
+        PopupMenuItem(
+          key: ValueKey('price-delete-$itemKey'),
+          value: 'delete',
+          child: const Text('Удалить'),
+        ),
+      ],
+    );
+  }
+
+  /// Своё название поверх стандартного: видно в панели, смете и PDF.
+  Future<void> _renameItem(String label, String itemKey) async {
+    final current = widget.prices.titleFor(itemKey, label);
+    var value = current;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Название позиции'),
+        content: TextFormField(
+          key: const Key('price-rename-field'),
+          initialValue: current,
+          autofocus: true,
+          onChanged: (text) => value = text,
+          decoration: const InputDecoration(
+            labelText: 'Название в панели и смете',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            key: const Key('price-rename-save'),
+            onPressed: () => Navigator.of(context).pop(value),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    _set(widget.prices.withTitle(itemKey, result));
+  }
+
+  /// Удаление позиции: она исчезает из панели, сметы и склада; вернуть можно
+  /// из «Скрытых позиций». Сохранённые заказы открываются без ошибок —
+  /// смета просто пропускает скрытую строку.
+  Future<void> _deleteItem(String label, String itemKey) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить позицию прайса?'),
+        content: Text(
+          '«$label» исчезнет из панели, сметы и склада. Вернуть её можно в '
+          'разделе «Скрытые позиции».',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            key: const Key('price-delete-confirm'),
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB3261E)),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    _set(widget.prices.withHidden(itemKey, hidden: true));
+  }
+
+  /// Раздел «Скрытые позиции»: список удалённых с кнопками восстановления.
+  Widget _hiddenItemsSection(PriceList prices) {
+    if (prices.hiddenItems.isEmpty) return const SizedBox.shrink();
+    final keys = prices.hiddenItems.toList()
+      ..sort(
+        (a, b) => PriceList.defaultTitle(
+          a,
+        ).toLowerCase().compareTo(PriceList.defaultTitle(b).toLowerCase()),
+      );
+    return _group('Скрытые позиции', [
+      const Padding(
+        padding: EdgeInsets.only(left: 2, bottom: 4),
+        child: Text(
+          'Удалённые позиции не попадают в смету и скрыты на складе. '
+          'Нажмите «Восстановить», чтобы вернуть.',
+          style: TextStyle(fontSize: 11, color: Color(0xFF66748A)),
+        ),
+      ),
+      for (final key in keys)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  prices.titleFor(key, PriceList.defaultTitle(key)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF66748A),
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                key: ValueKey('price-restore-$key'),
+                onPressed: () => _set(
+                  prices.withHidden(key, hidden: false),
+                ),
+                icon: const Icon(Icons.restore, size: 15),
+                label: const Text(
+                  'Восстановить',
+                  style: TextStyle(fontSize: 11),
+                ),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
+          ),
+        ),
+    ]);
   }
 
   /// Компактный тумблер позиции: включена — позиция идёт в смету.

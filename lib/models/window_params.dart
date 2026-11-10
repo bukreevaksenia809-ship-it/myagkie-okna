@@ -1639,6 +1639,27 @@ class WindowParams {
     LevelEdge.none => (leftHeight - rightHeight) / 2,
   };
 
+  /// Фактическая длина верхней кромки, мм (гипотенуза).
+  ///
+  /// [topWidth] — горизонтальная проекция. На наклонном верхе реальная
+  /// длина кромки больше проекции: это то число, которое вводится в поле
+  /// «Верх (длина кромки)» и попадает в раскрой.
+  double get topEdgeLengthMm => math.sqrt(
+    math.max(topWidth * topWidth + topEdgeSlantMm * topEdgeSlantMm, 0),
+  );
+
+  /// Фактическая длина нижней кромки, мм (гипотенуза).
+  ///
+  /// [bottomWidth] — горизонтальная проекция. При «Ровно: верх» и «Ровно:
+  /// нет» низ наклонён, поэтому его длина считается по перепаду
+  /// [bottomEdgeSlantMm].
+  double get bottomEdgeLengthMm => math.sqrt(
+    math.max(
+      bottomWidth * bottomWidth + bottomEdgeSlantMm * bottomEdgeSlantMm,
+      0,
+    ),
+  );
+
   /// Тип люверса, который реально ставится.
   ///
   /// Тип выбирает пользователь, и он действует на **любом** типе окна, включая

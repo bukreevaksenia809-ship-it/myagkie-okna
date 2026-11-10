@@ -12,6 +12,9 @@ Uint8List _docx({
   required String documentXml,
   String? numberingXml,
   String? title,
+  String? relsXml,
+  Map<String, List<int>> media = const {},
+  Map<String, List<int>> extraFiles = const {},
 }) {
   final archive = Archive();
   final document = utf8.encode(documentXml);
@@ -30,6 +33,18 @@ Uint8List _docx({
       '<dc:title>$title</dc:title></cp:coreProperties>',
     );
     archive.addFile(ArchiveFile('docProps/core.xml', core.length, core));
+  }
+  if (relsXml != null) {
+    final rels = utf8.encode(relsXml);
+    archive.addFile(
+      ArchiveFile('word/_rels/document.xml.rels', rels.length, rels),
+    );
+  }
+  for (final entry in media.entries) {
+    archive.addFile(ArchiveFile(entry.key, entry.value.length, entry.value));
+  }
+  for (final entry in extraFiles.entries) {
+    archive.addFile(ArchiveFile(entry.key, entry.value.length, entry.value));
   }
   final encoded = ZipEncoder().encode(archive);
   return Uint8List.fromList(encoded);
@@ -232,6 +247,137 @@ void main() {
 
     await store.remove('t1');
     expect(await store.load(), isEmpty);
+  });
+
+  test('DOCX с картинкой: логотип на своём месте, ширина из EMU', () {
+    // 1×1 PNG — достаточно, чтобы проверить извлечение и размеры.
+    const png = <int>[
+      0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+      0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+      0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+      0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+      0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+      0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+    final bytes = _docx(
+      relsXml:
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+          '<Relationship Id="rId5" '
+          'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+          'Target="media/image1.png"/></Relationships>',
+      media: {'word/media/image1.png': png},
+      documentXml: '''
+        <w:document xmlns:w="w" xmlns:r="r" xmlns:wp="wp" xmlns:a="a" xmlns:pic="pic">
+          <w:body>
+            <w:p>
+              <w:r>
+                <w:drawing>
+                  <wp:inline>
+                    <wp:extent cx="1800000" cy="900000"/>
+                    <a:graphic><a:graphicData>
+                      <pic:pic><pic:blipFill>
+                        <a:blip r:embed="rId5"/>
+                      </pic:blipFill></pic:pic>
+                    </a:graphicData></a:graphic>
+                  </wp:inline>
+                </w:drawing>
+              </w:r>
+            </w:p>
+            <w:p><w:r><w:t>Текст после логотипа</w:t></w:r></w:p>
+          </w:body>
+        </w:document>
+      ''',
+    );
+    final result = DocxImportService.parse(bytes, fileName: 'logo.docx');
+    expect(result.error, isNull);
+    expect(result.images, hasLength(1));
+    expect(result.images.single.widthMm, closeTo(50, 0.01));
+    expect(result.images.single.bytes, isNotEmpty);
+    final imageBlock = result.blocks.firstWhere(
+      (block) => block.type == DocBlockType.image,
+    );
+    expect(imageBlock.assetRef, startsWith('@docx:'));
+    // Картинка стоит до текста: логотип в шапке не уезжает вниз.
+    expect(result.blocks.first.type, DocBlockType.image);
+    expect(result.blocks.last.text, contains('Текст после логотипа'));
+
+    // После сохранения в ассетах заглушка заменяется реальной ссылкой.
+    final assigned = applyDocxImageAssets(result.blocks, {
+      imageBlock.assetRef!: 'logo_saved.png',
+    });
+    expect(
+      assigned.firstWhere((block) => block.type == DocBlockType.image).assetRef,
+      'logo_saved.png',
+    );
+  });
+
+  test('логотип из колонтитула Word попадает в начало шаблона', () {
+    const png = <int>[
+      0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+      0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+      0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+      0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+      0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+      0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+    final headerXml = utf8.encode('''
+      <w:hdr xmlns:w="w" xmlns:r="r" xmlns:wp="wp" xmlns:a="a" xmlns:pic="pic">
+        <w:p><w:r><w:drawing><wp:inline>
+          <wp:extent cx="720000" cy="720000"/>
+          <a:graphic><a:graphicData><pic:pic><pic:blipFill>
+            <a:blip r:embed="rId1"/>
+          </pic:blipFill></pic:pic></a:graphicData></a:graphic>
+        </wp:inline></w:drawing></w:r></w:p>
+      </w:hdr>
+    ''');
+    final headerRels = utf8.encode(
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      '<Relationship Id="rId1" '
+      'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+      'Target="media/logo.png"/></Relationships>',
+    );
+    final bytes = _docx(
+      documentXml:
+          '<w:document xmlns:w="w"><w:body>'
+          '<w:p><w:r><w:t>Договор</w:t></w:r></w:p>'
+          '</w:body></w:document>',
+      extraFiles: {
+        'word/header1.xml': headerXml,
+        'word/_rels/header1.xml.rels': headerRels,
+      },
+      media: {'word/media/logo.png': png},
+    );
+    final result = DocxImportService.parse(bytes, fileName: 'header.docx');
+    expect(result.error, isNull);
+    expect(result.images, hasLength(1));
+    expect(result.images.single.widthMm, closeTo(20, 0.01));
+    expect(result.blocks.first.type, DocBlockType.image);
+    expect(result.blocks.last.text, contains('Договор'));
+  });
+
+  test('DOCX с картинкой переживает сохранение шаблона', () async {
+    SharedPreferences.setMockInitialValues({});
+    final template = ImportedDocxTemplate(
+      id: 'img1',
+      title: 'С логотипом',
+      fileName: 'logo.docx',
+      importedAt: DateTime(2026, 11, 10),
+      updatedAt: DateTime(2026, 11, 10),
+      blocks: const [
+        DocBlock(
+          id: 'b-image',
+          type: DocBlockType.image,
+          assetRef: 'saved-logo.png',
+          widthMm: 50,
+        ),
+        DocBlock(id: 'b-text', type: DocBlockType.paragraph, text: 'Текст'),
+      ],
+      sizeBytes: 1024,
+    );
+    await ImportedDocxStore().upsert(template);
+    final loaded = await ImportedDocxStore().load();
+    expect(loaded.single.blocks.first.assetRef, 'saved-logo.png');
+    expect(loaded.single.blocks.first.widthMm, 50);
   });
 
   test('Пустой документ — ошибка «нет текста»', () {

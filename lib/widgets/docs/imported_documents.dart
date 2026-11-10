@@ -7,7 +7,9 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/doc_converter.dart';
 import '../../services/docx_import.dart';
+import '../../services/document_assets.dart';
 import '../../services/imported_docx_store.dart';
 
 /// Открывает выбор DOCX, разбирает его и сохраняет шаблон.
@@ -24,11 +26,13 @@ Future<ImportedDocxTemplate?> importDocxFromPicker(
       acceptedTypeGroups: const [
         XTypeGroup(
           label: 'Документы Word',
-          extensions: ['docx'],
+          extensions: ['doc', 'docx'],
           mimeTypes: [
+            'application/msword',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
           ],
           uniformTypeIdentifiers: [
+            'com.microsoft.word.doc',
             'org.openxmlformats.wordprocessingml.document',
           ],
         ),
@@ -36,16 +40,31 @@ Future<ImportedDocxTemplate?> importDocxFromPicker(
     );
   } catch (error) {
     if (context.mounted) {
-      _toast(
-        context,
-        'Не удалось открыть выбор файла: $error',
-      );
+      _toast(context, 'Не удалось открыть выбор файла: $error');
     }
     return null;
   }
   if (file == null) return null;
+  final picked = file;
 
-  final bytes = await file.readAsBytes();
+  var bytes = await picked.readAsBytes();
+  final lowerName = picked.name.toLowerCase();
+  // Старый .doc конвертируем в .docx через LibreOffice. В браузере и без
+  // LibreOffice конвертер вернёт понятное сообщение «сохраните как .docx».
+  if (lowerName.endsWith('.doc')) {
+    final converted = await convertDocToDocx(bytes, fileName: picked.name);
+    if (!converted.ok) {
+      if (context.mounted) {
+        await _showError(
+          context,
+          'Не удалось открыть .doc',
+          converted.error ?? 'Неизвестная ошибка конвертации.',
+        );
+      }
+      return null;
+    }
+    bytes = converted.bytes!;
+  }
   if (bytes.length > docxMaxBytes) {
     if (context.mounted) {
       _toast(
@@ -55,13 +74,13 @@ Future<ImportedDocxTemplate?> importDocxFromPicker(
     }
     return null;
   }
-  final result = DocxImportService.parse(bytes, fileName: file.name);
+  final result = DocxImportService.parse(bytes, fileName: picked.name);
   if (result.error != null) {
     if (context.mounted) {
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Не удалось импортировать DOCX'),
+          title: const Text('Не удалось импортировать Word'),
           content: Text(result.error!),
           actions: [
             TextButton(
@@ -79,23 +98,51 @@ Future<ImportedDocxTemplate?> importDocxFromPicker(
     return null;
   }
   if (!context.mounted) return null;
-  final approved = await showDialog<bool>(
+  final title = await showDialog<String>(
     context: context,
-    builder: (context) => _ImportPreviewDialog(result: result),
+    builder: (context) => _ImportPreviewDialog(
+      result: result,
+      initialTitle: _fileNameTitle(picked.name),
+    ),
   );
-  if (approved != true) return null;
+  if (title == null) return null;
+
+  // Картинки сохраняем только после подтверждения, чтобы отмена не оставляла
+  // осиротевшие файлы. Блоки уже ссылаются на заглушки — подменяем их.
+  final refs = <String, String>{};
+  var imageSaveFailed = 0;
+  for (final image in result.images) {
+    try {
+      refs[image.assetRef] = await saveDocumentAsset(
+        image.fileName,
+        image.bytes,
+      );
+    } catch (_) {
+      imageSaveFailed += 1;
+    }
+  }
+  final blocks = applyDocxImageAssets(result.blocks, refs);
+  final warnings = [
+    ...result.warnings,
+    if (imageSaveFailed > 0)
+      DocxImportWarning(
+        'image_save',
+        'Не удалось сохранить картинку',
+        count: imageSaveFailed,
+      ),
+  ];
 
   final now = DateTime.now();
   final template = ImportedDocxTemplate(
     id: 'docx_${now.microsecondsSinceEpoch}',
-    title: result.title.trim().isEmpty
+    title: title.trim().isEmpty
         ? 'Импортированный документ'
-        : result.title.trim(),
-    fileName: file.name,
+        : title.trim(),
+    fileName: picked.name,
     importedAt: now,
     updatedAt: now,
-    blocks: result.blocks,
-    warnings: result.warnings,
+    blocks: blocks,
+    warnings: warnings,
     sizeBytes: bytes.length,
   );
   await (store ?? ImportedDocxStore()).upsert(template);
@@ -116,20 +163,58 @@ Future<ImportedDocxTemplate?> showImportedDocxDialog(
   );
 }
 
+String _fileNameTitle(String fileName) {
+  final name = fileName.split('/').last.split('\\').last;
+  final dot = name.lastIndexOf('.');
+  final base = dot > 0 ? name.substring(0, dot) : name;
+  final trimmed = base.trim();
+  return trimmed.isEmpty ? 'Импортированный документ' : trimmed;
+}
+
 void _toast(BuildContext context, String message) {
   ScaffoldMessenger.maybeOf(context)?.showSnackBar(
     SnackBar(content: Text(message)),
   );
 }
 
+Future<void> _showError(
+  BuildContext context,
+  String title,
+  String message,
+) => showDialog<void>(
+  context: context,
+  builder: (context) => AlertDialog(
+    title: Text(title),
+    content: Text(message),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Понятно'),
+      ),
+    ],
+  ),
+);
+
 /// Сводка перед сохранением: сколько абзацев/таблиц и что потеряно.
-class _ImportPreviewDialog extends StatelessWidget {
-  const _ImportPreviewDialog({required this.result});
+class _ImportPreviewDialog extends StatefulWidget {
+  const _ImportPreviewDialog({
+    required this.result,
+    required this.initialTitle,
+  });
 
   final DocxImportResult result;
+  final String initialTitle;
+
+  @override
+  State<_ImportPreviewDialog> createState() => _ImportPreviewDialogState();
+}
+
+class _ImportPreviewDialogState extends State<_ImportPreviewDialog> {
+  late var _title = widget.initialTitle;
 
   @override
   Widget build(BuildContext context) {
+    final result = widget.result;
     final theme = Theme.of(context);
     return AlertDialog(
       title: Row(
@@ -139,7 +224,7 @@ class _ImportPreviewDialog extends StatelessWidget {
           Expanded(
             child: Text(
               result.title.trim().isEmpty
-                  ? 'Импорт DOCX'
+                  ? 'Импорт Word'
                   : result.title.trim(),
             ),
           ),
@@ -153,8 +238,20 @@ class _ImportPreviewDialog extends StatelessWidget {
           children: [
             Text(
               'Найдено: ${result.paragraphs} абзацев, '
-              '${result.headings} заголовков, ${result.tables} таблиц.',
+              '${result.headings} заголовков, ${result.tables} таблиц'
+              '${result.images.isEmpty ? '' : ', ${result.images.length} картинок'}.',
               style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              key: const Key('docx-import-title'),
+              initialValue: _title,
+              onChanged: (value) => _title = value,
+              decoration: const InputDecoration(
+                labelText: 'Название шаблона',
+                helperText: 'По умолчанию — имя файла без расширения',
+                border: OutlineInputBorder(),
+              ),
             ),
             if (result.partial) ...[
               const SizedBox(height: 12),
@@ -209,12 +306,12 @@ class _ImportPreviewDialog extends StatelessWidget {
       actions: [
         TextButton(
           key: const Key('docx-import-cancel'),
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: () => Navigator.of(context).pop(),
           child: const Text('Отмена'),
         ),
         FilledButton.icon(
           key: const Key('docx-import-save'),
-          onPressed: () => Navigator.of(context).pop(true),
+          onPressed: () => Navigator.of(context).pop(_title.trim()),
           icon: const Icon(Icons.download_done, size: 18),
           label: const Text('Импортировать'),
         ),
@@ -253,15 +350,16 @@ class _ImportedDocxDialogState extends State<_ImportedDocxDialog> {
   }
 
   Future<void> _rename(ImportedDocxTemplate template) async {
-    final controller = TextEditingController(text: template.title);
+    var value = template.title;
     final title = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Переименовать шаблон'),
-        content: TextField(
+        content: TextFormField(
           key: const Key('docx-rename-field'),
-          controller: controller,
+          initialValue: template.title,
           autofocus: true,
+          onChanged: (text) => value = text,
           decoration: const InputDecoration(
             labelText: 'Название',
             border: OutlineInputBorder(),
@@ -274,18 +372,23 @@ class _ImportedDocxDialogState extends State<_ImportedDocxDialog> {
           ),
           FilledButton(
             key: const Key('docx-rename-apply'),
-            onPressed: () =>
-                Navigator.of(context).pop(controller.text.trim()),
+            onPressed: () => Navigator.of(context).pop(value.trim()),
             child: const Text('Сохранить'),
           ),
         ],
       ),
     );
-    controller.dispose();
     if (title == null || title.isEmpty) return;
     final items = await _store.rename(template.id, title);
     if (!mounted) return;
     setState(() => _items = items);
+  }
+
+  Future<void> _duplicate(ImportedDocxTemplate template) async {
+    final items = await _store.duplicate(template.id);
+    if (!mounted) return;
+    setState(() => _items = items);
+    _toast(context, 'Шаблон продублирован');
   }
 
   Future<void> _delete(ImportedDocxTemplate template) async {
@@ -330,7 +433,7 @@ class _ImportedDocxDialogState extends State<_ImportedDocxDialog> {
         children: [
           Icon(Icons.folder_copy_outlined),
           SizedBox(width: 10),
-          Expanded(child: Text('Импортированные DOCX')),
+          Expanded(child: Text('Импортированные Word')),
         ],
       ),
       content: SizedBox(
@@ -355,7 +458,7 @@ class _ImportedDocxDialogState extends State<_ImportedDocxDialog> {
                   key: const Key('docx-import-more'),
                   onPressed: _import,
                   icon: const Icon(Icons.upload_file, size: 18),
-                  label: const Text('Импортировать DOCX'),
+                  label: const Text('Импортировать Word'),
                 ),
               ],
             ),
@@ -386,8 +489,8 @@ class _ImportedDocxDialogState extends State<_ImportedDocxDialog> {
                           title: Text(item.title),
                           subtitle: Text(
                             '${item.fileName} · ${item.sizeLabel}'
-                            '${item.warnings.isEmpty ? '' : ' · частичный импорт'}',
-                            maxLines: 1,
+                            '${item.warnings.isEmpty ? '' : ' · ${item.warnings.map((warning) => warning.label).join('; ')}'}',
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                           trailing: Row(
@@ -405,6 +508,12 @@ class _ImportedDocxDialogState extends State<_ImportedDocxDialog> {
                                 key: Key('docx-rename-${item.id}'),
                                 onPressed: () => _rename(item),
                                 icon: const Icon(Icons.edit_outlined),
+                              ),
+                              IconButton(
+                                tooltip: 'Дублировать',
+                                key: Key('docx-duplicate-${item.id}'),
+                                onPressed: () => _duplicate(item),
+                                icon: const Icon(Icons.copy_all_outlined),
                               ),
                               IconButton(
                                 tooltip: 'Удалить',

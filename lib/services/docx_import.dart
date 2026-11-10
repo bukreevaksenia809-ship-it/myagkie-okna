@@ -48,6 +48,31 @@ class DocxImportWarning {
       );
 }
 
+/// Картинка, извлечённая из DOCX.
+///
+/// В блоках остаётся только ссылка-заглушка `[assetRef]`, а байты лежат здесь:
+/// их сохраняет в хранилище ассетов тот, кто импортирует документ, — сервис
+/// разбора остаётся чистым и синхронным.
+class DocxImageData {
+  const DocxImageData({
+    required this.assetRef,
+    required this.fileName,
+    required this.bytes,
+    required this.widthMm,
+  });
+
+  /// Ссылка-заглушка в блоке до сохранения (`@docx:...`).
+  final String assetRef;
+
+  /// Имя файла внутри DOCX (`image1.png`).
+  final String fileName;
+
+  final Uint8List bytes;
+
+  /// Ширина на странице, мм (из EMU, ограничена шириной A4).
+  final double widthMm;
+}
+
 /// Результат разбора DOCX.
 class DocxImportResult {
   const DocxImportResult({
@@ -58,6 +83,7 @@ class DocxImportResult {
     this.paragraphs = 0,
     this.tables = 0,
     this.headings = 0,
+    this.images = const <DocxImageData>[],
   });
 
   final String title;
@@ -71,12 +97,17 @@ class DocxImportResult {
   final int tables;
   final int headings;
 
+  /// Картинки для сохранения в ассетах (блоки уже ссылаются на них).
+  final List<DocxImageData> images;
+
   bool get ok => error == null;
   bool get partial => warnings.isNotEmpty;
   bool get hasContent => blocks.any(
     (block) => block.type == DocBlockType.table
         ? block.rows.isNotEmpty
-        : block.type == DocBlockType.pageBreak || block.text.trim().isNotEmpty,
+        : block.type == DocBlockType.pageBreak ||
+              block.assetRef != null ||
+              block.text.trim().isNotEmpty,
   );
 }
 
@@ -143,6 +174,21 @@ List<DocBlock> applyDocxPlaceholdersToBlocks(
                 [for (final cell in row) applyDocxPlaceholders(cell, values)],
             ],
     ),
+];
+
+/// Подставляет реальные ссылки ассетов вместо заглушек `@docx:...`.
+///
+/// [refs] — карта «заглушка → сохранённый ассет». Блоки без соответствия
+/// остаются с заглушкой: предпросмотр покажет «нет картинки», а текст и
+/// таблицы не пострадают.
+List<DocBlock> applyDocxImageAssets(
+  List<DocBlock> blocks,
+  Map<String, String> refs,
+) => [
+  for (final block in blocks)
+    block.assetRef != null && refs.containsKey(block.assetRef)
+        ? block.copyWith(assetRef: refs[block.assetRef])
+        : block,
 ];
 
 /// Сохранённый импортированный шаблон DOCX.
@@ -306,10 +352,19 @@ class DocxImportService {
             entry.name.startsWith('word/footer')) {
           headerFooterCount += 1;
         }
+        final isHeaderXml =
+            entry.name.startsWith('word/header') &&
+            entry.name.endsWith('.xml');
+        final isHeaderRels = entry.name.startsWith('word/_rels/header');
         if (entry.name == 'word/document.xml' ||
             entry.name == 'word/numbering.xml' ||
             entry.name == 'word/styles.xml' ||
-            entry.name == 'docProps/core.xml') {
+            entry.name == 'word/_rels/document.xml.rels' ||
+            entry.name == 'docProps/core.xml' ||
+            isHeaderXml ||
+            isHeaderRels ||
+            (entry.name.startsWith('word/media/') &&
+                _isSupportedImageName(entry.name))) {
           entries[entry.name] = entry.content as List<int>;
         }
       }
@@ -336,14 +391,14 @@ class DocxImportService {
       final blocks = <DocBlock>[];
       final counters = _Counters();
       if (headerFooterCount > 0) warnings['headers'] = headerFooterCount;
-      final imageCount = document.descendants
-          .whereType<XmlElement>()
-          .where(
-            (node) =>
-                node.name.local == 'drawing' || node.name.local == 'pict',
-          )
-          .length;
-      if (imageCount > 0) warnings['images'] = imageCount;
+      final relationships = _parseRelationships(
+        entries['word/_rels/document.xml.rels'],
+      );
+      final media = <String, List<int>>{
+        for (final entry in entries.entries)
+          if (entry.key.startsWith('word/media/')) entry.key: entry.value,
+      };
+      final images = <DocxImageData>[];
 
       final body = _firstByLocal(document.rootElement, 'body');
       if (body == null) {
@@ -353,7 +408,34 @@ class DocxImportService {
         );
       }
 
-      _parseContainer(body, blocks, counters, warnings, numbering);
+      _parseContainer(
+        body,
+        blocks,
+        counters,
+        warnings,
+        numbering,
+        relationships: relationships,
+        media: media,
+        images: images,
+      );
+
+      // Логотип часто лежит не в теле, а в колонтитуле Word. Переносим
+      // картинки из первого колонтитула в начало документа: текст
+      // колонтитулов по-прежнему не поддерживается (предупреждение выше).
+      final headerImages = _headerImages(entries, media, warnings);
+      if (headerImages.isNotEmpty) {
+        images.insertAll(0, headerImages);
+        blocks.insertAll(0, [
+          for (final image in headerImages)
+            DocBlock(
+              id: newBlockId(),
+              type: DocBlockType.image,
+              assetRef: image.assetRef,
+              widthMm: image.widthMm,
+              align: DocAlign.center,
+            ),
+        ]);
+      }
 
       if (blocks.isEmpty) {
         return DocxImportResult(
@@ -372,6 +454,7 @@ class DocxImportService {
         paragraphs: counters.paragraphs,
         tables: counters.tables,
         headings: counters.headings,
+        images: images,
       );
     } catch (error) {
       return DocxImportResult(
@@ -381,13 +464,58 @@ class DocxImportService {
     }
   }
 
+  /// Картинки из `word/headerN.xml` со своими связями.
+  static List<DocxImageData> _headerImages(
+    Map<String, List<int>> entries,
+    Map<String, List<int>> media,
+    Map<String, int> warnings,
+  ) {
+    final names = entries.keys
+        .where(
+          (name) =>
+              name.startsWith('word/header') && name.endsWith('.xml'),
+        )
+        .toList()
+      ..sort();
+    if (names.isEmpty) return const [];
+    final result = <DocxImageData>[];
+    for (final name in names) {
+      try {
+        final doc = XmlDocument.parse(
+          utf8.decode(entries[name]!, allowMalformed: true),
+        );
+        final rels = _parseRelationships(
+          entries['word/_rels/${name.split('/').last}.rels'],
+        );
+        for (final paragraph in doc.descendants.whereType<XmlElement>().where(
+          (node) => node.name.local == 'p',
+        )) {
+          result.addAll(
+            _extractImages(
+              paragraph,
+              relationships: rels,
+              media: media,
+              warnings: warnings,
+            ),
+          );
+        }
+      } catch (_) {
+        // Битый колонтитул не должен ломать импорт тела.
+      }
+    }
+    return result;
+  }
+
   static void _parseContainer(
     XmlElement container,
     List<DocBlock> blocks,
     _Counters counters,
     Map<String, int> warnings,
-    _NumberingFormats numbering,
-  ) {
+    _NumberingFormats numbering, {
+    required Map<String, String> relationships,
+    required Map<String, List<int>> media,
+    required List<DocxImageData> images,
+  }) {
     DocBlockType? pendingListType;
     var pendingItems = <String>[];
 
@@ -406,18 +534,53 @@ class DocxImportService {
       pendingItems = <String>[];
     }
 
+    void emitImages(List<DocxImageData> list) {
+      for (final image in list) {
+        blocks.add(
+          DocBlock(
+            id: newBlockId(),
+            type: DocBlockType.image,
+            assetRef: image.assetRef,
+            widthMm: image.widthMm,
+            align: DocAlign.center,
+          ),
+        );
+      }
+    }
+
     for (final child in container.children.whereType<XmlElement>()) {
       switch (child.name.local) {
         case 'p':
-          final parsed = _parseParagraph(child, numbering);
+          final parsed = _parseParagraph(
+            child,
+            numbering,
+            relationships: relationships,
+            media: media,
+            images: images,
+            warnings: warnings,
+          );
           if (parsed.pageBreakBefore) {
             flushList();
             blocks.add(
               DocBlock(id: newBlockId(), type: DocBlockType.pageBreak),
             );
           }
+          // Картинка без текста (логотип/штамп) — не пустой абзац: её надо
+          // сохранить на своём месте, иначе логотип из шапки теряется.
+          if (parsed.imagesBeforeText && parsed.images.isNotEmpty) {
+            flushList();
+            emitImages(parsed.images);
+          }
           if (parsed.text.trim().isEmpty) {
             flushList();
+            if (!parsed.imagesBeforeText && parsed.images.isNotEmpty) {
+              emitImages(parsed.images);
+            }
+            if (parsed.pageBreakAfter) {
+              blocks.add(
+                DocBlock(id: newBlockId(), type: DocBlockType.pageBreak),
+              );
+            }
             continue;
           }
           if (parsed.listType != null) {
@@ -438,6 +601,10 @@ class DocxImportService {
             );
             counters.paragraphs += 1;
             if (parsed.type.isHeading) counters.headings += 1;
+          }
+          if (!parsed.imagesBeforeText && parsed.images.isNotEmpty) {
+            flushList();
+            emitImages(parsed.images);
           }
           if (parsed.pageBreakAfter) {
             flushList();
@@ -460,7 +627,16 @@ class DocxImportService {
               const {'sdt', 'sdtContent', 'customXml', 'smartTag'}.contains(
                 child.name.local,
               )) {
-            _parseContainer(child, blocks, counters, warnings, numbering);
+            _parseContainer(
+              child,
+              blocks,
+              counters,
+              warnings,
+              numbering,
+              relationships: relationships,
+              media: media,
+              images: images,
+            );
           }
       }
     }
@@ -469,8 +645,12 @@ class DocxImportService {
 
   static _ParsedParagraph _parseParagraph(
     XmlElement paragraph,
-    _NumberingFormats numbering,
-  ) {
+    _NumberingFormats numbering, {
+    required Map<String, String> relationships,
+    required Map<String, List<int>> media,
+    required List<DocxImageData> images,
+    required Map<String, int> warnings,
+  }) {
     final properties = _firstByLocal(paragraph, 'pPr');
     var align = DocAlign.left;
     final jc = properties == null ? null : _firstByLocal(properties, 'jc');
@@ -509,6 +689,23 @@ class DocxImportService {
     final hasPageBreakBefore = runs.pageBreakBefore;
     final hasPageBreakAfter = runs.pageBreakAfter;
 
+    final paragraphImages = _extractImages(
+      paragraph,
+      relationships: relationships,
+      media: media,
+      warnings: warnings,
+    );
+    images.addAll(paragraphImages);
+    // Картинка в начале абзаца (логотип в шапке) должна стоять до текста.
+    final descendants = paragraph.descendants.whereType<XmlElement>().toList();
+    final firstText = descendants.indexWhere(
+      (node) => node.name.local == 't' && node.innerText.trim().isNotEmpty,
+    );
+    final firstImage = descendants.indexWhere(_isImageNode);
+    final imagesBeforeText =
+        paragraphImages.isNotEmpty &&
+        (firstText < 0 || (firstImage >= 0 && firstImage < firstText));
+
     return _ParsedParagraph(
       text: text,
       type: listType != null ? DocBlockType.paragraph : type,
@@ -516,8 +713,140 @@ class DocxImportService {
       listType: listType,
       pageBreakBefore: hasPageBreakBefore,
       pageBreakAfter: hasPageBreakAfter,
+      images: paragraphImages,
+      imagesBeforeText: imagesBeforeText,
     );
   }
+
+  static bool _isImageNode(XmlElement node) =>
+      node.name.local == 'blip' || node.name.local == 'imagedata';
+
+  /// Собирает inline-картинки абзаца: `r:embed` → rels → `word/media/...`.
+  static List<DocxImageData> _extractImages(
+    XmlElement paragraph, {
+    required Map<String, String> relationships,
+    required Map<String, List<int>> media,
+    required Map<String, int> warnings,
+  }) {
+    final result = <DocxImageData>[];
+    for (final node in paragraph.descendants.whereType<XmlElement>()) {
+      if (!_isImageNode(node)) continue;
+      final id =
+          _attr(node, 'embed') ?? _attr(node, 'id') ?? _attr(node, 'link');
+      if (id == null || id.isEmpty) continue;
+      final path = relationships[id];
+      final bytes = path == null ? null : media[path];
+      if (path == null || bytes == null || bytes.isEmpty) {
+        warnings['image_missing'] = (warnings['image_missing'] ?? 0) + 1;
+        continue;
+      }
+      if (result.length >= 100) {
+        warnings['image_limit'] = (warnings['image_limit'] ?? 0) + 1;
+        break;
+      }
+      result.add(
+        DocxImageData(
+          assetRef: '@docx:${newBlockId()}',
+          fileName: _baseName(path),
+          bytes: Uint8List.fromList(bytes),
+          widthMm: _imageWidthMm(node),
+        ),
+      );
+    }
+    return result;
+  }
+
+  /// Ширина картинки из EMU (1 мм = 36 000 EMU), ограниченная шириной A4.
+  static double _imageWidthMm(XmlElement node) {
+    XmlElement? container;
+    XmlNode? parent = node.parent;
+    while (parent != null) {
+      if (parent is XmlElement) {
+        if (parent.name.local == 'drawing' || parent.name.local == 'pict') {
+          container = parent;
+          break;
+        }
+        if (parent.name.local == 'body') break;
+      }
+      parent = parent.parent;
+    }
+    final root = container ?? node;
+    for (final element in root.descendants.whereType<XmlElement>()) {
+      if (element.name.local != 'extent') continue;
+      final cx = num.tryParse(_attr(element, 'cx') ?? '');
+      if (cx != null && cx > 0) {
+        return (cx / 36000).clamp(10.0, 190.0).toDouble();
+      }
+    }
+    return 70;
+  }
+
+  /// Связи `rId → word/media/...` из `document.xml.rels`.
+  static Map<String, String> _parseRelationships(List<int>? bytes) {
+    if (bytes == null) return const <String, String>{};
+    try {
+      final document = XmlDocument.parse(
+        utf8.decode(bytes, allowMalformed: true),
+      );
+      final result = <String, String>{};
+      for (final node in document.descendants.whereType<XmlElement>()) {
+        if (node.name.local != 'Relationship') continue;
+        if ((_attr(node, 'TargetMode') ?? '').toLowerCase() == 'external') {
+          continue;
+        }
+        final id = _attr(node, 'Id');
+        final target = _attr(node, 'Target');
+        if (id == null || id.isEmpty || target == null || target.isEmpty) {
+          continue;
+        }
+        final path = _mediaPath(target);
+        if (path != null) result[id] = path;
+      }
+      return result;
+    } catch (_) {
+      return const <String, String>{};
+    }
+  }
+
+  /// Нормализует `Target` связи в путь внутри ZIP (`word/media/...`).
+  static String? _mediaPath(String target) {
+    var value = target.replaceAll('\\', '/').trim();
+    if (value.isEmpty) return null;
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return null;
+    }
+    if (value.contains('%')) {
+      try {
+        value = Uri.decodeComponent(value);
+      } catch (_) {}
+    }
+    final stack = <String>[];
+    for (final segment in value.split('/')) {
+      if (segment.isEmpty || segment == '.') continue;
+      if (segment == '..') {
+        if (stack.isNotEmpty) stack.removeLast();
+        continue;
+      }
+      stack.add(segment);
+    }
+    if (stack.isEmpty) return null;
+    if (stack.first != 'word') stack.insert(0, 'word');
+    final path = stack.join('/');
+    return _isSupportedImageName(path) ? path : null;
+  }
+
+  static bool _isSupportedImageName(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.png') ||
+        lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.gif') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.bmp');
+  }
+
+  static String _baseName(String path) =>
+      path.split('/').last.split('\\').last;
 
   static _RunsText _parseRuns(XmlElement paragraph) {
     final boldParts = <String>[];
@@ -716,8 +1045,11 @@ class DocxImportService {
 
   static String _titleFromFileName(String? fileName) {
     final name = fileName?.split('/').last.split('\\').last ?? '';
-    final withoutExtension = name.toLowerCase().endsWith('.docx')
+    final lower = name.toLowerCase();
+    final withoutExtension = lower.endsWith('.docx')
         ? name.substring(0, name.length - 5)
+        : lower.endsWith('.doc')
+        ? name.substring(0, name.length - 4)
         : name;
     final trimmed = withoutExtension.trim();
     return trimmed.isEmpty ? 'Импортированный документ' : trimmed;
@@ -739,11 +1071,17 @@ class DocxImportService {
         'В таблице больше 8 колонок — проверьте переносы',
         count: counts['columns']!,
       ),
-    if ((counts['images'] ?? 0) > 0)
+    if ((counts['image_missing'] ?? 0) > 0)
       DocxImportWarning(
-        'images',
-        'Изображения не переносятся, текст сохранён',
-        count: counts['images']!,
+        'image_missing',
+        'Часть картинок не перенесена: файла нет внутри DOCX',
+        count: counts['image_missing']!,
+      ),
+    if ((counts['image_limit'] ?? 0) > 0)
+      DocxImportWarning(
+        'image_limit',
+        'Слишком много картинок — перенесены первые 100',
+        count: counts['image_limit']!,
       ),
     if ((counts['headers'] ?? 0) > 0)
       DocxImportWarning(
@@ -768,6 +1106,8 @@ class _ParsedParagraph {
     required this.listType,
     required this.pageBreakBefore,
     required this.pageBreakAfter,
+    this.images = const <DocxImageData>[],
+    this.imagesBeforeText = false,
   });
 
   final String text;
@@ -776,6 +1116,8 @@ class _ParsedParagraph {
   final DocBlockType? listType;
   final bool pageBreakBefore;
   final bool pageBreakAfter;
+  final List<DocxImageData> images;
+  final bool imagesBeforeText;
 }
 
 class _RunsText {

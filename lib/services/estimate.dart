@@ -83,6 +83,17 @@ class EstimateLine {
   String get unitPriceLabel => formatRubles(unitPrice);
 
   String get amountLabel => formatRubles(amount);
+
+  /// Копия строки с новым названием (для своих названий позиций прайса).
+  EstimateLine copyWith({String? title}) => EstimateLine(
+    title: title ?? this.title,
+    quantity: quantity,
+    unit: unit,
+    unitPrice: unitPrice,
+    group: group,
+    note: note,
+    itemKey: itemKey,
+  );
 }
 
 /// Смета заказа: позиции, подытоги по разделам, наценка, скидка, НДС, ИТОГО.
@@ -711,11 +722,19 @@ class Estimate {
       final line = lines[i];
       final edit = project.estimateEdits[i];
       if (edit?.hidden == true) continue;
+      // Удалённая позиция прайса не попадает в смету — как и выключенная.
+      // Старые заказы при этом открываются: неизвестная/скрытая позиция
+      // просто не показывается, остальные строки остаются на месте.
+      if (line.itemKey != null && prices.isHidden(line.itemKey!)) continue;
+      final title = edit?.title ??
+          (line.itemKey == null
+              ? line.title
+              : prices.titleFor(line.itemKey!, line.title));
       editedLines.add(
         edit == null
-            ? line
+            ? line.copyWith(title: title)
             : EstimateLine(
-                title: edit.title ?? line.title,
+                title: title,
                 quantity: edit.quantity ?? line.quantity,
                 unit: line.unit,
                 unitPrice: edit.unitPrice ?? line.unitPrice,

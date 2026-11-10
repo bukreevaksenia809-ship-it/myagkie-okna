@@ -509,7 +509,7 @@ class _DocsTabState extends State<DocsTab> {
               key: const Key('docs-import-docx'),
               onPressed: _importDocx,
               icon: const Icon(Icons.upload_file, size: 18),
-              label: const Text('Импортировать DOCX'),
+              label: const Text('Импортировать Word'),
             ),
             const SizedBox(width: 4),
             OutlinedButton.icon(
@@ -792,7 +792,6 @@ class _DocsTabState extends State<DocsTab> {
 IconData _templateIcon(DocumentTemplate template) => switch (template) {
   DocumentTemplate.act => Icons.task_alt,
   DocumentTemplate.contract => Icons.handshake_outlined,
-  DocumentTemplate.mmoContract => Icons.assignment_outlined,
   DocumentTemplate.offer => Icons.request_quote_outlined,
   DocumentTemplate.specification => Icons.list_alt_outlined,
   DocumentTemplate.warranty => Icons.verified_outlined,

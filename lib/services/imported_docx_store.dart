@@ -82,6 +82,25 @@ class ImportedDocxStore {
     return next;
   }
 
+  /// Копия шаблона: тот же документ под новым названием и id.
+  Future<List<ImportedDocxTemplate>> duplicate(String id) async {
+    final current = await load();
+    final source = current.where((item) => item.id == id).firstOrNull;
+    if (source == null) return current;
+    final now = DateTime.now();
+    final copy = ImportedDocxTemplate(
+      id: 'docx_${now.microsecondsSinceEpoch}',
+      title: '${source.title} (копия)',
+      fileName: source.fileName,
+      importedAt: now,
+      updatedAt: now,
+      blocks: source.blocks,
+      warnings: source.warnings,
+      sizeBytes: source.sizeBytes,
+    );
+    return upsert(copy);
+  }
+
   Future<List<ImportedDocxTemplate>> remove(String id) async {
     final current = await load();
     final next = current.where((item) => item.id != id).toList();

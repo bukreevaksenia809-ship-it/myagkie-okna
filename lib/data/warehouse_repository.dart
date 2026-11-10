@@ -4,6 +4,7 @@ import 'package:sqflite_common/sqlite_api.dart';
 
 import '../models/order_project.dart';
 import '../models/warehouse.dart';
+import '../services/catalog_index.dart';
 import 'app_database.dart';
 
 /// Результат операции склада.
@@ -162,6 +163,14 @@ class WarehouseRepository {
   Future<StockActionResult> deleteProduct(String id) async {
     final db = await _database.database;
     return db.transaction((txn) async {
+      final productRows = await txn.query(
+        'warehouse_products',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      final deleted =
+          productRows.isEmpty ? null : WarehouseProduct.fromDb(productRows.first);
       final moves = await txn.rawQuery(
         'SELECT COUNT(*) AS c FROM stock_moves WHERE product_id = ?',
         [id],
@@ -187,8 +196,68 @@ class WarehouseRepository {
         where: 'id = ?',
         whereArgs: [id],
       );
+      // Удалённый товар, пришедший из прайса, запоминаем: синхронизация
+      // склада не должна возвращать его при следующем запуске.
+      final priceKey = deleted?.priceKey.trim() ?? '';
+      if (priceKey.isNotEmpty) {
+        await _hidePriceKeyTxn(
+          txn,
+          catalogBasePriceKey(priceKey),
+          source: 'warehouse_delete',
+        );
+      }
       return StockActionResult.success('Товар удалён');
     });
+  }
+
+  /// Скрытые позиции прайса: синхронизация не восстанавливает эти ключи.
+  Future<Set<String>> hiddenPriceKeys() async {
+    final db = await _database.database;
+    final rows = await db.query('hidden_price_keys');
+    return {
+      for (final row in rows) row['key']?.toString() ?? '',
+    }..remove('');
+  }
+
+  /// Помечает позицию прайса удалённой: её товары не возвращаются синком.
+  Future<void> hidePriceKey(String key, {String source = 'warehouse'}) async {
+    final value = catalogBasePriceKey(key);
+    if (value.isEmpty) return;
+    final db = await _database.database;
+    await db.transaction(
+      (txn) => _hidePriceKeyTxn(txn, value, source: source),
+    );
+  }
+
+  /// Возвращает позицию прайса из скрытых.
+  Future<void> restorePriceKey(String key) async {
+    final value = catalogBasePriceKey(key);
+    if (value.isEmpty) return;
+    final db = await _database.database;
+    await db.delete(
+      'hidden_price_keys',
+      where: 'key = ?',
+      whereArgs: [value],
+    );
+  }
+
+  /// Возвращает все скрытые позиции прайса.
+  Future<void> restoreAllPriceKeys() async {
+    final db = await _database.database;
+    await db.delete('hidden_price_keys');
+  }
+
+  Future<void> _hidePriceKeyTxn(
+    DatabaseExecutor txn,
+    String key, {
+    required String source,
+  }) async {
+    if (key.isEmpty) return;
+    await txn.insert('hidden_price_keys', {
+      'key': key,
+      'hidden_at': DateTime.now().toIso8601String(),
+      'source': source,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<StockActionResult> archiveProduct(String id, bool archived) async {

@@ -52,19 +52,29 @@ class CostCatalog {
   CostCatalog({
     Map<String, double>? costs,
     Set<String>? disabled,
+    Set<String>? hidden,
     this.configured = false,
   }) : costs = Map.unmodifiable(costs ?? const {}),
-       disabled = Set.unmodifiable(disabled ?? const {});
+       disabled = Set.unmodifiable(disabled ?? const {}),
+       hidden = Set.unmodifiable(hidden ?? const {});
 
   static final CostCatalog instance = CostCatalog();
 
   static const String _key = 'production_cost_catalog_v1';
   final Map<String, double> costs;
   final Set<String> disabled;
+
+  /// Удалённые (скрытые) статьи себестоимости. В отличие от [disabled], их
+  /// не видно в списке; вернуть можно из раздела «Скрытые позиции».
+  final Set<String> hidden;
   final bool configured;
 
+  bool isHidden(String key) => hidden.contains(key);
+
   double? costFor(String? key) {
-    if (key == null || disabled.contains(key)) return null;
+    if (key == null || disabled.contains(key) || hidden.contains(key)) {
+      return null;
+    }
     final value = costs[key];
     return value != null && value > 0 ? value : null;
   }
@@ -72,12 +82,25 @@ class CostCatalog {
   CostCatalog copyWith({
     Map<String, double>? costs,
     Set<String>? disabled,
+    Set<String>? hidden,
     bool? configured,
   }) => CostCatalog(
     costs: costs ?? this.costs,
     disabled: disabled ?? this.disabled,
+    hidden: hidden ?? this.hidden,
     configured: configured ?? this.configured,
   );
+
+  /// Копия каталога со скрытой/восстановленной статьёй [key].
+  CostCatalog withHidden(String key, {required bool hidden}) {
+    final next = {...this.hidden};
+    if (hidden) {
+      next.add(key);
+    } else {
+      next.remove(key);
+    }
+    return copyWith(hidden: next);
+  }
 
   Future<CostCatalog> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -103,9 +126,17 @@ class CostCatalog {
           disabled.add(item.toString());
         }
       }
+      final hidden = <String>{};
+      final rawHidden = json['hidden'];
+      if (rawHidden is List) {
+        for (final item in rawHidden) {
+          hidden.add(item.toString());
+        }
+      }
       return CostCatalog(
         costs: costs,
         disabled: disabled,
+        hidden: hidden,
         configured: json['configured'] == true,
       );
     } catch (_) {
@@ -120,6 +151,7 @@ class CostCatalog {
       jsonEncode({
         'costs': costs,
         'disabled': disabled.toList(),
+        'hidden': hidden.toList(),
         'configured': configured,
       }),
     );

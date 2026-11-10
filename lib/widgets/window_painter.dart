@@ -3838,7 +3838,10 @@ class WindowDrawingPainter extends CustomPainter {
       }
       if (span == null) continue;
       final horizontal = dx.abs() >= dy.abs();
-      final raw = (horizontal ? dx.abs() : dy.abs()) / layout.scale;
+      // Длина ФАКТИЧЕСКОЙ кромки, а не её проекция: на наклонном верху
+      // (низе, боковине) проекция короче гипотенузы, и подпись «вн.» должна
+      // совпадать с длиной кромки из диалога «Внутренний размер».
+      final raw = length / layout.scale;
       // Внутренний размер — это просвет между запайками под окантовку:
       // на каждой стороне плёнка заходит под кант на weldOverlapMm.
       final weld = params.isScreen ? 0.0 : params.weldOverlapMm * 2;
@@ -4560,4 +4563,28 @@ class _ChainPx {
 
   final double angle;
   final double fontSize;
+}
+
+/// Внутренние размеры ПВХ по четырём кромкам, мм.
+///
+/// Это фактическая длина кромки заготовки минус запайка под окантовку с двух
+/// сторон (`2 × weldOverlapMm`). Считается по длине отрезка, а не по его
+/// горизонтальной/вертикальной проекции: на наклонном верху или боковине
+/// проекция короче гипотенузы, и подпись «вн.» должна совпадать с внутренним
+/// размером из диалога «Внутренний размер».
+///
+/// Порядок сторон — как у [WindowGeometry.sideLengths]: низ, право, верх, лево.
+/// Для Т-окна и составного окна возвращает пустой список: там несколько
+/// контуров и подписи считаются по каждому ребру отдельно.
+List<double> innerPvcSideLengthsMm(WindowLayers layers) {
+  if (layers.isTShape || layers.isComposite) return const [];
+  final polygons = layers.filmPolygons;
+  if (polygons.isEmpty) return const [];
+  final polygon = polygons.first;
+  if (polygon.length != 4) return const [];
+  final weld = layers.params.isScreen ? 0.0 : layers.params.weldOverlapMm * 2;
+  return [
+    for (var i = 0; i < 4; i++)
+      math.max(0.0, (polygon[(i + 1) % 4] - polygon[i]).distance - weld),
+  ];
 }

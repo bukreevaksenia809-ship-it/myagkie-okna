@@ -11,6 +11,7 @@ import '../../models/price_list.dart';
 import '../../models/warehouse.dart';
 import '../../services/app_bootstrap.dart';
 import '../../services/bulk_materials.dart';
+import '../../services/catalog_index.dart';
 import '../../services/file_saver.dart';
 import '../../services/price_warehouse_sync.dart';
 import 'design/app_kit.dart';
@@ -53,6 +54,7 @@ class WarehouseScreen extends StatefulWidget {
     this.currentOrderTitle = '',
     this.onOpenOrders,
     this.prices = const PriceList.defaults(),
+    this.onPricesChanged,
   });
 
   final bool embedded;
@@ -62,6 +64,10 @@ class WarehouseScreen extends StatefulWidget {
 
   /// Прайс, из которого заполняется номенклатура.
   final PriceList prices;
+
+  /// Изменение прайса из склада (восстановление скрытых позиций). null —
+  /// склад работает без родительского состояния (например, отдельным экраном).
+  final ValueChanged<PriceList>? onPricesChanged;
 
   @override
   State<WarehouseScreen> createState() => _WarehouseScreenState();
@@ -81,7 +87,9 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
   String _category = '';
   StockUnit? _unit;
   bool _archived = false;
+  bool _hiddenOnly = false;
   bool _onlyLow = false;
+  Set<String> _hiddenPriceKeys = const {};
   String _message = '';
   bool _messageError = false;
   WarehouseReportKind _reportKind = WarehouseReportKind.stock;
@@ -142,10 +150,12 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
     try {
       final snapshot = await _warehouse.snapshot(includeArchived: true);
       final orders = await _orders.list();
+      final hiddenKeys = await _warehouse.hiddenPriceKeys();
       if (!mounted) return;
       setState(() {
         _snapshot = snapshot;
         _orderList = orders;
+        _hiddenPriceKeys = hiddenKeys;
         _loading = false;
       });
       if (_tab == WarehouseTab.reports) await _loadReport();
@@ -705,13 +715,26 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
       ? '"${value.replaceAll('"', '""')}"'
       : value;
 
+  /// Товар скрыт: его позиция прайса удалена в панели цен или на складе.
+  bool _isHiddenProduct(WarehouseProduct product) {
+    final key = product.priceKey.trim();
+    if (key.isEmpty) return false;
+    final base = catalogBasePriceKey(key);
+    return _hiddenPriceKeys.contains(base) ||
+        widget.prices.isHidden(base) ||
+        widget.prices.isHidden(key);
+  }
+
   List<WarehouseStock> get _stocks {
     final snapshot = _snapshot;
     if (snapshot == null) return const [];
     final query = _query.trim().toLowerCase();
     final result = [
       for (final stock in snapshot.stocks)
-        if ((_archived || !stock.product.archived) &&
+        if ((_hiddenOnly
+                ? _isHiddenProduct(stock.product)
+                : !_isHiddenProduct(stock.product) &&
+                      (_archived || !stock.product.archived)) &&
             (!_onlyLow || stock.isLow) &&
             (_category.isEmpty || stock.product.category == _category) &&
             (_unit == null || stock.product.unit == _unit) &&
@@ -835,13 +858,19 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
   }
 
   Future<void> _delete(WarehouseProduct product) async {
+    final fromPrice = product.priceKey.trim().isNotEmpty;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Удалить товар?'),
+        title: Text(fromPrice ? 'Скрыть позицию склада?' : 'Удалить товар?'),
         content: Text(
-          '«${product.name}» будет удалён. Если у него есть движения или '
-          'связи с заказами, удаление будет запрещено — используйте архив.',
+          fromPrice
+              ? '«${product.name}» будет скрыт вместе с позицией прайса. '
+                    'Синхронизация с прайсом его не вернёт, а в разделе '
+                    '«Скрытые позиции» его можно восстановить.'
+              : '«${product.name}» будет удалён. Если у него есть движения или '
+                    'связи с заказами, удаление будет запрещено — используйте '
+                    'архив.',
         ),
         actions: [
           TextButton(
@@ -851,14 +880,69 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: FilledButton.styleFrom(backgroundColor: AppTokens.red),
-            child: const Text('Удалить'),
+            child: Text(fromPrice ? 'Скрыть' : 'Удалить'),
           ),
         ],
       ),
     );
     if (ok != true) return;
+    if (fromPrice) {
+      // Скрываем позицию прайса и уводим товар в архив: остатки и история
+      // сохраняются, а «Синхронизировать с прайсом» не создаёт дубль.
+      await _warehouse.hidePriceKey(product.priceKey, source: 'warehouse_ui');
+      final result = await _warehouse.archiveProduct(product.id, true);
+      _toast(
+        result.ok
+            ? 'Позиция скрыта. Восстановить — в разделе «Скрытые позиции».'
+            : result.message,
+        error: !result.ok,
+      );
+      await _load();
+      return;
+    }
     final result = await _warehouse.deleteProduct(product.id);
     _toast(result.message, error: !result.ok);
+    await _load();
+  }
+
+  /// Восстанавливает одну скрытую позицию: снимает скрытие, возвращает товар
+  /// из архива и досоздаёт недостающие позиции прайса.
+  Future<void> _restoreHidden(WarehouseProduct product) async {
+    final key = catalogBasePriceKey(product.priceKey);
+    await _warehouse.restorePriceKey(key);
+    var prices = widget.prices;
+    if (prices.isHidden(key)) {
+      prices = prices.withHidden(key, hidden: false);
+      widget.onPricesChanged?.call(prices);
+    }
+    if (product.archived) {
+      await _warehouse.archiveProduct(product.id, false);
+    }
+    await PriceWarehouseSync(warehouse: _warehouse).sync(prices);
+    if (!mounted) return;
+    _toast('Позиция восстановлена');
+    await _load();
+  }
+
+  /// Восстанавливает все скрытые позиции прайса.
+  Future<void> _restoreAllHidden() async {
+    setState(() => _busy = true);
+    await _warehouse.restoreAllPriceKeys();
+    var prices = widget.prices;
+    for (final key in [...prices.hiddenItems]) {
+      prices = prices.withHidden(key, hidden: false);
+    }
+    widget.onPricesChanged?.call(prices);
+    for (final stock in _snapshot?.stocks ?? const <WarehouseStock>[]) {
+      if (stock.product.priceKey.trim().isNotEmpty &&
+          (stock.product.archived || _isHiddenProduct(stock.product))) {
+        await _warehouse.archiveProduct(stock.product.id, false);
+      }
+    }
+    await PriceWarehouseSync(warehouse: _warehouse).sync(prices);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    _toast('Скрытые позиции восстановлены');
     await _load();
   }
 
@@ -1174,7 +1258,9 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
             child: AppEmptyState(
               icon: Icons.inventory_2_outlined,
               title: 'Ничего не найдено',
-              message: _archived
+              message: _hiddenOnly
+                  ? 'Скрытых позиций нет: все удалённые товары восстановлены.'
+                  : _archived
                   ? 'В архиве нет позиций по этому фильтру.'
                   : 'Добавьте первый товар — плёнку, окантовку, люверсы или фурнитуру. '
                         'Дальше приход, продажа, списание в заказ и история.',
@@ -1263,11 +1349,25 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
             selected: _archived,
             onSelected: (value) => setState(() => _archived = value),
           ),
+          FilterChip(
+            key: const Key('warehouse-hidden-filter'),
+            label: const Text('Скрытые позиции'),
+            selected: _hiddenOnly,
+            onSelected: (value) => setState(() => _hiddenOnly = value),
+          ),
+          if (_hiddenOnly && _hiddenPriceKeys.isNotEmpty)
+            TextButton.icon(
+              key: const Key('warehouse-restore-all'),
+              onPressed: _busy ? null : _restoreAllHidden,
+              icon: const Icon(Icons.restore, size: 16),
+              label: const Text('Восстановить все'),
+            ),
           if (_query.isNotEmpty ||
               _category.isNotEmpty ||
               _unit != null ||
               _onlyLow ||
-              _archived)
+              _archived ||
+              _hiddenOnly)
             TextButton.icon(
               onPressed: () => setState(() {
                 _query = '';
@@ -1275,6 +1375,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                 _unit = null;
                 _onlyLow = false;
                 _archived = false;
+                _hiddenOnly = false;
               }),
               icon: const Icon(Icons.filter_alt_off, size: 16),
               label: const Text('Сбросить'),
@@ -1428,6 +1529,8 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                       _editProduct(product);
                     case 'archive':
                       _archive(product, !product.archived);
+                    case 'restore':
+                      _restoreHidden(product);
                     case 'delete':
                       _delete(product);
                   }
@@ -1447,6 +1550,11 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                       product.archived ? 'Вернуть из архива' : 'В архив',
                     ),
                   ),
+                  if (_isHiddenProduct(product))
+                    const PopupMenuItem(
+                      value: 'restore',
+                      child: Text('Восстановить'),
+                    ),
                   const PopupMenuItem(value: 'delete', child: Text('Удалить')),
                 ],
               ),
